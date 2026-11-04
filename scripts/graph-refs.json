@@ -809,6 +809,7 @@
     "decision:framework-integrations-ship-zep-shaped-knowledge-packages-first-2026-09-28",
     "decision:hide-implementation-preserve-evidence-surface-failure",
     "decision:identity-rides-on-the-first-door-not-a-whoami",
+    "decision:job-title-roles-retired-from-the-roster-2026-11-04",
     "decision:keep-the-chunk-vector-index-behind-a-flag-and-run-each-vector-query-alone-2026-10-03",
     "decision:ladybug-extensions-ship-from-a-vinc-release-not-the-repo-2026-09-26",
     "decision:large-topic-conversion-admission-2026-10-16",
@@ -1757,6 +1758,9 @@
       "validity": "current"
     },
     "decision:maker-and-checker-replace-the-job-title-roster-2026-11-04": {
+      "validity": "current"
+    },
+    "decision:job-title-roles-retired-from-the-roster-2026-11-04": {
       "validity": "current"
     }
   }

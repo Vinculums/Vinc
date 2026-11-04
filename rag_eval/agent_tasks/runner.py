@@ -43,7 +43,7 @@ SOURCE_FILES = ("__init__.py", "__main__.py", "tasks.py", "checkers.py", "models
                 "doors.py", "role_context.py", "hosts.py", "record.py", "metrics.py", "runner.py")
 #: 실행 기록 조각의 주제. 이 갈래의 하네스 실행은 여기 모인다.
 RUN_DOMAIN = "vinc/agent/harness"
-DEFAULT_ROLE = "concept:agent-research"
+DEFAULT_ROLE = "concept:agent-maker"
 PACKAGES = ("vinc-client", "vinc-langgraph", "vinc-agent-framework", "langgraph", "langchain",
             "langchain-core", "agent-framework-core", "httpx", "pydantic")
 

@@ -95,7 +95,7 @@ def test_ratified_roster_with_return_routes_keeps_every_contract_under_ten_kb():
                 'decision:structured-person-only-and-role-return-paths-ratified-2026-10-04. '
                 "Select the package's exact producer; never infer reverse scheduling."}
                for r in roster for peer in r.get('works_with', {}).get('returns_to', [])]
-    assert len(returns) == 15
+    assert len(returns) == 1
     edges += returns
 
     class Bridge:
@@ -122,7 +122,7 @@ def test_ratified_roster_with_return_routes_keeps_every_contract_under_ten_kb():
         assert sorted(actual, key=lambda e:(e['from'], e['to'], e['type'])) == sorted(
             [e for e in edges if rid in (e['from'], e['to'])],
             key=lambda e:(e['from'], e['to'], e['type']))
-    assert bridge.calls == len(nodes) == 25
+    assert bridge.calls == len(nodes) == 2
 
 
 def test_complete_live_role_evidence_fits_public_rest_and_mcp_without_field_loss(monkeypatch):
@@ -138,7 +138,7 @@ def test_complete_live_role_evidence_fits_public_rest_and_mcp_without_field_loss
                        'props':r['props']} for r in roster}
     fixture = json.loads((root / 'tests/fixtures/agent_gate_runner_role_edges.json').read_text(
         encoding='utf-8'))
-    assert len(fixture['edges']) == 24
+    assert len(fixture['edges']) == 1
     calls = []
 
     def request(method, path, params=None, **kwargs):
@@ -150,7 +150,7 @@ def test_complete_live_role_evidence_fits_public_rest_and_mcp_without_field_loss
     srv = Server(scope='read')
     srv.bridge.request = request
     try:
-        status, headers, rest = srv.request('GET', '/v1/roles/agent-gate-runner')
+        status, headers, rest = srv.request('GET', '/v1/roles/agent-checker')
         assert status == 200
         assert int(headers['Content-Length']) < 10000
         assert rest['props'] == nodes[fixture['role']]['props']
@@ -162,7 +162,7 @@ def test_complete_live_role_evidence_fits_public_rest_and_mcp_without_field_loss
         assert len(calls) == 1
 
         rpc = {'jsonrpc':'2.0', 'id':1, 'method':'tools/call',
-               'params':{'name':'vinc_role', 'arguments':{'role':'agent-gate-runner'}}}
+               'params':{'name':'vinc_role', 'arguments':{'role':'agent-checker'}}}
         status, _, result = srv.request('POST', '/mcp', body=rpc)
         assert status == 200
         text = result['result']['content'][0]['text']
