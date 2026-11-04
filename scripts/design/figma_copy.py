@@ -26,6 +26,7 @@
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import os
 import pathlib
@@ -41,7 +42,9 @@ SITE = pathlib.Path(os.environ["VINC_SITE_DIR"]).resolve() if os.environ.get("VI
 
 #: 라우트 → (Figma 변수 접두, {Figma 키 꼬리: 라이브 data-i 키}).
 #: 값이 None 이면 "라이브에서 사라진 Figma 변수"다 — 지우기 전에 눈으로 확인하라고 남긴다.
-MAP: dict[str, tuple[str, dict[str, str | None]]] = {
+#: 값이 키의 튜플이면 그 조각들을 페이지 순서대로 빈 줄 하나(`\n\n`)로 이어 한 변수로 본다
+#: (`_joined`). 라이브는 문단마다 키가 따로이고 Figma 는 절마다 한 덩어리인 자리에 쓴다.
+MAP: dict[str, tuple[str, dict[str, str | tuple[str, ...] | None]]] = {
     "/download/": ("dl/", {
         "h1": "h1", "heroBody": "sub", "versionBadge": "verLabel", "primaryBtn": "dlGeneric",
         "detected": "detectGeneric", "notice": "notice",
@@ -160,10 +163,20 @@ MAP: dict[str, tuple[str, dict[str, str | None]]] = {
         "s1Title": "h2who", "s2Title": "h2items", "s3Title": "h2app", "s4Title": "h2entrust",
         "s5Title": "h2third", "s6Title": "h2rights", "s7Title": "h2delete", "s8Title": "h2cookies",
         "s9Title": "h2safe", "s10Title": "h2kids", "s11Title": "h2changes",
-        # 본문은 라이브가 여러 조각(who1~2 · items1~2 …)으로 나뉘어 있고 Figma 는
-        # 절마다 한 덩어리다. 조각을 합치는 규칙이 필요해서 사람 판정 전까지 보류한다.
-        "s1Body": None, "s2Body": None, "s3Body": None,
-        "s4Body": None, "s5Body": None, "s6Body": None, "showKoBlock": None,
+        # 본문은 절의 문단과 목록 줄을 페이지 순서로 잇는다. 표(itemsT · entrustT)는 칸이
+        # 한 줄로 붙어 읽을 수 없으므로 본문에 넣지 않는다. 맺음 줄(vow)은 절 밖이다.
+        "s1Body": ("who1", "who2"),
+        "s2Body": ("items1", "items2"),
+        "s3Body": ("app1", "app2", "app3"),
+        "s4Body": ("entrust1", "entrust2", "entrust3"),
+        "s5Body": ("third1", "third2", "third3", "third4", "third5"),
+        "s6Body": ("rights1", "rights2", "rights3"),
+        "s7Body": tuple(f"delete{i}" for i in range(1, 8)),
+        "s8Body": ("cookies1",),
+        "s9Body": tuple(f"safe{i}" for i in range(1, 6)),
+        "s10Body": ("kids1",),
+        "s11Body": ("changes1", "changes2"),
+        "showKoBlock": None,
     }),
     "/community/": ("community/", {
         # 2026-11 부터 /community/ 는 앱 셸 하나다. 제목만 정적이고 나머지는 셸이 그린다.
@@ -228,6 +241,18 @@ def page_path(route: str) -> pathlib.Path:
     return flat if flat.exists() else SITE / rel / "index.html"
 
 
+def _joined(live: dict, keys: tuple[str, ...]) -> dict:
+    """조각 여럿을 한 변수 값으로 잇는다. 엔티티(`&quot;` 등)는 화면 글자로 푼다.
+
+    한국어가 없는 조각은 화면처럼 영어로 떨어진다. 조각 모두에 한국어가 없으면 KO 는
+    None 이고, 그러면 `check` 가 KO 를 대조하지 않는다(한 키짜리와 같은 규칙).
+    """
+    en = [html.unescape(live["en"].get(k, "")) for k in keys]
+    has_ko = any(k in live["ko"] for k in keys)
+    ko = [html.unescape(live["ko"].get(k, live["en"].get(k, ""))) for k in keys]
+    return {"EN": "\n\n".join(en), "KO": "\n\n".join(ko) if has_ko else None}
+
+
 def emit(route: str) -> dict:
     prefix, keymap = MAP[route]
     live = extract(page_path(route))
@@ -236,12 +261,19 @@ def emit(route: str) -> dict:
         if livekey is None:
             gone.append(prefix + tail)
             continue
+        if isinstance(livekey, tuple):
+            absent = [k for k in livekey if k not in live["en"] and k not in live["ko"]]
+            if absent:
+                gone.append(prefix + tail + " (라이브 키 " + " · ".join(absent) + " 없음)")
+                continue
+            out[prefix + tail] = _joined(live, livekey)
+            continue
         en, ko = live["en"].get(livekey), live["ko"].get(livekey)
         if en is None and ko is None:
             gone.append(prefix + tail + " (라이브 키 " + livekey + " 없음)")
             continue
         out[prefix + tail] = {"EN": en, "KO": ko}
-    mapped = {v for v in keymap.values() if v}
+    mapped = {k for v in keymap.values() if v for k in ((v,) if isinstance(v, str) else v)}
     for k in sorted(set(live["en"]) | set(live["ko"])):
         if k not in mapped and not k.startswith("f"):   # f* 는 공용 푸터 링크다
             missing.append(k)

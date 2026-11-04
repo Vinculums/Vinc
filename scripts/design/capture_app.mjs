@@ -286,6 +286,8 @@ TB("import-doc-sheet", "Import › pick a .md: the document is added", async (p)
 TB("graphmd", "Settings › GRAPH.md", async (p) => { await settingsSheet(p, "graphmd"); await sleep(400); });
 // 설정 시트의 분류(surfaces/settings.ts ALL_CATS). 옛 탭 셋은 분류로 옮겨 갔다: Account → account,
 // Connections(외부 어시스턴트 연결) → ai, Advanced → advanced. 라이트는 첫 분류(General)다.
+// General 은 시트를 열면 먼저 서는 분류다(openSettings 의 기본값). 분류 단추를 누르지 않고 그대로 찍는다.
+TB("settings-general", "Settings › General · appearance", (p) => settingsSheet(p));
 TB("settings-account", "Settings › Account (signed in, local mode)", (p) => settingsSheet(p, "account"));
 TB("settings-connections", "Settings › AI assistants", (p) => settingsSheet(p, "ai"));
 TB("settings-advanced", "Settings › Advanced", (p) => settingsSheet(p, "advanced"));

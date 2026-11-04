@@ -8,7 +8,7 @@
   "note": "Machine dump. Never patch it by hand: re-run the dump. A hand-patched inventory makes the gate agree with a file instead of with Figma.",
   "site_screens_note": "04 · Site boards are html-to-design captures (capture_site_figma.mjs) named Site · <Route>[ · <state>] / dark; children are not recorded.",
   "app_boards_note": "03 · App boards are html-to-design captures (capture_app_figma.mjs) named App · <Surface>[ · <state>] / <theme>; children are not recorded.",
-  "refreshed": "2026-10-24: whole file restructured to eight pages; 03 and 04 recaptured from the running app and the live site. 2026-10-30: 06 · Storyboards added (journeys); the other four pages were not re-dumped. 2026-11-04: all five pages re-dumped after 03 and 04 were recaptured (app 72 states, site 148 boards); old boards moved to 90 · Archive. Later on 2026-11-04: 02 · Components re-dumped after the retired sets and variants moved to 90 · Archive (Lens panel 2D · Timeline · Weave, App / PackCard, the old tab Settings sheet and the standalone Tools · Import · GRAPH.md sheets) and Overlay / Settings was rebuilt from the settings captures."
+  "refreshed": "2026-10-24: whole file restructured to eight pages; 03 and 04 recaptured from the running app and the live site. 2026-10-30: 06 · Storyboards added (journeys); the other four pages were not re-dumped. 2026-11-04: all five pages re-dumped after 03 and 04 were recaptured (app 72 states, site 148 boards); old boards moved to 90 · Archive. Later on 2026-11-04: 02 · Components re-dumped after the retired sets and variants moved to 90 · Archive (Lens panel 2D · Timeline · Weave, App / PackCard, the old tab Settings sheet and the standalone Tools · Import · GRAPH.md sheets) and Overlay / Settings was rebuilt from the settings captures. Later again on 2026-11-04: 02 · Components and 03 · App re-dumped after the Lens panel 3D variants were rebuilt from captures, Overlay / Settings gained Tab=General and 03 gained the settings-general board; 04 · Site frame names were read again and match."
  },
  "pages": {
   "01 · Foundations": {
@@ -344,6 +344,7 @@
      "State=Failed"
     ],
     "Overlay / Settings": [
+     "Tab=General",
      "Tab=Reading",
      "Tab=Account",
      "Tab=AI connections",
@@ -524,10 +525,6 @@
      "children": []
     },
     {
-     "name": "App · View · item-page / dark",
-     "children": []
-    },
-    {
      "name": "App · View · agent-scope / dark",
      "children": []
     },
@@ -585,6 +582,10 @@
     },
     {
      "name": "App · Search · results / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · item-page / dark",
      "children": []
     },
     {
@@ -745,6 +746,10 @@
     },
     {
      "name": "App · Topbar · settings-about / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · settings-general / dark",
      "children": []
     },
     {
