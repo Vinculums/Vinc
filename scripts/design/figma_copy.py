@@ -55,25 +55,28 @@ MAP: dict[str, tuple[str, dict[str, str | None]]] = {
     }),
     "/pricing/": ("pricing/", {
         "h1": "h1", "heroBody": "sub",
-        "plan1Name": "tFree",
-        # ⚠ 라이브의 `pFree` 는 태그라인이 아니라 **가격(₩0)** 이다. 이름이 비슷해서
-        # 한 번 잘못 이었다. Figma 의 태그라인 줄은 라이브에 대응이 없으므로 결손이고,
-        # 가격 줄은 Figma 에 변수가 없다(정적 텍스트).
-        "plan1Tagline": None,
-        "plan1Item1": "fFree1", "plan1Item2": "fFree2", "plan1Item3": "fFree3", "plan1Item4": "fFree4",
-        "plan1Cta": "ctaFree",
-        # Pro 는 2026-09-19 에 없어졌다(Vinc#365 · Vinc-homepage#168). 그 카드만 쓰던 일곱 줄은
-        # Figma 에서도 지웠으므로 대응표에서도 뺀다 — 여기 남겨 두면 `--check` 가 영원히
-        # "라이브에서 사라졌다"로 붉다.
-        # 체험 배너만은 살아남았는데, 그것은 애초에 Pro 카드의 태그라인이 아니라 **페이지
-        # 레벨 배너**였다. 이름이 거짓이 되므로 Figma 변수와 함께 trialBanner 로 옮겼다.
+        # 2026-11 에 요금제가 셋으로 다시 짜였다(Curious · Genius · Enterprise). 카드는
+        # **자리 순서**로 잇는다 — plan1 은 첫 카드, plan2 는 둘째, plan3 은 셋째다. 그래야
+        # 카드에 묶인 노드가 이름을 바꾸지 않고 새 문구를 받는다.
+        # ⚠ 라이브의 `pCur`·`pEnt` 는 태그라인이 아니라 **가격**이다(정적 텍스트, 변수 없음).
+        # 태그라인은 `per*` 줄이다.
+        "plan1Name": "tCur", "plan1Tagline": "perCur",
+        "plan1Item1": "fCur1", "plan1Item2": "fCur2", "plan1Item3": "fCur3", "plan1Item4": "fCur4",
+        "plan1Item5": "fCur5", "plan1Cta": "ctaCur",
+        "plan2Name": "tGen", "plan2Tagline": "perGen",
+        "plan2Item1": "fGen1", "plan2Item2": "fGen2", "plan2Item3": "fGen3", "plan2Item4": "fGen4",
+        "plan2Item5": "fGen5", "plan2Cta": "ctaGenSoon",
+        "plan3Name": "tEnt", "plan3Tagline": "perEnt",
+        "plan3Item1": "fEnt1", "plan3Item2": "fEnt2", "plan3Item3": "fEnt3", "plan3Cta": "ctaEnt",
+        # Team 카드에만 있던 두 줄. 90 · Archive 의 옛 요금 보드가 아직 묶고 있어 지우지 않는다.
+        "plan3Period": None, "plan3Item4": None,
+        # 체험 배너는 애초에 카드의 태그라인이 아니라 **페이지 레벨 배너**다.
         "trialBanner": "trialOn",
-        "plan3Name": "tTeam", "plan3Period": "perSeatYear", "plan3Tagline": "perTeam",
-        "plan3Item1": "fTeam1", "plan3Item2": "fTeam2", "plan3Item3": "fTeam3", "plan3Item4": "fTeam4",
-        "plan3Cta": "ctaTeam",
         "taxNote": "note", "faqTitle": "faqT",
         "faq1Q": "q1", "faq1A": "a1", "faq2Q": "q2", "faq2A": "a2",
         "faq3Q": "q3", "faq3A": "a3", "faq4Q": "q4", "faq4A": "a4",
+        "faq5Q": "q5", "faq5A": "a5", "faq6Q": "q6", "faq6A": "a6",
+        "faq7Q": "q7", "faq7A": "a7", "faq8Q": "q8", "faq8A": "a8",
         "segYearly": "cyYear", "segMonthly": "cyMonth",
     }),
     "/login/": ("login/", {
@@ -133,11 +136,13 @@ MAP: dict[str, tuple[str, dict[str, str | None]]] = {
     }),
     "/account/": ("account/", {
         "usernameDesc": "unB", "packsTitle": "cpT", "packsDesc": "cpB",
-        "planDesc": "proB", "connectorDesc": "mkB", "keyWarn": "onceLabel",
+        "planTitle": "proT", "connectorDesc": "mkB", "keyWarn": "onceLabel",
         "newsDesc": "nlB", "deleteTitle": "delT", "deleteDesc": "delB",
         # 아래는 Figma 가 표본 데이터로 들고 있는 것이라 라이브 문구가 없다.
+        # 플랜 설명은 이제 플랜마다 스크립트가 고른다(bodyCur · bodyGen) — 정적 문구가 없다.
+        # planDesc 는 90 · Archive 의 옛 계정 보드가 묶고 있어 변수를 남긴다.
         "planBadge": None, "usernameTitle": None, "packName": None, "packImports": None,
-        "planTitle": None, "connectorTitle": None, "keyRowTitle": None, "keyRowMeta": None,
+        "planDesc": None, "connectorTitle": None, "keyRowTitle": None, "keyRowMeta": None,
         "newsTitle": None,
     }),
     "/account/team/": ("team/", {
@@ -150,16 +155,21 @@ MAP: dict[str, tuple[str, dict[str, str | None]]] = {
     "/404": ("err404/", {"body": "sub"}),
     "/release/": ("release/", {"h1": "h1", "heroSub": "sub"}),
     "/privacy/": ("privacy/", {
-        "h1": "h1",
-        "s1Title": "h2ways", "s2Title": "h2store", "s3Title": "h2not",
-        "s4Title": "h2third", "s5Title": "h2keep", "s6Title": "h2contact",
-        # 본문은 라이브가 여러 조각(k1~k4 · n1~n2 · c1/c2)으로 나뉘어 있고 Figma 는
+        "h1": "h1", "sub": "sub", "updated": "updated",
+        # 2026-10 개정으로 절이 열하나가 됐다. 제목은 **페이지 순서**로 잇는다(s1 이 첫 절).
+        "s1Title": "h2who", "s2Title": "h2items", "s3Title": "h2app", "s4Title": "h2entrust",
+        "s5Title": "h2third", "s6Title": "h2rights", "s7Title": "h2delete", "s8Title": "h2cookies",
+        "s9Title": "h2safe", "s10Title": "h2kids", "s11Title": "h2changes",
+        # 본문은 라이브가 여러 조각(who1~2 · items1~2 …)으로 나뉘어 있고 Figma 는
         # 절마다 한 덩어리다. 조각을 합치는 규칙이 필요해서 사람 판정 전까지 보류한다.
-        "sub": None, "updated": None, "s1Body": None, "s2Body": None, "s3Body": None,
+        "s1Body": None, "s2Body": None, "s3Body": None,
         "s4Body": None, "s5Body": None, "s6Body": None, "showKoBlock": None,
     }),
     "/community/": ("community/", {
-        "h1a": "h1", "empty": "empty", "browseDocs": "browseDocs",
+        # 2026-11 부터 /community/ 는 앱 셸 하나다. 제목만 정적이고 나머지는 셸이 그린다.
+        "h1a": "heading",
+        # 빈 상태 두 줄은 셸로 옮겨 갔다. 90 · Archive 의 옛 보드가 묶고 있어 변수는 남긴다.
+        "empty": None, "browseDocs": None,
         # 공개 팩 중단으로 사라진 문구는 역사 프레임에만 남는다.
         "heroBody": None, "shareCta": None, "shareNote": None,
         "sortRecent": None, "cardBadge": None, "cardImport": None,

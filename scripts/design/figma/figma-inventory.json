@@ -8,7 +8,7 @@
   "note": "Machine dump. Never patch it by hand: re-run the dump. A hand-patched inventory makes the gate agree with a file instead of with Figma.",
   "site_screens_note": "04 · Site boards are html-to-design captures (capture_site_figma.mjs) named Site · <Route>[ · <state>] / dark; children are not recorded.",
   "app_boards_note": "03 · App boards are html-to-design captures (capture_app_figma.mjs) named App · <Surface>[ · <state>] / <theme>; children are not recorded.",
-  "refreshed": "2026-10-24: whole file restructured to eight pages; 03 and 04 recaptured from the running app and the live site. 2026-10-30: 06 · Storyboards added (journeys); the other four pages were not re-dumped. 2026-11-04: all five pages re-dumped after 03 and 04 were recaptured (app 72 states, site 148 boards); old boards moved to 90 · Archive."
+  "refreshed": "2026-10-24: whole file restructured to eight pages; 03 and 04 recaptured from the running app and the live site. 2026-10-30: 06 · Storyboards added (journeys); the other four pages were not re-dumped. 2026-11-04: all five pages re-dumped after 03 and 04 were recaptured (app 72 states, site 148 boards); old boards moved to 90 · Archive. Later on 2026-11-04: 02 · Components re-dumped after the retired sets and variants moved to 90 · Archive (Lens panel 2D · Timeline · Weave, App / PackCard, the old tab Settings sheet and the standalone Tools · Import · GRAPH.md sheets) and Overlay / Settings was rebuilt from the settings captures."
  },
  "pages": {
   "01 · Foundations": {
@@ -224,7 +224,6 @@
     "App / GraphNode",
     "App / StateMark",
     "App / ProgressBar",
-    "App / PackCard",
     "App / ErrorBanner",
     "App / EmptyState",
     "App / Tooltip",
@@ -238,12 +237,8 @@
     "Overlay / Search mode menu",
     "Overlay / Search results",
     "Overlay / Ask panel",
-    "Overlay / Sheet · Tools",
     "Overlay / Sheet · All documents",
     "Overlay / Command palette",
-    "Overlay / Sheet · Import a pack",
-    "Overlay / Sheet · Import a document",
-    "Overlay / Sheet · GRAPH.md",
     "Overlay / Sheet · New node",
     "Overlay / Sheet · First run",
     "Overlay / Sheet · Past questions",
@@ -342,9 +337,6 @@
      "State=Half",
      "State=Empty"
     ],
-    "App / PackCard": [
-     "State=Default"
-    ],
     "App / UpdateToast": [
      "State=Available",
      "State=Downloading",
@@ -352,9 +344,16 @@
      "State=Failed"
     ],
     "Overlay / Settings": [
+     "Tab=Reading",
      "Tab=Account",
-     "Tab=Connections",
-     "Tab=Advanced"
+     "Tab=AI connections",
+     "Tab=Data · Import",
+     "Tab=Data · Importing",
+     "Tab=Data · Imported",
+     "Tab=Data · Share",
+     "Tab=GRAPH.md",
+     "Tab=Advanced",
+     "Tab=About"
     ],
     "Overlay / Float card": [
      "State=Default",
@@ -367,9 +366,6 @@
     ],
     "Overlay / Lens panel": [
      "Viewpoint=3D, Tab=Options, Help=Off",
-     "Viewpoint=2D, Tab=Options, Help=Off",
-     "Viewpoint=Timeline, Tab=Options, Help=Off",
-     "Viewpoint=Weave, Tab=Options, Help=Off",
      "Viewpoint=3D, Tab=Legend, Help=Off",
      "Viewpoint=3D, Tab=Options, Help=On"
     ],
@@ -386,11 +382,6 @@
     "Overlay / Ask panel": [
      "State=Answer",
      "State=None"
-    ],
-    "Overlay / Sheet · Tools": [
-     "Tab=Create",
-     "Tab=Import",
-     "Tab=Share"
     ],
     "Overlay / Sheet · All documents": [
      "Layer=Topics",
