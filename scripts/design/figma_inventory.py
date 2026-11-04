@@ -283,7 +283,8 @@ APP_COMPONENTS: dict[str, dict[str, str | None]] = {
                           "Tone=Danger": "danger"},
     "App / GraphNode":   {"Tier=Focus": '"focus"', "Tier=Near": '"near"',
                           "Tier=Mid": '"mid"', "Tier=Far": '"far"'},
-    "App / PackCard":    {"State=Default": "pack-card"},
+    # App / PackCard 는 대응하는 코드가 없어 여기 두지 않는다(보드는 90 · Archive). 표식을 주석에서만
+    # 찾으면 게이트가 거짓으로 초록이 된다.
     "App / UpdateToast": {"State=Available": "t.available", "State=Downloading": "t.downloading",
                           "State=Installing": "t.installing", "State=Failed": "t.failed"},
     # 변형이 없는 것들. 컴포넌트 자체의 표식 하나만 건다.
