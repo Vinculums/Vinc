@@ -1874,18 +1874,22 @@ class VincApp:
             if got.get("executed") and (got.get("text") or "").strip():
                 # 마커가 깨진 문서는 교체하지 않는다(build 가 executed=False) — 그때는
                 # 저장본 그대로다. 추측해서 고쳐 쓰지 않는 것이 build 와 같은 태도다.
+                # 저장본에 Roles 절이 있었는지는 끼우기 전에 본다(응답의 roles_section 이 그것을 말한다).
+                roles_default = not any(graphmd._is_heading(ln, "roles")
+                                        for ln in got["text"].splitlines())
                 fresh = graphmd.build(r, owner=owner, themes=self.themes,
                                       existing=got["text"], restamp=False)
                 text = fresh["text"] if fresh.get("executed") else got["text"]
-                # Roles 절이 없는 파일이면 기본 절을 끼워 읽힌다(저장본은 그대로).
-                # 역할을 쓰는 어시스턴트가 계약을 보는 문이 여기 하나라서다.
-                # 근거: [[vinc.canon.agent-roles §5]]
-                text, roles_default = graphmd.with_roles_section(text)
+                # 스키마 절(노드 종류·관계·쓰기·문서·시간·역할)은 저장본이 무엇을 적었든 코드에서
+                # 다시 만들어 싣는다(저장본은 그대로). 마커가 깨져 build 가 거절한 문서에도 싣는다.
+                # 근거: [[vinc.canon.agent-roles §5]], [[decision:graph-md-schema-sections-are-generated-from-code-on-every-read-2026-11-05]]
+                text, _inserted = graphmd.with_schema_sections(text)
                 return {"kind": "conventions", "executed": True, "source": "doc",
                         "owner": owner or "", "scope": _owner_scope(owner),
                         "doc_id": doc_id, "text": text,
                         "generated_recomputed": bool(fresh.get("executed")),
                         "roles_section": "default" if roles_default else "own",
+                        "schema_sections": "generated",
                         "updated_at": got.get("updated_at") or ""}
             built = graphmd.build(r, owner=owner, themes=self.themes, lang=lang,
                                   day=_dt.date.today().isoformat())

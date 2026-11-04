@@ -807,6 +807,7 @@
     "decision:every-written-field-has-a-read-path",
     "decision:figma-app-boards-no-longer-gate-a-release-2026-09-26",
     "decision:framework-integrations-ship-zep-shaped-knowledge-packages-first-2026-09-28",
+    "decision:graph-md-schema-sections-are-generated-from-code-on-every-read-2026-11-05",
     "decision:hide-implementation-preserve-evidence-surface-failure",
     "decision:identity-rides-on-the-first-door-not-a-whoami",
     "decision:keep-the-chunk-vector-index-behind-a-flag-and-run-each-vector-query-alone-2026-10-03",
@@ -1123,6 +1124,9 @@
     "decision:framework-integrations-ship-zep-shaped-knowledge-packages-first-2026-09-28": {
       "validity": "current"
     },
+    "decision:graph-md-schema-sections-are-generated-from-code-on-every-read-2026-11-05": {
+      "validity": "current"
+    },
     "decision:hide-implementation-preserve-evidence-surface-failure": {
       "validity": "current"
     },
@@ -1139,6 +1143,9 @@
       "validity": "unknown"
     },
     "decision:lnb-picks-in-the-graph-open-the-floating-card-and-the-side-pane-2026-10-28": {
+      "validity": "current"
+    },
+    "decision:maker-and-checker-replace-the-job-title-roster-2026-11-04": {
       "validity": "current"
     },
     "decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24": {
@@ -1754,9 +1761,6 @@
       "validity": "current"
     },
     "record:writing-a-trap-down-does-not-stop-it-a-check-does": {
-      "validity": "current"
-    },
-    "decision:maker-and-checker-replace-the-job-title-roster-2026-11-04": {
       "validity": "current"
     }
   }
