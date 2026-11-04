@@ -17,7 +17,7 @@ import { chromium } from "playwright";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HUB = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -330,6 +330,9 @@ add({ id: "pricing__mobile-390", url: "/pricing/", trigger: "viewport 390", api:
 for (const [k, ua] of Object.entries(UA)) add({ id: `download__${k}`, url: "/download/", trigger: `platform detected from the user agent: ${k}`, api: baseApi(null), ua });
 add({ id: "release__default", url: "/release/", trigger: "load", api: baseApi(null) });
 add({ id: "privacy__default", url: "/privacy/", trigger: "load", api: baseApi(null) });
+// 공개 쪽(약관 · 라이선스 · 지원)과 웹 데모(앱 빌드). /community-view/ 는 커뮤니티 그래프 쪽이 싣는 iframe 이라 상태를 두지 않는다.
+for (const r of ["licensing", "support", "terms"]) add({ id: `${r}__default`, url: `/${r}/`, trigger: "load", api: baseApi(null) });
+add({ id: "demo__default", url: "/demo/", trigger: "load: the web demo of the app on its bundled sample graph", api: baseApi(null), full: false, before: async () => sleep(4000) });
 add({ id: "404__default", url: "/this-page-is-not-here/", trigger: "unknown path", api: baseApi(null), full: false });
 for (const d of ["", "mcp/", "agents/", "cli/", "graph-md/", "mcp/sign-in/"]) add({ id: `docs__${d ? d.replace(/\/$/, "").replace(/\//g, "-") : "index"}`, url: `/docs/${d}`, trigger: "load", api: baseApi(null) });
 add({ id: "docs__mobile-800", url: "/docs/mcp/", trigger: "viewport 800: sidebar becomes a horizontal strip", api: baseApi(null), vp: { width: 800, height: 900 } });
@@ -339,7 +342,7 @@ add({ id: "docs__mobile-390", url: "/docs/", trigger: "viewport 390", api: baseA
 // capture_site_figma.mjs 는 같은 상태·픽스처로 페이지를 띄운 뒤 PNG 대신 Figma html-to-design 캡처를
 // 제출한다. 상태 정의를 한 곳에 두려고 여기서 내보내고, 실행부는 직접 실행일 때만 돈다.
 export { S, install, BASE, MOBILE, sleep };
-const isMain = process.argv[1] && import.meta.url === new URL(`file:///${process.argv[1].replace(/\\/g, "/")}`).href;
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 
 // ── 실행 ───────────────────────────────────────────────────────────────────
 const onlyList = ONLY ? ONLY.split(",") : null;
@@ -349,7 +352,8 @@ if (LIST) { for (const s of states) console.log(s.id.padEnd(40), s.trigger); con
 fs.mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch();
 // 어느 사이트 리비전을 그렸는지 남긴다(형제 체크아웃 Vinc-homepage 의 HEAD; 라이브가 그것과 다르면 사람이 맞춘다).
-let siteRev = null; try { siteRev = (await import("node:child_process")).execSync("git rev-parse HEAD", { cwd: path.resolve(HUB, "..", "..", "..", "Vinc-homepage"), encoding: "utf8" }).trim(); } catch {}
+// worktree 에는 형제 체크아웃이 없다: VINC_SITE_REV 로 라이브가 배포한 Vinc-homepage 커밋을 준다.
+let siteRev = process.env.VINC_SITE_REV || null; if (!siteRev) try { siteRev = (await import("node:child_process")).execSync("git rev-parse HEAD", { cwd: path.resolve(HUB, "..", "..", "..", "Vinc-homepage"), encoding: "utf8" }).trim(); } catch {}
 const manifest = { base: BASE, capturedAt: T, tool: "scripts/design/capture_site.mjs", siteRev, states: [] };
 let fails = 0;
 for (const s of states) {

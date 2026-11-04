@@ -11,12 +11,13 @@
 // 왜 tauri.localhost 인가: `app/src/api.ts` 의 IN_SHELL 은 호스트명이 tauri.localhost 면 참이다.
 // Chromium 은 *.localhost 를 루프백으로 풀고 vite 는 그 Host 를 받으므로, 브라우저에서 데스크탑 셸의
 // 분기(첫 실행 시트 · 연결 탭 · 로컬 저장 위치)가 그대로 살아난다. 창 제어(min/max/close)만 빈 손이다.
-// 시드: 스토어에 physics 주제가 없으면 스타터 팩 넷을 앱의 가져오기 흐름으로 넣는다(그 자체가 캡처 대상).
+// 시드: 스토어에 physics 주제가 없으면 스타터 팩 넷을 사이드카 /ingest/pack 으로 넣는다.
 import { chromium } from "playwright";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { fileURLToPath } from "node:url";
+import zlib from "node:zlib";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HUB = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HUB, "..", "..");
@@ -52,7 +53,9 @@ const SHELL_INIT = () => {
 };
 const sheet = (p) => p.locator(".sheet[role=dialog]").last();
 const foot = (p, re) => sheet(p).locator(".sheet-foot button").filter({ hasText: re });
-const settled = async (p) => { await p.waitForSelector("#view-metrics", { state: "attached" }).catch(() => {}); await sleep(2200); };
+// 그래프는 배치가 끝나면 #view-msg 의 로더(.vl)를 비운다(view.ts showGraphScope). 고정 대기만 두면 "Arranging…" 을 찍는다.
+const settled = async (p) => { await p.waitForSelector("#view-metrics", { state: "attached" }).catch(() => {});
+  await p.waitForFunction(() => !document.querySelector("#view-msg .vl"), null, { timeout: 90000 }).catch(() => {}); await sleep(2200); };
 // 설정 · 쓰기/가져오기/공유 · GRAPH.md 는 2026-09-22 부터 레일 바닥 설정 단추가 여는 **시트 하나**다
 // (surfaces/settings.ts). 옛 상단 바 단추(#tb-tools · #settings-btn · #tb-conv)는 숨어서 눌리지 않는다.
 const settingsSheet = async (p, cat, tab) => {
@@ -120,28 +123,44 @@ async function seedEvidenceEdge() {
   EV_NODES = [b, a];   // 카드는 관계를 몇 개만 펼쳐 보이므로, 관계가 적은 쪽(b)에서 먼저 찾는다
 }
 let EV_NODES = [];
-async function seed(browser) {
+// .vincpack(zip) → 팩 객체. app/src/packfile.ts fromBytes 와 같은 모양(manifest + fragment + documents/*.json).
+function readPack(file) {
+  const buf = fs.readFileSync(file); const files = new Map();
+  let e = buf.length - 22; while (e >= 0 && buf.readUInt32LE(e) !== 0x06054b50) e--;
+  let p = buf.readUInt32LE(e + 16); const n = buf.readUInt16LE(e + 10);
+  for (let i = 0; i < n; i++) {
+    const method = buf.readUInt16LE(p + 10), csize = buf.readUInt32LE(p + 20), nlen = buf.readUInt16LE(p + 28), elen = buf.readUInt16LE(p + 30), clen = buf.readUInt16LE(p + 32), off = buf.readUInt32LE(p + 42);
+    const name = buf.toString("utf8", p + 46, p + 46 + nlen);
+    const ds = off + 30 + buf.readUInt16LE(off + 26) + buf.readUInt16LE(off + 28); const body = buf.subarray(ds, ds + csize);
+    files.set(name, method === 0 ? body : zlib.inflateRawSync(body)); p += 46 + nlen + elen + clen;
+  }
+  const pack = JSON.parse(files.get("manifest.json").toString("utf8"));
+  pack.fragment = files.has("fragment.json") ? JSON.parse(files.get("fragment.json").toString("utf8")) : { nodes: [], edges: [] };
+  pack.documents = [...files.keys()].filter((k) => k.startsWith("documents/") && k.endsWith(".json")).sort().map((k) => JSON.parse(files.get(k).toString("utf8")));
+  return pack;
+}
+// 시드는 /ingest/pack 에 팩을 바로 보낸다(파일 고르기 창을 몰지 않는다: [[vinc.ops.figma-authoring-mechanics]] §4).
+// 가져오기 화면 자체는 topbar__tools-import · import-pack-sheet 상태가 찍는다.
+// Agents 보드 · 역할 면은 역할이 있어야 그려진다. 공식 역할 팩 둘(starter-packs/official-packs.json)을 넣는다.
+async function seedRoles() {
+  const r = await side(`/roles?owner=${encodeURIComponent(OWNER)}`);
+  if ((r?.roles || []).length) { console.log("seed: roles already present"); return; }
+  for (const f of ["default-agents", "software-agents"]) {
+    const pack = JSON.parse(fs.readFileSync(path.join(REPO, "starter-packs", "agents", `${f}.json`), "utf8"));
+    const res = await sidePost("/ingest/pack", { pack, owner: OWNER });
+    console.log("seed:", f, "→ nodes", JSON.stringify(res?.merged?.nodes ?? {}));
+  }
+}
+async function seed() {
   await pinLocalMode();
+  await seedRoles();
   const d = await side("/domains");
   const have = (d?.rows || []).some((r) => /physics|math|economics|art/.test(r.domain));
   if (have) { console.log("seed: starter packs already present"); await seedEvidenceEdge(); return; }
-  console.log("seed: importing the four starter packs through Settings › Data › Import");
-  const ctx = await browser.newContext({ viewport: VP, colorScheme: "dark" });
-  await ctx.addInitScript((kv) => { for (const [k, v] of Object.entries(kv)) localStorage.setItem(k, v); }, BASE_LS);
-  await ctx.addInitScript(SHELL_INIT);
-  const p = await ctx.newPage();
-  await p.goto(`${APP}/#view`, { waitUntil: "load" }); await settled(p);
   for (const f of ["physics", "math", "economics", "art"]) {
-    await settingsSheet(p, "data", "import");
-    const [chooser] = await Promise.all([p.waitForEvent("filechooser"), sheet(p).locator("button", { hasText: /file/i }).first().click()]);
-    await chooser.setFiles(path.join(REPO, "starter-packs", `vinc-pack-${f}.vincpack`));
-    await sleep(1200);
-    await foot(p, /import/i).last().click().catch(() => {});
-    await p.waitForFunction(() => { const s = [...document.querySelectorAll(".sheet[role=dialog]")].pop(); return s && /new|already|imported/i.test(s.innerText); }, null, { timeout: 120000 }).catch(() => {});
-    console.log("seed:", f, "→", (await sheet(p).innerText().catch(() => "")).split("\n").slice(-3).join(" | ").slice(0, 160));
-    await p.keyboard.press("Escape"); await sleep(400); await p.keyboard.press("Escape"); await sleep(400);
+    const r = await sidePost("/ingest/pack", { pack: readPack(path.join(REPO, "starter-packs", `vinc-pack-${f}.vincpack`)), owner: OWNER });
+    console.log("seed:", f, "→ nodes", JSON.stringify(r?.merged?.nodes ?? {}), "docs", JSON.stringify(r?.documents ?? {}));
   }
-  await ctx.close();
   await seedEvidenceEdge();
 }
 
@@ -160,14 +179,23 @@ V("lens-legend", "lens: Legend tab", async (p) => { await openLens(p); await p.l
 V("lens-help-open", "lens: '?' explanations expanded", async (p) => { await openLens(p); await p.locator("#view-lens-panel button[aria-label], #view-lens-panel button", { hasText: /\?/ }).first().click().catch(() => {}); await sleep(300); });
 V("node-float", "node addressed: float card with causal cone", openFloat);
 V("node-float-links", "float card: Links row expanded", async (p) => { await openFloat(p); await p.locator("#c-links").click(); await sleep(900); });
+// 그래프에서 고른 노드(LNB 든 지도 클릭이든)는 떠 있는 카드와 옆 칸의 상세를 함께 연다.
+// 지도 클릭은 캔버스 좌표가 필요해 LNB 고르기로 같은 화면에 닿는다(view.ts openFromMap · openFromNav).
+const lnbPick = async (p) => { const d = await firstDoc(p); await d.click(); await p.waitForSelector(".float-card", { state: "visible", timeout: 15000 }); await p.waitForSelector("#docpane", { state: "visible" }); await sleep(1200); };
+V("lnb-pick", "graph: pick a node in the LNB: floating card and the side pane together", lnbPick);
+// 항목 페이지(A2): 옆 칸의 넓히기(#rail-size)를 누르면 노드 상세가 넓은 열이 되고 #node-item 이 채워진다.
+V("item-page", "side pane widened: the item page (what the node says, how it was decided)", async (p) => { await openFloat(p); await p.locator("#c-open").click(); await p.waitForSelector("#docpane", { state: "visible" }); await sleep(800); await p.locator("#rail-size").click(); await p.waitForSelector("#node-item", { state: "attached" }); await sleep(1500); await p.locator("#node-item").scrollIntoViewIfNeeded(); await sleep(600); });
+// 그래프에서 Agent 레일은 그래프에 남아 역할 주제로 범위를 좁힌다.
+V("agent-scope", "graph: rail Agent narrows the graph to the role topics", (p) => rail(p, "agent"));
 V("node-ask-menu", "float card: Ask the assistant menu", async (p) => { await openFloat(p); await p.locator(".float-card button", { hasText: /copy prompt/i }).first().click(); await sleep(500); });
 V("node-detail", "float card: Detail and source: docpane node detail", async (p) => { await openFloat(p); await p.locator("#c-open").click(); await p.waitForSelector("#docpane", { state: "visible" }); await sleep(1000); });
 V("node-delete-confirm", "float card: Delete: destructive confirm (not confirmed)", async (p) => { await openFloat(p); await p.locator("#c-del").click(); await p.waitForSelector("[role=alertdialog]", { state: "visible" }); await sleep(300); });
 V("edge-detail", "float card link tag with evidence: edge detail in the docpane", async (p) => { // 근거가 기록된 관계는 노드마다 있지는 않다. 후보 노드를 차례로 열어 `.link-tag--ev` 가 있는 첫 노드에서 찍는다.
   for (const id of [...EV_NODES, ...(await pickNodeIds(12))]) {
     await p.goto(`${APP}/#view/trace/${encodeURIComponent(id)}`, { waitUntil: "load" }); await settled(p);
-    if (!(await p.locator(".float-card").count())) continue;
-    await p.locator("#c-links").click(); await sleep(900);
+    if (!(await p.waitForSelector(".float-card", { state: "visible", timeout: 15000 }).catch(() => null))) continue;
+    // 관계 줄은 node-context 응답 뒤에 그려진다: 줄이 설 때까지 기다린 뒤 근거 태그를 찾는다.
+    await p.locator("#c-links").click(); await p.waitForSelector("#c-rels .link-row", { timeout: 20000 }).catch(() => {}); await sleep(400);
     const tag = p.locator("#c-rels .link-tag--ev").first();
     if (await tag.count()) { await tag.click(); await p.waitForSelector("#docpane", { state: "visible" }); await sleep(1000); return; }
   }
@@ -199,12 +227,21 @@ HM("new", "New document: the writer", async (p) => { await p.locator('[data-act=
 HM("agent", "rail Agent: role roster, list narrowed to the role topics", (p) => rail(p, "agent"));
 HM("agent-empty", "rail Agent with no roles: New Agent role in the list and the LNB", (p) => rail(p, "agent"),
   { api: [["GET", /^\/roles(\?|$)/, { status: 200, json: { executed: true, roles: [], relations: [], next_offset: null } }]] });
+// 머리 끝의 보기 설정 버튼은 문서 면에서 읽기 설정과 문서 범례를 연다(doc-options.ts).
+const docOpts = async (p) => { await p.locator("#doc-opts").click(); await p.waitForSelector("#doc-opts-panel", { state: "visible" }); await p.mouse.move(640, 14); await sleep(400); };
+HM("doc-options", "header end button on documents: reading options", docOpts);
+HM("doc-legend", "reading options panel: Legend tab", async (p) => { await docOpts(p); await p.locator('#doc-opts-panel [data-dtab="legend"]').click(); await sleep(400); });
+// Agents 보드(#home/agents): 팀과 역할 카드, 그 아래 에이전트가 쓴 것(최근 14일) 검토(agent-writes.ts).
+HM("agent-writes", "Agents board scrolled to the agent writes review", async (p) => { await rail(p, "agent"); await p.waitForSelector("#agent-writes .aw-head, #agent-writes .hint", { timeout: 15000 }); await sleep(800); await p.locator("#agent-writes").scrollIntoViewIfNeeded(); await sleep(600); });
+// 역할 편집 면(role-composer.ts): 카드의 Edit 이 연다. 실행 정책 · 평가 카드가 옆 칸에 선다.
+HM("role-edit", "Agents board, a role's Edit: the role page with run policy and eval cards", async (p) => { await rail(p, "agent"); await p.locator('.agent-act[data-act="edit"]').first().click(); await p.waitForSelector("form.role-form", { state: "visible" }); await sleep(1500); });
+HM("role-new", "Agents board, New role: the empty role page", async (p) => { await rail(p, "agent"); await p.locator('[data-act="new"]').first().click(); await p.waitForSelector("form.role-form", { state: "visible" }); await sleep(800); });
 HM("lnb-collapsed", "LNB: collapse to the icon strip", async (p) => { await p.locator("#tb-shell-toggle").click(); await sleep(600); });
 HM("empty", "empty store: write or import", undefined, { ls: { "vinc.owner": "tenant:capture-empty" } });
 
 // topbar: search, ask, palette, cheatsheet, tools, GRAPH.md, settings
 const TB = (id, trigger, before, extra = {}) => add({ id: `topbar__${id}`, trigger, before: async (p) => { await settled(p); await before(p); }, ...extra });
-TB("find-open", "search pill: expanded to the left, Graph and view card stay put", async (p) => { await findOpen(p); await p.mouse.move(640, 400); await sleep(300); });
+TB("find-open", "search pill: expanded across the header, mode button and query field", async (p) => { await findOpen(p); await p.mouse.move(640, 400); await sleep(300); });
 TB("mode-menu", "search mode dropdown", async (p) => { await findOpen(p); await p.locator("#tb-mode").click(); await sleep(300); });
 TB("find-results", "type: results listbox", async (p) => { await findOpen(p); await p.fill("#tb-q", "rate"); await sleep(1200); });
 TB("find-empty", "type a query with no hits", async (p) => { await findOpen(p); await p.fill("#tb-q", "zzqxv"); await sleep(1200); });
@@ -221,15 +258,16 @@ TB("palette", "Ctrl+Shift+K: command palette", async (p) => { await p.keyboard.p
 TB("palette-filtered", "palette with a filter typed", async (p) => { await p.keyboard.press("Control+Shift+K"); await sleep(300); await p.keyboard.type("sh"); await sleep(300); });
 TB("cheatsheet", "?: shortcuts sheet", async (p) => { await p.keyboard.press("Shift+Slash"); await sleep(500); });
 // 상태 id(= 보드 이름)는 그대로 두고 여는 길만 바꿨다 — 쓰기 · 가져오기 · 공유는 설정 시트의 Data 분류 탭이다.
-TB("tools-create", "Settings › Data: Create tab", async (p) => { await settingsSheet(p, "data", "create"); await sleep(300); });
+// tools-create 상태는 없다: Data 분류의 탭은 import · share 둘뿐이다(settings.ts DataTab).
 TB("tools-import", "Settings › Data: Import tab", (p) => settingsSheet(p, "data", "import"));
 TB("tools-share", "Settings › Data: Share tab", (p) => settingsSheet(p, "data", "share"));
 // ⚠ 300ms 고정 대기로는 못 잡는다. Tools 의 draw() 가 foot 을 비우고 renderShare 가
 // teamsApi.list() 와 api.domains() 를 **기다린 뒤에야** 버튼을 다시 단다(app/src/tools.ts:72,180).
 // 그래서 Continue 가 나타날 때까지 기다린다. 그 빈 창 자체는 별건이다 —
 // [[record:the-tools-share-pane-has-no-action-buttons-until-two-network-calls-return-2026-09-07]].
-const shareSheet = async (p) => { await settingsSheet(p, "data", "share"); const go = foot(p, /continue/i).first(); await go.waitFor({ state: "visible", timeout: 30000 }); await go.click(); await sleep(2500); };
-TB("share-sheet", "Share › Continue: share as a pack, spec grid and node list", shareSheet);
+// Data › Share 에는 Continue 단계가 없다(범위를 고르면 그 자리에서 미리 본다, tools.ts renderShare).
+// 공유 시트(sheets.ts openShareSheet, 제목 shareTitle)는 노드 카드의 Share 가 연다. 상태 id 는 보드 · 스토리보드가 쓰므로 둔다.
+TB("share-sheet", "node card Share: the share sheet, spec grid and node list", async (p) => { await openFloat(p); await p.locator("#c-share").click(); await sheet(p).waitFor({ state: "visible" }); await p.waitForSelector("#sheet-save", { state: "visible", timeout: 30000 }); await sleep(2000); });
 // ⚠ `share-result` 를 걷었다(2026-09-07). 데스크탑 셸에는 목적지가 `file` 하나뿐이라
 // `chooseDestination` 의 `dests.length === 1` 분기가 **저장하고 시트를 닫는다** — 결과
 // 화면이 존재하지 않는다. 실측: [공유] 클릭 39ms 뒤 저장이 돌고 800ms 안에 시트가 사라진다.
@@ -251,6 +289,8 @@ TB("graphmd", "Settings › GRAPH.md", async (p) => { await settingsSheet(p, "gr
 TB("settings-account", "Settings › Account (signed in, local mode)", (p) => settingsSheet(p, "account"));
 TB("settings-connections", "Settings › AI assistants", (p) => settingsSheet(p, "ai"));
 TB("settings-advanced", "Settings › Advanced", (p) => settingsSheet(p, "advanced"));
+TB("settings-reading", "Settings › Reading", (p) => settingsSheet(p, "reading"));
+TB("settings-about", "Settings › About", (p) => settingsSheet(p, "about"));
 TB("settings-light", "Settings › General, light theme", (p) => settingsSheet(p), { ls: { "vinc.theme": "light" }, scheme: "light" });
 
 // search surface
@@ -263,7 +303,7 @@ SS("error", "search 500: banner", async (p) => { await p.locator("#surface input
 
 // ── 다른 스크립트가 같은 상태 목록을 쓴다 ───────────────────────────────────
 export { S, APP, SIDE, TOKEN, VP, BASE_LS, SHELL_INIT, side, seed, seedEvidenceEdge, sleep };
-const isMain = process.argv[1] && import.meta.url === new URL(`file:///${process.argv[1].replace(/\\/g, "/")}`).href;
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 
 // ── 실행 ───────────────────────────────────────────────────────────────────
 const onlyList = ONLY ? ONLY.split(",") : null;

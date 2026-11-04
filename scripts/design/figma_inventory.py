@@ -72,6 +72,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import re
 import sys
@@ -84,7 +85,8 @@ HUB = pathlib.Path(__file__).resolve().parent
 APP_COMPONENTS_PAGE = "02 · Components"
 APP_COMPONENT_PREFIX = "App / "
 VINC = HUB.parent.parent
-SITE = VINC.parent / "Vinc-homepage" / "site"
+# figma_copy.py 와 같은 덮어쓰기: worktree 에서는 형제 체크아웃이 없으므로 VINC_SITE_DIR 로 사이트 트리를 준다.
+SITE = pathlib.Path(os.environ["VINC_SITE_DIR"]).resolve() if os.environ.get("VINC_SITE_DIR") else VINC.parent / "Vinc-homepage" / "site"
 APP = VINC / "app" / "src"
 
 # ── 사이트 라우트 ↔ Figma 프레임 ────────────────────────────────────────────
@@ -101,6 +103,7 @@ SITE_ROUTE_TITLES = {
     "connect-app": "Connect-app", "subscribe": "Subscribe", "unsubscribe": "Unsubscribe",
     "account-delete": "Account · Delete", "pricing": "Pricing", "download": "Download", "release": "Release",
     "privacy": "Privacy", "404": "404", "docs": "Docs",
+    "licensing": "Licensing", "support": "Support", "terms": "Terms", "demo": "Demo",
 }
 #: 매니페스트에는 있지만 보드로는 두지 않는 상태. 값은 이유다.
 REFERENCE_ONLY = {
@@ -147,7 +150,8 @@ _MANIFEST_ROUTES, _MANIFEST_STATES = _site_axis_from_manifest()
 DOCS_ROUTES: dict[str, str | None] = {}
 ROUTES = {**_MANIFEST_ROUTES, **DOCS_ROUTES}
 #: 라우트로 세지 않는 것. 내부 점검용이라 시안이 있을 이유가 없다.
-ROUTE_IGNORE = {"/vt-check/", "/vt-check/b"}
+#: /bo/ = 운영자 콘솔(noindex). /community-view/ = 커뮤니티 그래프 쪽(assets/community.js graphView)이 싣는 iframe 이라 그 쪽 보드에 그려진다.
+ROUTE_IGNORE = {"/vt-check/", "/vt-check/b", "/bo/", "/community-view/"}
 
 #: 상태 매트릭스 — **화면이 아니라 화면×상태가 단위다.** 2026-09-06 부터 매니페스트가 정한다:
 #: 상태 하나가 보드 하나(`Site · Community · modal-busy / dark`). 여기 없는 라우트는
@@ -169,7 +173,8 @@ DIALOGS = {
     # 세 줄이 이 한 줄이 됐다. 옛 보드(settings-account · graphmd · tools-create)는 탭이
     # 가로로 선 옛 상자를 찍은 것이라 이 시트를 대표하지 못한다 — 분류 레일 시트의
     # 캡처 보드가 생기기 전까지는 **선언된 결손**으로 둔다.
-    "surfaces/settings.ts:COPY.ui.topbar.settings": None,
+    # 분류 레일 시트를 찍은 보드(settings-account · reading · about …)가 이 시트를 대표한다.
+    "surfaces/settings.ts:COPY.ui.topbar.settings": "App · Topbar · settings-account / dark",
     "sheets.ts:COPY.ui.sheet.shareTitle": "App · Topbar · share-sheet / dark",
     "sheets.ts:COPY.ui.sheet.importTitle": "App · Topbar · import-pack-sheet / dark",
     "lnb.ts:openContextMenu": "App · View · topic-context-menu / dark",
@@ -320,7 +325,10 @@ ICON_IGNORE = {"view"}
 #: 2026-09-05: 17개를 사이트 모듈의 실제 도형으로 Figma 에 만들어 넣었고, 유령 셋
 #: (display·width·email)은 추출기를 고쳐 사라졌다. 남은 둘은 원본이 이 경로에 없다.
 #: `more`(가로 점 셋)는 Agents 보드의 카드·팀 메뉴 손잡이로 생겼고 아이콘 시트에는 아직 없다.
-ICON_GAPS: set[str] = {"more"}
+#: 사이트 모듈의 아이콘 열다섯(backup … tags)도 01 · Foundations 아이콘 시트에 없다. CI 는 사이트를 체크아웃하지
+#: 않아 이 축을 못 보므로 사이트를 둔 로컬 실행에서만 드러난다. 그리는 일은 route B 라 선언된 결손으로 둔다.
+ICON_GAPS: set[str] = {"more", "backup", "copy", "desktop", "identity", "info", "key", "link", "mail", "offline",
+                       "open", "parse", "plug", "portable", "shield", "tags"}
 
 
 def site_present() -> bool:

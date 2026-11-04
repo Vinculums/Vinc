@@ -2,100 +2,149 @@
  "$meta": {
   "source": "figma",
   "file": "WUXLeDDNBqih2KTZOz9wCX",
-  "exported": "2026-10-28",
+  "exported": "2026-11-04",
   "how": "use_figma, the per-page JS in scripts/design/figma_inventory.py's docstring (the second block for 06 · Storyboards). One call per page: the Plugin API allows one page switch per call.",
   "scope": "Frame and component NAMES, plus variant values for the App / * sets, for 01 · Foundations, 02 · Components, 03 · App and 04 · Site (vinc.canon.design-system-operations §2). For 06 · Storyboards, each journey row with its step frame names. Boards inside sections are listed as page frames. 00 · Cover, 05 · Email and 90 · Archive carry nothing the gate counts.",
   "note": "Machine dump. Never patch it by hand: re-run the dump. A hand-patched inventory makes the gate agree with a file instead of with Figma.",
   "site_screens_note": "04 · Site boards are html-to-design captures (capture_site_figma.mjs) named Site · <Route>[ · <state>] / dark; children are not recorded.",
   "app_boards_note": "03 · App boards are html-to-design captures (capture_app_figma.mjs) named App · <Surface>[ · <state>] / <theme>; children are not recorded.",
-  "refreshed": "2026-10-24: whole file restructured to eight pages; 03 and 04 recaptured from the running app and the live site. 2026-10-30: 06 · Storyboards added (journeys); the other four pages were not re-dumped."
+  "refreshed": "2026-10-24: whole file restructured to eight pages; 03 and 04 recaptured from the running app and the live site. 2026-10-30: 06 · Storyboards added (journeys); the other four pages were not re-dumped. 2026-11-04: all five pages re-dumped after 03 and 04 were recaptured (app 72 states, site 148 boards); old boards moved to 90 · Archive."
  },
  "pages": {
   "01 · Foundations": {
    "name": "01 · Foundations",
    "frames": [
     {
-     "name": "01 · Logo",
+     "name": "Logo",
      "children": [
-      "Logo",
-      "Logo · dark sample",
-      "Logo · rules",
+      "light"
+     ]
+    },
+    {
+     "name": "Logo · dark sample",
+     "children": [
       "Logo / Mark"
      ]
     },
     {
-     "name": "02 · Icons",
+     "name": "Logo · rules",
      "children": [
-      "Icon / alert",
-      "Icon / caret",
-      "Icon / check",
-      "Icon / chevron-left",
-      "Icon / dash-ramp",
-      "Icon / decide",
-      "Icon / domains",
-      "Icon / dot-grid",
-      "Icon / dot",
-      "Icon / download",
-      "Icon / edit",
-      "Icon / graph",
-      "Icon / half-disc",
-      "Icon / ingest",
-      "Icon / lock",
-      "Icon / pack-export",
-      "Icon / pin",
-      "Icon / recall",
-      "Icon / ring",
-      "Icon / search",
-      "Icon / settings",
-      "Icon / sparkle",
-      "Icon / stack",
-      "Icon / upload",
-      "Icon / x",
-      "Icon / pack-in",
-      "Icon / share-nodes",
-      "Icon / globe",
-      "Icon / sun",
-      "Icon / moon",
-      "Icon / folder",
-      "Icon / pack",
-      "Icon / packin",
-      "Icon / mcp",
-      "Icon / sidebar"
+      "Logo rules",
+      "Clear space: 25% of mark width on all sides",
+      "Size ladder: 128 · 96 · 64 · 40 · 24 · 18 · 16 (holds shape to 16px)",
+      "Transparent ring only: black on light, white on dark",
+      "Never rotate, distort the aspect, fill the ring's hole,",
+      "detach the centre sphere, or outline the ring"
      ]
     },
     {
-     "name": "03 · Color",
+     "name": "Color / Primitive",
      "children": [
       "Color / Primitive",
+      "Primitive · 30 variables · modes: Value",
+      "Swatches"
+     ]
+    },
+    {
+     "name": "Color / Semantic (Light · Dark)",
+     "children": [
       "Color / Semantic (Light · Dark)",
+      "Semantic · 28 variables · modes: Light · Dark",
+      "Swatches"
+     ]
+    },
+    {
+     "name": "Color / Graph",
+     "children": [
       "Color / Graph",
+      "Graph · 21 variables · modes: Light · Dark",
+      "Swatches"
+     ]
+    },
+    {
+     "name": "Color / Domain tint",
+     "children": [
       "Color / Domain tint",
+      "Domain · 7 variables · modes: Light · Dark",
+      "Swatches"
+     ]
+    },
+    {
+     "name": "Color / Window (desktop shell)",
+     "children": [
       "Color / Window (desktop shell)",
-      "Color / Email"
+      "Window · 9 variables · modes: Dark(const)",
+      "Swatches"
      ]
     },
     {
-     "name": "04 · Type",
+     "name": "Color / Email",
      "children": [
-      "Type / Scale"
+      "Color / Email",
+      "Email · 9 variables · modes: Dark(const)",
+      "Swatches"
      ]
     },
     {
-     "name": "05 · Effects",
+     "name": "Type / Scale",
      "children": [
-      "Effect / Shadows · Glass · Glow"
+      "Type / Scale",
+      "22 text styles · Pretendard (UI) · JetBrains Mono (code)",
+      "Hero / Bold",
+      "Display / Bold",
+      "H1 / Bold",
+      "H2 / Bold",
+      "H3 / Semibold",
+      "Lead / Semibold",
+      "Lead / Regular",
+      "Body / Bold",
+      "Body / Semibold",
+      "Body / Medium",
+      "Body / Regular",
+      "MD / Semibold",
+      "MD / Medium",
+      "MD / Regular",
+      "SM / Semibold",
+      "SM / Medium",
+      "SM / Regular",
+      "XS / Medium",
+      "XS / Regular",
+      "Caption / Medium",
+      "Caption / Regular",
+      "Mono / SM"
      ]
     },
     {
-     "name": "06 · Scale",
+     "name": "Effect / Shadows · Glass · Glow",
      "children": [
-      "Scale / Radius · Space"
+      "Effect / Shadows · Glass · Glow",
+      "14 effect styles",
+      "Samples"
      ]
     },
     {
-     "name": "07 · Motion",
+     "name": "Scale / Radius · Space",
      "children": [
-      "Motion / Easing · Duration"
+      "Scale / Radius · Space",
+      "20 FLOAT variables",
+      "Values"
+     ]
+    },
+    {
+     "name": "Motion / Easing · Duration",
+     "children": [
+      "Motion / Easing · Duration",
+      "10 variables · 앱과 사이트가 같은 토큰을 읽는다",
+      "ease-out",
+      "ease-in-out",
+      "ease-drawer",
+      "ease-settle",
+      "dur-fast",
+      "dur-hover",
+      "dur-base",
+      "dur-in",
+      "dur-out",
+      "dur-panel"
      ]
     }
    ],
@@ -145,7 +194,7 @@
    ],
    "variants": {
     "Logo / Mark": [
-     "Tone=Indigo",
+     "Tone=Black",
      "Tone=White",
      "Tone=Foreground",
      "Tone=Primary"
@@ -301,6 +350,166 @@
      "State=Downloading",
      "State=Installing",
      "State=Failed"
+    ],
+    "Overlay / Settings": [
+     "Tab=Account",
+     "Tab=Connections",
+     "Tab=Advanced"
+    ],
+    "Overlay / Float card": [
+     "State=Default",
+     "State=Links open",
+     "State=Ask menu"
+    ],
+    "Overlay / Context menu": [
+     "Kind=Node",
+     "Kind=Topic"
+    ],
+    "Overlay / Lens panel": [
+     "Viewpoint=3D, Tab=Options, Help=Off",
+     "Viewpoint=2D, Tab=Options, Help=Off",
+     "Viewpoint=Timeline, Tab=Options, Help=Off",
+     "Viewpoint=Weave, Tab=Options, Help=Off",
+     "Viewpoint=3D, Tab=Legend, Help=Off",
+     "Viewpoint=3D, Tab=Options, Help=On"
+    ],
+    "Overlay / Tooltip": [
+     "Kind=Short",
+     "Kind=Long"
+    ],
+    "Overlay / Search results": [
+     "State=Results",
+     "State=Empty",
+     "State=Loading",
+     "State=Error"
+    ],
+    "Overlay / Ask panel": [
+     "State=Answer",
+     "State=None"
+    ],
+    "Overlay / Sheet · Tools": [
+     "Tab=Create",
+     "Tab=Import",
+     "Tab=Share"
+    ],
+    "Overlay / Sheet · All documents": [
+     "Layer=Topics",
+     "Layer=Docs"
+    ],
+    "Overlay / Command palette": [
+     "State=Default",
+     "State=Filtered"
+    ],
+    "Overlay / Sheet · Share as a pack": [
+     "Step=Review",
+     "Step=Destination",
+     "Step=Publish"
+    ],
+    "Shell / Docpane": [
+     "State=Reader",
+     "State=Node detail",
+     "State=Edge detail"
+    ],
+    "Shell / LNB": [
+     "State=Open",
+     "State=Agent",
+     "State=Collapsed"
+    ],
+    "Shell / Topbar": [
+     "State=Home",
+     "State=Graph",
+     "State=Graph lens open",
+     "State=Search expanded"
+    ],
+    "Shell": [
+     "Surface=Home, LNB=Open",
+     "Surface=Home, LNB=Collapsed",
+     "Surface=Home, LNB=Agent",
+     "Surface=Graph, LNB=Open"
+    ],
+    "Site / Button": [
+     "Kind=Primary, Size=Default",
+     "Kind=Quiet, Size=Default",
+     "Kind=Primary, Size=Small",
+     "Kind=Quiet, Size=Small"
+    ],
+    "Site / Badge": [
+     "Tone=Info",
+     "Tone=Success",
+     "Tone=Ring"
+    ],
+    "Site / Chip": [
+     "Status=Done",
+     "Status=Now",
+     "Status=Neutral"
+    ],
+    "Site / Toggle": [
+     "State=On",
+     "State=Off"
+    ],
+    "Site / Input": [
+     "State=Default",
+     "State=Focus"
+    ],
+    "Site / Seg": [
+     "Active=A",
+     "Active=B",
+     "Active=C"
+    ],
+    "Site / Banner": [
+     "Kind=Notice",
+     "Kind=Trial"
+    ],
+    "Site / AuthCard": [
+     "Tone=Default",
+     "Tone=Danger"
+    ],
+    "Site / HowPanel": [
+     "Step=Ingest",
+     "Step=View",
+     "Step=Packs"
+    ],
+    "Site / HowStepCard": [
+     "Step=01",
+     "Step=02",
+     "Step=03"
+    ],
+    "Site / GNB": [
+     "Session=Out, Active=Home, Width=Desktop",
+     "Session=Out, Active=Community, Width=Desktop",
+     "Session=In, Active=Account, Width=Desktop",
+     "Session=In, Active=Community, Width=Desktop",
+     "Session=Out, Active=Home, Width=Two-row",
+     "Session=In, Active=Home, Width=Desktop",
+     "Session=Out, Active=Community, Width=Two-row",
+     "Session=In, Active=Account, Width=Two-row",
+     "Session=Out, Active=Account, Width=Desktop",
+     "Session=Out, Active=Pricing, Width=Desktop",
+     "Session=Out, Active=Pricing, Width=Two-row",
+     "Session=Out, Active=Download, Width=Desktop",
+     "Session=Out, Active=Docs, Width=Desktop",
+     "Session=Out, Active=Docs, Width=Two-row",
+     "Session=Out, Active=Docs, Width=800"
+    ],
+    "Motion / Orbit glow": [
+     "Pulse=Low",
+     "Pulse=High"
+    ],
+    "Motion / Orbit guide": [
+     "Spin=0",
+     "Spin=90",
+     "Spin=180",
+     "Spin=270"
+    ],
+    "Community / Action": [
+     "Kind=Primary",
+     "Kind=Quiet"
+    ],
+    "Community / Site GNB": [
+     "Locale=EN, Session=Out",
+     "Locale=KO, Session=Out",
+     "Locale=EN, Session=In",
+     "Locale=KO, Session=In"
     ]
    }
   },
@@ -320,11 +529,23 @@
      "children": []
     },
     {
-     "name": "App · View · node-detail / dark",
+     "name": "App · View · lnb-pick / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · item-page / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · agent-scope / dark",
      "children": []
     },
     {
      "name": "App · View · edge-detail / dark",
+     "children": []
+    },
+    {
+     "name": "App · View · node-detail / dark",
      "children": []
     },
     {
@@ -340,15 +561,27 @@
      "children": []
     },
     {
-     "name": "App · Home · new / dark",
-     "children": []
-    },
-    {
      "name": "App · Home · doc / dark",
      "children": []
     },
     {
+     "name": "App · Home · new / dark",
+     "children": []
+    },
+    {
      "name": "App · Home · agent / dark",
+     "children": []
+    },
+    {
+     "name": "App · Home · role-edit / dark",
+     "children": []
+    },
+    {
+     "name": "App · Home · agent-writes / dark",
+     "children": []
+    },
+    {
+     "name": "App · Home · role-new / dark",
      "children": []
     },
     {
@@ -368,11 +601,11 @@
      "children": []
     },
     {
-     "name": "App · View · lens-legend / dark",
+     "name": "App · View · lens-help-open / dark",
      "children": []
     },
     {
-     "name": "App · View · lens-help-open / dark",
+     "name": "App · View · lens-legend / dark",
      "children": []
     },
     {
@@ -380,11 +613,11 @@
      "children": []
     },
     {
-     "name": "App · View · node-ask-menu / dark",
+     "name": "App · View · node-float-links / dark",
      "children": []
     },
     {
-     "name": "App · View · node-float-links / dark",
+     "name": "App · View · node-ask-menu / dark",
      "children": []
     },
     {
@@ -412,6 +645,14 @@
      "children": []
     },
     {
+     "name": "App · Home · doc-options / dark",
+     "children": []
+    },
+    {
+     "name": "App · Home · doc-legend / dark",
+     "children": []
+    },
+    {
      "name": "App · Topbar · find-open / dark",
      "children": []
     },
@@ -428,11 +669,11 @@
      "children": []
     },
     {
-     "name": "App · Topbar · find-loading / dark",
+     "name": "App · Topbar · find-error / dark",
      "children": []
     },
     {
-     "name": "App · Topbar · find-error / dark",
+     "name": "App · Topbar · find-loading / dark",
      "children": []
     },
     {
@@ -452,11 +693,11 @@
      "children": []
     },
     {
-     "name": "App · Topbar · ask-history / dark",
+     "name": "App · Topbar · ask-none / dark",
      "children": []
     },
     {
-     "name": "App · Topbar · ask-none / dark",
+     "name": "App · Topbar · ask-history / dark",
      "children": []
     },
     {
@@ -464,19 +705,11 @@
      "children": []
     },
     {
-     "name": "App · Topbar · cheatsheet / dark",
-     "children": []
-    },
-    {
      "name": "App · Topbar · palette-filtered / dark",
      "children": []
     },
     {
-     "name": "App · Topbar · tools-create / dark",
-     "children": []
-    },
-    {
-     "name": "App · Topbar · tools-share / dark",
+     "name": "App · Topbar · cheatsheet / dark",
      "children": []
     },
     {
@@ -484,7 +717,7 @@
      "children": []
     },
     {
-     "name": "App · Topbar · import-pack-sheet / dark",
+     "name": "App · Topbar · tools-share / dark",
      "children": []
     },
     {
@@ -492,15 +725,19 @@
      "children": []
     },
     {
+     "name": "App · Topbar · import-pack-sheet / dark",
+     "children": []
+    },
+    {
      "name": "App · Topbar · import-doc-sheet / dark",
      "children": []
     },
     {
-     "name": "App · Topbar · settings-account / dark",
+     "name": "App · Topbar · graphmd / dark",
      "children": []
     },
     {
-     "name": "App · Topbar · graphmd / dark",
+     "name": "App · Topbar · settings-account / dark",
      "children": []
     },
     {
@@ -509,6 +746,14 @@
     },
     {
      "name": "App · Topbar · settings-advanced / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · settings-reading / dark",
+     "children": []
+    },
+    {
+     "name": "App · Topbar · settings-about / dark",
      "children": []
     },
     {
@@ -524,11 +769,11 @@
      "children": []
     },
     {
-     "name": "App · View · lnb-failed / dark",
+     "name": "App · View · error / dark",
      "children": []
     },
     {
-     "name": "App · View · error / dark",
+     "name": "App · View · lnb-failed / dark",
      "children": []
     },
     {
@@ -591,15 +836,15 @@
      "children": []
     },
     {
+     "name": "Site · Landing · newsletter-invalid / dark",
+     "children": []
+    },
+    {
      "name": "Site · Landing · newsletter-success / dark",
      "children": []
     },
     {
      "name": "Site · Landing · signed-in / dark",
-     "children": []
-    },
-    {
-     "name": "Site · Landing · newsletter-invalid / dark",
      "children": []
     },
     {
@@ -1140,6 +1385,22 @@
     },
     {
      "name": "Site · 404 / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Licensing / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Support / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Terms / dark",
+     "children": []
+    },
+    {
+     "name": "Site · Demo / dark",
      "children": []
     }
    ],
