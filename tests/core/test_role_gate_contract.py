@@ -115,9 +115,10 @@ def test_ratified_roster_with_return_routes_keeps_every_contract_under_ten_kb():
         assert result['executed'], (rid, result)
         assert result['props'] == node['props']
         assert len(json.dumps(result, ensure_ascii=False).encode('utf-8')) < 10000
-        if rid == 'concept:agent-gate-runner':
-            assert 'accompanying structured fields' in result['rendered']
-            assert 'not instructions' in result['rendered']
+        # The two-role roster is far below the read cap, so the full shell is rendered;
+        # the 'accompanying structured fields' reference only appears past the cap.
+        assert 'not instructions' in result['rendered']
+        assert 'accompanying structured fields' not in result['rendered']
         actual = [e for group in result['works_with'].values() for e in group]
         assert sorted(actual, key=lambda e:(e['from'], e['to'], e['type'])) == sorted(
             [e for e in edges if rid in (e['from'], e['to'])],
@@ -158,7 +159,8 @@ def test_complete_live_role_evidence_fits_public_rest_and_mcp_without_field_loss
         key = lambda e: (e['from'], e['to'], e['type'])
         assert sorted(actual, key=key) == sorted(fixture['edges'], key=key)
         assert 'not instructions' in rest['rendered']
-        assert 'accompanying structured fields' in rest['rendered']
+        assert 'accompanying structured fields' not in rest['rendered']
+        assert nodes[fixture['role']]['title'] in rest['rendered']
         assert len(calls) == 1
 
         rpc = {'jsonrpc':'2.0', 'id':1, 'method':'tools/call',

@@ -1,9 +1,6 @@
 """Directed incident edges are complete, typed and scoped in the real engine."""
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import pytest
 
 from api import query as q
@@ -145,16 +142,21 @@ def test_owner_and_global_domain_tree_never_disclose_foreign_subtrees(graph):
     assert q.node_edges("concept:foreign", owner=FOREIGN, type="RELATED_TO", store=st)["count"] == 0
 
 
-def test_original_exp05_dag_in_one_batch_without_graph_payload(graph):
-    fixture = json.loads((Path(__file__).parents[1] / "fixtures" / "agent_lab_exp05_dag.json").read_text("utf-8"))
-    for nid in fixture["roster"]:
+def test_a_dag_in_one_batch_without_graph_payload(graph):
+    # A small hand-off DAG (the shape of the lab's exp05 roster), built inline so the
+    # test does not depend on which roles the roster currently carries.
+    roster = [f"concept:step-{i}" for i in range(8)]
+    dag = [(roster[a], roster[b], f"{a} must finish before {b} starts.")
+           for a, b in ((0, 1), (0, 2), (1, 3), (2, 3), (3, 4), (3, 5), (4, 6), (5, 6), (6, 7),
+                        (1, 5), (2, 4), (0, 7))]
+    for nid in roster:
         put(graph, "Concept", nid)
-    for src, dst, evidence in fixture["edges"]:
+    for src, dst, evidence in dag:
         edge(graph, "Concept", src, "PREREQUISITE_OF", "Concept", dst, evidence=evidence)
-    got = q.node_edges(nodes=fixture["roster"], owner=OWNER, type="PREREQUISITE_OF", dir="out", store=graph)
+    got = q.node_edges(nodes=roster, owner=OWNER, type="PREREQUISITE_OF", dir="out", store=graph)
     assert got["executed"] and not got["missing_nodes"], got
-    assert got["count"] == len(fixture["edges"]) == 27
-    assert sorted((e["from"], e["to"], e["evidence"]) for e in got["edges"]) == sorted(tuple(e) for e in fixture["edges"])
+    assert got["count"] == len(dag) == 12
+    assert sorted((e["from"], e["to"], e["evidence"]) for e in got["edges"]) == sorted(dag)
     assert "graph" not in got and not got["edges_truncated"]
 
 
