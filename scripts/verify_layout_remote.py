@@ -76,7 +76,7 @@ def coverage(roots: dict, graph: dict) -> dict | None:
             "edges": len(graph.get("edges") or [])}
 
 
-def verify(key: str, *, get=read, clock=time.monotonic, sleep=time.sleep, wait_s=600) -> dict:
+def verify(key: str, *, get=read, clock=time.monotonic, sleep=time.sleep, wait_s=900) -> dict:
     if not key:
         raise VerificationError("VINC_GRAPH_READONLY_KEY is absent")
     deadline = clock() + wait_s
@@ -108,8 +108,10 @@ def verify(key: str, *, get=read, clock=time.monotonic, sleep=time.sleep, wait_s
                 if busy_retries:
                     result["busy_retries"] = busy_retries
                 return result
-        elif state not in ("pending", "stale"):
-            raise VerificationError(f"stored layout state is {state if state in ('off', 'failed') else 'invalid'}")
+        elif state not in ("pending", "stale", "failed"):
+            raise VerificationError(f"stored layout state is {state if state == 'off' else 'invalid'}")
+        # "failed" 는 앱이 재시도 창(layout_remote retry_s)이 지나면 다시 계산한다. 첫 읽기에서 끝내면 배포 직후의
+        # 일시 실패를 배포 실패로 읽으므로, 기한 안에서는 pending 과 같이 기다린다.
         sleep(min(10, max(0, deadline - clock())))
     raise VerificationError("stored layout did not become ready within the verification deadline")
 

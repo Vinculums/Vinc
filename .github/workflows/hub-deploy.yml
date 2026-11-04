@@ -171,6 +171,8 @@ jobs:
   build-and-deploy:
     needs: plan
     if: needs.plan.outputs.deploy == 'true'
+    outputs:
+      verify_failed: ${{ steps.vsum.outputs.failed }}
     # 러너는 plan 과 같은 이유(그 잡 위의 문단들이 근거다).
     runs-on: ubuntu-latest
     # 실측 3분 52초. plan 위의 timeout 문단이 값의 근거와 이 설정의 한계를 함께 적는다.
@@ -608,6 +610,8 @@ jobs:
       # VINC_GRAPH_SPACE(저장소 변수, 팀 uuid)가 있으면 검색 확인과 인용 대조가 그 팀을 읽는다.
       # 비어 있으면 개인 그래프다. vinc 토픽이 팀으로 옮겨 가면 그 팀 id 를 넣는다.
       - name: Verify temporal search through the existing read only account key
+        id: v_search
+        continue-on-error: true
         env:
           VINC_GRAPH_READONLY_KEY: ${{ secrets.VINC_GRAPH_READONLY_KEY }}
           VINC_MCP_TOKEN: ${{ secrets.VINC_MCP_TOKEN }}
@@ -615,6 +619,8 @@ jobs:
         run: python scripts/verify_search_temporal_remote.py
 
       - name: Verify connector surface (OAuth discovery)
+        id: v_oauth
+        continue-on-error: true
         run: |
           set -euo pipefail
           code=$(curl -s -o /dev/null -w '%{http_code}' \
@@ -639,6 +645,8 @@ jobs:
       # 배포에서만 바뀌므로 상시 가용성 테스트 대신 배포 직후 한 번 본다. 읽기 경로만 찌른다:
       # purge-* 는 파괴적이라 인증이 빠진 회귀에서 이 검사 자신이 사고가 된다.
       - name: Verify the hub internal path is answered by the app
+        id: v_internal
+        continue-on-error: true
         run: |
           set -euo pipefail
           code=$(curl -s -m 30 -D /tmp/internal.h -o /tmp/internal.b -w '%{http_code}' -X POST \
@@ -675,6 +683,8 @@ jobs:
       # 같은 커밋에 갱신한다. 08-30 사고(excludedPaths 소실, 경보도 배포도 초록)가
       # 이 게이트의 존재 이유다. 포털 수동 변경은 다음 배포의 이 스텝에서 걸린다.
       - name: 저장 배치가 계정 경로에서 ready이고 그래프 표식과 맞는가
+        id: v_layout
+        continue-on-error: true
         if: env.LAYOUT_PRESENT == '1'
         env:
           VINC_GRAPH_READONLY_KEY: ${{ secrets.VINC_GRAPH_READONLY_KEY }}
@@ -694,6 +704,8 @@ jobs:
           retention-days: 7
 
       - name: App config drift gate (구조 기준선 대조)
+        id: v_drift
+        continue-on-error: true
         run: python3 scripts/gate_app_config.py
 
       # 기동 중 미러 교체는 읽기에도 store_busy를 낸다. 완료 상태를 먼저 관측해
@@ -729,6 +741,8 @@ jobs:
       # W18 스코프 키 분리의 요지다. 시크릿 미설정이면 건너뛰되 조용하지 않게
       # 말한다(넣는 순간 저절로 작동한다).
       - name: Graph citation liveness (라이브 인용 대조)
+        id: v_cite
+        continue-on-error: true
         env:
           VINC_REMOTE_MCP_TOKEN: ${{ secrets.VINC_GRAPH_READONLY_KEY }}
           VINC_GRAPH_SPACE: ${{ vars.VINC_GRAPH_SPACE }}
@@ -820,6 +834,8 @@ jobs:
       # 표면·구조 기준선·인용 생존·레지스트리 정리)을 통째로 건너뛰게 한다 — 인계가 늦었을
       # 뿐 서비스는 떠 있는데, 정작 서비스를 확인하는 스텝들이 안 돈다.
       - name: Verify writer handoff (markers on the persistent share)
+        id: v_handoff
+        continue-on-error: true
         if: ${{ !cancelled() && env.HANDOFF_EXPECTED == '1' }}
         run: |
           set -euo pipefail
@@ -870,6 +886,25 @@ jobs:
   # (런은 초록이다). 그대로 두면 2026-09-18 과 같은 모양으로 조용하다. 그래서
   # `withheld` 가 차 있으면 초록 런에서도 이슈를 연다. 제목 머리가 같으므로 CI 가 다시
   # 초록이 되어 그 커밋을 포함한 배포가 나가면 `close-report` 가 닫는다.
+      # 전환 뒤의 확인은 배포의 결과를 바꾸지 않는다. 리비전은 이미 서비스 중이고, 여기서 빨강은
+      # "확인하지 못했다" 다. 실패한 확인은 verify-report 가 따로 이슈로 올린다(report 는 전환 실패만).
+      - name: Verification summary
+        id: vsum
+        if: ${{ !cancelled() }}
+        env:
+          R: >-
+            v_search=${{ steps.v_search.outcome }}
+            v_oauth=${{ steps.v_oauth.outcome }}
+            v_internal=${{ steps.v_internal.outcome }}
+            v_layout=${{ steps.v_layout.outcome }}
+            v_drift=${{ steps.v_drift.outcome }}
+            v_cite=${{ steps.v_cite.outcome }}
+            v_handoff=${{ steps.v_handoff.outcome }}
+        run: |
+          failed=$(echo "$R" | tr ' ' '\n' | grep '=failure$' | cut -d= -f1 | paste -sd, -)
+          echo "failed=$failed" >> "$GITHUB_OUTPUT"
+          if [ -z "$failed" ]; then echo "every post-switch check passed"; else echo "::warning::post-switch checks failed: $failed (the new revision is serving)"; fi
+
   report:
     needs: [plan, build-and-deploy]
     if: failure() || needs.plan.outputs.withheld != ''
@@ -946,6 +981,33 @@ jobs:
   # 그대로 돌아온다. 제목에서 커밋을 못 읽으면(사람이 연 이슈 등) 열어 둔다.
   #
   # 러너·토큰·REST(curl) 는 `report` 와 같고 이유도 같다(그 잡의 주석이 근거다).
+  verify-report:
+    needs: [plan, build-and-deploy]
+    if: needs.build-and-deploy.result == 'success' && needs.build-and-deploy.outputs.verify_failed != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: 확인 실패를 이슈로 남긴다 (허브는 새 리비전으로 서비스 중)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ needs.plan.outputs.sha }}
+          FAILED: ${{ needs.build-and-deploy.outputs.verify_failed }}
+        run: |
+          set -uo pipefail
+          title="hub-deploy verification failed ($FAILED, ${SHA:0:7})"
+          body="허브 배포는 **끝났고 새 리비전이 서비스 중이다.** 전환 뒤 확인 단계가 실패했다: \`$FAILED\`.
+
+          - 실행: $RUN_URL
+          - 커밋: \`$SHA\`
+
+          v_layout 은 저장 배치가 앱의 재시도 창 안에 ready 가 되지 않은 것, v_handoff 는 writer 표식, v_drift 는 설정 기준선, v_cite 는 라이브 인용이다. 다시 배포하지 말고 그 확인만 다시 본다(Actions → hub-verify-current). 다음 배포에서 확인이 모두 통과하면 이 이슈는 닫힌다."
+          gh issue create -R "$REPO" --title "$title" --body "$body" >/dev/null && echo "opened: $title" || echo "::warning::could not open the verification issue"
+
   close-report:
     needs: [plan, build-and-deploy]
     # plan 이 "내보낼 것 없음"이면 build-and-deploy 가 skip 되고 이 잡도 따라 skip 된다.
@@ -972,6 +1034,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           WHY: ${{ github.event_name }}
           SHA: ${{ needs.plan.outputs.sha }}
+          VERIFY_FAILED: ${{ needs.build-and-deploy.outputs.verify_failed }}
         run: |
           set -uo pipefail
           # HTTP 는 `report` 처럼 curl 로, 판정은 python3 로 한다(러너의 jq 에 기대지 않는다).
@@ -981,6 +1044,8 @@ jobs:
           e = os.environ
           api, repo, sha = e["API"], e["REPO"], e["SHA"]
           PREFIX = "hub-deploy failed ("   # `report` 가 붙이는 제목 머리다. 둘은 같이 바꾼다
+          VPREFIX = "hub-deploy verification failed ("   # verify-report 의 제목 머리. 확인이 전부 통과한 배포만 닫는다
+          VERIFY_OK = not e.get("VERIFY_FAILED")
 
           def call(method, path, body=None):
               """curl 한 번. (HTTP 코드, JSON 본문 또는 None) 을 돌려준다."""
@@ -1007,7 +1072,8 @@ jobs:
                       return
                   # /issues 는 PR 도 돌려준다. PR 은 건드리지 않는다.
                   stale += [i for i in items
-                            if "pull_request" not in i and i.get("title", "").startswith(PREFIX)]
+                            if "pull_request" not in i and (i.get("title", "").startswith(PREFIX)
+                                or (VERIFY_OK and i.get("title", "").startswith(VPREFIX)))]
                   if len(items) < 100:
                       break
               if not stale:

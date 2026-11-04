@@ -40,12 +40,22 @@ class VerificationTests(unittest.TestCase):
         answers = [{"state": "pending"}, {"state": "stale"}, ROOTS, GRAPH]
         self.assertEqual(vr.verify("synthetic-read-key", get=lambda *a: answers.pop(0), sleep=lambda _: None)["state"], "ready")
 
-    def test_off_and_failed_stop_without_retry(self):
-        for state in ["off", "failed", "unknown"]:
+    def test_off_and_unknown_stop_without_retry(self):
+        for state in ["off", "unknown"]:
             calls = []
             with self.assertRaises(vr.VerificationError):
                 vr.verify("synthetic-read-key", get=lambda *a: (calls.append(a) or {"state": state}))
             self.assertEqual(len(calls), 1)
+
+    def test_failed_is_waited_out_like_pending_and_bounded(self):
+        # 앱은 실패한 계산을 재시도 창이 지난 뒤 다시 한다. 첫 읽기의 failed 는 끝이 아니라 기다림이다.
+        answers = [{"state": "failed"}, {"state": "failed"}, {"state": "pending"}, ROOTS, GRAPH]
+        self.assertEqual(vr.verify("synthetic-read-key", get=lambda *a: answers.pop(0), sleep=lambda _: None)["state"], "ready")
+        now = [0.0]
+        with self.assertRaises(vr.VerificationError) as cm:
+            vr.verify("synthetic", get=lambda *a: {"state": "failed"}, clock=lambda: now[0],
+                      sleep=lambda seconds: now.__setitem__(0, now[0] + seconds), wait_s=25)
+        self.assertIn("did not become ready", str(cm.exception))
 
     def test_wait_is_bounded(self):
         now = [0]

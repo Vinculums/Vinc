@@ -1,0 +1,32 @@
+# 공홈이 Vinc 에서 생성하는 것(API 참조 · MCP 도구 참조)의 원본이 main 에서 바뀌면, 공홈의
+# vinc-regenerate 를 불러 재생성 PR 과 핀 갱신을 맡긴다. 공홈 CI 는 그 핀의 커밋과 비교하므로
+# 여기 원본이 바뀌어도 열린 공홈 PR 이 빨개지지 않는다. 순서: 이 머지 → 저쪽 PR → 저쪽 머지.
+# 시크릿은 web-app-deploy-trigger 와 같은 HOMEPAGE_DISPATCH_PAT(actions:write 만).
+name: homepage-regenerate-trigger
+on:
+  push:
+    branches: [main]
+    paths:
+      - vinc_mcp/openapi_v1.json
+      - vinc_mcp/tool_reference.json
+      - .github/workflows/homepage-regenerate-trigger.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch vinc-regenerate on Vinc-homepage
+        env:
+          PAT: ${{ secrets.HOMEPAGE_DISPATCH_PAT }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /tmp/out -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer $PAT" -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/Vinculums/Vinc-homepage/actions/workflows/vinc-regenerate.yml/dispatches \
+            -d "{\"ref\":\"main\",\"inputs\":{\"vinc_sha\":\"$SHA\"}}")
+          [ "$code" = "204" ] || { echo "::error::dispatch failed: HTTP $code"; cat /tmp/out; exit 1; }
+          echo "dispatched vinc-regenerate for $SHA"
