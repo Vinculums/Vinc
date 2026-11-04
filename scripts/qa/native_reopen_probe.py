@@ -112,7 +112,10 @@ def doc_text(doc_index: int, revision: int) -> str:
 
 
 def unique_word(doc_index: int) -> str:
-    return f"nrpword{doc_index}x"
+    # 글자만 쓴다: 숫자가 섞인 토큰("nrpword32x")은 FTS 토크나이저가 쪼개서 모든 문서에
+    # 맞아 top_k 에서 밀려났다(실측 2026-11-04). 자릿수를 a..j 로 바꾼다.
+    digits = "".join("abcdefghij"[int(c)] for c in str(doc_index))
+    return f"nrp{digits}q"
 
 
 class Writer(threading.Thread):
@@ -311,14 +314,22 @@ def run_trial(args, binary: Path, trial: Path, index: int) -> dict:
             record["duplicate_key_hits"] += scan_dup_keys(json.dumps(res))
             if status != 200 or not res.get("executed"):
                 raise RuntimeError(f"retry of the in-flight document failed: {res}")
+            record["retry_in_flight_doc"].update(skipped=res.get("skipped"), created=res.get("created"),
+                                                 replaced=res.get("replaced"))
             _, healed = request(second.base, "/doc", query={"owner": OWNER, "id": doc_id})
             _, found = request(second.base, "/search", query={"owner": OWNER,
                                "query": unique_word(int(doc_id.split("-")[1])), "top_k": "20"})
             record["duplicate_key_hits"] += scan_dup_keys(json.dumps(healed), json.dumps(found))
-            if (healed.get("text") != doc_text(int(doc_id.split("-")[1]), revision) or found.get("error")
+            record["retry_in_flight_doc"]["after"] = {
+                "doc_error": healed.get("error"), "verified": healed.get("verified"),
+                "text_is_new_revision": healed.get("text") == doc_text(int(doc_id.split("-")[1]), revision),
+                "text_is_previous_revision": revision > 0 and healed.get("text") == doc_text(int(doc_id.split("-")[1]), revision - 1),
+                "search_error": found.get("error"),
+                "search_rows": [(r.get("doc_id"), r.get("arms")) for r in found.get("rows", [])][:20]}
+            if (not record["retry_in_flight_doc"]["after"]["text_is_new_revision"] or found.get("error")
                     or not any(r.get("doc_id") == doc_id and "keyword" in (r.get("arms") or [])
                                for r in found.get("rows", []))):
-                raise RuntimeError(f"re-put did not heal the interrupted document: {healed.get('error')} / {found.get('error')}")
+                raise RuntimeError(f"re-put did not heal the interrupted document: {record['retry_in_flight_doc']}")
         for k in range(args.post_writes):
             doc_id = f"post-{k}"
             text = f"post recovery document {k}: the zircon line {k} stays in the middle here.\n"
