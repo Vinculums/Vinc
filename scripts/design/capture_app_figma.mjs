@@ -24,8 +24,11 @@ const submitted = new Set();   // 제출 단계에 들어간 captureId (실패�
 const raw = await (await fetch("https://mcp.figma.com/mcp/html-to-design/capture.js")).text();
 // 내부 함수 이름은 capture.js 를 다시 빌드할 때마다 바뀐다. 이름을 박지 않고 파일 모양에서 찾는다(capture_site_figma.mjs 와 같다).
 const hookM = /startMultiCaptureSelectionFlow:(\w+)\}\)\);\}\)\(\);/.exec(raw);
-const serM = /let m=yield (\w+)\(p,i\)/.exec(raw);
-const subM = /let w=yield (\w+)\(m,a,t,b\)/.exec(raw);
+// 제출 줄의 지역 이름도 빌드마다 바뀐다. 이름이 아니라
+// "직렬화 결과를 첫 인자로 받는 다음 yield" 라는 모양으로 찾는다. 인자 순서(페이로드, captureId, endpoint, 순번)는 그대로다.
+const pairM = /let (\w+)=yield (\w+)\(p,i\)[\s\S]{0,200}?let \w+=yield (\w+)\(\1,a,t,\w+\)/.exec(raw);
+const serM = pairM && [pairM[0], pairM[2]];
+const subM = pairM && [pairM[0], pairM[3]];
 if (!hookM || !serM || !subM) { console.error("capture.js changed shape: cannot find the serialize and submit functions"); process.exit(3); }
 const captureJs = raw.replace(hookM[0], `startMultiCaptureSelectionFlow:${hookM[1]}}));window.__vincCap={ar:${serM[1]},Tm:${subM[1]}};})();`);
 

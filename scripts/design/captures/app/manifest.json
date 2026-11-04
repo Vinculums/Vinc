@@ -1,11 +1,11 @@
 {
- "app": "http://tauri.localhost:5191",
- "capturedAt": "2026-10-22T12:20:20.546Z",
- "tool": "design-hub/scripts/capture_app.mjs",
+ "app": "http://tauri.localhost:5207",
+ "capturedAt": "2026-11-04T04:38:16.159Z",
+ "tool": "scripts/design/capture_app.mjs",
  "node": null,
- "sourceRev": "4b5a67373086b06bf8d553727fc66a722bce048f",
+ "sourceRev": "98753d949627254ec7d1fdf9b5429e50f9ab1ff9",
  "sourceRevNote": "Vinc commit whose app/src the captures rendered",
- "sourceTree": "b3ff1e31df2be5b1cea2f2564693520c4ef82a3e",
+ "sourceTree": "02fbe142b0fd8c153d1e0904ccf9a6eb87e6f845",
  "sourceTreeNote": "git rev-parse <sourceRev>:app/src — the gate compares this with the current tree, not commit history (squash merge keeps the tree, not the commit)",
  "states": [
   {
@@ -19,7 +19,7 @@
    },
    "scheme": "dark",
    "file": "view__3d.png",
-   "sha1": "0393bb9e03e6c11e4e069c91657f6cbb2b5f4c28"
+   "sha1": "4446eb6f883dc2697487a43e78a19b204bf33441"
   },
   {
    "id": "view__topic-scope",
@@ -32,7 +32,7 @@
    },
    "scheme": "dark",
    "file": "view__topic-scope.png",
-   "sha1": "98f81cac923298de1b599ed84e4d507ace5f94b5"
+   "sha1": "d61f676ad47e9eb5186d3e36c84a9c73ff8b833d"
   },
   {
    "id": "view__lnb-collapsed",
@@ -45,7 +45,7 @@
    },
    "scheme": "dark",
    "file": "view__lnb-collapsed.png",
-   "sha1": "16651abbc9ac30ec8646a6c839a38c601beff914"
+   "sha1": "3f1f8828293457b54ff09d72724a90f015f0ec21"
   },
   {
    "id": "view__lens-options-3d",
@@ -58,7 +58,7 @@
    },
    "scheme": "dark",
    "file": "view__lens-options-3d.png",
-   "sha1": "ae6d875db36f8955add1181bb5353318aff78373"
+   "sha1": "88a544fdf1a773c356d959c398b6a6184523e72d"
   },
   {
    "id": "view__lens-legend",
@@ -71,7 +71,7 @@
    },
    "scheme": "dark",
    "file": "view__lens-legend.png",
-   "sha1": "c025b63baee645e908317fa7e828fcc59ab7939b"
+   "sha1": "c969ae0d66f8a3f8d5b778fb070641e62f2be33b"
   },
   {
    "id": "view__lens-help-open",
@@ -84,7 +84,7 @@
    },
    "scheme": "dark",
    "file": "view__lens-help-open.png",
-   "sha1": "87a1d5acc531470dd1e3555b0c6efaece5db9984"
+   "sha1": "1f2223c1a5f6f886b8c930d420851ce9b4e06e11"
   },
   {
    "id": "view__node-float",
@@ -97,7 +97,7 @@
    },
    "scheme": "dark",
    "file": "view__node-float.png",
-   "sha1": "5f55b278c1aa178839d04fad7e123515a63507ac"
+   "sha1": "c543ec902fd16f9fb1cfe2b897a2360c2dece7c3"
   },
   {
    "id": "view__node-float-links",
@@ -110,7 +110,46 @@
    },
    "scheme": "dark",
    "file": "view__node-float-links.png",
-   "sha1": "0debbd10bb2a4b04c4320c82cb7acc37b9d5498d"
+   "sha1": "55bf3e75a78c91ac158ed9ddb5c53f75406cb3c6"
+  },
+  {
+   "id": "view__lnb-pick",
+   "surface": "#view",
+   "state": "lnb-pick",
+   "trigger": "graph: pick a node in the LNB: floating card and the side pane together",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__lnb-pick.png",
+   "sha1": "18d9c87a39ff5e8ddcfaeb0bb80974944de93c14"
+  },
+  {
+   "id": "view__item-page",
+   "surface": "#view",
+   "state": "item-page",
+   "trigger": "side pane widened: the item page (what the node says, how it was decided)",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__item-page.png",
+   "sha1": "b15d8180ee9284d30a4df8007e77ea041e97500a"
+  },
+  {
+   "id": "view__agent-scope",
+   "surface": "#view",
+   "state": "agent-scope",
+   "trigger": "graph: rail Agent narrows the graph to the role topics",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__agent-scope.png",
+   "sha1": "73935d1058614e8836412756ce1d6b1958ce98ea"
   },
   {
    "id": "view__node-ask-menu",
@@ -123,7 +162,7 @@
    },
    "scheme": "dark",
    "file": "view__node-ask-menu.png",
-   "sha1": "171740bcaca270c871745e92b09f8c96737a1b58"
+   "sha1": "280d8c4edab55f48ea908ca808adad6270a8ef4c"
   },
   {
    "id": "view__node-detail",
@@ -136,7 +175,7 @@
    },
    "scheme": "dark",
    "file": "view__node-detail.png",
-   "sha1": "0d1b784dd54d9ed0b4fbd038d343fa11eae9fe9d"
+   "sha1": "103adc76bac90bfc0a192cd1e5ed4e6bed84939d"
   },
   {
    "id": "view__node-delete-confirm",
@@ -149,7 +188,7 @@
    },
    "scheme": "dark",
    "file": "view__node-delete-confirm.png",
-   "sha1": "0e338f0db63577aea22f1e9d38a95dc7049f8385"
+   "sha1": "b51a677a013528888853a922a8f6c518ef93576f"
   },
   {
    "id": "view__edge-detail",
@@ -162,7 +201,7 @@
    },
    "scheme": "dark",
    "file": "view__edge-detail.png",
-   "sha1": "f9d0e18a4b22809ee77e59911636e97b164e5eef"
+   "sha1": "2a6d4ad909654412ca333e972b851bb8762c834f"
   },
   {
    "id": "view__reader",
@@ -175,7 +214,7 @@
    },
    "scheme": "dark",
    "file": "view__reader.png",
-   "sha1": "7fe86c9ccf7f42a85ffb42c9762356e2efeca44e"
+   "sha1": "034d538268eb19c8973f0ec77c3472eee642cd81"
   },
   {
    "id": "view__topic-context-menu",
@@ -188,7 +227,7 @@
    },
    "scheme": "dark",
    "file": "view__topic-context-menu.png",
-   "sha1": "df67bb91af9449e58ae3cb87ee2bbcb8009fd275"
+   "sha1": "5ebc3d6ba338180bd69b61a5558a37f9c58b8a46"
   },
   {
    "id": "view__topic-rename-prompt",
@@ -201,7 +240,7 @@
    },
    "scheme": "dark",
    "file": "view__topic-rename-prompt.png",
-   "sha1": "bc38471899a15640238feab7456cd33ec2a23472"
+   "sha1": "18d2b6f7093c8384b78a1923351cf1269b8a54c5"
   },
   {
    "id": "view__coachmark",
@@ -214,7 +253,7 @@
    },
    "scheme": "dark",
    "file": "view__coachmark.png",
-   "sha1": "a6bd143f7a7550f77a26f8eed7f85f8ab7d07e2c"
+   "sha1": "90538e44c163baaef4bbf0e3f003d64e053c5763"
   },
   {
    "id": "view__first-run",
@@ -227,7 +266,7 @@
    },
    "scheme": "dark",
    "file": "view__first-run.png",
-   "sha1": "4ca884353e859f61096b869d2e13d3effc2fda4a"
+   "sha1": "c069da0149c8fb754d8e0c92ca91a3dca74aadc4"
   },
   {
    "id": "view__light",
@@ -240,7 +279,7 @@
    },
    "scheme": "light",
    "file": "view__light.png",
-   "sha1": "aca6d07d3d2696f59c36d862cfa00cb8317c30b7"
+   "sha1": "a00c88f5af68ec5d75c59cf3b0e1e3964d6c55d1"
   },
   {
    "id": "view__light-lens",
@@ -253,7 +292,7 @@
    },
    "scheme": "light",
    "file": "view__light-lens.png",
-   "sha1": "5fecf0f251355e6dc856b40ee77a4ae54c4dc321"
+   "sha1": "d388afb96a39ebff2fbbaaa0e4495e69bbd6c257"
   },
   {
    "id": "view__empty-invite",
@@ -266,7 +305,7 @@
    },
    "scheme": "dark",
    "file": "view__empty-invite.png",
-   "sha1": "ce5c2f99b1ec09eb49b49f1ff48081020e74920f"
+   "sha1": "d450ea1787d168304abcb33e3b2e2aea218a20e0"
   },
   {
    "id": "view__new-node-sheet",
@@ -279,7 +318,7 @@
    },
    "scheme": "dark",
    "file": "view__new-node-sheet.png",
-   "sha1": "700cb97ed60068f27c3b7229d648a36d8e68ac57"
+   "sha1": "324fb0269cd09cd157dc278ff7b3c15b2438faa1"
   },
   {
    "id": "view__error",
@@ -292,7 +331,7 @@
    },
    "scheme": "dark",
    "file": "view__error.png",
-   "sha1": "c69c4fcb15da9f3e339a9b528a18e3d345ee5d61"
+   "sha1": "18959ddeecb5d4c606992e775a905364febfbc10"
   },
   {
    "id": "view__lnb-failed",
@@ -305,7 +344,7 @@
    },
    "scheme": "dark",
    "file": "view__lnb-failed.png",
-   "sha1": "07f03834fbf28a27c2a291572921eb43da8b7a78"
+   "sha1": "51be4db04a5920311b24bd37321e473a625dc0c8"
   },
   {
    "id": "view__lnb-loading",
@@ -318,7 +357,7 @@
    },
    "scheme": "dark",
    "file": "view__lnb-loading.png",
-   "sha1": "d79dc5f44d9abb36dbbb2f033245c18bf02c5e2a"
+   "sha1": "f81cb5cade975f59619d19eddf93cc5a54317405"
   },
   {
    "id": "home__list",
@@ -331,7 +370,7 @@
    },
    "scheme": "dark",
    "file": "home__list.png",
-   "sha1": "f5bd08ebda113459f95dfc31cc783d7e41cd54ce"
+   "sha1": "77b59e8e6dc91f774a504d0243b605bce9f1771e"
   },
   {
    "id": "home__topic",
@@ -344,7 +383,7 @@
    },
    "scheme": "dark",
    "file": "home__topic.png",
-   "sha1": "9a0a37b152c24c25acb684bea4c70ce8e5c1b7e1"
+   "sha1": "5abc47a57a74fae859c6d8dac10fe86901ca24d2"
   },
   {
    "id": "home__filter-empty",
@@ -357,7 +396,7 @@
    },
    "scheme": "dark",
    "file": "home__filter-empty.png",
-   "sha1": "63d146ec306ea78be525bf84fea2496458607e0f"
+   "sha1": "5ad56a3374ac044600ba47175572c897e3c301a1"
   },
   {
    "id": "home__doc",
@@ -370,7 +409,7 @@
    },
    "scheme": "dark",
    "file": "home__doc.png",
-   "sha1": "a2eb7504e045ccb5a9c8db61e347c8b7ca9ad7c3"
+   "sha1": "e71d93fb54bf1425efa1c8672990297bc437e8cc"
   },
   {
    "id": "home__new",
@@ -383,7 +422,7 @@
    },
    "scheme": "dark",
    "file": "home__new.png",
-   "sha1": "d7d668373d1f036d3ad8154411900ec7826724ef"
+   "sha1": "5384a99865dc99669124b39ff5c502cdf7948c90"
   },
   {
    "id": "home__agent",
@@ -396,7 +435,7 @@
    },
    "scheme": "dark",
    "file": "home__agent.png",
-   "sha1": "c02049c4dc6374bc31cea138ffc1c312e61df827"
+   "sha1": "345c8d50691430abec8d6269dea76226d5ad4d6d"
   },
   {
    "id": "home__agent-empty",
@@ -409,7 +448,72 @@
    },
    "scheme": "dark",
    "file": "home__agent-empty.png",
-   "sha1": "04f3eb93ea145c65920ec9026f74fb06b3d64269"
+   "sha1": "fcdf20d015ff5e5f8712bbaeed053bb736c337b4"
+  },
+  {
+   "id": "home__doc-options",
+   "surface": "#home",
+   "state": "doc-options",
+   "trigger": "header end button on documents: reading options",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "home__doc-options.png",
+   "sha1": "075427048470fb14d04c0e5197bf8bfee6c86ecd"
+  },
+  {
+   "id": "home__doc-legend",
+   "surface": "#home",
+   "state": "doc-legend",
+   "trigger": "reading options panel: Legend tab",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "home__doc-legend.png",
+   "sha1": "b0f20cfda46ec0f3f5772f1277c7da56d17b832a"
+  },
+  {
+   "id": "home__agent-writes",
+   "surface": "#home",
+   "state": "agent-writes",
+   "trigger": "Agents board scrolled to the agent writes review",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "home__agent-writes.png",
+   "sha1": "e8eabb4cf91f0e6ab0773d63154133e429533b0b"
+  },
+  {
+   "id": "home__role-edit",
+   "surface": "#home",
+   "state": "role-edit",
+   "trigger": "Agents board, a role's Edit: the role page with run policy and eval cards",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "home__role-edit.png",
+   "sha1": "9c2b203d100af7c60621bd0a58415e5d3e84a89a"
+  },
+  {
+   "id": "home__role-new",
+   "surface": "#home",
+   "state": "role-new",
+   "trigger": "Agents board, New role: the empty role page",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "home__role-new.png",
+   "sha1": "f7a5ff965aa1822e2c76402b767c73fe8aaaa021"
   },
   {
    "id": "home__lnb-collapsed",
@@ -422,7 +526,7 @@
    },
    "scheme": "dark",
    "file": "home__lnb-collapsed.png",
-   "sha1": "f3e913d6f4d5e9c01cf62af39dac2b57f1539de0"
+   "sha1": "4fa6b694b921b1927c74df08b5c172b031c89a5f"
   },
   {
    "id": "home__empty",
@@ -435,20 +539,20 @@
    },
    "scheme": "dark",
    "file": "home__empty.png",
-   "sha1": "113a39cd539d47f33ab5bc133d641f86da68f2d9"
+   "sha1": "7383237e495f3d533f7ceeaf8f10bd3147b68fe9"
   },
   {
    "id": "topbar__find-open",
    "surface": "#view",
    "state": "find-open",
-   "trigger": "search pill: expanded to the left, Graph and view card stay put",
+   "trigger": "search pill: expanded across the header, mode button and query field",
    "viewport": {
     "width": 1280,
     "height": 800
    },
    "scheme": "dark",
    "file": "topbar__find-open.png",
-   "sha1": "6819bbfd31751dabed123b9368f7d3c96379b63f"
+   "sha1": "0947492f50257cff3525a1673a6448415ce6a157"
   },
   {
    "id": "topbar__mode-menu",
@@ -461,7 +565,7 @@
    },
    "scheme": "dark",
    "file": "topbar__mode-menu.png",
-   "sha1": "6839fb030d0738e8db1478c005495a2e5a923092"
+   "sha1": "f5cbea9d714b4ead058db56bd375f6e597470291"
   },
   {
    "id": "topbar__find-results",
@@ -474,7 +578,7 @@
    },
    "scheme": "dark",
    "file": "topbar__find-results.png",
-   "sha1": "dc15148c2dfca913cb63048a97b07fba7d68fe63"
+   "sha1": "447ac2aac000f104b0dc011f6b14796ef055ccfe"
   },
   {
    "id": "topbar__find-empty",
@@ -487,7 +591,7 @@
    },
    "scheme": "dark",
    "file": "topbar__find-empty.png",
-   "sha1": "cb0c9242e5a2b7c15c12e895dee3857fbe7a9a67"
+   "sha1": "33aca5b024b892b8dc465ffdeaf1a6f1bb85886e"
   },
   {
    "id": "topbar__find-loading",
@@ -500,7 +604,7 @@
    },
    "scheme": "dark",
    "file": "topbar__find-loading.png",
-   "sha1": "f1860659121b33dca06df34ea8572843d501a153"
+   "sha1": "ecebdd4d2149f3236e63c918db00831ff4379005"
   },
   {
    "id": "topbar__find-error",
@@ -513,7 +617,7 @@
    },
    "scheme": "dark",
    "file": "topbar__find-error.png",
-   "sha1": "6584d3def1fec60dbfe401e40dd31497867f462e"
+   "sha1": "e552587ab55f62575718a86188130b6d6822bfb1"
   },
   {
    "id": "topbar__browse-sheet",
@@ -526,7 +630,7 @@
    },
    "scheme": "dark",
    "file": "topbar__browse-sheet.png",
-   "sha1": "054e05f6d35180bd7451aa7748374d02bbd74b7f"
+   "sha1": "14ae347518de2fccd9206b0cad68673a72863606"
   },
   {
    "id": "topbar__browse-sheet-docs",
@@ -539,7 +643,7 @@
    },
    "scheme": "dark",
    "file": "topbar__browse-sheet-docs.png",
-   "sha1": "949c325aaad6948964ee51bef111b2dc9af060e1"
+   "sha1": "bd939026eabd30ce6acb8a702a0d65a6f9287680"
   },
   {
    "id": "topbar__ask-intro",
@@ -552,7 +656,7 @@
    },
    "scheme": "dark",
    "file": "topbar__ask-intro.png",
-   "sha1": "e7a3e187403014a785191f3fd2df0bfa2f59af0c"
+   "sha1": "f83b791a14b9585fa53dd22fb1b075455aca71e5"
   },
   {
    "id": "topbar__ask-answer",
@@ -565,7 +669,7 @@
    },
    "scheme": "dark",
    "file": "topbar__ask-answer.png",
-   "sha1": "ec10ad82714906523343ab22ce45819a7faa2ac1"
+   "sha1": "6392a9d70b72aa4343cb578cface567103f01999"
   },
   {
    "id": "topbar__ask-none",
@@ -578,7 +682,7 @@
    },
    "scheme": "dark",
    "file": "topbar__ask-none.png",
-   "sha1": "65190ff6fd7bca628bf4a5615d301abf62c93b9a"
+   "sha1": "06b0c1e6ec071ad4cf9a3211f6aff1919b3f6d90"
   },
   {
    "id": "topbar__ask-history",
@@ -591,7 +695,7 @@
    },
    "scheme": "dark",
    "file": "topbar__ask-history.png",
-   "sha1": "6ffcb11291df7fd01efee0c782b202efe8c87573"
+   "sha1": "1df73eea1cceb67f13cdca6a5887d93772449be0"
   },
   {
    "id": "topbar__palette",
@@ -604,7 +708,7 @@
    },
    "scheme": "dark",
    "file": "topbar__palette.png",
-   "sha1": "fe8cb620ee61dede87e3c8637320afd3d9aa4cd3"
+   "sha1": "e4f30b21131be52aa153bfaee921b619325add91"
   },
   {
    "id": "topbar__palette-filtered",
@@ -617,7 +721,7 @@
    },
    "scheme": "dark",
    "file": "topbar__palette-filtered.png",
-   "sha1": "547c16571f6a29977bf15bf5c8f0855d72d816e3"
+   "sha1": "500ebe55a11a70820cac5e194a7867f93ff0d113"
   },
   {
    "id": "topbar__cheatsheet",
@@ -630,20 +734,7 @@
    },
    "scheme": "dark",
    "file": "topbar__cheatsheet.png",
-   "sha1": "03bc7869d0b29b3b6d6be305ed50af640faf54ee"
-  },
-  {
-   "id": "topbar__tools-create",
-   "surface": "#view",
-   "state": "tools-create",
-   "trigger": "Settings › Data: Create tab",
-   "viewport": {
-    "width": 1280,
-    "height": 800
-   },
-   "scheme": "dark",
-   "file": "topbar__tools-create.png",
-   "sha1": "7f3ce00861c83d717a816e787e8f331c2e37f519"
+   "sha1": "f6718770dcea7cd0f5d7855f34ce34bdeea686b5"
   },
   {
    "id": "topbar__tools-import",
@@ -656,7 +747,7 @@
    },
    "scheme": "dark",
    "file": "topbar__tools-import.png",
-   "sha1": "fc92f9bf96cfd37bc1ccb0e564d32a7c54399e34"
+   "sha1": "916005c773ad95d5e1337accd70fb7a3530830fa"
   },
   {
    "id": "topbar__tools-share",
@@ -669,20 +760,20 @@
    },
    "scheme": "dark",
    "file": "topbar__tools-share.png",
-   "sha1": "0793523acd5cf9681aa59efac02a64fe6ede3997"
+   "sha1": "d1f5007198070acdf8c4a770dcb53ecd65d5cf35"
   },
   {
    "id": "topbar__share-sheet",
    "surface": "#view",
    "state": "share-sheet",
-   "trigger": "Share › Continue: share as a pack, spec grid and node list",
+   "trigger": "node card Share: the share sheet, spec grid and node list",
    "viewport": {
     "width": 1280,
     "height": 800
    },
    "scheme": "dark",
    "file": "topbar__share-sheet.png",
-   "sha1": "155f136e2aa245103da4cc906fb2f82a8048217f"
+   "sha1": "ff83703bf4374f930d0ba1ead28a283b8d8ea6ed"
   },
   {
    "id": "topbar__import-pack-sheet",
@@ -695,7 +786,7 @@
    },
    "scheme": "dark",
    "file": "topbar__import-pack-sheet.png",
-   "sha1": "4144acc195b538aac20885bfdbb00bdfe41695f8"
+   "sha1": "113779285fc4aebfee2d92ebfa3755adb3561f7e"
   },
   {
    "id": "topbar__import-doc-sheet",
@@ -708,7 +799,7 @@
    },
    "scheme": "dark",
    "file": "topbar__import-doc-sheet.png",
-   "sha1": "d8abd7241ff6c981d7374042613b44be17977e86"
+   "sha1": "61a38560beb440d37dd0e8d51db6f3ff5b4106db"
   },
   {
    "id": "topbar__graphmd",
@@ -721,7 +812,7 @@
    },
    "scheme": "dark",
    "file": "topbar__graphmd.png",
-   "sha1": "3661a699c5e235d9925eb25d73aaa0c63bdffb97"
+   "sha1": "501cc2919462852983c92dd0727bb79bff51feaa"
   },
   {
    "id": "topbar__settings-account",
@@ -734,7 +825,7 @@
    },
    "scheme": "dark",
    "file": "topbar__settings-account.png",
-   "sha1": "4f66383a9a98fd5fef81cce3bc717cd49165fe77"
+   "sha1": "b43f6ba972aa4f201da0f1421cbcddfd288e9d9b"
   },
   {
    "id": "topbar__settings-connections",
@@ -747,7 +838,7 @@
    },
    "scheme": "dark",
    "file": "topbar__settings-connections.png",
-   "sha1": "cb2bfb7f42f4b5871f0516912f9ea64ccb532118"
+   "sha1": "029561a8c16032499cb59a28be8e2289ee447d11"
   },
   {
    "id": "topbar__settings-advanced",
@@ -760,7 +851,33 @@
    },
    "scheme": "dark",
    "file": "topbar__settings-advanced.png",
-   "sha1": "7017785c61c743df33ddba597093c96d5e603f5f"
+   "sha1": "0bf76e7ed616bb547590c2476c811080cd70ccb4"
+  },
+  {
+   "id": "topbar__settings-reading",
+   "surface": "#view",
+   "state": "settings-reading",
+   "trigger": "Settings › Reading",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__settings-reading.png",
+   "sha1": "20c557abdf650fb684744350fa4eb2f076ecf3bf"
+  },
+  {
+   "id": "topbar__settings-about",
+   "surface": "#view",
+   "state": "settings-about",
+   "trigger": "Settings › About",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__settings-about.png",
+   "sha1": "2a9a384f96fc361fbae5d1e7876d488d163a297f"
   },
   {
    "id": "topbar__settings-light",
@@ -773,7 +890,7 @@
    },
    "scheme": "light",
    "file": "topbar__settings-light.png",
-   "sha1": "6de28cae7d9a0c5aada7277fdb2c04372c612238"
+   "sha1": "e1867bfec44c32ee5b120f2ef3653e8b9e8ce8f8"
   },
   {
    "id": "search__default",
@@ -786,7 +903,7 @@
    },
    "scheme": "dark",
    "file": "search__default.png",
-   "sha1": "67cacddbdb955293480b30ca33ab5466734e42f1"
+   "sha1": "33a4511d25d447a986dc00c38363712eba2fee02"
   },
   {
    "id": "search__results",
@@ -799,7 +916,7 @@
    },
    "scheme": "dark",
    "file": "search__results.png",
-   "sha1": "29fe617fde9afbb11bbe2cc31a120068dd38c4c2"
+   "sha1": "2c3b5d7862d051cc124ce3152ec9e09911e826ca"
   },
   {
    "id": "search__empty",
@@ -812,7 +929,7 @@
    },
    "scheme": "dark",
    "file": "search__empty.png",
-   "sha1": "faa08de44ac397804c97460aa5693b2f30a9501e"
+   "sha1": "ace5a06c8af38ffc16a16be4ffc11fc14d111b19"
   },
   {
    "id": "search__error",
@@ -825,7 +942,8 @@
    },
    "scheme": "dark",
    "file": "search__error.png",
-   "sha1": "a3d25255704e6ee65f0c2a0382966d5627587af7"
+   "sha1": "f8fe75c79116aa42516b3139acb62c650e92a2c8"
   }
- ]
+ ],
+ "updatedAt": "2026-11-04T04:48:09.854Z"
 }
