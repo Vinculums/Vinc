@@ -1,5 +1,6 @@
 {
   "roster": [
+    "concept:agent-checker",
     "concept:agent-copy-owner",
     "concept:agent-copy-writer",
     "concept:agent-deploy",
@@ -9,6 +10,7 @@
     "concept:agent-dev-core",
     "concept:agent-gate-runner",
     "concept:agent-infra",
+    "concept:agent-maker",
     "concept:agent-marketing",
     "concept:agent-metrics-analyst",
     "concept:agent-metrics-reviewer",

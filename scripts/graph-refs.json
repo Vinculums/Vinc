@@ -813,6 +813,7 @@
     "decision:ladybug-extensions-ship-from-a-vinc-release-not-the-repo-2026-09-26",
     "decision:large-topic-conversion-admission-2026-10-16",
     "decision:lnb-picks-in-the-graph-open-the-floating-card-and-the-side-pane-2026-10-28",
+    "decision:maker-and-checker-replace-the-job-title-roster-2026-11-04",
     "decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24",
     "decision:mcp-modern-era-is-served-per-request-beside-the-initialize-era",
     "decision:mcp-skills-extension-opens-skill-files-in-the-modern-era-only",
@@ -1753,6 +1754,9 @@
       "validity": "current"
     },
     "record:writing-a-trap-down-does-not-stop-it-a-check-does": {
+      "validity": "current"
+    },
+    "decision:maker-and-checker-replace-the-job-title-roster-2026-11-04": {
       "validity": "current"
     }
   }

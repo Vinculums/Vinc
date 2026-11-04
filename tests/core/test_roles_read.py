@@ -66,7 +66,7 @@ def test_roster_and_contracts_preserve_every_permission_and_directed_handoff(gra
                     actual.add((edge['from'],edge['to']))
                 elif direction == 'receives_from':
                     assert edge['to'] == role['id']
-    assert len(bridge.calls) == len(fixture['roster']) == 23
+    assert len(bridge.calls) == len(fixture['roster']) == 25
     assert actual == {(e[0],e[1]) for e in fixture['edges']}
     assert len(actual) == 27
 
