@@ -276,7 +276,16 @@ def run_trial(args, binary: Path, trial: Path, index: int) -> dict:
         if not acked_docs:
             raise RuntimeError("no acknowledged document to verify")
         missing = []
-        for doc_id, revision in sorted(acked_docs.items())[: args.verify_docs]:
+        # 죽는 순간 다시 쓰이던 문서는 제외한다: 문서 교체는 청크를 하나씩 바꾸므로 재생 뒤
+        # "mid-replacement" 로 읽히는 것이 문서화된 창이고, 치유는 재-put 이다(아래서 확인).
+        in_flight_doc = in_flight[1] if in_flight and in_flight[0] == "doc" else None
+        if in_flight_doc in acked_docs:
+            _, state = request(second.base, "/doc", query={"owner": OWNER, "id": in_flight_doc})
+            record["in_flight_doc_state_after_replay"] = (
+                "intact" if state.get("text") == doc_text(int(in_flight_doc.split("-")[1]), acked_docs[in_flight_doc])
+                else (state.get("error") or "other"))
+        verify = [(d, r) for d, r in sorted(acked_docs.items()) if d != in_flight_doc][: args.verify_docs]
+        for doc_id, revision in verify:
             _, doc = request(second.base, "/doc", query={"owner": OWNER, "id": doc_id})
             if doc.get("text") != doc_text(int(doc_id.split("-")[1]), revision):
                 missing.append((doc_id, "text", doc.get("error") or doc.get("verified")))
@@ -287,7 +296,7 @@ def run_trial(args, binary: Path, trial: Path, index: int) -> dict:
             if search.get("error") or not any(r.get("doc_id") == doc_id and "keyword" in (r.get("arms") or [])
                                               for r in search.get("rows", [])):
                 missing.append((doc_id, "fts", search.get("error") or len(search.get("rows", []))))
-        record["pre_kill_docs_verified"] = min(len(acked_docs), args.verify_docs) - len(missing)
+        record["pre_kill_docs_verified"] = len(verify) - len(missing)
         if missing:
             raise RuntimeError(f"acknowledged documents not preserved/searchable after replay: {missing[:5]}")
         # ── 복구 뒤 쓰기: 죽을 때 날아가던 요청을 다시 보내고(재시도), 새 문서·노드·벡터 ──
@@ -302,6 +311,14 @@ def run_trial(args, binary: Path, trial: Path, index: int) -> dict:
             record["duplicate_key_hits"] += scan_dup_keys(json.dumps(res))
             if status != 200 or not res.get("executed"):
                 raise RuntimeError(f"retry of the in-flight document failed: {res}")
+            _, healed = request(second.base, "/doc", query={"owner": OWNER, "id": doc_id})
+            _, found = request(second.base, "/search", query={"owner": OWNER,
+                               "query": unique_word(int(doc_id.split("-")[1])), "top_k": "20"})
+            record["duplicate_key_hits"] += scan_dup_keys(json.dumps(healed), json.dumps(found))
+            if (healed.get("text") != doc_text(int(doc_id.split("-")[1]), revision) or found.get("error")
+                    or not any(r.get("doc_id") == doc_id and "keyword" in (r.get("arms") or [])
+                               for r in found.get("rows", []))):
+                raise RuntimeError(f"re-put did not heal the interrupted document: {healed.get('error')} / {found.get('error')}")
         for k in range(args.post_writes):
             doc_id = f"post-{k}"
             text = f"post recovery document {k}: the zircon line {k} stays in the middle here.\n"
@@ -394,6 +411,9 @@ def main() -> int:
     args = parser.parse_args()
     binary = args.binary.resolve(strict=True)
     args.output.mkdir(parents=True, exist_ok=False)
+    # 절대 경로여야 한다: HOME 이 상대 경로면 Windows 의 LoadLibrary 가 확장(.lbug_extension)을
+    # 못 찾는다(실측 2026-11-04, 20/20 "Failed to load library"). 데스크톱은 늘 절대 HOME 을 준다.
+    args.output = args.output.resolve()
     results = []
     for index in range(1, args.trials + 1):
         record = run_trial(args, binary, args.output / f"trial-{index:02}", index)
