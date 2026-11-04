@@ -1,0 +1,91 @@
+name: native-reopen-probe
+
+# VIN-921 — 패키지 사이드카(sidecar.spec 동결본)를 쓰기 도중 강제 종료하고 다시 연다.
+# 빌드 단계는 release.yml 의 사이드카 다리와 같은 핀·같은 확장 바이트를 쓴다.
+# 출하 핀은 바꾸지 않는다. 일회용 저장소만 쓴다.
+on:
+  workflow_dispatch:
+    inputs:
+      trials:
+        description: "강제 종료·재개방 시도 횟수(플랫폼마다)"
+        default: "20"
+      wal_tolerant:
+        description: "VINC_WAL_REPLAY_TOLERANT=1 로도 한 번 더 돌린다"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            plat: linux_amd64
+            bin: dist/vinc
+          - os: windows-latest
+            plat: win_amd64
+            bin: dist/vinc.exe
+          - os: macos-latest
+            plat: osx_arm64
+            bin: dist/vinc
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      PYTHONUTF8: "1"
+      PYTHONHOME: ""
+      PYTHONPATH: ""
+      VINC_OPENSSL_DIR: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install sidecar build deps (same pins as release.yml)
+        shell: bash
+        run: pip install ladybug==0.21.2 pyyaml pyinstaller pypdf
+      - name: Seed LadybugDB extensions (release ladybug-ext-0.21.2, hash checked)
+        shell: bash
+        env:
+          LBUG_VER: "0.21.2"
+          GH_TOKEN: ${{ github.token }}
+          PLAT: ${{ matrix.plat }}
+        run: |
+          set -euo pipefail
+          sums="$GITHUB_WORKSPACE/packaging/lbug-ext-$LBUG_VER.sha256"
+          dl="$RUNNER_TEMP/lbug-ext"
+          rm -rf "$dl"; mkdir -p "$dl"
+          gh release download "ladybug-ext-$LBUG_VER" --repo "${{ github.repository }}" \
+            --pattern "$PLAT-*.lbug_extension" --dir "$dl"
+          if command -v sha256sum >/dev/null; then sum="sha256sum"; else sum="shasum -a 256"; fi
+          (cd "$dl" && tr -d '\r' < "$sums" | grep "  $PLAT-" | $sum -c -)
+          root="$HOME/.lbdb/extension/$LBUG_VER/$PLAT"
+          for e in vector fts algo; do
+            mkdir -p "$root/$e"
+            mv "$dl/$PLAT-lib$e.lbug_extension" "$root/$e/lib$e.lbug_extension"
+            echo "seeded $e ($(wc -c < "$root/$e/lib$e.lbug_extension" | tr -d ' ') B)"
+          done
+      - name: Build sidecar binary
+        run: pyinstaller -y packaging/sidecar.spec
+      - name: Kill mid-write and reopen (product env, strict WAL replay)
+        shell: bash
+        run: >-
+          python scripts/qa/native_reopen_probe.py --binary "${{ matrix.bin }}"
+          --output probe/strict --trials "${{ inputs.trials }}" --source-sha "$GITHUB_SHA"
+      - name: Kill mid-write and reopen (tolerant WAL replay)
+        if: ${{ inputs.wal_tolerant }}
+        shell: bash
+        run: >-
+          python scripts/qa/native_reopen_probe.py --binary "${{ matrix.bin }}"
+          --output probe/tolerant --trials "${{ inputs.trials }}" --source-sha "$GITHUB_SHA" --wal-tolerant
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-reopen-probe-${{ matrix.plat }}
+          path: |
+            probe/**/result.json
+            probe/**/*.stderr
+            probe/**/*.stdout
