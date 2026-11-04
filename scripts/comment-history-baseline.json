@@ -3,7 +3,7 @@
     "what": "files -> history-marker comment lines, counted by scripts/gate_comment_history.py",
     "regenerate": "python -X utf8 scripts/gate_comment_history.py --write-baseline",
     "new_file_allowance": 3,
-    "total": 2359
+    "total": 2362
   },
   "files": {
     ".github/actions/runner-preflight/action.yml": 3,
@@ -239,11 +239,14 @@
     "scripts/design/build_logo.mjs": 2,
     "scripts/design/build_tokens.py": 1,
     "scripts/design/capture_app.mjs": 14,
+    "scripts/design/capture_app_figma.mjs": 1,
     "scripts/design/capture_site.mjs": 1,
+    "scripts/design/capture_site_figma.mjs": 1,
     "scripts/design/extract_overlays.mjs": 2,
     "scripts/design/figma_app_copy.py": 12,
     "scripts/design/figma_build_overlay.js": 4,
-    "scripts/design/figma_copy.py": 4,
+    "scripts/design/figma_capture_place.py": 2,
+    "scripts/design/figma_copy.py": 2,
     "scripts/design/figma_diff.py": 2,
     "scripts/design/figma_inventory.py": 23,
     "scripts/design/figma_wire_prototypes.js": 1,
@@ -296,7 +299,7 @@
     "store/chunking.py": 3,
     "store/config.py": 10,
     "store/durable_generation.py": 4,
-    "store/embedded_backend.py": 119,
+    "store/embedded_backend.py": 120,
     "store/embedded_schema.py": 36,
     "store/handoff.py": 2,
     "store/lexical.py": 1,

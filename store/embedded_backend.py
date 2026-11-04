@@ -341,6 +341,54 @@ def _driver_kwargs(cfg) -> dict:
     kwargs["throw_on_wal_replay_failure"] = not wal_tolerant
     return kwargs
 
+#: 끝나지 않은 체크포인트의 짝 파일 접미사. 엔진(ladybug 0.21.2)의 체크포인트 순서:
+#: ``db.wal`` 을 ``db.wal.checkpoint`` 로 이름을 바꾸고(동결 WAL) → 바뀐 페이지를
+#: ``db.shadow`` 에 쓰고 fsync → 동결 WAL 끝에 CHECKPOINT 레코드를 붙이고 → 섀도 페이지를
+#: 본 파일에 적용하고 fsync → ``db.shadow`` 를 지우고 → **마지막으로** 동결 WAL 을 지운다.
+_FROZEN_WAL_SUFFIX = ".wal.checkpoint"
+_SHADOW_SUFFIX = ".shadow"
+
+
+def _stale_checkpoint_marker_note(data_dir: str, exc: BaseException) -> str:
+    """열기가 실패한 뒤, 그 실패가 "섀도 없는 동결 WAL" 때문이면 동결 WAL 을 옆으로 옮기고
+    사람이 읽을 한 줄을 준다. 아니면 ""(아무것도 건드리지 않는다).
+
+    "동결 WAL 은 있고 ``.shadow`` 는 없다"는 **한 상태가 아니라 둘**이다:
+
+    - 동결 WAL 에 CHECKPOINT 레코드가 **있다** — 섀도 페이지는 이미 본 파일에 적용되고
+      fsync 됐으며 섀도 파일까지 지워진 뒤, 동결 WAL 을 지우기 직전에 죽은 것이다.
+      본 파일 + 활성 ``.wal`` 이 커밋된 쓰기 전부를 담고 있고 동결 WAL 은 낡은 표식일
+      뿐이다. 그런데 엔진은 이 레코드를 보면 섀도 파일을 **무조건 읽기 전용으로 열어**
+      다시 적용하려 하고, 없으니 ``Cannot open file <db>.shadow`` 로 열기가 끝난다.
+      ``VINC_WAL_REPLAY_TOLERANT`` 는 이 예외를 덮지 않는다(dry replay 에만 걸린다).
+      동결 WAL 을 옆으로 옮기면 엔진이 그 다음에 하려던 것(동결 WAL 삭제 → 본 파일 읽기
+      → 활성 WAL 재생)과 같은 결과로 열린다. 50회 강제 종료 중 1회가 이 상태였다.
+    - CHECKPOINT 레코드가 **없다** — 이름만 바뀐 채 죽은 것이고, 그 안의 커밋은 아직
+      본 파일에 없다. 엔진이 스스로 재생하니 **절대 옮기면 안 된다**(옮기면 그 커밋을
+      통째로 잃는다 — 시험에서는 표 자체가 사라졌다).
+
+    둘을 가르는 것은 WAL 포맷 해석이 아니라 **엔진의 실패 문구**다: 섀도 파일을 여는 것은
+    첫째 갈래뿐이다. 그래서 열기 전에 옮기지 않고, 그 실패를 보고 나서 한 번만 옮긴다.
+    ``.shadow`` 가 있으면 체크포인트를 엔진이 마저 끝내므로 건드리지 않는다.
+    근거: [[record:linux-50-forced-kill-reopen-requalification-on-main-2026-11-04]]
+    """
+    frozen = data_dir + _FROZEN_WAL_SUFFIX
+    shadow = data_dir + _SHADOW_SUFFIX
+    if not os.path.exists(frozen) or os.path.exists(shadow):
+        return ""
+    text = _driver_error_text(exc)
+    if "Cannot open file" not in text or os.path.basename(shadow) not in text:
+        return ""
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    aside = f"{frozen}.stale-{stamp}"
+    try:
+        os.replace(frozen, aside)
+    except OSError as err:
+        return (f"checkpoint marker '{frozen}' outlived its shadow file and could not be "
+                f"set aside ({type(err).__name__}: {err})")
+    return (f"checkpoint marker '{frozen}' outlived its shadow file (the engine already "
+            f"applied that checkpoint); set aside as '{aside}' and reopening")
+
 
 def _stable_ext_dir() -> str:
     """`_MEIPASS` 사본을 두는 **수명이 안정한** 디렉터리 — `~/.vinc/lbug_extensions/<ver>/`.
@@ -1163,7 +1211,17 @@ class EmbeddedBackend:
                         os.fsync(fd)
                     finally:
                         os.close(fd)
-            db = drv.Database(data_dir, **kwargs)
+            try:
+                db = drv.Database(data_dir, **kwargs)
+            except Exception as first:
+                # 섀도 파일이 사라진 뒤에 남은 체크포인트 표식이면 옆으로 옮기고 **한 번만**
+                # 다시 연다. 표식이 아직 커밋을 담고 있는 상태는 엔진이 다른 문구로 말하거나
+                # 스스로 재생하므로 여기 걸리지 않는다(`_stale_checkpoint_marker_note`).
+                note = _stale_checkpoint_marker_note(data_dir, first)
+                if not note:
+                    raise
+                print(f"[embedded_backend] {note}", file=sys.stderr, flush=True)
+                db = drv.Database(data_dir, **kwargs)
             family = weakref.WeakSet()
             conn = _open_connection(drv, db, family)
         except Exception as exc:

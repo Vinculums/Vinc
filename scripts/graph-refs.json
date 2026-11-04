@@ -938,6 +938,7 @@
     "record:keep-index-mode-survived-104-trials-on-ladybug-0-21-2-at-two-cores-while-the-unguarded-control-crashed-1-of-20-2026-10-18",
     "record:korean-titled-nodes-answer-with-provenance-excerpts-2026-09-14",
     "record:korean-to-korean-node-misses-are-the-semantic-second-candidate-lost-to-a-tie-at-the-top-five-cut-2026-10-19",
+    "record:linux-50-forced-kill-reopen-requalification-on-main-2026-11-04",
     "record:log-analytics-attributes-hub-mcp-requests-by-owner-hash-since-2026-09-02",
     "record:main-ci-red-before-the-roster-merge-2026-08-23",
     "record:mcp-state-store-is-fail-soft-and-must-be-local",
@@ -1139,6 +1140,9 @@
       "validity": "unknown"
     },
     "decision:lnb-picks-in-the-graph-open-the-floating-card-and-the-side-pane-2026-10-28": {
+      "validity": "current"
+    },
+    "decision:maker-and-checker-replace-the-job-title-roster-2026-11-04": {
       "validity": "current"
     },
     "decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24": {
@@ -1513,6 +1517,9 @@
     "record:korean-to-korean-node-misses-are-the-semantic-second-candidate-lost-to-a-tie-at-the-top-five-cut-2026-10-19": {
       "validity": "current"
     },
+    "record:linux-50-forced-kill-reopen-requalification-on-main-2026-11-04": {
+      "validity": "current"
+    },
     "record:log-analytics-attributes-hub-mcp-requests-by-owner-hash-since-2026-09-02": {
       "validity": "current"
     },
@@ -1754,9 +1761,6 @@
       "validity": "current"
     },
     "record:writing-a-trap-down-does-not-stop-it-a-check-does": {
-      "validity": "current"
-    },
-    "decision:maker-and-checker-replace-the-job-title-roster-2026-11-04": {
       "validity": "current"
     }
   }
