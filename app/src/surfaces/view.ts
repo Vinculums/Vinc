@@ -606,6 +606,10 @@ export async function renderView(el: HTMLElement, resume = false) {
       shell.dataset.doc = open ? "open" : "closed";
       shell.dataset.docSize = open && railFull ? "full" : "side";
     }
+    // 떠 있는 노드 카드는 #shell 밖(body)에 붙어서 셸 상태를 못 본다. 넓게 연 항목 페이지가
+    // 같은 노드를 다 보여 주는 동안 카드가 그 제목을 덮었다(2026-11-04 캡처). 그래서 body 에도
+    // 같은 상태를 걸고 CSS 가 그동안만 카드를 숨긴다. 옆 카드로 돌아오면 카드가 그대로 돌아온다.
+    document.body.dataset.docSize = open && railFull ? "full" : "side";
     if (docpane) docpane.hidden = !open;
     // 지도 칸 전체로 연 패널에는 끌어서 줄일 모서리가 없다.
     railGrip.hidden = !open || railFull;
