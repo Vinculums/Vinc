@@ -37,8 +37,11 @@ def test_the_handoff_is_checked_last_against_the_share_markers():
     handoff = t.index("- name: Verify writer handoff (markers on the persistent share)")
     report = t.index("\n  report:\n")
     assert health < handoff < report
-    assert t.find("\n      - name:", handoff + 10, report) == -1, "인계 확인 뒤에 다른 스텝이 있다"
-    body = t[handoff:report]
+    # 인계 확인 뒤에는 확인 결과를 모으는 요약 스텝 하나만 온다(그 스텝은 아무것도 검사하지 않는다).
+    after = t.find("\n      - name:", handoff + 10, report)
+    assert after != -1 and t[after:after + 60].strip().startswith("- name: Verification summary"), "인계 확인 뒤에 요약 말고 다른 스텝이 있다"
+    assert t.find("\n      - name:", after + 10, report) == -1, "요약 뒤에 다른 스텝이 있다"
+    body = t[handoff:after]
     assert "if: ${{ !cancelled() && env.HANDOFF_EXPECTED == '1' }}" in body
     assert '"$w" = "$LATEST_REV"' in body and '"$r" = "$PREV_REV"' in body
     assert "hub-data" in body
