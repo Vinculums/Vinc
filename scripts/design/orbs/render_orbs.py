@@ -130,7 +130,7 @@ def reset_scene(size: int, samples: int, transparent: bool = True) -> bpy.types.
     bgn.inputs[1].default_value = 1.0
     sc.world = w
     # 굴절·반사 광선이 투명 배경으로 빠지면 몸통 가운데가 알파 0 이 된다. 카메라에는 안 보이는
-    # 어두운 배경 구가 그 광선을 받는다(2026-11-04 실측: glass-only 렌더의 중심 알파가 0 이었다).
+    # 어두운 배경 구가 그 광선을 받는다(측정은 위 Record).
     bpy.ops.mesh.primitive_uv_sphere_add(radius=40, segments=32, ring_count=16)
     bd = bpy.context.active_object
     bd.name = "backdrop"
@@ -527,7 +527,7 @@ def build(kind: str, state: str, hue, theme: str):
             pulse.parent = ob
         else:
             core_r = r * (0.16 if kind == "record" else 0.24)
-            # 0.6 을 넘기면 꼭짓점 근처 면이 굴절로 핵의 상을 여러 개 비춰 흰 얼룩이 된다(2026-11-04 실측)
+            # 0.6 을 넘기면 꼭짓점 근처 면이 굴절로 핵의 상을 여러 개 비춰 흰 얼룩이 된다
             core = sphere("core", core_r, emission_material("core", mix(hue, (1, 1, 1), 0.55), 0.6 * (1 + energy)))
             core.parent = ob
             cloud = sphere("cloud", r * (0.40 if kind == "record" else 0.62), cloud_material("cloud", hue, energy, density=1.4, scale=3.0, seed=seed))
@@ -541,7 +541,7 @@ def build(kind: str, state: str, hue, theme: str):
         ring("ring", r * 1.22, (1, 1, 1))
     if state == "historical" and kind not in ("topic", "area"):
         # frosted: a faint milky veil inside. 다면체보다 큰 구를 두면 모양 둘레에 검은 원반이 생긴다
-        # (2026-11-04 접촉 시트) — 껍질 안에 들어가는 반지름만 쓴다.
+        # 껍질 안에 들어가는 반지름만 쓴다.
         fr = {"concept": 0.98, "decision": 0.98, "record": 0.40, "episode": 0.62, "bridge": 0.30}[kind]
         frost = sphere("frost", r * fr, cloud_material("frost", (0.8, 0.8, 0.85), 0.0, density=0.25 / fr, scale=1.2, seed=seed))
         if kind in ("record", "episode", "bridge"):
@@ -551,7 +551,7 @@ def build(kind: str, state: str, hue, theme: str):
 
 # ── two renders, one file ─────────────────────────────────────────────────────
 #
-# 투명 필름에서는 유리를 지난 굴절 광선이 세계로 빠지며 알파를 0 으로 만든다(2026-11-04 실측:
+# 투명 필름에서는 유리를 지난 굴절 광선이 세계로 빠지며 알파를 0 으로 만든다(측정은 위 Record:
 # 몸통 가운데 알파 0, 가장자리 27). 그래서 색은 어두운 배경 구 앞에서 한 번 렌더하고(A),
 # 알파는 A 의 물체 인덱스 마스크(유리 안은 1)와 배경 구를 뺀 투명 렌더 B 의 알파(후광의
 # 부드러운 가장자리)를 합쳐 만든다. B 는 후광만 보면 되므로 샘플이 적다.
