@@ -360,7 +360,6 @@ def sphere(name, r, mat, loc=(0, 0, 0)):
 
 
 def tetra(name, r, mat):
-    bpy.ops.mesh.primitive_solid_add if False else None
     # regular tetrahedron inscribed in a sphere of radius r (sized to read like the sphere)
     s = r * 1.32
     verts = [Vector(v).normalized() * s for v in ((1, 1, 1), (1, -1, -1), (-1, 1, -1), (-1, -1, 1))]
