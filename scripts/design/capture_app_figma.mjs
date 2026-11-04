@@ -5,7 +5,8 @@
 //   node scripts/design/capture_app_figma.mjs <job.json>
 //   job.json = { "seeds": ["<captureId>", ...], "states": ["<state id>", ...] }
 //
-// 씨앗을 발급할 때 nodeId 로 준 페이지 아래에 프레임이 생긴다. 서피스·오버레이·상태를 페이지별로 나누려면 페이지마다
+// 씨앗을 발급할 때 nodeId 로 준 노드의 **페이지 최상위**에 프레임이 생기고(2026-11-04 부터 섹션 안이 아니다),
+// 제출 응답에 node-id 가 없다. 이름·섹션·노드 id 는 figma_capture_place.py 가 맞춘다. 서피스·오버레이·상태를 페이지별로 나누려면 페이지마다
 // 따로 job 을 만든다(04 · Surfaces, 05 · Overlays, 06 · States). 프레임 이름은 문서 제목 = 상태 id 다.
 import { chromium } from "playwright";
 import fs from "node:fs";
@@ -77,7 +78,7 @@ async function chain(seedId, n) {
     const id = queue.shift();
     try {
       const r = await captureOne(id, cid);
-      results[id] = { ok: true, ...r }; save();
+      results[id] = { ok: true, placed: false, ...r }; save();
       console.log(`ok   [${n}] ${id} (${Math.round(r.ms / 1000)}s)`);
       cid = r.nextCaptureId;
       if (!cid) console.log(`chain ${n}: no nextCaptureId returned, chain ends`);
@@ -94,3 +95,4 @@ await Promise.all(job.seeds.map((s, i) => chain(s, i + 1)));
 await browser.close();
 const ok = Object.values(results).filter((r) => r.ok).length;
 console.log(`\n${ok} captured, ${job.states.length - ok} not → ${path.basename(resultPath)}${queue.length ? ` (${queue.length} states left: chains ran out of ids)` : ""}`);
+if (ok) console.log(`next: python scripts/design/figma_capture_place.py plan ${resultPath} --surface app --page <pageId> --section "<section>" > place.js, run it with use_figma, save its JSON, then merge`);
