@@ -68,7 +68,7 @@ MAP: dict[str, tuple[str, dict[str, str | None]]] = {
         "plan2Item5": "fGen5", "plan2Cta": "ctaGenSoon",
         "plan3Name": "tEnt", "plan3Tagline": "perEnt",
         "plan3Item1": "fEnt1", "plan3Item2": "fEnt2", "plan3Item3": "fEnt3", "plan3Cta": "ctaEnt",
-        # Team 카드에만 있던 두 줄. 90 · Archive 의 옛 요금 보드가 아직 묶고 있어 지우지 않는다.
+        # Figma 전용: 라이브 문구가 없고, 90 · Archive 의 보드가 이 변수를 묶는다.
         "plan3Period": None, "plan3Item4": None,
         # 체험 배너는 애초에 카드의 태그라인이 아니라 **페이지 레벨 배너**다.
         "trialBanner": "trialOn",
@@ -140,7 +140,7 @@ MAP: dict[str, tuple[str, dict[str, str | None]]] = {
         "newsDesc": "nlB", "deleteTitle": "delT", "deleteDesc": "delB",
         # 아래는 Figma 가 표본 데이터로 들고 있는 것이라 라이브 문구가 없다.
         # 플랜 설명은 이제 플랜마다 스크립트가 고른다(bodyCur · bodyGen) — 정적 문구가 없다.
-        # planDesc 는 90 · Archive 의 옛 계정 보드가 묶고 있어 변수를 남긴다.
+        # planDesc 는 라이브 문구가 없고, 90 · Archive 의 보드가 이 변수를 묶는다.
         "planBadge": None, "usernameTitle": None, "packName": None, "packImports": None,
         "planDesc": None, "connectorTitle": None, "keyRowTitle": None, "keyRowMeta": None,
         "newsTitle": None,
@@ -168,7 +168,7 @@ MAP: dict[str, tuple[str, dict[str, str | None]]] = {
     "/community/": ("community/", {
         # 2026-11 부터 /community/ 는 앱 셸 하나다. 제목만 정적이고 나머지는 셸이 그린다.
         "h1a": "heading",
-        # 빈 상태 두 줄은 셸로 옮겨 갔다. 90 · Archive 의 옛 보드가 묶고 있어 변수는 남긴다.
+        # 빈 상태 두 줄은 셸이 그린다. 90 · Archive 의 보드가 이 변수를 묶는다.
         "empty": None, "browseDocs": None,
         # 공개 팩 중단으로 사라진 문구는 역사 프레임에만 남는다.
         "heroBody": None, "shareCta": None, "shareNote": None,
