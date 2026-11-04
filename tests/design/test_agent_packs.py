@@ -53,6 +53,16 @@ def _load(p: Path) -> dict:
 
 
 def _nodes(p: Path) -> list[dict]:
+    """Role nodes of a pack. Skill nodes (concept:skill-*) ride beside them since 2026-11-04 and
+    are checked by SkillContract below."""
+    return [n for n in _load(p)["fragment"]["nodes"] if n["id"].startswith(roles.ID_PREFIX)]
+
+
+def _skills(p: Path) -> list[dict]:
+    return [n for n in _load(p)["fragment"]["nodes"] if n["id"].startswith("concept:skill-")]
+
+
+def _all_nodes(p: Path) -> list[dict]:
     return _load(p)["fragment"]["nodes"]
 
 
@@ -167,6 +177,33 @@ class RenderedLikeThePromptSurface(unittest.TestCase):
                     self.assertNotIn("—", text)    # 화면 노출 텍스트, em-dash 금지(D38)
 
 
+class SkillContract(unittest.TestCase):
+    """2026-11-04: the default pack carries skills beside its two agents. A skill is a concept whose id
+    starts with concept:skill-, names its agent, and carries the same lists a role does, so the harness
+    applies them together with the agent's."""
+
+    def test_every_skill_names_an_agent_in_the_pack_and_carries_the_lists(self):
+        for p in PACKS:
+            role_ids = {n["id"] for n in _nodes(p)}
+            for n in _skills(p):
+                with self.subTest(pack=p.name, skill=n["id"]):
+                    self.assertEqual(n["type"], "concept")
+                    self.assertEqual(n["domain"], roles.DOMAIN)
+                    props = n["props"]
+                    self.assertEqual(props["kind"], "skill")
+                    self.assertIn(props["agent"], role_ids)
+                    self.assertEqual(n["one_liner"], props["description"])
+                    for k in REQUIRED_PROPS:
+                        self.assertIn(k, props)
+                    self.assertEqual(props["gates"], BASE_GATES)
+                    self.assertEqual((props["reads"], props["paths"], props["repos"]), ([], [], []))
+                    self.assertEqual(sorted(n["tags"]), sorted(["skill", props["agent"].rsplit("-", 1)[-1]]))
+
+    def test_the_default_pack_is_two_agents_and_four_skills(self):
+        self.assertEqual([n["id"] for n in _nodes(DEFAULT)], ["concept:agent-maker", "concept:agent-checker"])
+        self.assertEqual(len(_skills(DEFAULT)), 4)
+
+
 class _FreshSpace(Bridge):
     """기본 팩만 들어간 새 스페이스를 답하는 가짜 사이드카."""
 
@@ -204,21 +241,21 @@ class DefaultPackOnTheWire(unittest.TestCase):
     def setUp(self):
         self.nodes = _nodes(DEFAULT)
 
-    def test_a_fresh_space_lists_the_four_default_roles_as_prompts(self):
+    def test_a_fresh_space_lists_the_two_default_agents_as_prompts(self):
         got = roles.list_prompts(_FreshSpace(self.nodes))
         self.assertEqual([p["name"] for p in got["prompts"]],
-                         ["agent-curator", "agent-researcher", "agent-reviewer", "agent-steward"])
+                         ["agent-checker", "agent-maker"])
         # 고르는 화면의 부제는 one_liner(=mission)다.
         by_name = {p["name"]: p["description"] for p in got["prompts"]}
-        self.assertTrue(by_name["agent-steward"].startswith("Keep the graph honest"))
+        self.assertTrue(by_name["agent-maker"].startswith("Do the work in one context"))
 
     def test_get_prompt_hydrates_a_default_role(self):
-        got = roles.get_prompt("agent-reviewer", {}, _FreshSpace(self.nodes))
+        got = roles.get_prompt("agent-checker", {}, _FreshSpace(self.nodes))
         text = got["messages"][0]["content"]["text"]
-        self.assertTrue(got["description"].startswith("Check every claim"))
+        self.assertTrue(got["description"].startswith("Check finished work"))
         self.assertIn("disallowedTools: Edit, Write, NotebookEdit", text)
         self.assertIn("## Never", text)
-        self.assertIn("edit any node or document", text)
+        self.assertIn("edit any node, document or file", text)
 
 
 class RoleCheckAcceptsEveryPackRole(unittest.TestCase):

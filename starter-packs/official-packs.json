@@ -30,7 +30,7 @@
   {
     "file": "agents/default-agents.json",
     "title": "Default Agents",
-    "description": "The four roles every space starts with: a steward who keeps conventions, duplicates and topics honest and never deletes; a researcher whose work ends in a document, its concepts and an episode and who never takes the decision; a curator who takes documents in and proposes one topic each; and a reviewer who labels every claim cited, assumed or unsourced and never edits. Roles only: fill reads, gates and paths with your own.",
+    "description": "Two agents and four skills every space starts with. The Maker does the work in one loop and the Checker verifies it without the Maker's context; the know-how lives in skill nodes: keep the graph honest, research from measurement, curate documents, review claims. Add a skill, not an agent, when your space needs more. Fill reads, gates and paths with your own.",
     "dominantDomain": "agent",
     "license": "CC-BY-4.0"
   },
