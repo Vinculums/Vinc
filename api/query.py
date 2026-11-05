@@ -3731,7 +3731,7 @@ def retrieval_switches() -> dict:
     """노드 재채점과 brief 규칙의 **실제** 값. `/health` 가 늘 싣는다 — 운영 값은 저장소 변수에만
     있어서 밖에서 확인할 길이 없었다. ColBERT 는 설정이 on 이어도 numpy 가 없으면 꺼지므로
     환경변수가 아니라 :func:`vinc_rag.colbert.rescore_on` 을 읽는다.
-    근거: [[vinc.audit.rag-eval-traceability-2026-11-05]]"""
+    근거: [[vinc.canon.rag-production-state]]"""
     from vinc_rag import colbert as _colbert
     return {"VINC_NODE_COLBERT": "on" if _colbert.rescore_on() else "off",
             "VINC_BRIEF_RULE": _brief_rule()}
@@ -4653,7 +4653,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         if configured != "production" and not (v3 or learned):
             # 학습 규칙이 설정돼 있어도 재채점이 안 된 질의는 기존 규칙이 답한다. 그 사실을 답에 싣는다:
             # 없으면 평가도 사람도 어느 규칙의 답인지 가를 수 없다(토큰이 빠진 노드 하나로도 재채점이 빠진다).
-            # 근거: [[vinc.audit.rag-eval-traceability-2026-11-05]]
+            # 근거: [[vinc.canon.rag-production-state]]
             _rs = res.get("node_rescore") or {}
             base["resolution"] = {"rule": "production", "configured": configured,
                                   "rescore": _rs.get("state") or "missing"}
