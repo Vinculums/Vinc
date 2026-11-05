@@ -32,16 +32,16 @@ test("one layout remains and every saved layout folds into time branches", () =>
   const saved = new Map();
   globalThis.localStorage = { getItem: k => saved.get(k) ?? null, setItem: (k, v) => saved.set(k, v) };
   try {
-    // 첫 그림(판 4): 3D · 시간순 가지 · 선 상시 · 범례는 관계 선만.
+    // 첫 그림(판 4): 나침반 · 시간순 가지 · 선 상시 · 범례는 관계 선만.
     assert.deepEqual([loadPrefs().view, loadPrefs().layout, loadPrefs().edges, loadPrefs().edgeOff],
-      ["3d", "temporalRoots", "always", ["directed", "cross", "bridge"]]);
+      ["compass", "temporalRoots", "always", ["directed", "cross", "bridge"]]);
     assert.deepEqual(LAYOUTS, ["temporalRoots"]);
     assert.equal(serverLayoutFor("temporalRoots"), "hub");
     assert.equal(isRootsLayout(loadPrefs().layout), true);
-    // 보기는 3D 하나다 — 저장된 옛 관점은 3D 로 접힌다. 2D 전용이던 선 `focus` 는 `none` 이다.
-    for (const view of ["2d", "timeline", "bundle"]) {
+    // 보기는 나침반 하나다: 저장된 다른 관점(3d 포함)은 나침반으로 읽는다. 2D 전용이던 선 `focus` 는 `none` 이다.
+    for (const view of ["3d", "2d", "timeline", "bundle"]) {
       saved.set("vinc.view.prefs", JSON.stringify({ view, edges: "focus", pv: 4 }));
-      assert.deepEqual([loadPrefs().view, loadPrefs().edges], ["3d", "none"]);
+      assert.deepEqual([loadPrefs().view, loadPrefs().edges], ["compass", "none"]);
     }
     // 저장된 배치는 무엇이든(걷은 `hub`, 0.9.7 의 `rank`·`rankedRoots`, 그 전 이름, 모르는 값) 시간순 가지다.
     for (const retired of ["hub", "rank", "rankedRoots", "radial", "dendro", "toString", "unknown"]) {
@@ -60,7 +60,7 @@ test("one layout remains and every saved layout folds into time branches", () =>
     saved.set("vinc.view.prefs", JSON.stringify({ view: "2d", layout: "hub", edges: "none", edgeOff: [],
       nodeScale: 1.4, pv: 3 }));
     assert.deepEqual([loadPrefs().view, loadPrefs().layout, loadPrefs().edges, loadPrefs().edgeOff, loadPrefs().nodeScale],
-      ["3d", "temporalRoots", "always", ["directed", "cross", "bridge"], 1.4]);
+      ["compass", "temporalRoots", "always", ["directed", "cross", "bridge"], 1.4]);
     savePrefs({ ...loadPrefs(), edges: "particles", edgeOff: [] });
     assert.equal(JSON.parse(saved.get("vinc.view.prefs")).pv, 4);
     assert.deepEqual([loadPrefs().edges, loadPrefs().edgeOff], ["particles", []], "a choice made after the move stays");

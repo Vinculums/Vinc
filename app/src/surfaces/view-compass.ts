@@ -7,6 +7,8 @@
  *  붙은 것 = 줄기와 가지(꺾이는 곳은 둥글게). 다른 주제의 노드에는 가운데 주제 색의 초승달, 다리는 잇는 주제마다 한 조각인 갈래 고리.
  *  길·찾기·기간·종류·고정·읽는 법은 LNB 의 칸(side)에 선다(기간 밖은 흐리게, 끈 종류는 뺀다). 고정은 이 기기에만 저장한다.
  *  SVG 하나라 GPU 가 없어도 된다. 한 번에 그리는 것은 펼친 층의 이웃뿐이다. */
+import { COPY } from "../copy";
+import { esc as escHtml } from "../components";
 import { tintPlan } from "../view-tint";
 import { topicJewels } from "../theme";
 
@@ -37,19 +39,21 @@ export function compassDataFrom(nodes: any[], edges: any[]): CompassData {
 /** 고정 핀(압정). 45° 기운 머리 · 목 · 깃 · 바늘. 채움은 currentColor 라 놓인 자리의 색을 따른다. */
 const PIN_PATHS = `<g transform="rotate(45 12 12)"><rect x="7.2" y="1.6" width="9.6" height="4" rx="2" fill="currentColor"/><path d="M9.3 5.4h5.4v3.9l3.4 3.9H5.9l3.4-3.9z" fill="currentColor"/><path d="M12 13.2V21.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></g>`;
 const pinIcon = (s = 14) => `<svg class="pin-ic" viewBox="0 0 24 24" width="${s}" height="${s}" aria-hidden="true">${PIN_PATHS}</svg>`;
-const CMP_HTML = `<div class="cmp-stage"><svg class="g" id="cmp-g" role="group" aria-label="나침반 렌즈"></svg><div id="cmp-pins"><svg class="pl" aria-hidden="true"></svg><div class="pcs"></div></div></div><div id="cmp-menu" role="menu" hidden></div><div id="cmp-tip"></div>`;
+const CMP_HTML = () => `<div class="cmp-stage"><svg class="g" id="cmp-g" role="group" aria-label="${escHtml(COPY.ui.compass.lens)}"></svg><div id="cmp-pins"><svg class="pl" aria-hidden="true"></svg><div class="pcs"></div></div></div><div id="cmp-menu" role="menu" hidden></div><div id="cmp-tip"></div>`;
 /** LNB 맨 위의 검색 칸(topbar.ts, setSearchFilter) · 시간 · 범례의 종류가 한 거르개다: 함께 건 결과가 나침반과 LNB 트리(lnb.ts
  *  setLnbGraphSource)에 같이 나온다. LNB 에는 고정 판만 서고, 시간과 범례는 머리의 "그래프" 글자 오른쪽 버튼이 여는 창이다. */
 const SIDE_HTML = `<div class="cmp-sec" id="cmp-dock" hidden></div>`;
-const TOOLS_HTML = `<button class="cmp-tbtn" type="button" data-pop="time" aria-haspopup="dialog" aria-expanded="false">시간</button><button class="cmp-tbtn" type="button" data-pop="legend" aria-haspopup="dialog" aria-expanded="false">범례</button><button class="cmp-tbtn" type="button" data-all aria-pressed="false">전체</button>`;
+const TOOLS_HTML = () => `<button class="cmp-tbtn" type="button" data-pop="time" aria-haspopup="dialog" aria-expanded="false">${escHtml(COPY.ui.compass.time)}</button><button class="cmp-tbtn" type="button" data-pop="legend" aria-haspopup="dialog" aria-expanded="false">${escHtml(COPY.ui.compass.legend)}</button><button class="cmp-tbtn" type="button" data-all aria-pressed="false">${escHtml(COPY.ui.compass.all)}</button>`;
 
+const C0 = () => COPY.ui.compass;
 export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassCtx = {}): CompassHandle {
+  const C = C0();
   const AC = new AbortController();
   const onWin = (t, f, o) => window.addEventListener(t, f, { ...(typeof o === "object" ? o : { capture: !!o }), signal: AC.signal });
-  host.innerHTML = `<div class="cmp">${CMP_HTML}</div>`;
+  host.innerHTML = `<div class="cmp">${CMP_HTML()}</div>`;
   const root = host.querySelector(".cmp");
   const side = document.createElement("div"); side.className = "cmp-side"; side.innerHTML = SIDE_HTML;
-  const tools = document.createElement("span"); tools.className = "cmp-tools"; tools.innerHTML = TOOLS_HTML;
+  const tools = document.createElement("span"); tools.className = "cmp-tools"; tools.innerHTML = TOOLS_HTML();
   const pop = document.createElement("div"); pop.className = "cmp-side cmp-pop"; pop.setAttribute("role", "dialog"); pop.hidden = true; document.body.append(pop);
   const $id = (k) => { const sel = k === "g" ? "#cmp-g" : `#cmp-${k.replace(/^cmp-/, "")}`; return root.querySelector(sel) || side.querySelector(sel) || pop.querySelector(sel); };
 
@@ -78,7 +82,7 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
     return ['concept', 'doc', 'bridge'].includes(n.k) ? s.replace(/^([^:]{3,40}):.*$/, '$1') : s; };
   const short = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
   const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-  const KIND = { concept: '개념', doc: '문서', decision: '결정', record: '기록', episode: '사건', bridge: '다리', topic: '주제' };
+  const KIND = COPY.ui.compass.kinds;
 
   // ── 모양·빛살·표(문법) ─────────────────────────────────────────────────────────────────────
   const GAP = 4, P = (pts) => pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
@@ -119,24 +123,24 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
     const up = [], left = [], right = [], bridges = [], shelf = { decision: [], record: [], episode: [], doc: [] };
     if (c.k === 'topic') {
       const parent = c.path.includes('/') ? topics.get(c.path.split('/').slice(0, -1).join('/')) : null;
-      if (parent) up.push({ n: parent, rel: '위 주제', main: true });
+      if (parent) up.push({ n: parent, rel: C.rel.parentTopic, main: true });
       const childOf = (d) => (d && d.startsWith(c.path + '/') ? `${c.path}/${d.slice(c.path.length + 1).split('/')[0]}` : null);
       // 다리: 잇는 끝이 이 주제의 하위 주제 둘 이상이면 오른쪽 하위 주제 사이로, 아니면 왼쪽 개념 부채에
       for (const n of c.direct.filter(isMean)) {
         if (n.k === 'bridge') { const subs = [...new Set(bridgeEnds(n).map((m) => childOf(m.d)).filter(Boolean))]; if (subs.length >= 1) { bridges.push({ n, subs, outside: bridgeEnds(n).some((m) => !childOf(m.d)) }); continue; } }
-        left.push({ n, rel: '속한 개념' });
+        left.push({ n, rel: C.rel.concept });
       }
       left.sort((a, b) => b.n.m - a.n.m || b.n.g - a.n.g);
       for (const n of c.direct.filter((x) => !isMean(x))) (shelf[n.k] || shelf.record).push(n);
-      for (const p of [...c.sub].sort((a, b) => topics.get(b).count - topics.get(a).count)) right.push({ n: topics.get(p), rel: '하위 주제' });
+      for (const p of [...c.sub].sort((a, b) => topics.get(b).count - topics.get(a).count)) right.push({ n: topics.get(p), rel: C.rel.subtopic });
     } else {
-      up.push({ n: topics.get(c.d || 'vinc'), rel: '주제', main: true });
+      up.push({ n: topics.get(c.d || 'vinc'), rel: C.rel.topic, main: true });
       for (const e of adj.get(c.id)) {
         const o = e.a === c ? e.b : e.a, out = e.a === c;
-        if (ATTACH.has(e.t)) { if (out) up.push({ n: o, rel: '붙은 곳', e }); else (shelf[o.k] || shelf.record).push(o); continue; }
-        if (e.t === 'SUPERSEDES') { (out ? right : up).push({ n: o, rel: out ? '대체한 옛것' : '대체한 새것', e }); continue; }
-        if (e.t === 'DERIVES_FROM' || e.t === 'INHERITS_FROM') { (out ? up : right).push({ n: o, rel: e.t === 'DERIVES_FROM' ? (out ? '원천' : '여기서 나옴') : (out ? '부모' : '물려받은 것'), e }); continue; }
-        if (e.t === 'PREREQUISITE_OF') { (out ? right : up).push({ n: o, rel: out ? '뒤의 것' : '앞선 것', e }); continue; }
+        if (ATTACH.has(e.t)) { if (out) up.push({ n: o, rel: C.rel.attachedTo, e }); else (shelf[o.k] || shelf.record).push(o); continue; }
+        if (e.t === 'SUPERSEDES') { (out ? right : up).push({ n: o, rel: out ? C.rel.replacedOld : C.rel.replacedNew, e }); continue; }
+        if (e.t === 'DERIVES_FROM' || e.t === 'INHERITS_FROM') { (out ? up : right).push({ n: o, rel: e.t === 'DERIVES_FROM' ? (out ? C.rel.source : C.rel.derived) : (out ? C.rel.parent : C.rel.inherited), e }); continue; }
+        if (e.t === 'PREREQUISITE_OF') { (out ? right : up).push({ n: o, rel: out ? C.rel.next : C.rel.prev, e }); continue; }
         left.push({ n: o, rel: e.t, e });
       }
       left.sort((a, b) => (b.n.m || 0) - (a.n.m || 0));
@@ -294,7 +298,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
         for (let k = 0; k < 16 && busy(); k++) { if (r - 26 > hub.r + 60) r -= 26; else a += .14; }
         if (kids.has(b.n.id)) { if (queued.has(b.n.id)) continue; queued.add(b.n.id); comp.slots.set(b.n.id, { ang: a, r }); queue.push({ node: b.n, parent: comp }); continue; }   // 다리를 눌렀으면 그 자리에서 다리의 나침반을 편다
         comp.items.push(mk(b.n, hub.x + Math.cos(a) * r, hub.y + Math.sin(a) * r, 8, { role: 'bridge', subs: b.subs.map((s) => `topic:${s}`), outside: b.outside, ang: a, level: i, comp: hub.id, chain })); }
-      const kinds = [['decision', '결정'], ['record', '기록'], ['episode', '사건'], ['doc', '문서']].filter(([k]) => G.shelf[k].length);
+      const kinds = [['decision', KIND.decision], ['record', KIND.record], ['episode', KIND.episode], ['doc', KIND.doc]].filter(([k]) => G.shelf[k].length);
       comp.kinds = kinds.map(([k, name]) => ({ k, name, all: G.shelf[k] }));
       if (!focus && kinds.length && MODE !== 'all') { const a = rad(th12 + 180), r = hub.r + 46;
         comp.stub = { x: hub.x + Math.cos(a) * r, y: hub.y + Math.sin(a) * r, text: kinds.map(([k, name]) => `${name} ${G.shelf[k].length}`).join(' · '), ang: a }; }
@@ -376,12 +380,12 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
     // 고정한 노드(그래프 안의 제자리에 박힌 것): 지금 펼친 노드 가운데 이어진 것으로 빛살을 긋는다
     for (const pn of L.pinned || []) { if (pn.role !== 'pin') continue;
       for (const e of adj.get(pn.id) || []) { const t = at.get((e.a.id === pn.id ? e.b : e.a).id); if (t && t !== pn) drawRay(pn, t, e, 1.6, .6, 'pinray'); } }
-    for (const st of L.sets) for (const s of st.shelves) deco += `<text class="head" x="${s.x + 14}" y="${st.BY + 30}">${s.name} ${s.all.length}${s.all.length > s.items.length ? ` <tspan class="badge">최근 ${s.items.length}</tspan>` : ''}</text>` + (s.all.length > s.items.length ? `<text class="more-btn" data-more="${esc(st.hub.id)}|${s.k}" x="${s.x + 26}" y="${st.BY + 46 + s.items.length * 17 + 14}">그 밖에 ${s.all.length - s.items.length} · 20개 더</text>` : '');
+    for (const st of L.sets) for (const s of st.shelves) deco += `<text class="head" x="${s.x + 14}" y="${st.BY + 30}">${s.name} ${s.all.length}${s.all.length > s.items.length ? ` <tspan class="badge">${esc(C.recent(s.items.length))}</tspan>` : ''}</text>` + (s.all.length > s.items.length ? `<text class="more-btn" data-more="${esc(st.hub.id)}|${s.k}" x="${s.x + 26}" y="${st.BY + 46 + s.items.length * 17 + 14}">${esc(C.more(s.all.length - s.items.length))}</text>` : '');
     const rot = (o, pad, cls, n) => { const dg = todeg(o.ang), flip = Math.cos(o.ang) < 0, rr = flip ? dg + 180 : dg, ox = Math.cos(o.ang) * (o.r + pad), oy = Math.sin(o.ang) * (o.r + pad);
       return `<text class="${cls}" x="${ox.toFixed(1)}" y="${oy.toFixed(1)}" dy="4" text-anchor="${flip ? 'end' : 'start'}" transform="rotate(${rr.toFixed(1)} ${ox.toFixed(1)} ${oy.toFixed(1)})">${esc(short(o.label, n))}</text>`; };
     const lbl = (o) => {
       if (o.role === 'hub') { const a = o.parentHub ? Math.atan2(o.y - o.parentHub.y, o.x - o.parentHub.x) : rad(135), dx = Math.cos(a + Math.PI / 2), dy = Math.sin(a + Math.PI / 2);
-        return o.k === 'topic' ? `<text class="hub" x="0" y="${o.r + 20}" text-anchor="middle">${esc(short(o.label, 28))}</text><text class="badge" x="0" y="${o.r + 34}" text-anchor="middle">주제 · ${o.src.count}</text>` : `<text class="hub" x="${(-o.r * .7 - 8)}" y="${o.r + 16}" text-anchor="end">${esc(short(o.label, 28))}${o.k === 'topic' ? `<tspan class="badge" dx="6">주제 · ${o.src.count}</tspan>` : ''}</text>`; }
+        return o.k === 'topic' ? `<text class="hub" x="0" y="${o.r + 20}" text-anchor="middle">${esc(short(o.label, 28))}</text><text class="badge" x="0" y="${o.r + 34}" text-anchor="middle">${esc(C.topicCount(o.src.count))}</text>` : `<text class="hub" x="${(-o.r * .7 - 8)}" y="${o.r + 16}" text-anchor="end">${esc(short(o.label, 28))}${o.k === 'topic' ? `<tspan class="badge" dx="6">${esc(C.topicCount(o.src.count))}</tspan>` : ''}</text>`; }
       if (o.ring) { const cx2 = Math.cos(o.ang), sy = Math.sin(o.ang), x = cx2 * (o.r + 7), y = sy * (o.r + 7) + 4 + (Math.abs(cx2) < .35 ? (sy > 0 ? 10 : -6) : 0);
         return `<text class="l1" x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${cx2 > .35 ? 'start' : cx2 < -.35 ? 'end' : 'middle'}">${esc(short(o.label, 18))}<tspan class="badge" dx="5">${o.src.count}</tspan></text>`; }
       if (o.role === 'right' && o.k === 'topic') { const flip = Math.cos(o.ang) < 0; return `<text class="l1" x="${flip ? -(o.r + 7) : o.r + 7}" y="4" text-anchor="${flip ? 'end' : 'start'}">${esc(short(o.label, 18))}<tspan class="badge" dx="5">${o.src.count}</tspan></text>`; }
@@ -407,7 +411,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
     const body = (o) => o.k === 'bridge' ? junction(o) : crescent(o) + (o.k === 'topic' ? ringS(o.r, o.role === 'hub' || fresh(o.src) ? o.c : mix(o.c, 70), o.role === 'hub' ? 2.6 : 2)
       : shape(o.k, 0, 0, o.r, o.src.vu ? o.c : fresh(o.src) ? o.c : mix(o.c, 55), !!o.src.vu)) + '';
     const compOf = new Map(L.comps.map((c) => [c.hub.id, c]));
-    const filtTag = (o) => { const f = FILT.get(o.id); return o.role === 'hub' && f ? `<text class="badge ftag" x="0" y="${-o.r - 9}" text-anchor="middle">${[...f].map((k) => GROUPS.find((g) => g[0] === k)[1]).join(' · ')}만</text>` : ''; };
+    const filtTag = (o) => { const f = FILT.get(o.id); return o.role === 'hub' && f ? `<text class="badge ftag" x="0" y="${-o.r - 9}" text-anchor="middle">${[...f].map((k) => GROUPS.find((g) => g[0] === k)[1]).join(' · ')}${esc(C.only)}</text>` : ''; };
     for (const o of L.items) { const oc = o.role === 'hub' ? compOf.get(o.id) : compOf.get(o.comp), far = oc && oc.far && o.role !== 'hub' ? ' far' : '', cur = o.role === 'hub' && oc === F ? ' sel' : o.role === 'hub' && path.some((n) => n.id === o.id) ? ' onpath' : '';
       nodesS += `<g class="node${far}${cur}" data-id="${esc(o.id)}" data-role="${o.role}" data-chain="${esc((o.role === 'hub' ? (compOf.get(o.id)?.chain || []) : (o.chain || [])).map((n) => n.id).join('|'))}" data-level="${o.level}" tabindex="0" role="button" aria-label="${esc((KIND[o.k] || o.k) + ' ' + o.label)}" style="transform: translate(${o.x}px, ${o.y}px)"><circle class="ring" r="${o.r + 4.5}"/><circle class="hit" r="${o.r + 5}" fill="transparent"/>${body(o)}${lbl(o)}${filtTag(o)}</g>`; }
     svg.innerHTML = `<defs>${defs}</defs><g id="cmp-deco">${deco}</g><g id="cmp-rays">${rays}</g><g id="cmp-tree"></g><g id="cmp-nodes">${nodesS}</g>`;
@@ -517,7 +521,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
   function navUI() { const tr = $id('trail'); if (!tr) return;
     $id('trail').innerHTML = path.map((n, i) => `<button data-level="${i}" class="${i === path.length - 1 ? 'cur' : ''}" title="${esc(n.t || n.path || n.id)}">${n.k === 'topic' ? '▦ ' : ''}${esc(short(titleOf(n), 26))}</button>`).join('<span>›</span>'); }
   // 누르면 바로 펼치지 않고 무엇을 넓힐지 묻는다(Neo4j·Palantir 의 '관계 종류별로 넓히기'). 갈래마다 수가 붙고, 0 인 갈래는 흐리다
-  const GROUPS = [['all', '모두'], ['left', '뜻의 관계'], ['up', '어디서 왔나'], ['right', '나온 것·하위 주제'], ['shelf', '붙은 결정·기록·사건']];
+  const GROUPS = [['all', C.groups.all], ['left', C.groups.left], ['up', C.groups.up], ['right', C.groups.right], ['shelf', C.groups.shelf]];
   function countsOf(n, parentId) { const G = gather(n), not = (l) => l.filter((u) => u.n.id !== parentId && (u.n.k === 'topic' || inRange(u.n))).length;
     return { up: not(G.up), left: not(G.left), right: not(G.right) + G.bridges.length, shelf: Object.values(G.shelf).reduce((s, l) => s + l.filter(inRange).length, 0) }; }
   const menu = $id('menu');
@@ -526,7 +530,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
     const c = countsOf(n, parentId), tot = c.up + c.left + c.right + c.shelf, cur = FILT.get(n.id);
     menu.innerHTML = `<div class="mh">${esc(short(titleOf(n), 40))}<small>${KIND[n.k] || n.k}</small></div>` + GROUPS.map(([k, name]) => {
       const v = k === 'all' ? tot : c[k], on = cur ? (k !== 'all' && cur.has(k)) : k === 'all';
-      return `<button class="mi${on ? ' on' : ''}" data-g="${k}" ${v ? '' : 'disabled'}><span>${name}</span><b>${v}</b></button>`; }).join('') + `<button class="mi pin" data-pin="1"><span>${PINS.has(n.id) ? '고정 풀기' : '고정하기'}</span><b class="pin-b">${pinIcon(16)}</b></button>`;
+      return `<button class="mi${on ? ' on' : ''}" data-g="${k}" ${v ? '' : 'disabled'}><span>${name}</span><b>${v}</b></button>`; }).join('') + `<button class="mi pin" data-pin="1"><span>${PINS.has(n.id) ? esc(C.unpin) : esc(C.pin)}</span><b class="pin-b">${pinIcon(16)}</b></button>`;
     const r = root.getBoundingClientRect(); menu.style.left = `${Math.min(e.clientX + 10, innerWidth - 260)}px`; menu.style.top = `${Math.min(e.clientY + 10, innerHeight - 260)}px`; menu.hidden = false;
     menu.onclick = (ev) => { if (ev.target.closest('[data-pin]')) { togglePin(n.id); menu.hidden = true; return; } const b = ev.target.closest('[data-g]'); if (!b || b.disabled) return; const k = b.dataset.g;
       if (k === 'all') FILT.delete(n.id); else { const s = ev.shiftKey && FILT.get(n.id) ? new Set(FILT.get(n.id)) : new Set(); s.has(k) && ev.shiftKey ? s.delete(k) : s.add(k); FILT.set(n.id, s); }
@@ -573,7 +577,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
   // ── 기간과 종류(옵션·범례가 다룬다): 기간 밖의 노드는 흐리게, 범례에서 끈 종류는 렌즈에서 뺀다 ─────────────────────
   let TSEL = null;   // [시작, 끝] 날짜. 없으면 전체
   const dated = nodes.filter((n) => when(n));
-  const allDays = (() => { const ds = dated.map(when).sort(); if (!ds.length) return ['이전']; const lo = ds[Math.floor(ds.length * .005)], out = ['이전'];
+  const allDays = (() => { const ds = dated.map(when).sort(); if (!ds.length) return [C.before]; const lo = ds[Math.floor(ds.length * .005)], out = [C.before];
     for (let x = Date.parse(lo); x <= Date.parse(ds[ds.length - 1]); x += 864e5) out.push(new Date(x).toISOString().slice(0, 10)); return out; })();
   const dIdx0 = new Map(allDays.map((d, i) => [d, i])), dIdx = { get: (d) => dIdx0.get(d) ?? (d && d < allDays[1] ? 0 : undefined) };
   function dimLens() { const sel = TSEL; for (const g of svg.querySelectorAll('#cmp-nodes .node')) { const n = byAny(g.dataset.id), w = n && n.k !== 'topic' ? when(n) : '';
@@ -637,8 +641,8 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
   function drawDock() {
     dock.hidden = !PINS.size; if (!PINS.size) return;
     const here = new Set(LZ ? LZ.items.map((o) => o.id) : []);
-    dock.innerHTML = `<div class="cmp-sec-h cmp-pinh">${pinIcon(14)}고정 ${PINS.size}</div>` + [...PINS].map((id) => { const n = byAny(id), ln = [...linkedTo(id)].filter((x) => here.has(x)).length;
-      return `<div class="pi" data-id="${esc(id)}"><button class="pg" data-id="${esc(id)}" title="${esc(n.t || n.path || id)}"><svg viewBox="-7 -7 14 14">${n.k === 'topic' ? `<circle r="5" fill="none" style="stroke:${colv(n)}" stroke-width="1.8" stroke-dasharray="2 1.4"/>` : shape(n.k, 0, 0, 5, colv(n), !!n.vu)}</svg><span>${esc(short(titleOf(n), 34))}</span>${ln ? `<em>${ln}</em>` : ''}</button><button class="px" data-x="${esc(id)}" aria-label="고정 풀기">✕</button></div>`; }).join('');
+    dock.innerHTML = `<div class="cmp-sec-h cmp-pinh">${pinIcon(14)}${esc(C.pinned(PINS.size))}</div>` + [...PINS].map((id) => { const n = byAny(id), ln = [...linkedTo(id)].filter((x) => here.has(x)).length;
+      return `<div class="pi" data-id="${esc(id)}"><button class="pg" data-id="${esc(id)}" title="${esc(n.t || n.path || id)}"><svg viewBox="-7 -7 14 14">${n.k === 'topic' ? `<circle r="5" fill="none" style="stroke:${colv(n)}" stroke-width="1.8" stroke-dasharray="2 1.4"/>` : shape(n.k, 0, 0, 5, colv(n), !!n.vu)}</svg><span>${esc(short(titleOf(n), 34))}</span>${ln ? `<em>${ln}</em>` : ''}</button><button class="px" data-x="${esc(id)}" aria-label="${esc(C.unpin)}">✕</button></div>`; }).join('');
   }
   function markPins() { if (!LZ) return; const lk = new Map(); for (const id of PINS) for (const x of linkedTo(id)) lk.set(x, (lk.get(x) || 0) + 1);
     for (const g of svg.querySelectorAll('#cmp-nodes .node')) { g.querySelector('.pinmark')?.remove(); g.classList.toggle('pinned', PINS.has(g.dataset.id)); const o = LZ.items.find((q) => q.id === g.dataset.id); if (!o) continue;
@@ -662,7 +666,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
 
   setPath(ctx.startPath ? ctx.startPath.map(byAny).filter(Boolean) : [topics.get('vinc')]);
   // ── 렌즈 패널: 옵션(기간)과 범례(종류는 누르면 끄고 켠다 = 범례가 곧 필터) ────────────────────────────────
-  const KLABEL = { concept: "개념", doc: "문서", decision: "결정", record: "기록", episode: "사건", bridge: "다리" };
+  const KLABEL = COPY.ui.compass.kinds;
   const countKinds = () => { const c = {}; if (LZ) for (const o of LZ.items) if (o.src && o.k !== "topic" && o.role !== "hub") { const k = kindKey(o.src); c[k] = (c[k] || 0) + 1; } return c; };
   function barsSVG() {
     const W = 300, H = 64, padB = 14, bw = W / allDays.length, cnt = allDays.map(() => 0); for (const n of dated) { const i = dIdx.get(when(n)); if (i != null) cnt[i]++; }
@@ -680,17 +684,17 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
   const legendHTML2 = () => {
     const areas = [...AREA_COL].map(([a, col]) => `<span class="cmp-sw"><i style="background:${col}"></i>${a.split("/").pop()}</span>`).join("");
     const row = (art, name) => `<div class="cmp-lr"><svg viewBox="0 0 44 16" aria-hidden="true">${art}</svg><span>${name}</span></div>`;
-    return `${row(mark("topic").replace('class="cmp-mk"', 'x="14" width="16"'), "주제", "")}
-      ${row(`<path d="M2 6.6L42 7.6L42 8.4L2 9.4Z" fill="currentColor"/>`, "뜻의 관계", "")}
-      ${row(`<path d="M2 7.4H42" stroke="currentColor" stroke-width="1.4"/><path d="M19 4L23 8L19 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`, "앞섬 · 나옴 · 물려받음", "")}
-      ${row(`<path d="M4 2V10Q4 14 8 14H40" fill="none" stroke="currentColor" stroke-width="2"/>`, "붙은 것", "")}
-      ${row(`<circle cx="22" cy="8" r="5" fill="currentColor"/><path d="M15.6 4.2A6.4 6.4 0 0 0 15.6 11.8" fill="none" stroke="currentColor" stroke-width="2"/>`, "다른 주제", "")}
-      ${row(`<path d="M17.8 3.8A6 6 0 0 1 26.2 3.8M26.2 12.2A6 6 0 0 1 17.8 12.2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="22" cy="8" r="2" fill="currentColor"/>`, "다리", "")}
+    return `${row(mark("topic").replace('class="cmp-mk"', 'x="14" width="16"'), esc(KIND.topic), "")}
+      ${row(`<path d="M2 6.6L42 7.6L42 8.4L2 9.4Z" fill="currentColor"/>`, esc(C.legendRows.meaning), "")}
+      ${row(`<path d="M2 7.4H42" stroke="currentColor" stroke-width="1.4"/><path d="M19 4L23 8L19 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>`, esc(C.legendRows.order), "")}
+      ${row(`<path d="M4 2V10Q4 14 8 14H40" fill="none" stroke="currentColor" stroke-width="2"/>`, esc(C.legendRows.attached), "")}
+      ${row(`<circle cx="22" cy="8" r="5" fill="currentColor"/><path d="M15.6 4.2A6.4 6.4 0 0 0 15.6 11.8" fill="none" stroke="currentColor" stroke-width="2"/>`, esc(C.legendRows.otherTopic), "")}
+      ${row(`<path d="M17.8 3.8A6 6 0 0 1 26.2 3.8M26.2 12.2A6 6 0 0 1 17.8 12.2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="22" cy="8" r="2" fill="currentColor"/>`, esc(KIND.bridge), "")}
       <div class="cmp-sws">${areas}</div>`; };
   // ── 시간(시안의 시간 모달을 LNB 로): 위 = 날마다의 수(종류별로 쌓음, 끌어서 기간), 가운데 = 주제 × 기간 격자, 아래 = 고른 칸의 항목 ─────
   let TSCOPE = 'all', TCELL = null, LASTGRID = new Map(), TWIN = null; const OPENROW = new Set();   // TWIN = 좁을 때 보이는 마지막 칸(없으면 끝)
   const jewel = (i) => `#${topicJewels[themeMode()][i].toString(16).padStart(6, '0')}`;   // 토큰 값을 읽어 쓴다(글자로 박지 않는다)
-  const TK = () => [['decision', '결정', jewel(3)], ['record', '기록', jewel(1)], ['episode', '사건', jewel(0)], ['concept', '개념·문서', jewel(2)]];
+  const TK = () => [['decision', KIND.decision, jewel(3)], ['record', KIND.record, jewel(1)], ['episode', KIND.episode, jewel(0)], ['concept', C.conceptAndDoc, jewel(2)]];
   const tKind = (n) => (n.k === 'decision' || n.k === 'record' || n.k === 'episode' ? n.k : 'concept');
   function scopeNodes() { if (TSCOPE === 'all') return dated; const s = new Set(); if (LZ) for (const o of LZ.items) if (o.src && o.src.k !== 'topic' && o.role !== 'hub') s.add(o.src);
     if (LZ && LZ.focus) { const G = gather(LZ.focus.hub.src); for (const l of Object.values(G.shelf)) for (const n of l) s.add(n); } return [...s].filter((n) => when(n)); }
@@ -701,7 +705,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
     const i0 = TSEL ? (dIdx.get(TSEL[0]) ?? 0) : -1, i1 = TSEL ? (dIdx.get(TSEL[1]) ?? allDays.length - 1) : -1; let bars = '';
     allDays.forEach((d, i) => { let y = H - padB; const inR = !TSEL || (i >= i0 && i <= i1);
       for (const [k, , c] of K) { const h = sc(stack[i][k]); if (!h) continue; y -= h; bars += `<rect x="${(i * bw).toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(1, bw - .4).toFixed(1)}" height="${h.toFixed(1)}" style="fill:${c};opacity:${inR ? .9 : .22}"/>`; }
-      if (i === 0) bars += `<text x="0" y="${H - 2}">이전</text>`; else if (d.endsWith('-01') && i * bw > 22) bars += `<text x="${(i * bw + 1).toFixed(1)}" y="${H - 2}">${d.slice(5)}</text>`; });
+      if (i === 0) bars += `<text x="0" y="${H - 2}">${esc(C.before)}</text>`; else if (d.endsWith('-01') && i * bw > 22) bars += `<text x="${(i * bw + 1).toFixed(1)}" y="${H - 2}">${d.slice(5)}</text>`; });
     if (TSEL) bars += `<rect class="sel" x="${(i0 * bw).toFixed(1)}" y="1" width="${((i1 - i0 + 1) * bw).toFixed(1)}" height="${H - padB - 1}" rx="3"/>`;
     // 격자: 줄 = 영역(눌러서 하위 주제), 칸 = 기간(3주 이하면 날, 넘으면 주)
     const rows = ns.filter((n) => (!TSEL || (when(n) >= TSEL[0] && when(n) <= TSEL[1])) && matchQ(n) && !KOFF.has(kindKey(n)));
@@ -731,10 +735,10 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
           return `<button class="gc${on ? ' on' : ''}" data-cell="${esc(k)}|${i}" title="${l.length}" style="background:color-mix(in srgb, ${col} ${Math.round(a * 100)}%, var(--c-card))"></button>`; }).join('') + `<span class="gt">${tsum}</span></div>`; }
     const pick = TCELL && grid.get(TCELL.k)?.get(TCELL.c);
     const cnt = K.map(([k, name]) => `${name} ${rows.filter((n) => tKind(n) === k).length}`).join(' · '), undated = nodes.filter((n) => !when(n)).length;
-    const lab = TSEL ? `${TSEL[0] === '0000-01-01' ? '처음' : TSEL[0]} ~ ${TSEL[1]}` : `${allDays[1]} ~ ${allDays[allDays.length - 1]}`;
-    return `      <div class="cmp-seg">${[['7', '7일'], ['30', '30일'], ['all', '전체']].map(([k, l]) => `<button class="btn btn-sm" data-cmp-r="${k}">${l}</button>`).join('')}</div>
+    const lab = TSEL ? `${TSEL[0] === '0000-01-01' ? C.start : TSEL[0]} ~ ${TSEL[1]}` : `${allDays[1]} ~ ${allDays[allDays.length - 1]}`;
+    return `      <div class="cmp-seg">${[['7', C.days(7)], ['30', C.days(30)], ['all', C.all]].map(([k, l]) => `<button class="btn btn-sm" data-cmp-r="${k}">${l}</button>`).join('')}</div>
       <p class="cmp-range">${lab}</p>
-      <div class="cmp-tleg">${K.map(([k, name, c]) => `<span><i style="background:${c}"></i>${name} ${rows.filter((n) => tKind(n) === k).length}</span>`).join('')}${undated ? `<span title="고친 때만 있는 노드">날짜 없음 ${undated}</span>` : ''}</div>
+      <div class="cmp-tleg">${K.map(([k, name, c]) => `<span><i style="background:${c}"></i>${name} ${rows.filter((n) => tKind(n) === k).length}</span>`).join('')}${undated ? `<span title="${esc(C.undatedTip)}">${esc(C.undated(undated))}</span>` : ''}</div>
       <svg class="cmp-bars" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" data-bars>${bars}</svg>
       <div class="cmp-gnav"${hidden ? '' : ' hidden'}><span data-n="${ncol}" data-t="${total}"></span>${hidden ? `<button class="btn btn-sm" data-tw="-1" ${first <= 0 ? 'disabled' : ''}>◀</button><button class="btn btn-sm" data-tw="1" ${first + ncol >= total ? 'disabled' : ''}>▶</button>` : ''}</div>
       <div class="cmp-tg">${gh}</div>

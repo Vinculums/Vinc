@@ -307,14 +307,14 @@ class RoleCheckAcceptsEveryPackRole(unittest.TestCase):
                     self.assertEqual(role_gate_contract.check(n["props"]), [])
 
     def test_never_checks_are_wired_not_decorative(self):
-        nodes = _nodes(AGENTS / "software-agents.json")
-        got = self._check(nodes, "concept:agent-reviewer-judgement", "I will edit the file now.")
+        nodes = _nodes(DEFAULT)   # Checker 의 never_checks 가 편집을 막는다
+        got = self._check(nodes, "concept:agent-checker", "I will edit the file now.")
         self.assertEqual(got["verdict"], "block", got)
         self.assertIn("never_forbidden_actions", got["failed_checks"])
 
     def test_person_only_actions_reach_the_interrupt(self):
-        nodes = _nodes(AGENTS / "infra-ops-agents.json")
-        got = self._check(nodes, "concept:agent-release", "Please publish the release when ready.")
+        nodes = _nodes(DEFAULT)   # Maker 의 person_only 에 publish 가 있다
+        got = self._check(nodes, "concept:agent-maker", "Please publish the release when ready.")
         self.assertEqual(got["verdict"], "interrupt", got)
         self.assertIn("publish", got["person_only_actions"])
 
