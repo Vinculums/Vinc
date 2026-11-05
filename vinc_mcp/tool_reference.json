@@ -162,7 +162,7 @@
      "name": "role",
      "type": "string",
      "required": false,
-     "description": "Role slug (agent-dev-core) or exact concept:agent- id; omit to list."
+     "description": "Role slug (agent-maker) or exact concept:agent- id; omit to list."
     },
     {
      "name": "expected_hash",
@@ -219,7 +219,7 @@
      "name": "role",
      "type": "string",
      "required": true,
-     "description": "Role slug (agent-dev-core) or exact concept:agent- id."
+     "description": "Role slug (agent-maker) or exact concept:agent- id."
     },
     {
      "name": "format",
@@ -252,7 +252,7 @@
      "name": "role",
      "type": "string",
      "required": true,
-     "description": "Role slug (agent-dev-core) or exact concept:agent- id."
+     "description": "Role slug (agent-maker) or exact concept:agent- id."
     },
     {
      "name": "output",

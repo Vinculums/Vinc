@@ -817,7 +817,7 @@ body {
    LNB 맨 위 줄과 같은 식이라 두 카드의 컨트롤이 한 줄에 서고 아래 선이 이어진다.
    안쪽은 본문과 **한 칼럼**을 나눠 쓴다(`--page-col` · `--page-inset`). 본문 스크롤바만큼
    오른쪽을 같이 비워(`--sb-w`, topbar.ts) 두 칼럼의 세로선이 갈라지지 않게 한다.
-   근거: [[decision:the-desktop-shell-docks-search-and-the-view-switch-in-a-view-header-2026-10-23]] */
+   근거: [[decision:documents-and-graph-share-one-lnb-tree-2026-11-06]] */
 #topbar {
   height: var(--head-h); box-sizing: border-box;
   padding: var(--space-2, .5rem) var(--sb-w, 0px) var(--space-2, .5rem) 0;

@@ -5,7 +5,7 @@
   돌린다. 여기서는 `lnb.ts` 가 그 규칙을 쓰는지, 펼침을 저장하지 않는지 잠근다.
 - 줄 클릭이 지도까지 바꾸던 것(이름 = 주제 고르기)을 줄 끝 버튼으로 옮겼다. 줄 클릭이
   다시 `pickTopic` 을 부르면 "안을 보려고" 누른 사람의 지도가 재배치된다.
-근거: [[decision:the-document-tree-opens-three-levels-and-a-row-click-only-folds-2026-09-26]]
+근거: [[decision:documents-and-graph-share-one-lnb-tree-2026-11-06]]
 
 앱에는 JS 테스트 러너가 없어 소스에서 잠근다.
 """

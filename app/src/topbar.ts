@@ -16,8 +16,8 @@ import { mountDocOptions } from "./doc-options";
  *  범위를 여기서 칠한다. 뒤는 검색, 문서 | 그래프 전환, 맨 끝에 보기 설정과 범례. 검색은 평소
  *  칸 하나로 접혀 있고 누르거나 ⌘/Ctrl K 를 치면 왼쪽으로 길게 펴진다. 맨 끝 버튼은 면마다
  *  내용이 다르다: 그래프는 View 의 렌즈(`#tb-lens`), 문서 면은 읽기 설정(doc-options.ts).
- *  근거: [[decision:the-view-header-ends-with-the-options-and-legend-of-the-current-surface-2026-10-28]]
- *  근거: [[decision:the-desktop-shell-docks-search-and-the-view-switch-in-a-view-header-2026-10-23]]
+ *  근거: [[decision:the-graph-is-one-2d-compass-lens-2026-11-06]]
+ *  근거: [[decision:documents-and-graph-share-one-lnb-tree-2026-11-06]]
  *  여기 살지 않는 것: 로고(타이틀바가 든다 — 웹에선 공홈 GNB),
  *  표면 목록과 주제·문서 목록(좌측 트리가 가져갔다 — D69), 지표(하단 상태 표시줄에 남는다).
  *

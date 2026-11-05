@@ -207,7 +207,7 @@
             "required": true,
             "schema": {
               "type": "string",
-              "description": "Role slug (agent-dev-core) or exact concept:agent- id; omit to list."
+              "description": "Role slug (agent-maker) or exact concept:agent- id; omit to list."
             }
           },
           {
@@ -285,7 +285,7 @@
             "required": true,
             "schema": {
               "type": "string",
-              "description": "Role slug (agent-dev-core) or exact concept:agent- id."
+              "description": "Role slug (agent-maker) or exact concept:agent- id."
             }
           },
           {
@@ -410,7 +410,7 @@
             "required": true,
             "schema": {
               "type": "string",
-              "description": "Role slug (agent-dev-core) or exact concept:agent- id."
+              "description": "Role slug (agent-maker) or exact concept:agent- id."
             }
           },
           {

@@ -25,17 +25,17 @@ vinc-pack-{도메인}.vincpack            산출물(zip 컨테이너, D55)
 
 ## agents/ — 기본·분야 Agent 팩 (2026-09-05)
 
-`agents/*.json` 은 역할(`concept:agent-*`, 주제 `agent`)만 담은 팩 다섯이다. 원고 폴더
-(`work/`)가 없고 **JSON 이 원천**이다 — 공식팩 행이 JSON 을 저장하고 팩이 작아서 zip 을 거칠
-이유가 없다. `packfile` 은 첫 바이트로 두 형식을 가르므로 검증·시딩 도구가 그대로 읽는다.
+`agents/*.json` 은 Agent 팩이다. 원고 폴더(`work/`)가 없고 **JSON 이 원천**이다: 공식팩 행이 JSON 을
+저장하고 팩이 작아서 zip 을 거칠 이유가 없다. `packfile` 은 첫 바이트로 두 형식을 가르므로 검증·시딩 도구가
+그대로 읽는다.
 
-| 파일 | 공식팩 제목 | 역할 |
+| 파일 | 공식팩 제목 | 담은 것 |
 |---|---|---|
-| `default-agents.json` | Default Agents | steward · researcher · curator · reviewer. **모든 새 스페이스에 자동 적재**된다(계정 백엔드가 첫 로그인·팀 생성 직후 이 공식팩 행을 읽어 `ingest-pack` 으로 넣는다) |
-| `software-agents.json` | Software Agents | developer · gate-runner · reviewer-checklist · reviewer-judgement · security |
-| `design-agents.json` | Design Agents | designer · design-reviewer · design-researcher |
-| `infra-ops-agents.json` | Infra and Ops Agents | infra · ops · release |
-| `copy-marketing-agents.json` | Copy and Marketing Agents | copy-writer · copy-owner · marketing |
+| `default-agents.json` | Default Agents | Maker · Checker 와 절차 넷. **모든 새 스페이스에 자동 적재**된다(계정 백엔드가 첫 로그인·팀 생성 직후 이 공식팩 행을 읽어 `ingest-pack` 으로 넣는다) |
+
+직함 역할 팩 넷(Software · Design · Infra and Ops · Copy and Marketing)은 2026-11-06 에 내렸다: 직함 역할은
+로스터에서 물러났고(decision:job-title-roles-retired-from-the-roster-2026-11-04), 그 팩을 설치하면 절차 없는 역할이
+들어와 Agent 화면에는 안 보이면서 MCP 로스터에는 살아 있는 상태가 됐다.
 
 규율: 영어만 · `reads`·`paths` 는 비워 둔다(사용자의 것) · `gates` 는 기본 검사 셋
 (`person_only`·`side_effect_evidence`·`handoff_manifest`)만 싣고, `never_checks` 는 `never`

@@ -67,8 +67,9 @@ def _all_nodes(p: Path) -> list[dict]:
 
 
 class PackContract(unittest.TestCase):
-    def test_five_packs_and_the_default_is_one_of_them(self):
-        self.assertEqual(len(PACKS), 5, [p.name for p in PACKS])
+    def test_one_pack_and_it_is_the_default(self):
+        """직함 역할 팩 넷은 내렸다(2026-11-06): 직함 역할이 로스터에서 물러났다."""
+        self.assertEqual(len(PACKS), 1, [p.name for p in PACKS])
         self.assertIn(DEFAULT, PACKS)
 
     def test_every_pack_passes_the_share_pack_validator(self):

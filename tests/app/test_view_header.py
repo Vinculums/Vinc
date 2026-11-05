@@ -8,8 +8,8 @@
 - 전환이 표면마다 다른 자리에 서면 누른 자리에서 손이 빗나간다.
 - 보기 설정과 범례는 캔버스 안이 아니라 머리 맨 끝 한 자리다. 그래프는 렌즈, 문서 면은 읽기 설정.
 
-근거: [[decision:the-desktop-shell-docks-search-and-the-view-switch-in-a-view-header-2026-10-23]]
-근거: [[decision:the-view-header-ends-with-the-options-and-legend-of-the-current-surface-2026-10-28]]
+근거: [[decision:documents-and-graph-share-one-lnb-tree-2026-11-06]]
+근거: [[decision:the-graph-is-one-2d-compass-lens-2026-11-06]]
 """
 from __future__ import annotations
 

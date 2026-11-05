@@ -832,7 +832,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     // 렌즈 버튼은 머리 맨 끝에 있어서 패널은 표면 밖의 버튼에 붙어야 한다. 표면 기준
     // absolute 로는 사이드바 폭 · 타이틀바 · 웹 GNB 만큼 어긋나므로, 좌표를 버튼의 실측
     // rect 에서 뽑아 fixed 로 놓는다. 그러면 세 스킨이 전부 저절로 맞는다.
-    // 근거: [[decision:the-view-header-ends-with-the-options-and-legend-of-the-current-surface-2026-10-28]]
+    // 근거: [[decision:the-graph-is-one-2d-compass-lens-2026-11-06]]
     const r = lensBtn?.getBoundingClientRect();
     if (!r) return;
     // 오른쪽 끝은 **패널 실측 폭**으로 잡는다 — 상수를 박으면 폭을 넓힐 때마다 다시
@@ -3684,7 +3684,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     // 전체 3D 화면에서는 **다시 읽지 않고 캔버스에서 고른다**: 카메라가 그 주제로 가고 그 항목과
     // 관계가 남고 나머지는 물러나며 결정에 라벨이 선다. 집합은 그대로다(파고들기가 아니다).
     // Agent 레일의 `set`(역할 주제로 좁히기)과, 고른 주제가 지금 읽기에 없을 때는 예전 길이다.
-    // 근거: [[decision:the-graph-whole-view-is-the-infra-layout-in-vinc-orbs-2026-10-28]]
+    // 근거: [[decision:the-graph-is-one-2d-compass-lens-2026-11-06]]
     if (!set && lv.kind === "l0" && g3 && !Array.isArray(path)) {
       const one = path;
       const next = add ? (canvasTopics.includes(one) ? canvasTopics.filter((d) => d !== one) : [...canvasTopics, one])

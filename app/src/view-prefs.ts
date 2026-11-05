@@ -15,7 +15,7 @@
 // 근거: [[decision:view-offers-two-layouts-by-centre-and-time-branches-2026-10-11]]
 /** 배치는 시간순 가지 하나다. 3D 전체 보기를 인프라 배치 하나로 정하면서 `중심에서`(hub) 선택지를
  *  걷었다. 서버가 주는 중심에서 좌표는 가지 배치가 오기 전의 자리 잡기로만 쓴다(`serverLayoutFor`).
- *  근거: [[decision:the-graph-whole-view-is-the-infra-layout-in-vinc-orbs-2026-10-28]] */
+ *  근거: [[decision:the-graph-is-one-2d-compass-lens-2026-11-06]] */
 type ViewLayout = "temporalRoots";
 export const LAYOUTS: ViewLayout[] = ["temporalRoots"];
 export const isRootsLayout = (layout: ViewLayout) => layout === "temporalRoots";
@@ -27,7 +27,7 @@ export const normalizeLayout = (_v: unknown): ViewLayout => "temporalRoots";
 /** 그래프 탭의 보기는 3D 전체 보기 하나다. 저장값이나 주소(`/as/<관점>`)에 남은 옛 관점
  *  (`2d`·`timeline`·`bundle`)은 `VIEWPOINTS.includes` 가 걸러 3D 로 접힌다. 주소 문법의
  *  `/as/` 칸은 MCP 서버의 파서와 나눠 쓰는 계약이라 그대로 둔다(`view-url.ts`).
- *  근거: [[decision:the-graph-whole-view-is-the-infra-layout-in-vinc-orbs-2026-10-28]] */
+ *  근거: [[decision:the-graph-is-one-2d-compass-lens-2026-11-06]] */
 /** 그래프 보기는 나침반(`compass`) 하나다: 가운데가 지금 보는 것인 렌즈(view-compass.ts). 옛 저장값(`3d` 등)은 여기로 접힌다. */
 export type Viewpoint = "compass";
 export const VIEWPOINTS: Viewpoint[] = ["compass"];

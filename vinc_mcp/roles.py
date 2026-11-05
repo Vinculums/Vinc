@@ -278,8 +278,11 @@ def render_shell(role: dict, *, compact: bool = False) -> str:
         "",
         _gate_bullets(props.get("gates")),
     ]
-    if props.get("test_command"):
-        body += ["", "Test command:", "", "```", props["test_command"], "```"]
+    tc = props.get("test_command")
+    if tc:
+        # 절차에서 옮겨 온 값은 출처별 사전({"dev-core": "…"})일 수 있다: 한 줄씩 "이름: 명령"으로 쓴다
+        lines = [f"{k}: {v}" for k, v in tc.items()] if isinstance(tc, dict) else [str(tc)]
+        body += ["", "Test command:", "", "```", *lines, "```"]
     if _procedure_lines(role):
         body += ["", "## Procedures", "", *_procedure_lines(role)]
     together = role.get("works_with") or {}
@@ -877,7 +880,7 @@ def get_prompt(name: str, arguments: dict | None, bridge,
                forced_owner: str | None = None) -> dict:
     """`prompts/get` — 역할 하나의 계약. 껍데기와 **같은 바이트**를 데이터 울타리에 넣는다.
 
-    이름은 역할 슬러그(`agent-dev-core`)라 id 는 `concept:` 을 붙여 얻는다. 접두사
+    이름은 역할 슬러그(`agent-maker`)라 id 는 `concept:` 을 붙여 얻는다. 접두사
     검사를 **브리지 호출보다 먼저** 한다 — 클라이언트가 준 문자열이 임의의 노드 id 로
     번역돼 조회로 나가는 자리를 아예 없앤다."""
     slug = str(name or "").strip()
