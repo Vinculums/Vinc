@@ -6,9 +6,9 @@
  *  기본은 **맨 위 주제 아래 영역(가장 상위 도메인)까지만** 보이게 편다: 1단계 주제 가운데 하위 주제가 있는 것만 연다
  *  (`vinc` ▾ → `design` ▸). 앱을 켤 때마다 이 기본에서 시작하고,
  *  세션 안에서 사용자가 접은 것은 다시 펴지 않는다.
- *  근거: [[decision:documents-and-graph-share-one-lnb-tree-2026-11-06]] (앞선 3단계 규칙을 대체) */
+ *  근거: [[decision:documents-and-graph-share-one-lnb-tree-2026-11-06]] */
 
-export const DEFAULT_OPEN_DEPTH = 1;   // 문서·그래프 트리 공통(2026-11-05 발주자 지시: 둘 다 영역까지만 펼친 채 시작)
+export const DEFAULT_OPEN_DEPTH = 1;   // 문서·그래프 트리 공통: 둘 다 영역까지만 펼친 채 시작한다
 
 export type PathNode = { path: string; kids: PathNode[] };
 

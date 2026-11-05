@@ -28,7 +28,7 @@ export const normalizeLayout = (_v: unknown): ViewLayout => "temporalRoots";
  *  (`2d`·`timeline`·`bundle`)은 `VIEWPOINTS.includes` 가 걸러 3D 로 접힌다. 주소 문법의
  *  `/as/` 칸은 MCP 서버의 파서와 나눠 쓰는 계약이라 그대로 둔다(`view-url.ts`).
  *  근거: [[decision:the-graph-is-one-2d-compass-lens-2026-11-06]] */
-/** 그래프 보기는 나침반(`compass`) 하나다: 가운데가 지금 보는 것인 렌즈(view-compass.ts). 옛 저장값(`3d` 등)은 여기로 접힌다. */
+/** 그래프 보기는 나침반(`compass`) 하나다: 가운데가 지금 보는 것인 렌즈(view-compass.ts). 저장값의 다른 이름(`3d` 등)도 여기로 읽는다. */
 export type Viewpoint = "compass";
 export const VIEWPOINTS: Viewpoint[] = ["compass"];
 
