@@ -21,6 +21,7 @@ import { buildAgentRoster, teamRank, setLnbActive, showAgentRail, type AgentRole
 import { announceRolesChanged, copyRolePrompt, openRoleComposer, TEAM_ROLES } from "../role-composer";
 import { loaderRows } from "../vinc-loaders.js";
 import { mountAgentWrites } from "../agent-writes";
+import { drawAgentMap, loadAgentMap, type MapData } from "./agent-map";
 
 /** 팀 안의 자리 순서 — 리드 · 조율 · 구성원(레일 목록과 같다). */
 const SEAT_RANK: Record<string, number> = { lead: 0, coordinator: 1 };
@@ -56,7 +57,13 @@ export async function renderAgentsBoard(el: HTMLElement, live: () => boolean): P
       return;
     }
     if (!live()) return;
-    draw(el, roles, () => void paint());
+    // Agent 에 절차가 있는 스페이스는 관계 지도가 기본 면이다. 직함 역할이 남았으면 지도 아래에서 펼친다.
+    // 근거: [[vinc.canon.terminology §3.2]]
+    let map: MapData | null = null;
+    try { map = await loadAgentMap(roles); } catch { map = null; }
+    if (!live()) return;
+    if (map) drawAgentMap(el, map, (host) => draw(host, map!.legacy, () => void paint()));
+    else draw(el, roles, () => void paint());
   };
   // 편집 면이나 이 보드가 저장하면 레일이 다시 읽고 이 신호를 낸다 — 보드도 그때 다시 그린다.
   // 떠난 보드의 구독은 **자기 자신만** 푼다. 공용 해제(leaveAgentsBoard)를 부르면, 그 사이 새로

@@ -3623,3 +3623,74 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 .aw-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; }
 .aw-go { border: none; background: none; padding: 0; font: inherit; color: hsl(var(--link)); cursor: pointer; text-align: left; }
 .aw-go:hover { text-decoration: underline; }
+
+/* Agent 관계 지도(surfaces/agent-map.ts). 지도는 왼쪽, 고른 항목은 오른쪽 칸, 아래에 같은 항목의 목록.
+   포인트 색은 테두리와 고른 표시에만 쓴다(채움이 아니다). 정책은 점선과 알약, 정책이 붙은 절차는 가운데 점. */
+.agent-map .am-stage { display: grid; grid-template-columns: minmax(0, 1fr) 20rem; gap: var(--space-4, 1rem); align-items: start; }
+@media (max-width: 960px) { .agent-map .am-stage { grid-template-columns: minmax(0, 1fr); } }
+.am-svg { width: 100%; height: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--card)); }
+.am-has { stroke: hsl(var(--border)); stroke-width: 1.2; }
+.am-gov { stroke: hsl(var(--muted-foreground) / .7); stroke-width: 1.2; stroke-dasharray: 4 4; }
+.am-ret { fill: none; stroke: hsl(var(--caption-foreground)); stroke-dasharray: 5 5; }
+.am-ret-t { fill: hsl(var(--caption-foreground)); font-size: 11px; }
+.am-node { cursor: pointer; outline: none; }
+.am-node text { fill: hsl(var(--foreground)); font-size: 11px; }
+.am-node circle { fill: hsl(var(--card)); stroke: hsl(var(--muted-foreground) / .8); stroke-width: 1.4; }
+.am-node:hover circle, .am-node:focus-visible circle { stroke: hsl(var(--point)); stroke-width: 2.4; }
+.am-node.is-sel circle { stroke: hsl(var(--point)); stroke-width: 3; }
+.am-agent circle { fill: hsl(var(--foreground)); stroke: hsl(var(--foreground)); }
+.am-agent text { font-size: 13px; font-weight: 600; }
+.am-mark { fill: hsl(var(--muted-foreground)) !important; stroke: none !important; pointer-events: none; }
+.am-pol rect { fill: hsl(var(--muted)); stroke: hsl(var(--muted-foreground) / .7); stroke-dasharray: 3 2; }
+.am-pol text { font-weight: 600; }
+.am-pol:hover rect, .am-pol:focus-visible rect, .am-pol.is-sel rect { stroke: hsl(var(--point)); stroke-dasharray: none; stroke-width: 2; }
+.am-side { display: flex; flex-direction: column; gap: var(--space-2, .5rem); padding: var(--space-4, 1rem);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--card)); min-width: 0; }
+.am-side h2 { margin: 0; font-size: 1rem; } .am-side h3 { margin: var(--space-2, .5rem) 0 0; font-size: .8125rem; color: hsl(var(--muted-foreground)); }
+.am-side p { margin: 0; font-size: .8125rem; line-height: 1.5; word-break: keep-all; overflow-wrap: anywhere; }
+.am-kind { color: hsl(var(--caption-foreground)); font-size: .75rem !important; font-weight: 600; }
+.am-chips { display: flex; flex-wrap: wrap; gap: .3rem; }
+.am-chip { display: inline-flex; align-items: center; height: 1.375rem; padding: 0 .5rem; border-radius: 999px;
+  border: 1px solid hsl(var(--border)); font: 500 .6875rem var(--font-mono); color: hsl(var(--foreground)); background: none; }
+.am-chip-pol { font-family: inherit; border-style: dashed; cursor: pointer; }
+.am-facts { margin: 0; padding-left: 1.1rem; font-size: .8125rem; }
+.am-acts { display: flex; flex-wrap: wrap; gap: var(--space-2, .5rem); margin-top: var(--space-2, .5rem); }
+.am-gov-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .25rem; }
+.am-gov-list li { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.am-link { background: none; border: 0; padding: 0; color: hsl(var(--foreground)); font: inherit; font-size: .8125rem; text-align: left; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.am-attach { display: flex; gap: .4rem; } .am-attach select { flex: 1; min-width: 0; }
+.am-list-h { margin: var(--space-5, 1.25rem) 0 var(--space-2, .5rem); font-size: 1rem; }
+.am-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: var(--space-4, 1rem); }
+.am-group h3 { margin: 0 0 .35rem; font-size: .8125rem; color: hsl(var(--muted-foreground)); }
+.am-group ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .2rem; }
+.am-row { width: 100%; display: flex; justify-content: space-between; gap: .5rem; padding: .4rem .55rem; text-align: left;
+  border: 1px solid transparent; border-radius: calc(var(--radius) - 2px); background: none; color: hsl(var(--foreground)); font: inherit; cursor: pointer; }
+.am-row:hover, .am-row:focus-visible { border-color: hsl(var(--border)); }
+.am-row.is-sel { border-color: hsl(var(--point) / .7); }
+.am-row-t { font-size: .8125rem; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.am-row-s { font-size: .75rem; color: hsl(var(--caption-foreground)); white-space: nowrap; }
+.am-legacy { margin-top: var(--space-5, 1.25rem); }
+
+/* 절차 편집 면(procedure-composer.ts). 왼쪽 칸들, 오른쪽에 실행할 때 적용되는 목록. */
+.pe-grid { display: grid; grid-template-columns: minmax(0, 1fr) 20rem; gap: var(--space-4, 1rem); align-items: start; }
+@media (max-width: 960px) { .pe-grid { grid-template-columns: minmax(0, 1fr); } }
+.pe-form { display: flex; flex-direction: column; gap: var(--space-3, .75rem); }
+.pe-field { display: flex; flex-direction: column; gap: .3rem; }
+.pe-field label { font-size: .8125rem; font-weight: 500; color: hsl(var(--foreground)); }
+.pe-field textarea, .pe-field input { font: .8125rem var(--font-mono); }
+.pe-repeat { margin: 0; padding: .35rem .55rem; border-radius: calc(var(--radius) - 2px); font-size: .75rem;
+  border: 1px solid hsl(var(--point) / .6); color: hsl(var(--point-text)); word-break: keep-all; }
+.pe-eff { display: flex; flex-direction: column; gap: var(--space-2, .5rem); padding: var(--space-4, 1rem);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--card)); position: sticky; top: var(--space-4, 1rem); }
+.pe-eff h2 { margin: 0; font-size: 1rem; } .pe-eff h3 { margin: var(--space-2, .5rem) 0 0; font-size: .8125rem; color: hsl(var(--muted-foreground)); }
+.pe-eff-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .2rem; }
+.pe-eff-list li { display: flex; justify-content: space-between; gap: .5rem; align-items: center; font-size: .75rem; }
+.pe-eff-list code { font-family: var(--font-mono); overflow-wrap: anywhere; }
+.pe-origin { flex: none; height: 1.25rem; padding: 0 .45rem; display: inline-flex; align-items: center; border-radius: 999px;
+  font-size: .6875rem; border: 1px solid hsl(var(--border)); color: hsl(var(--muted-foreground)); }
+.pe-origin-procedure { border-color: hsl(var(--point) / .6); color: hsl(var(--point-text)); }
+.pe-origin-policy { border-style: dashed; color: hsl(var(--foreground)); }
+.am-acts a.btn, .pe-grid a.btn, .procedure-editor .home-acts a.btn { text-decoration: none; }
+.pe-eff-list code { flex: 1; min-width: 0; }
+.pe-origin { max-width: 11rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.am-detach { white-space: nowrap; flex: none; }

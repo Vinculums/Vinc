@@ -887,6 +887,10 @@ export const api = {
     }
     return { nodes: [...nodes.values()], edges };
   },
+  /** 역할 하나의 계약과 그 절차·정책(`procedures` [{id, policies}], `policies` [{id, title, rule}]).
+   *  로스터는 계약 전문 없이 오므로 지도와 편집 면은 이것으로 읽는다. 근거: [[vinc.canon.terminology §3.2]] */
+  role: (owner: string, role: string): Promise<any> =>
+    call("/roles", { owner, role }, undefined, { team: cfg.team || null }),
   /** 역할에 붙은 평가 카드(조회 전용, 최신순). `role` 은 짧은 이름도 받는다. */
   evalCards: (owner: string, role: string, limit = 20) =>
     call("/eval-cards", { owner, role, limit }, undefined, { team: cfg.team || null }),
