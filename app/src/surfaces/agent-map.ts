@@ -26,7 +26,7 @@ export interface MapData {
  *  Agent 가 하나도 없으면 null: 그 스페이스는 직함 역할 보드를 그대로 쓴다. */
 export async function loadAgentMap(roles: AgentRole[]): Promise<MapData | null> {
   // 역할마다 한 번: `detail=procedures` 가 그 Agent 의 절차(제목·설명·주제·props·rev)와 정책을 한 쿼리로 싣는다.
-  // 절차마다 노드를 따로 읽으면 화면을 열 때 요청이 절차 수만큼 늘었다(2026-11-05 실측: 열 때 42건).
+  // 절차마다 노드를 따로 읽지 않는다(요청이 절차 수만큼 늘어난다).
   const reads = await Promise.all(roles.map((r) => api.role(cfg.owner, r.id, true).catch(() => null)));
   const agents: MapData["agents"] = [];
   const procedures: MapData["procedures"] = [];
@@ -69,7 +69,7 @@ function shapeOf(d: MapData): string {
 let shown: { el: HTMLElement; data: MapData; shape: string } | null = null;
 
 /** 보드가 다시 읽은 자료를 들고 왔을 때. 모양이 같으면 화면은 그대로 두고 값(props·rev·설명)만 갈아 끼운다:
- *  쓰기 뒤의 자동 새로고침(`vinc:agents-changed`)이 그때마다 다시 그리면 WebGL 캔버스가 새로 생겨 깜빡이고,
+ *  자동 새로고침(`vinc:agents-changed`)마다 다시 그리지 않는다. 다시 그리면 WebGL 캔버스가 새로 생기고,
  *  옆 칸에서 고치던 칸도 날아간다. 그렸으면 true. */
 export function updateAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: HTMLElement) => void): boolean {
   if (shown && shown.el === el && el.querySelector(".agent-map") && shown.shape === shapeOf(data)) {
@@ -98,7 +98,7 @@ let legacyOpen = false;
 let lastWidth = 0;
 const short = (s: string) => { const v = s.replace(/^Policy:\s*/, ""); return v.length > 20 ? v.slice(0, 19) + "…" : v; };
 
-/** 지도 면을 그린다. `drawLegacy` 는 직함 역할이 남은 스페이스에서 옛 보드를 아래에 그린다. */
+/** 그래프 면을 그린다. `drawLegacy` 는 직함 역할이 남은 스페이스에서 옛 보드를 아래에 그린다. */
 export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: HTMLElement) => void): void {
   const M = COPY.ui.agentMap;
   shown = { el, data, shape: shapeOf(data) };
@@ -112,10 +112,10 @@ export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: 
   const ag = new Map(data.agents.map((a) => [a.id, a]));
   if (picked && !at.has(picked.id)) picked = null;
 
-  // 선 모양은 그래프 보기와 같은 판정이다(`edgeKindOf`, view3d 의 dashedLink·quietAtWhole·linkColorFn):
+  // 선 모양은 그래프 보기와 같은 규칙이다(`edgeKindOf`, view3d 의 dashedLink·quietAtWhole·linkColorFn):
   // 방향 없는 관계는 파선 헤어라인, 주제를 건너면 cross 잉크, 끈(ABOUT)은 짚거나 고른 노드에 닿을 때만 보인다.
   // 짚은 노드에 닿은 선은 초점색, 나머지는 물러난다. 색은 테마의 linkRamp 다(아래 CSS 변수).
-  // 근거: [[decision:the-graph-whole-view-is-the-infra-layout-in-vinc-orbs-2026-10-28]]
+  // 근거: [[vinc.manual.app §8]]
   const domainOf = new Map<string, string>([...data.agents, ...data.procedures, ...data.policies].map((x) => [x.id, x.domain]));
   let svg = "";
   let lines = "";

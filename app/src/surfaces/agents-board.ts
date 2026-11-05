@@ -72,7 +72,7 @@ export async function renderAgentsBoard(el: HTMLElement, live: () => boolean): P
   // 그린 보드의 구독까지 풀려 저장한 뒤에도 보드가 옛 모습으로 남는다.
   const off = () => window.removeEventListener("vinc:agents-changed", onChanged);
   // 방금 읽은 직후의 신호는 건너뛴다: 화면을 열면 레일도 로스터를 읽고 곧바로 이 신호를 내서, 같은 자료를 두 번
-  // 읽었다(2026-11-05 실측). 쓰기 뒤의 신호는 몇 초 뒤라 그대로 다시 읽는다.
+  // 읽게 된다. 쓰기 뒤의 신호는 몇 초 뒤라 그대로 다시 읽는다.
   const onChanged = () => { if (!live()) { off(); return; } if (Date.now() - lastPaint > 1500) void paint(); };
   window.addEventListener("vinc:agents-changed", onChanged);
   offChanged = off;
