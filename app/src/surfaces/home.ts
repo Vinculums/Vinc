@@ -119,11 +119,7 @@ export async function renderHome(el: HTMLElement): Promise<void> {
     if (mode === "list") await paintList(el, gen);
   });
 
-  if (mode === "agents" && parts[2] === "procedure" && parts[3]) {
-    // 절차 편집 면(`#home/agents/procedure/<id>`). 절차는 역할이 아니라 Agent 가 읽는 일의 방법이다.
-    const { renderProcedureEditor } = await import("../procedure-composer");
-    await renderProcedureEditor(el, live, parts.slice(3).join("/"));
-  } else if (mode === "agents" && parts[2]) {
+  if (mode === "agents" && parts[2]) {
     // 역할 편집 면(`#home/agents/<id>` · `#home/agents/new[/<팀>]`). 보드 안의 한 면이다.
     const { renderRoleEditor } = await import("../role-composer");
     await renderRoleEditor(el, live, parts.slice(2));

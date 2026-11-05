@@ -46,7 +46,6 @@ const stubs = {
   '../authoring': `export const fillTopicList = async () => {}; export const forgetTopics = () => {};`,
   './settings': `export const openSettings = () => {};`,
   '../role-composer': `export const openRoleComposer = () => {}; export const renderRoleEditor = async () => {};`,
-  '../procedure-composer': `export const renderProcedureEditor = async () => {};`,
   './agents-board': `export const renderAgentsBoard = async () => {};`,
   '../doc-delete': `export const deleteDocument = async () => 'unknown';`,
 };

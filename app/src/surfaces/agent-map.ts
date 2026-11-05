@@ -9,14 +9,13 @@ import { api, cfg, isCommunitySpace } from "../api";
 import { COPY } from "../copy";
 import { esc } from "../components";
 import { icon } from "../icons";
-import { compose, layoutMap, mapHeight, policySlug, type MapAgent, type MapPolicy, type MapProcedure, type PolicyRule,
-         type Props } from "../agent-ontology";
+import { layoutMap, mapHeight, policySlug, type MapAgent, type MapPolicy, type MapProcedure, type Props } from "../agent-ontology";
 import type { AgentRole } from "../lnb";
 import { announceRolesChanged } from "../role-composer";
 
 export interface MapData {
   agents: (MapAgent & { mission: string; props: Props; domain: string })[];
-  procedures: (MapProcedure & { one_liner: string; props: Props; domain: string })[];
+  procedures: (MapProcedure & { one_liner: string; props: Props; domain: string; rev: number })[];
   policies: (MapPolicy & { rule: Props; domain: string })[];
   legacy: AgentRole[];
 }
@@ -63,10 +62,34 @@ export async function loadAgentMap(roles: AgentRole[]): Promise<MapData | null> 
     const meta = procIndex.get(ids[i])!;
     procedures.push({ id: ids[i], agent: meta.agent, policies: meta.policies,
       title: String(node.title || ids[i]).replace(/ \((Maker|Checker) procedure\)$/, ""),
-      one_liner: String(node.one_liner || ""), props: (node.props || {}) as Props, domain: String(node.domain || "") });
+      one_liner: String(node.one_liner || ""), props: (node.props || {}) as Props, domain: String(node.domain || ""),
+      rev: Number(node.rev) });
   });
   const agentIds = new Set(agents.map((a) => a.id));
   return { agents, procedures, policies: [...policies.values()], legacy: roles.filter((r) => !agentIds.has(r.id)) };
+}
+
+/** 그래프에 보이는 모양: 노드·이름·주제·정책 연결. 이것이 같으면 다시 그리지 않는다. */
+function shapeOf(d: MapData): string {
+  return JSON.stringify([d.agents.map((a) => [a.id, a.title, a.domain]), d.procedures.map((p) => [p.id, p.title, p.agent, p.policies, p.domain]),
+                         d.policies.map((p) => [p.id, p.title, p.domain, p.rule]), d.legacy.map((r) => r.id)]);
+}
+let shown: { el: HTMLElement; data: MapData; shape: string } | null = null;
+
+/** 보드가 다시 읽은 자료를 들고 왔을 때. 모양이 같으면 화면은 그대로 두고 값(props·rev·설명)만 갈아 끼운다:
+ *  쓰기 뒤의 자동 새로고침(`vinc:agents-changed`)이 그때마다 다시 그리면 WebGL 캔버스가 새로 생겨 깜빡이고,
+ *  옆 칸에서 고치던 칸도 날아간다. 그렸으면 true. */
+export function updateAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: HTMLElement) => void): boolean {
+  if (shown && shown.el === el && el.querySelector(".agent-map") && shown.shape === shapeOf(data)) {
+    const fresh = new Map<string, any>([...data.agents, ...data.procedures].map((x) => [x.id, x]));
+    for (const x of [...shown.data.agents, ...shown.data.procedures]) {
+      const f = fresh.get(x.id);
+      if (f) Object.assign(x, { props: f.props, ...(f.rev !== undefined ? { rev: f.rev, one_liner: f.one_liner } : { mission: f.mission }) });
+    }
+    return false;
+  }
+  drawAgentMap(el, data, drawLegacy);
+  return true;
 }
 
 type Pick = { kind: "agent" | "procedure" | "policy"; id: string } | null;
@@ -74,11 +97,12 @@ let picked: Pick = null;
 let legacyOpen = false;
 /** 지난번에 그린 지도의 실제 폭(px). 다음 배치가 이 폭에 맞춘다. */
 let lastWidth = 0;
-const short = (s: string) => { const v = s.replace(/^Policy:\s*/, ""); return v.length > 26 ? v.slice(0, 25) + "…" : v; };
+const short = (s: string) => { const v = s.replace(/^Policy:\s*/, ""); return v.length > 22 ? v.slice(0, 21) + "…" : v; };
 
 /** 지도 면을 그린다. `drawLegacy` 는 직함 역할이 남은 스페이스에서 옛 보드를 아래에 그린다. */
 export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: HTMLElement) => void): void {
   const M = COPY.ui.agentMap;
+  shown = { el, data, shape: shapeOf(data) };
   const readOnly = isCommunitySpace(cfg.team);
   // 그린 폭에 맞춰 배치한다: 고정 viewBox 를 줄여 그리면 글자도 같이 줄어 읽기 어렵다(11px 가 9px 로).
   const W = Math.max(560, Math.round(lastWidth || 760)), H = mapHeight(data.procedures, data.agents);
@@ -117,15 +141,6 @@ export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: 
     }
   }
 
-  const listRow = (kind: "agent" | "procedure" | "policy", id: string, title: string, sub: string) =>
-    `<li><button type="button" class="am-row${picked?.id === id ? " is-sel" : ""}" data-pick="${kind}" data-id="${esc(id)}">
-      <span class="am-row-t">${esc(title)}</span><span class="am-row-s">${esc(sub)}</span></button></li>`;
-  const list = data.agents.map((a) => `<section class="am-group"><h3>${esc(a.title)}</h3><ul>${
-      listRow("agent", a.id, a.title, M.agent)}${data.procedures.filter((p) => p.agent === a.id).map((p) =>
-      listRow("procedure", p.id, p.title, p.policies.map((x) => pol.get(x)?.title || policySlug(x)).join(", ") || M.procedure)).join("")}</ul></section>`).join("")
-    + (data.policies.length ? `<section class="am-group"><h3>${esc(M.policy)}</h3><ul>${data.policies.map((p) =>
-      listRow("policy", p.id, p.title, M.governs(data.procedures.filter((x) => x.policies.includes(p.id)).length))).join("")}</ul></section>` : "");
-
   el.innerHTML = `<div class="home agents agents-board agent-map">
     <header class="home-head"><h1>${esc(M.title)} <span class="home-count">${esc(M.counts(data.agents.length, data.procedures.length, data.policies.length))}</span></h1></header>
     <p class="hint agents-lead">${esc(M.lead)}</p>
@@ -134,10 +149,8 @@ export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: 
       <div class="am-canvas-wrap"><svg class="am-lines" viewBox="0 0 ${W} ${H}" aria-hidden="true">${lines}</svg>
         <canvas class="am-orbs" aria-hidden="true"></canvas>
         <svg class="am-svg" viewBox="0 0 ${W} ${H}" role="group" aria-label="${esc(M.mapLabel)}">${svg}</svg></div>
-      <aside class="am-side" aria-live="polite">${side()}</aside>
+      <aside class="am-side"></aside>
     </div>
-    <h2 class="am-list-h">${esc(M.listTitle)}</h2>
-    <div class="am-list">${list}</div>
     ${data.legacy.length ? `<div class="am-legacy"><button class="btn btn-quiet" type="button" data-act="legacy">${
       esc(legacyOpen ? M.legacyHide : M.legacyShow(data.legacy.length))}</button><div class="am-legacy-host"></div></div>` : ""}
   </div>`;
@@ -166,18 +179,12 @@ export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: 
     }
     if (picked.kind === "procedure") {
       const p = proc.get(picked.id)!, a = ag.get(p.agent);
-      const rules: PolicyRule[] = p.policies.map((id) => ({ id, rule: pol.get(id)?.rule || {} }));
-      const eff = compose(a?.props || {}, p.props, rules);
-      const blocked = eff.filter((x) => x.kind === "tool" || x.kind === "capability").length;
-      const ask = eff.filter((x) => x.kind === "person_only").length;
-      return `<p class="am-kind">${esc(M.procedure)} · ${esc(a?.title || "")}</p><h2>${esc(p.title)}</h2><p>${esc(p.one_liner)}</p>
+      return `<p class="am-kind">${esc(M.procedure)} · ${esc(a?.title || "")}</p><h2>${esc(p.title)}</h2>
         <h3>${esc(M.governedBy)}</h3>${p.policies.length ? `<p class="am-chips">${p.policies.map((id) =>
           `<button type="button" class="am-chip am-chip-pol" data-pick="policy" data-id="${esc(id)}">${esc(pol.get(id)?.title || policySlug(id))}</button>`).join("")}</p>`
           : `<p class="hint">${esc(M.noPolicy)}</p>`}
-        <h3>${esc(M.effective)}</h3><p class="hint">${esc(M.effectiveHint)}</p>
-        <ul class="am-facts"><li>${esc(M.blocked(blocked))}</li><li>${esc(M.askFirst(ask))}</li></ul>
-        <div class="am-acts">${readOnly ? "" : `<a class="btn btn-primary" href="#home/agents/procedure/${encodeURIComponent(p.id)}">${esc(M.edit)}</a>`}
-        <a class="btn btn-quiet" href="#view/node/${encodeURIComponent(p.id)}">${icon("graph", 14)}<span>${esc(M.showInGraph)}</span></a></div>`;
+        <div class="am-proc-edit"></div>
+        <div class="am-acts"><a class="btn btn-quiet" href="#view/node/${encodeURIComponent(p.id)}">${icon("graph", 14)}<span>${esc(M.showInGraph)}</span></a></div>`;
     }
     const q = pol.get(picked.id)!;
     const governed = data.procedures.filter((p) => p.policies.includes(q.id));
@@ -196,13 +203,33 @@ export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: 
   }
 
   const board = el.querySelector<HTMLElement>(".agent-map")!;
+  /** 옆 칸을 채운다. 절차면 그 자리에 편집 칸을 붙인다(다른 면으로 가지 않는다). */
+  const fillSide = () => {
+    const box = board.querySelector<HTMLElement>(".am-side")!;
+    box.innerHTML = side();
+    if (picked?.kind !== "procedure") return;
+    const p = proc.get(picked.id)!, a = ag.get(p.agent);
+    const host = box.querySelector<HTMLElement>(".am-proc-edit");
+    if (!host) return;
+    void import("../procedure-panel").then(({ mountProcedurePanel }) => {
+      if (!host.isConnected) return;
+      mountProcedurePanel(host, {
+        id: p.id, title: p.title, oneLiner: p.one_liner, props: p.props, rev: p.rev,
+        agentTitle: a?.title || "", agentProps: a?.props || {},
+        policies: p.policies.map((id) => ({ id, rule: pol.get(id)?.rule || {} })),
+        policyNames: new Map(data.policies.map((x) => [x.id, x.title])), readOnly,
+        onSaved: (fresh) => { p.props = fresh.props; p.one_liner = fresh.oneLiner; p.rev = fresh.rev; },
+      });
+    });
+  };
+  fillSide();
   const status = (s: string) => { board.querySelector(".agents-status")!.textContent = s; };
   // 고르기는 다시 그리지 않는다: 선택 표시와 옆 칸만 바꾸고, 3D 몸통은 같은 캔버스에서 상태만 바꾼다.
   // 전체를 다시 그리면 WebGL 캔버스가 새로 생겨 첫 장면까지 비어 보인다(누를 때마다 깜빡였다).
   const choose = (t: HTMLElement) => {
     picked = { kind: t.dataset.pick as "agent" | "procedure" | "policy", id: t.dataset.id! };
     board.querySelectorAll<HTMLElement>(".am-node, .am-row").forEach((x) => x.classList.toggle("is-sel", x.dataset.id === picked!.id));
-    board.querySelector(".am-side")!.innerHTML = side();
+    fillSide();
     void import("./agent-orbs").then((m) => m.selectOrb(picked?.id ?? null)).catch(() => {});
     if (t.closest(".am-node")) t.focus({ preventScroll: true });
   };

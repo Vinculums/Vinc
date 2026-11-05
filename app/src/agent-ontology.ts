@@ -76,18 +76,19 @@ export function mapHeight(procedures: MapProcedure[], agents: MapAgent[]): numbe
 
 /** 결정론적 배치. Agent 는 가로로 나란히(execute 가 왼쪽), 절차는 자기 Agent 바깥쪽 타원 위에 **세로로 고르게**
  *  놓는다: 같은 쪽 이름표가 한 줄씩 겹치지 않게(최소 28px). 왼쪽 Agent 의 이름표는 왼쪽으로, 오른쪽 Agent 의
- *  이름표는 오른쪽으로 편다. 정책은 맨 위 줄. 이름표 폭(26자, 약 160px)만큼 가장자리를 비운다.
+ *  이름표는 오른쪽으로 편다. 정책은 맨 위 줄. 이름표 폭(22자, 약 140px)만큼 가장자리를 비운다.
  *  절차 점의 반지름은 12: 누르기 쉬워야 한다. 같은 입력이면 같은 좌표다. */
 export function layoutMap(agents: MapAgent[], procedures: MapProcedure[], policies: MapPolicy[],
                           width = 760, height = mapHeight(procedures, agents)): { nodes: MapNode[]; links: MapLink[] } {
   const order = [...agents].sort((a, b) => (a.tier === "verify" ? 1 : 0) - (b.tier === "verify" ? 1 : 0) || a.id.localeCompare(b.id));
   const nodes: MapNode[] = [];
   const links: MapLink[] = [];
-  const LABEL = 170, TOP = 84, BOTTOM = 40;
+  // 이름표 폭 예산(22자, 약 140px). 옆 칸이 편집기라 그래프가 좁을 때(560px)도 두 Agent 가 겹치지 않아야 한다.
+  const LABEL = 140, TOP = 84, BOTTOM = 40;
   const cy = TOP + (height - TOP - BOTTOM) / 2;
   const centres = new Map<string, { x: number; y: number }>();
   const xs = order.length === 1 ? [width / 2]
-    : order.map((_, i) => i === 0 ? Math.max(LABEL + 110, width * 0.42) : Math.min(width - LABEL - 70, width * 0.78));
+    : order.map((_, i) => i === 0 ? Math.max(LABEL + 80, width * 0.38) : Math.min(width - LABEL - 62, width * 0.8));
   order.forEach((a, i) => {
     centres.set(a.id, { x: round(xs[i]), y: round(cy) });
     nodes.push({ id: a.id, kind: "agent", x: round(xs[i]), y: round(cy), r: 24, label: a.title, anchor: "middle" });
@@ -96,7 +97,8 @@ export function layoutMap(agents: MapAgent[], procedures: MapProcedure[], polici
     const mine = procedures.filter((p) => p.agent === a.id);
     const c = centres.get(a.id)!;
     const right = order.length > 1 && i === order.length - 1;
-    const rx = right ? Math.max(48, Math.min(90, width - LABEL - c.x - 16)) : Math.max(60, Math.min(c.x - LABEL - 16, width * 0.24));
+    // 반지름은 이름표 예산에서 나온다: 점(12) + 틈(6) + 이름표(LABEL)가 가장자리 안에 들어오게.
+    const rx = right ? Math.max(40, Math.min(90, width - c.x - LABEL - 20)) : Math.max(40, Math.min(c.x - LABEL - 20, width * 0.24));
     const span = Math.max(1, mine.length - 1) * 30;
     const top = cy - span / 2;
     mine.forEach((p, k) => {

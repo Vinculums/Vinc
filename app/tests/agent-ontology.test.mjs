@@ -83,9 +83,12 @@ test('fifteen procedures on one side never put two labels closer than 26px, and 
       ys.slice(1).forEach((y, i) => assert.ok(y - ys[i] >= 26, `${width}px ${side}: ${ys[i]} and ${y}`));
     }
     for (const n of nodes.filter((n) => n.kind === 'procedure')) {
-      if (n.anchor === 'end') assert.ok(n.x - 170 >= 0, `${width}px: ${n.id} label leaves on the left (${n.x})`);
-      if (n.anchor === 'start') assert.ok(n.x + 170 <= width, `${width}px: ${n.id} label leaves on the right (${n.x})`);
+      if (n.anchor === 'end') assert.ok(n.x - 18 - 140 >= 0, `${width}px: ${n.id} label leaves on the left (${n.x})`);
+      if (n.anchor === 'start') assert.ok(n.x + 18 + 140 <= width, `${width}px: ${n.id} label leaves on the right (${n.x})`);
       assert.ok(n.y >= 60 && n.y <= height - 20, `${n.id} y ${n.y}`);
     }
+    // 옆 칸이 편집기라 그래프가 좁아도 두 Agent 는 떨어져 있다(560px 에서 Maker 와 Checker 가 겹쳤다).
+    const [m, c] = ['concept:agent-maker', 'concept:agent-checker'].map((id) => nodes.find((n) => n.id === id));
+    assert.ok(c.x - m.x >= 130, `${width}px: agents ${m.x} and ${c.x}`);
   }
 });
