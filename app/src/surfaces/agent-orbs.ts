@@ -17,7 +17,10 @@ const EXPOSURE: Record<ThemeMode, number> = { dark: 1.06, light: 1.02 };
 const FOV = 8;
 const themeMode = (): ThemeMode => (document.documentElement.dataset.theme === "dark" ? "dark" : "light");
 
-let current: { stop: () => void } | null = null;
+let current: { stop: () => void; select: (id: string | null) => void } | null = null;
+
+/** 고른 노드만 바꾼다. 캔버스와 WebGL 문맥은 그대로 둔다(새로 만들면 첫 장면까지 비어 깜빡인다). */
+export function selectOrb(id: string | null): void { current?.select(id); }
 
 /** 캔버스 하나에 몸통을 그린다. 다시 그리면 앞의 것을 먼저 치운다. WebGL 이 없으면 false(SVG 점이 그대로 남는다). */
 export function mountOrbs(canvas: HTMLCanvasElement, nodes: OrbNode[], width: number, height: number,
@@ -46,12 +49,12 @@ export function mountOrbs(canvas: HTMLCanvasElement, nodes: OrbNode[], width: nu
   const layer = new OrbLayer(nodes.length, mode === "light");
   const plan = tintPlan(nodes.map((n) => n.domain), mode);
   const ink = signal[mode].text;
-  nodes.forEach((n, i) => {
-    const hex = plan.topics.get(n.domain);
-    const colour = new THREE.Color(hex ? parseInt(hex.slice(1), 16) : ink);
-    const state = n.id === selected ? ORB_STATE.selected : n.kind === "agent" ? ORB_STATE.active : ORB_STATE.idle;
-    layer.set(i, n.x, -n.y, 0, n.r, orbKindOf(n.kind === "policy" ? "decision" : "concept"), state, orbSeed(n.id), colour);
+  const colours = nodes.map((n) => { const hex = plan.topics.get(n.domain); return new THREE.Color(hex ? parseInt(hex.slice(1), 16) : ink); });
+  const place = (sel: string | null) => nodes.forEach((n, i) => {
+    const state = n.id === sel ? ORB_STATE.selected : n.kind === "agent" ? ORB_STATE.active : ORB_STATE.idle;
+    layer.set(i, n.x, -n.y, 0, n.r, orbKindOf(n.kind === "policy" ? "decision" : "concept"), state, orbSeed(n.id), colours[i]);
   });
+  place(selected);
   scene.add(layer.body, layer.halo);
 
   // 안의 빛이 천천히 흐른다. 움직임을 줄인 사용자에게는 한 번만 그린다. 캔버스가 문서에서 빠지면 멈춘다.
@@ -70,7 +73,7 @@ export function mountOrbs(canvas: HTMLCanvasElement, nodes: OrbNode[], width: nu
     layer.dispose();
     renderer.dispose();
   };
-  current = { stop };
+  current = { stop, select: (id) => { place(id); if (still) frame(); } };
   frame();
   return true;
 }

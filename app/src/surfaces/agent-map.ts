@@ -197,10 +197,14 @@ export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: 
 
   const board = el.querySelector<HTMLElement>(".agent-map")!;
   const status = (s: string) => { board.querySelector(".agents-status")!.textContent = s; };
+  // 고르기는 다시 그리지 않는다: 선택 표시와 옆 칸만 바꾸고, 3D 몸통은 같은 캔버스에서 상태만 바꾼다.
+  // 전체를 다시 그리면 WebGL 캔버스가 새로 생겨 첫 장면까지 비어 보인다(누를 때마다 깜빡였다).
   const choose = (t: HTMLElement) => {
     picked = { kind: t.dataset.pick as "agent" | "procedure" | "policy", id: t.dataset.id! };
-    drawAgentMap(el, data, drawLegacy);
-    el.querySelector<HTMLElement>(`.am-node[data-id="${CSS.escape(picked.id)}"]`)?.focus({ preventScroll: true });
+    board.querySelectorAll<HTMLElement>(".am-node, .am-row").forEach((x) => x.classList.toggle("is-sel", x.dataset.id === picked!.id));
+    board.querySelector(".am-side")!.innerHTML = side();
+    void import("./agent-orbs").then((m) => m.selectOrb(picked?.id ?? null)).catch(() => {});
+    if (t.closest(".am-node")) t.focus({ preventScroll: true });
   };
   const writeEdge = async (fn: () => Promise<any>) => {
     status(M.saving);
