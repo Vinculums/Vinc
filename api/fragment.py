@@ -279,7 +279,7 @@ _CLAIM_PROPS = ("subject_path", "measured_at", "measured_ref")
 #: 리포 이름은 **형식만** 검사한다(`repo:path`). 어느 리포를 아는지는 그래프마다 다르다 — 코드에
 #: 박은 목록은 이 제품을 쓰는 다른 사람에게 늘 틀렸고 vincos 같은 새 리포에도 틀렸다. 대신 그래프에
 #: 이미 있는 기록의 리포를 모아, **처음 보는 이름**이면 오타일 수 있다고 말한다(막지 않는다).
-#: 근거: [[decision:graph-md-schema-sections-are-generated-from-code-on-every-read-2026-11-05]]
+#: 근거: [[vinc.canon.graph-conventions §5.1]]
 _REPO_CACHE: dict[tuple[int, str], tuple[float, set[str]]] = {}
 _REPO_CACHE_TTL = 300.0
 

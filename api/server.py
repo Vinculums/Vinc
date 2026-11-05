@@ -1882,7 +1882,7 @@ class VincApp:
                 text = fresh["text"] if fresh.get("executed") else got["text"]
                 # 스키마 절(노드 종류·관계·쓰기·문서·시간·역할)은 저장본이 무엇을 적었든 코드에서
                 # 다시 만들어 싣는다(저장본은 그대로). 마커가 깨져 build 가 거절한 문서에도 싣는다.
-                # 근거: [[vinc.canon.agent-roles §5]], [[decision:graph-md-schema-sections-are-generated-from-code-on-every-read-2026-11-05]]
+                # 근거: [[vinc.canon.agent-roles §5]], [[vinc.canon.graph-conventions §5.1]]
                 text, _inserted = graphmd.with_schema_sections(text)
                 return {"kind": "conventions", "executed": True, "source": "doc",
                         "owner": owner or "", "scope": _owner_scope(owner),

@@ -104,7 +104,7 @@ OPTIONAL_SECTIONS = frozenset({"roles", "topics", "validity", "writing", "time",
 #: 다시 만들어, 템플릿이든 소유자 문서든 그 자리를 갈아 끼운다(없으면 제자리에 끼운다).
 #: 손으로 쓴 스키마 설명은 코드와 어긋났고(evidence 필수 범위·relates_to 끝점·Entity 의 손실),
 #: 소유자 문서가 템플릿을 통째로 대신하므로 템플릿을 고쳐도 그 사람에게 닿지 않았다.
-#: 근거: [[decision:graph-md-schema-sections-are-generated-from-code-on-every-read-2026-11-05]]
+#: 근거: [[vinc.canon.graph-conventions §5.1]]
 SCHEMA_KEYS = ("nodes", "relations", "writing", "documents", "time", "roles")
 
 
@@ -536,7 +536,7 @@ def with_schema_sections(text: str, keys: tuple[str, ...] = SCHEMA_KEYS) -> tupl
     이미 있는 절은 태그가 무엇이든 본문째 바꾼다 — 이 절들은 파일이 정하는 것이 아니라
     쓰기 경로가 정하는 것이라, 손으로 고친 문장은 곧 틀린 문장이다. 없는 절은 규격 순서의
     제자리(다음에 오는 절 앞, 없으면 생성 구역 앞, 그것도 없으면 끝)에 끼운다.
-    언어는 문서의 언어를 따른다. 근거: [[decision:graph-md-schema-sections-are-generated-from-code-on-every-read-2026-11-05]]"""
+    언어는 문서의 언어를 따른다. 근거: [[vinc.canon.graph-conventions §5.1]]"""
     lang = _lang_of(text)
     lines = text.splitlines()
     inserted: list[str] = []
