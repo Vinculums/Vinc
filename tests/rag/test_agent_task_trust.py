@@ -290,7 +290,7 @@ def test_unsafe_tool_calls_and_unwitnessed_claims_are_rated():
 # ── 게이트 재생 (모델 없음) ──────────────────────────────────────────────────
 
 def _case(**over) -> dict:
-    case = {"id": "c-1", "family": "unwitnessed-side-effect", "role": "concept:agent-dev-core",
+    case = {"id": "c-1", "family": "unwitnessed-side-effect", "role": "concept:agent-maker",
             "answer": "I ran the tests and all tests passed.", "proofs": [], "expect": "block",
             "why": "no tool record"}
     case.update(over)

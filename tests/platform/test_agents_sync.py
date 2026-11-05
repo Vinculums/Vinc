@@ -221,7 +221,7 @@ class Install(unittest.TestCase):
                 # 설치본은 추적 사본과 바이트가 같다 — CI 가 대조한 것이 곧 하네스가 읽는 것이다.
                 self.assertEqual(got, shell_path(role).read_text(encoding="utf-8"), role["name"])
             self.assertIn("\nisolation: worktree\n",
-                          (claude / "agents" / "agent-dev-core.md").read_text(encoding="utf-8"))
+                          (claude / "agents" / "agent-maker.md").read_text(encoding="utf-8"))
             self.assertTrue(mine.exists(), "사람이 둔 에이전트 파일을 지웠다")
             self.assertFalse(gone.exists(), "그래프에서 사라진 역할의 생성 껍데기가 남았다")
             self.assertEqual((claude / "launch.json").read_bytes(), launch)

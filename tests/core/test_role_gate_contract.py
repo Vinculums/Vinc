@@ -95,7 +95,7 @@ def test_ratified_roster_with_return_routes_keeps_every_contract_under_ten_kb():
                 'decision:structured-person-only-and-role-return-paths-ratified-2026-10-04. '
                 "Select the package's exact producer; never infer reverse scheduling."}
                for r in roster for peer in r.get('works_with', {}).get('returns_to', [])]
-    assert len(returns) == 15
+    assert len(returns) == 1
     edges += returns
 
     class Bridge:
@@ -115,14 +115,15 @@ def test_ratified_roster_with_return_routes_keeps_every_contract_under_ten_kb():
         assert result['executed'], (rid, result)
         assert result['props'] == node['props']
         assert len(json.dumps(result, ensure_ascii=False).encode('utf-8')) < 10000
-        if rid == 'concept:agent-gate-runner':
-            assert 'accompanying structured fields' in result['rendered']
-            assert 'not instructions' in result['rendered']
+        # The two-role roster is far below the read cap, so the full shell is rendered;
+        # the 'accompanying structured fields' reference only appears past the cap.
+        assert 'not instructions' in result['rendered']
+        assert 'accompanying structured fields' not in result['rendered']
         actual = [e for group in result['works_with'].values() for e in group]
         assert sorted(actual, key=lambda e:(e['from'], e['to'], e['type'])) == sorted(
             [e for e in edges if rid in (e['from'], e['to'])],
             key=lambda e:(e['from'], e['to'], e['type']))
-    assert bridge.calls == len(nodes) == 25
+    assert bridge.calls == len(nodes) == 2
 
 
 def test_complete_live_role_evidence_fits_public_rest_and_mcp_without_field_loss(monkeypatch):
@@ -138,7 +139,7 @@ def test_complete_live_role_evidence_fits_public_rest_and_mcp_without_field_loss
                        'props':r['props']} for r in roster}
     fixture = json.loads((root / 'tests/fixtures/agent_gate_runner_role_edges.json').read_text(
         encoding='utf-8'))
-    assert len(fixture['edges']) == 24
+    assert len(fixture['edges']) == 1
     calls = []
 
     def request(method, path, params=None, **kwargs):
@@ -150,7 +151,7 @@ def test_complete_live_role_evidence_fits_public_rest_and_mcp_without_field_loss
     srv = Server(scope='read')
     srv.bridge.request = request
     try:
-        status, headers, rest = srv.request('GET', '/v1/roles/agent-gate-runner')
+        status, headers, rest = srv.request('GET', '/v1/roles/agent-checker')
         assert status == 200
         assert int(headers['Content-Length']) < 10000
         assert rest['props'] == nodes[fixture['role']]['props']
@@ -158,11 +159,12 @@ def test_complete_live_role_evidence_fits_public_rest_and_mcp_without_field_loss
         key = lambda e: (e['from'], e['to'], e['type'])
         assert sorted(actual, key=key) == sorted(fixture['edges'], key=key)
         assert 'not instructions' in rest['rendered']
-        assert 'accompanying structured fields' in rest['rendered']
+        assert 'accompanying structured fields' not in rest['rendered']
+        assert nodes[fixture['role']]['title'] in rest['rendered']
         assert len(calls) == 1
 
         rpc = {'jsonrpc':'2.0', 'id':1, 'method':'tools/call',
-               'params':{'name':'vinc_role', 'arguments':{'role':'agent-gate-runner'}}}
+               'params':{'name':'vinc_role', 'arguments':{'role':'agent-checker'}}}
         status, _, result = srv.request('POST', '/mcp', body=rpc)
         assert status == 200
         text = result['result']['content'][0]['text']
