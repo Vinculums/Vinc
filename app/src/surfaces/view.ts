@@ -11,6 +11,7 @@ import { createGraphLoader } from "../view-graph-loader";
 import { retainedViews, restoreRetained } from "../view-retained";
 import type { DragEnd } from "./drag-connect";
 import { gateway3dSvg, mark3dSvg } from "./view-planar";
+import { mountCompass, compassDataFrom, type CompassHandle } from "./view-compass";
 import { recede } from "../recede";
 import { causalCone, spotOf, type Spot } from "../spotlight";
 import { openShareSheet } from "../sheets";
@@ -28,8 +29,8 @@ import { RAIL_MIN, RAIL_MAX, NODE_SCALE, EDGE_SCALE,
          edgeKindOf, loadPrefs, savePrefs, dayOf, localStamp,
          type ViewPrefs, type EdgeKind } from "../view-prefs";
 import { changedViewPrefs, viewControlRows, viewPreferenceWork } from "../view-controls";
-import { lensSlot, setViewHooks, refreshTopbar } from "../topbar";
-import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbScopeClearer,
+import { lensSlot, setViewHooks, refreshTopbar, setSearchFilter, setTopbarLeadTools } from "../topbar";
+import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbScopeClearer, setLnbGraphSource, repaintLnbGraph, setLnbGraphActive,
          refreshLnb, isAgentRoleId, stripRolePrefix } from "../lnb";
 import { PROP_KINDS, propsEditable, rowsFrom, propsFrom, convertText, sameProps, propsPatchOf,
          type PropRow, type PropKind } from "../props-edit";
@@ -247,6 +248,8 @@ export async function renderView(el: HTMLElement, resume = false) {
   }
 
   let g3: any = null;                 // 3D 인스턴스 (L0/L1)
+  let compass: CompassHandle | null = null;   // 나침반 렌즈(그래프 보기)
+  const compassOnly = true;                   // 3D 전체 보기는 걷었다. 아래 3D 경로는 지우는 중이다
   /** 옵션 재마운트에 넘길 카메라(view3d.Cam3). show(…, {keepCamera}) 가 채우고
    *  showGraphScope 가 한 번 쓰고 비운다 — 좌표가 같은 재마운트에서만 뜻이 있다. */
   let keepCam: Cam3 | null = null;
@@ -524,6 +527,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   /** ⚠ 이 버튼은 show() 마다 다시 그려진다. 열린 채로 다시 그려질 수 있으므로
    *  `aria-expanded` 는 패널의 실제 상태에서 읽는다. */
   function drawLegend() {
+    if (compassOnly) { legend.innerHTML = ""; lensBtn = null; return; }   // 그래프의 옵션·범례 단추는 없앴다(손잡이는 LNB 의 나침반 칸)
     const open = !viewPanel.hidden;
     legend.innerHTML =
       `<button class="lens-btn" id="view-lens" aria-haspopup="dialog" aria-expanded="${open}"
@@ -828,7 +832,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     // 렌즈 버튼은 머리 맨 끝에 있어서 패널은 표면 밖의 버튼에 붙어야 한다. 표면 기준
     // absolute 로는 사이드바 폭 · 타이틀바 · 웹 GNB 만큼 어긋나므로, 좌표를 버튼의 실측
     // rect 에서 뽑아 fixed 로 놓는다. 그러면 세 스킨이 전부 저절로 맞는다.
-    // 근거: [[decision:the-view-header-ends-with-the-options-and-legend-of-the-current-surface-2026-10-28]]
+    // 근거: [[decision:the-graph-is-one-2d-compass-lens-2026-11-06]]
     const r = lensBtn?.getBoundingClientRect();
     if (!r) return;
     // 오른쪽 끝은 **패널 실측 폭**으로 잡는다 — 상수를 박으면 폭을 넓힐 때마다 다시
@@ -1656,13 +1660,14 @@ export async function renderView(el: HTMLElement, resume = false) {
     Math.round((canvas.clientWidth || 1200) / (canvas.clientHeight || 750) * 10) / 10]);
   // 그래프 읽기와 가지 배치, 두 캐시의 상태는 `view-graph-loader.ts` 가 든다.
   const loader = createGraphLoader({
-    mountScope, accessJob, firstAccess, restoreEntryCamera,
+    mountScope, accessJob, firstAccess, restoreEntryCamera, noLayout: true,
     seq: () => showSeq,
     alive: () => myGen === liveGen && canvas.isConnected,
     canvasRatio: () => Math.round((canvas.clientWidth || 1200) / (canvas.clientHeight || 750) * 10) / 10,
     mounted: () => !!g3,
     cameraPrefs,
     showPreview: (graph) => {
+      if (compassOnly) return () => {};
       const remove = mountGraphPreview(canvas, graph, { edges: curPrefs().edges !== "none", label: COPY.view.preview });
       setMsg("");
       return remove;
@@ -1748,6 +1753,28 @@ export async function renderView(el: HTMLElement, resume = false) {
     //    장면을 다시 지어야 한다 — 아래 `applyTimeCut` 이 가시성으로 대신 한다.
     //    `filterUnlinked` 는 전량 기준이 오히려 옳다: 커서가 이웃을 잠시 가렸다고
     //    그 노드가 고아가 되는 것은 아니다.
+    if (compassOnly) {
+      // 그래프 보기는 나침반 하나다. 받은 전량을 그대로 넘기고, 가운데·펼침·기간·종류·고정은 나침반이 다룬다.
+      // 그 손잡이들(길·찾기·기간·종류·고정·읽는 법)은 LNB 의 칸으로 선다(렌즈 패널은 쓰지 않는다).
+      const chain = domains.length === 1 ? domains[0].split("/").map((_, i, a) => `topic:${a.slice(0, i + 1).join("/")}`) : undefined;
+      // LNB = 문서 트리와 같은 그림의 노드 트리(lnb.ts). 시간 · 범례 = 머리의 "그래프" 글자 오른쪽 버튼이 여는 창.
+      let ready = false;
+      compass = mountCompass(canvas, compassDataFrom(nodes, curEdges), { startPath: chain,
+        onTree: (o) => repaintLnbGraph(o),
+        onChange: () => { if (ready && compass) setLnbGraphActive(compass.centre()); },
+        onDestroy: () => { setLnbGraphSource(null); setTopbarLeadTools(null); } });
+      const cmp = compass;
+      setLnbGraphSource({ groups: () => cmp.tree(), open: (id) => cmp.open(id), mark: (k) => cmp.mark(k), colour: (d) => cmp.colour(d), dock: cmp.side });
+      setTopbarLeadTools(cmp.tools);
+      ready = true;
+      setLnbGraphActive(cmp.centre());
+      setSearchFilter((q) => compass?.filter(q));
+      const prevDispose = disposeView;
+      disposeView = () => { prevDispose?.(); setSearchFilter(null); if (compass) { compass.destroy(); compass = null; } };
+      markDisplayed(p, domains);
+      keepCam = null;   // 시간순 가지 배치 안내(noteLayout)는 3D 의 일이라 나침반에서는 띄우지 않는다
+      return;
+    }
     const shown3 = filterUnlinked(toN3(nodes, domains, lnbFocus.nodeId));
     g3 = mount3d(canvas, shown3, toL3(pruneEdges([...visibleEdges(), ...topicGuides], shown3)), {
       onLinkClick: (edge) => { if (DIRECTED_RELS.includes(edge.type || "") && !edge.presentation)
@@ -3468,6 +3495,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     clearLayoutNote();
     killReplay();
     if (g3) { g3._destructor?.(); g3 = null; }
+    if (compass) { setSearchFilter(null); compass.destroy(); compass = null; }
     canvas.innerHTML = "";
     canvas.style.opacity = "0";
   }
@@ -3540,6 +3568,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       // 구분되지 않는다 — 사용자가 보는 것은 "내 지식이 사라졌다"이다. 사유
       // (락 충돌·손상)는 사람이 읽을 문장이 아니라서 접어 두고 열게 한다.
       const why = storeDownReason(e);
+      if (import.meta.env.DEV) console.error("view show failed", e);
       if (why === null) {
         setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`);
       } else {
@@ -3565,7 +3594,8 @@ export async function renderView(el: HTMLElement, resume = false) {
    *  할 최소치이고, 그 이상은 소음이다. 한 번 닫으면 다시 뜨지 않는다. */
   const COACH_KEY = "vinc.view.coach.seen";
   function maybeCoach() {
-    if (localStorage.getItem(COACH_KEY) === "1") return;
+    // 렌즈 단추와 우클릭 메뉴를 가리키던 안내다. 나침반에는 둘 다 없으므로 띄우지 않는다(손잡이는 LNB 의 칸이 말한다).
+    if (compassOnly || localStorage.getItem(COACH_KEY) === "1") return;
     const box = document.createElement("div");
     box.className = "coach";
     box.innerHTML = `
@@ -3613,7 +3643,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       if (lv.kind === "l1") openShareSheet({ domain: lvDomain(lv) });
       else openShareSheet({});                      // L0 = 전체
     },
-    openNode: (id, dom) => void focusNode(id, dom),
+    openNode: (id, dom) => { if (compass) compass.open(id); else void focusNode(id, dom); },
     openDoc: (docId, nodeId, dom, chunkIndex) => void openDocAt(docId, nodeId, dom, chunkIndex),
     // 작업하는 자리에서 만들기(authoring.ts) — 만드는 흐름이 지도와 문서 열에 닿는 문.
     newDoc: (topic) => void openWriter(topic),
@@ -3654,7 +3684,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     // 전체 3D 화면에서는 **다시 읽지 않고 캔버스에서 고른다**: 카메라가 그 주제로 가고 그 항목과
     // 관계가 남고 나머지는 물러나며 결정에 라벨이 선다. 집합은 그대로다(파고들기가 아니다).
     // Agent 레일의 `set`(역할 주제로 좁히기)과, 고른 주제가 지금 읽기에 없을 때는 예전 길이다.
-    // 근거: [[decision:the-graph-whole-view-is-the-infra-layout-in-vinc-orbs-2026-10-28]]
+    // 근거: [[decision:the-graph-is-one-2d-compass-lens-2026-11-06]]
     if (!set && lv.kind === "l0" && g3 && !Array.isArray(path)) {
       const one = path;
       const next = add ? (canvasTopics.includes(one) ? canvasTopics.filter((d) => d !== one) : [...canvasTopics, one])

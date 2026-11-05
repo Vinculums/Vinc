@@ -15,10 +15,10 @@ Each of your roles exports to a skill folder that drops into `skills/`:
 ```bash
 pip install vincs
 export VINC_API_KEY=vinc_ro_...
-vinc --target account role export agent-reviewer --out skills
+vinc --target account role export agent-checker --out skills
 ```
 
-That writes `skills/agent-reviewer/SKILL.md`, the same file the Vinc MCP server serves through
+That writes `skills/agent-checker/SKILL.md`, the same file the Vinc MCP server serves through
 the MCP Skills Extension. Export again after the role changes; the file names the contract hash
 it was made from.
 

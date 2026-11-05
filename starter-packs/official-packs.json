@@ -33,33 +33,5 @@
     "description": "Two agents and four procedures every space starts with. The Maker does the work in one loop and the Checker verifies it without the Maker's context; the know-how lives in skill nodes: keep the graph honest, research from measurement, curate documents, review claims. Add a skill, not an agent, when your space needs more. Fill reads, gates and paths with your own.",
     "dominantDomain": "agent",
     "license": "CC-BY-4.0"
-  },
-  {
-    "file": "agents/software-agents.json",
-    "title": "Software Agents",
-    "description": "Five roles for a code repository, with the handoffs between them as edges: a developer (one change, one branch, one pull request, one episode), a gate runner (runs the gates, never edits), a checklist reviewer (ticks the plan against the diff), a judgement reviewer (adversarial read for correctness and over-engineering) and a security auditor (findings become packages, never fixes in place). Roles only: add your own reads, gates and paths.",
-    "dominantDomain": "agent",
-    "license": "CC-BY-4.0"
-  },
-  {
-    "file": "agents/design-agents.json",
-    "title": "Design Agents",
-    "description": "Three roles for a design system: a designer who keeps token values on graph nodes and the reasons in decisions, pulling the token file and syncing consumers in the same session; a design reviewer who measures contrast and drift and never edits; and a design researcher who turns interviews into records attached to the concepts they are about. Roles only: add your own reads, gates and paths.",
-    "dominantDomain": "agent",
-    "license": "CC-BY-4.0"
-  },
-  {
-    "file": "agents/infra-ops-agents.json",
-    "title": "Infra and Ops Agents",
-    "description": "Three roles for the deploy plane: an infrastructure role that writes the declaration and stops at plan (a person applies), an operations role that diagnoses deploys and incidents from the logs and never changes state, and a release role that prepares the bump, changelog and tag readiness a person publishes. Roles only: add your own reads, gates and paths.",
-    "dominantDomain": "agent",
-    "license": "CC-BY-4.0"
-  },
-  {
-    "file": "agents/copy-marketing-agents.json",
-    "title": "Copy and Marketing Agents",
-    "description": "Three roles for product copy and claims: a copy writer who drafts lines for review and never commits, a copy owner who keeps inventory and parity between languages and ships only lines read aloud, and a marketing role that ties every capability claim to the build it is true on and never prices or sends. Roles only: add your own reads, gates and paths.",
-    "dominantDomain": "agent",
-    "license": "CC-BY-4.0"
   }
 ]

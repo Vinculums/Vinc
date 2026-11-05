@@ -184,7 +184,7 @@ class OfficialPacksMeetTheContract(unittest.TestCase):
     """계약은 한 벌이다 — 공식 팩도 사람이 쓰는 역할과 같은 검사를 통과해야 한다."""
 
     def test_every_pack_role_is_silent(self):
-        self.assertEqual(len(PACKS), 5)
+        self.assertEqual(len(PACKS), 1)   # 직함 역할 팩 넷은 내렸다: Default Agents 하나
         for p in PACKS:
             pack = json.loads(p.read_text(encoding="utf-8"))
             for n in pack["fragment"]["nodes"]:

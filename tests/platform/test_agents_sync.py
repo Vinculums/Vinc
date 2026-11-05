@@ -80,6 +80,13 @@ class Shell(unittest.TestCase):
         self.assertTrue(head[2].startswith("description: Does one thing"))
         self.assertEqual(head[3], f"model: {RUNG_TO_MODEL['strong']}")
 
+    def test_a_per_source_test_command_renders_one_line_each(self):
+        """절차에서 옮겨 온 test_command 는 출처별 사전일 수 있다. 문자열만 가정하면 join 이 TypeError 로 죽었다."""
+        node = dict(_NODE, props=dict(_NODE["props"], test_command={"dev-core": "pytest tests", "dev-app": "npm test"}))
+        out = render_shell(build_payload([node])["roles"][0])
+        self.assertIn("dev-core: pytest tests", out)
+        self.assertIn("dev-app: npm test", out)
+
     def test_description_is_one_line(self):
         """프런트매터의 description 은 한 줄이어야 한다. 임무 문장에 줄바꿈이 들어오면
         YAML 이 깨지므로 render 가 접는다."""

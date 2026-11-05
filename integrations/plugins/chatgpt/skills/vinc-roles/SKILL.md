@@ -11,10 +11,10 @@ the `vinc` MCP server of this plugin, signed in with the person's vincs.io accou
 
 ## Find the role
 
-1. Call `vinc_role` with no `role` to list the roster. Each row has a slug such as `agent-reviewer`.
+1. Call `vinc_role` with no `role` to list the roster. Each row has a slug such as `agent-checker`.
 2. Call `vinc_role` with the slug to read the contract. Keep its `hash`.
 
-If a skill named after the role is installed next to this one (for example `agent-reviewer`), it
+If a skill named after the role is installed next to this one (for example `agent-checker`), it
 is the same contract exported to a file. The live contract in the graph wins when they differ:
 pass the skill's hash as `expected_hash` to `vinc_role` and read again when it is refused.
 

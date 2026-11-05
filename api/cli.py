@@ -391,12 +391,12 @@ def _main(argv: list[str] | None = None) -> int:
     rl = sub.add_parser("role", help="read a role contract or check an output against it")
     rls = rl.add_subparsers(dest="rolecmd", required=True)
     rlg = rls.add_parser("get", help="read one role contract")
-    rlg.add_argument("id", help="role slug (agent-dev-core) or exact concept:agent- id")
+    rlg.add_argument("id", help="role slug (agent-maker) or exact concept:agent- id")
     rlg.add_argument("--compact", action="store_true", default=None,
                      help="leave relation evidence sentences out (for a role over the read limit)")
     rlg.add_argument("--owner", default=None)
     rle = rls.add_parser("export", help="export one role as a file for an agent host")
-    rle.add_argument("id", help="role slug (agent-dev-core) or exact concept:agent- id")
+    rle.add_argument("id", help="role slug (agent-maker) or exact concept:agent- id")
     rle.add_argument("--format", default="skill",
                      choices=("skill", "claude", "gpt", "agents-md", "vincpack", "mcp"),
                      help="skill (SKILL.md), claude, gpt, agents-md, vincpack or mcp (default skill)")
@@ -404,7 +404,7 @@ def _main(argv: list[str] | None = None) -> int:
                      help="write the file into DIR instead of printing the result")
     rle.add_argument("--owner", default=None)
     rlc = rls.add_parser("check", help="check one final output against the role's structured checks")
-    rlc.add_argument("id", help="role slug (agent-dev-core) or exact concept:agent- id")
+    rlc.add_argument("id", help="role slug (agent-maker) or exact concept:agent- id")
     rlc.add_argument("--output", required=True, metavar="FILE",
                      help="file holding the complete output, or - for stdin")
     rlc.add_argument("--person-only-requests", default=None, metavar="JSON",

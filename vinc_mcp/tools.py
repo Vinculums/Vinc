@@ -1193,7 +1193,7 @@ TOOLS: list[dict] = [
             )
             ),
         "inputSchema": {"type": "object", "properties": {
-            "role": {"type": "string", "description": "Role slug (agent-dev-core) or exact concept:agent- id; omit to list."},
+            "role": {"type": "string", "description": "Role slug (agent-maker) or exact concept:agent- id; omit to list."},
             "expected_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$",
                               "description": "Optional pin: the hash from an earlier read. A "
                                              "changed role returns role_changed and no contract."},
@@ -1223,7 +1223,7 @@ TOOLS: list[dict] = [
             )
             ),
         "inputSchema": {"type": "object", "properties": {
-            "role": {"type": "string", "description": "Role slug (agent-dev-core) or exact concept:agent- id."},
+            "role": {"type": "string", "description": "Role slug (agent-maker) or exact concept:agent- id."},
             "format": {"type": "string", "enum": ["skill", "claude", "gpt", "agents-md", "vincpack", "mcp"],
                        "description": "The file to make; default skill."},
             "owner": {"type": "string"}}, "required": ["role"]},
@@ -1241,7 +1241,7 @@ TOOLS: list[dict] = [
             )
             ),
         "inputSchema": {"type": "object", "properties": {
-            "role": {"type": "string", "description": "Role slug (agent-dev-core) or exact concept:agent- id."},
+            "role": {"type": "string", "description": "Role slug (agent-maker) or exact concept:agent- id."},
             # 상한은 핸들러(`_t_role_check`)와 같은 수다. 스키마에만 두면 계약이 아니고
             # 핸들러에만 두면 호스트가 넘겨 보고서야 안다.
             "output": {"type": "string", "maxLength": 131072,
