@@ -9,7 +9,7 @@ import { api, cfg, isCommunitySpace } from "../api";
 import { COPY } from "../copy";
 import { esc } from "../components";
 import { icon } from "../icons";
-import { compose, layoutMap, policySlug, type MapAgent, type MapPolicy, type MapProcedure, type PolicyRule,
+import { compose, layoutMap, mapHeight, policySlug, type MapAgent, type MapPolicy, type MapProcedure, type PolicyRule,
          type Props } from "../agent-ontology";
 import type { AgentRole } from "../lnb";
 import { announceRolesChanged } from "../role-composer";
@@ -72,14 +72,14 @@ let picked: Pick = null;
 let legacyOpen = false;
 /** 지난번에 그린 지도의 실제 폭(px). 다음 배치가 이 폭에 맞춘다. */
 let lastWidth = 0;
-const short = (s: string) => (s.length > 26 ? s.slice(0, 25) + "…" : s);
+const short = (s: string) => { const v = s.replace(/^Policy:\s*/, ""); return v.length > 26 ? v.slice(0, 25) + "…" : v; };
 
 /** 지도 면을 그린다. `drawLegacy` 는 직함 역할이 남은 스페이스에서 옛 보드를 아래에 그린다. */
 export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: HTMLElement) => void): void {
   const M = COPY.ui.agentMap;
   const readOnly = isCommunitySpace(cfg.team);
   // 그린 폭에 맞춰 배치한다: 고정 viewBox 를 줄여 그리면 글자도 같이 줄어 읽기 어렵다(11px 가 9px 로).
-  const W = Math.max(560, Math.round(lastWidth || 760)), H = W < 700 ? 600 : 540;
+  const W = Math.max(560, Math.round(lastWidth || 760)), H = mapHeight(data.procedures, data.agents);
   const { nodes, links } = layoutMap(data.agents, data.procedures, data.policies, W, H);
   const at = new Map(nodes.map((n) => [n.id, n]));
   const proc = new Map(data.procedures.map((p) => [p.id, p]));
@@ -101,10 +101,10 @@ export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: 
     const sel = picked?.id === n.id ? " is-sel" : "";
     const label = `${n.kind === "agent" ? M.agent : n.kind === "policy" ? M.policy : M.procedure}: ${n.label}`;
     if (n.kind === "policy") {
-      const w = Math.max(96, n.label.length * 6.4 + 24);
+      const w = Math.min(200, Math.max(96, short(n.label).length * 6.6 + 24));
       svg += `<g class="am-node am-pol${sel}" data-pick="policy" data-id="${esc(n.id)}" tabindex="0" role="button" aria-label="${esc(label)}">
         <rect x="${n.x - w / 2}" y="${n.y - n.r}" width="${w}" height="${n.r * 2}" rx="${n.r}"/>
-        <text x="${n.x}" y="${n.y + 4}" text-anchor="middle">${esc(n.label)}</text></g>`;
+        <title>${esc(n.label)}</title><text x="${n.x}" y="${n.y + 4}" text-anchor="middle">${esc(short(n.label))}</text></g>`;
     } else {
       const dx = n.anchor === "end" ? -(n.r + 6) : n.anchor === "start" ? n.r + 6 : 0;
       const dy = n.kind === "agent" ? n.r + 18 : 4;

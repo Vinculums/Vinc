@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const src = await readFile(new URL('../src/agent-ontology.ts', import.meta.url), 'utf8');
 const js = ts.transpileModule(src, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { compose, repeats, repeatedInField, layoutMap, listsOf } = await import(
+const { compose, repeats, repeatedInField, layoutMap, listsOf, mapHeight } = await import(
   `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 
 // 2026-11-05 소유자 그래프의 모양 그대로: Maker 의 불변 목록, 읽기 전용 정책 하나, 그 정책이 다스리는 절차.
@@ -68,4 +68,24 @@ test('the map lays the execute agent left, the verify agent right, and is the sa
   // a link to a policy the map does not hold is dropped, not drawn to nowhere
   const orphan = layoutMap(agents, [{ ...procs[0], policies: ['decision:policy-gone'] }], []);
   assert.equal(orphan.links.some((l) => l.from === 'decision:policy-gone'), false);
+});
+
+test('fifteen procedures on one side never put two labels closer than 26px, and stay inside the graph', () => {
+  // 2026-11-05 소유자 그래프: Maker 15, Checker 5. 각도로 고르게 놓던 첫 배치는 위아래 이름표를 겹쳤다.
+  const agents = [{ id: 'concept:agent-maker', title: 'Maker', tier: 'execute' }, { id: 'concept:agent-checker', title: 'Checker', tier: 'verify' }];
+  const procs = [...Array(15)].map((_, i) => ({ id: `concept:procedure-m${i}`, title: `Maker procedure ${i}`, agent: 'concept:agent-maker', policies: [] }))
+    .concat([...Array(5)].map((_, i) => ({ id: `concept:procedure-c${i}`, title: `Checker procedure ${i}`, agent: 'concept:agent-checker', policies: [] })));
+  for (const width of [560, 640, 760, 960]) {
+    const height = mapHeight(procs, agents);
+    const { nodes } = layoutMap(agents, procs, [], width, height);
+    for (const side of ['end', 'start']) {
+      const ys = nodes.filter((n) => n.kind === 'procedure' && n.anchor === side).map((n) => n.y).sort((a, b) => a - b);
+      ys.slice(1).forEach((y, i) => assert.ok(y - ys[i] >= 26, `${width}px ${side}: ${ys[i]} and ${y}`));
+    }
+    for (const n of nodes.filter((n) => n.kind === 'procedure')) {
+      if (n.anchor === 'end') assert.ok(n.x - 170 >= 0, `${width}px: ${n.id} label leaves on the left (${n.x})`);
+      if (n.anchor === 'start') assert.ok(n.x + 170 <= width, `${width}px: ${n.id} label leaves on the right (${n.x})`);
+      assert.ok(n.y >= 60 && n.y <= height - 20, `${n.id} y ${n.y}`);
+    }
+  }
 });

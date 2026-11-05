@@ -68,40 +68,51 @@ export interface MapNode { id: string; kind: "agent" | "procedure" | "policy"; x
                            label: string; anchor: "start" | "end" | "middle" }
 export interface MapLink { from: string; to: string; kind: "has" | "governs" | "returns" }
 
-/** 결정론적 배치. Agent 는 가로로 나란히(execute 가 왼쪽), 절차는 자기 Agent 둘레의 호, 정책은 위쪽 줄.
- *  절차 점의 반지름은 12: 지도에서 누르기 쉬워야 한다(시안의 7은 작았다). 같은 입력이면 같은 좌표다. */
+/** 지도 높이: 한쪽에 절차가 많으면 그만큼 키운다(이름표 한 줄에 30px). */
+export function mapHeight(procedures: MapProcedure[], agents: MapAgent[]): number {
+  const most = Math.max(0, ...agents.map((a) => procedures.filter((p) => p.agent === a.id).length));
+  return Math.max(540, most * 30 + 140);
+}
+
+/** 결정론적 배치. Agent 는 가로로 나란히(execute 가 왼쪽), 절차는 자기 Agent 바깥쪽 타원 위에 **세로로 고르게**
+ *  놓는다: 같은 쪽 이름표가 한 줄씩 겹치지 않게(최소 28px). 왼쪽 Agent 의 이름표는 왼쪽으로, 오른쪽 Agent 의
+ *  이름표는 오른쪽으로 편다. 정책은 맨 위 줄. 이름표 폭(26자, 약 160px)만큼 가장자리를 비운다.
+ *  절차 점의 반지름은 12: 누르기 쉬워야 한다. 같은 입력이면 같은 좌표다. */
 export function layoutMap(agents: MapAgent[], procedures: MapProcedure[], policies: MapPolicy[],
-                          width = 760, height = 540): { nodes: MapNode[]; links: MapLink[] } {
+                          width = 760, height = mapHeight(procedures, agents)): { nodes: MapNode[]; links: MapLink[] } {
   const order = [...agents].sort((a, b) => (a.tier === "verify" ? 1 : 0) - (b.tier === "verify" ? 1 : 0) || a.id.localeCompare(b.id));
   const nodes: MapNode[] = [];
   const links: MapLink[] = [];
-  const cy = height * 0.56;
+  const LABEL = 170, TOP = 84, BOTTOM = 40;
+  const cy = TOP + (height - TOP - BOTTOM) / 2;
   const centres = new Map<string, { x: number; y: number }>();
+  const xs = order.length === 1 ? [width / 2]
+    : order.map((_, i) => i === 0 ? Math.max(LABEL + 110, width * 0.42) : Math.min(width - LABEL - 70, width * 0.78));
   order.forEach((a, i) => {
-    // 이름표가 지도 밖으로 나가지 않을 만큼 안쪽에 둔다(이름표는 26자까지, 약 160px).
-    const x = order.length === 1 ? width / 2 : width * (0.44 + 0.28 * i / Math.max(1, order.length - 1));
-    centres.set(a.id, { x, y: cy });
-    nodes.push({ id: a.id, kind: "agent", x, y: cy, r: 24, label: a.title, anchor: "middle" });
+    centres.set(a.id, { x: round(xs[i]), y: round(cy) });
+    nodes.push({ id: a.id, kind: "agent", x: round(xs[i]), y: round(cy), r: 24, label: a.title, anchor: "middle" });
   });
-  for (const a of order) {
+  order.forEach((a, i) => {
     const mine = procedures.filter((p) => p.agent === a.id);
     const c = centres.get(a.id)!;
-    const left = order.length > 1 && a.id === order[0].id;
-    // 왼쪽 Agent 는 왼쪽 반원과 위·아래로, 오른쪽 Agent 는 오른쪽으로 편다. 하나뿐이면 둘레 전체.
-    const [t0, t1] = order.length === 1 ? [0, 2 * Math.PI] : left ? [0.55 * Math.PI, 1.45 * Math.PI] : [-0.45 * Math.PI, 0.45 * Math.PI];
-    const rx = left ? width * 0.15 : width * 0.1, ry = height * (mine.length > 8 ? 0.38 : 0.28);
-    mine.forEach((p, i) => {
-      const t = mine.length === 1 ? (t0 + t1) / 2 : t0 + (t1 - t0) * i / (mine.length - 1);
-      const x = c.x + rx * Math.cos(t), y = c.y + ry * Math.sin(t);
-      nodes.push({ id: p.id, kind: "procedure", x: round(x), y: round(y), r: 12, label: p.title,
-                   anchor: x < c.x - 1 ? "end" : x > c.x + 1 ? "start" : "middle" });
+    const right = order.length > 1 && i === order.length - 1;
+    const rx = right ? Math.max(48, Math.min(90, width - LABEL - c.x - 16)) : Math.max(60, Math.min(c.x - LABEL - 16, width * 0.24));
+    const span = Math.max(1, mine.length - 1) * 30;
+    const top = cy - span / 2;
+    mine.forEach((p, k) => {
+      const y = mine.length === 1 ? cy : top + k * 30;
+      const ry = Math.max(span / 2 + 30, 60);
+      const dx = rx * Math.sqrt(Math.max(0, 1 - ((y - cy) / ry) ** 2));
+      const x = right ? c.x + dx : c.x - dx;
+      nodes.push({ id: p.id, kind: "procedure", x: round(x), y: round(y), r: 12, label: p.title, anchor: right ? "start" : "end" });
       links.push({ from: a.id, to: p.id, kind: "has" });
       for (const pol of p.policies) links.push({ from: pol, to: p.id, kind: "governs" });
     });
-  }
+  });
   policies.forEach((pol, i) => {
-    const x = width * (policies.length === 1 ? 0.3 : 0.15 + 0.7 * i / Math.max(1, policies.length - 1));
-    nodes.push({ id: pol.id, kind: "policy", x: round(x), y: 36, r: 16, label: pol.title, anchor: "middle" });
+    const slot = width / (policies.length + 1);
+    nodes.push({ id: pol.id, kind: "policy", x: round(Math.max(110, Math.min(width - 110, slot * (i + 1) * (policies.length === 1 ? 0.75 : 1)))),
+                 y: 36, r: 16, label: pol.title, anchor: "middle" });
   });
   if (order.length > 1) links.push({ from: order[order.length - 1].id, to: order[0].id, kind: "returns" });
   const known = new Set(nodes.map((n) => n.id));
