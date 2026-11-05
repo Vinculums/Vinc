@@ -3635,10 +3635,15 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 /* 몸통을 3D orb 가 그리면 SVG 의 점은 누르는 자리로만 남는다(보이지 않게). 선택 고리도 orb 셰이더의 것이다. */
 .am-has-orbs .am-node circle, .am-has-orbs .am-pol circle { fill: transparent !important; stroke: transparent !important; }
 .am-has-orbs .am-mark { display: none; }
-.am-has { stroke: hsl(var(--border)); stroke-width: 1.2; }
-.am-gov { stroke: hsl(var(--muted-foreground) / .7); stroke-width: 1.2; stroke-dasharray: 4 4; }
-.am-ret { fill: none; stroke: hsl(var(--caption-foreground)); stroke-dasharray: 5 5; }
-.am-ret-t { fill: hsl(var(--caption-foreground)); font-size: 11px; }
+/* 선 — 그래프 보기와 같은 인코딩: 헤어라인, 불투명도 .85, 방향 없는 관계는 파선, 주제를 건너면 cross 잉크.
+   끈(ABOUT)은 짚거나 고른 노드에 닿을 때만. 닿은 선은 초점색, 나머지는 fade 로 물러난다. 색은 linkRamp(인라인 변수). */
+.am-l { stroke: var(--am-link-base); stroke-width: 1; opacity: .85; vector-effect: non-scaling-stroke; transition: stroke .12s, opacity .12s; }
+.am-l.am-dash { stroke-dasharray: 4 3; }
+.am-l.am-cross { stroke: var(--am-link-cross); }
+.am-l.am-tether { opacity: 0; }
+.has-focus .am-l { stroke: var(--am-link-fade); }
+.has-focus .am-l.is-near { stroke: var(--am-point); opacity: .85; }
+@media (prefers-reduced-motion: reduce) { .am-l { transition: none; } }
 .am-node { cursor: pointer; outline: none; }
 .am-node text { fill: hsl(var(--foreground)); font-size: 11px; paint-order: stroke; stroke: hsl(var(--card)); stroke-width: 4px; stroke-linejoin: round; }
 .am-node circle { fill: hsl(var(--card)); stroke: hsl(var(--muted-foreground) / .8); stroke-width: 1.4; }
@@ -3669,8 +3674,12 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 /* 절차 편집 칸(procedure-panel.ts). Agent 그래프 옆 칸 안에서 칸들, 그 아래 실행할 때 적용되는 목록, 저장. */
 .pe-form { display: flex; flex-direction: column; gap: var(--space-3, .75rem); }
 .pe-field { display: flex; flex-direction: column; gap: .3rem; }
-.pe-field label { font-size: .8125rem; font-weight: 500; color: hsl(var(--foreground)); }
-.pe-field textarea, .pe-field input { font: .8125rem var(--font-mono); }
+.pe-field label { font-size: .85em; color: hsl(var(--caption-foreground)); }
+/* 칸 모양은 앱 공용 입력칸(.ei-field)과 같다: 카드 배경 · 테두리 토큰 · radius-sm · 본문 글꼴. */
+.pe-field input, .pe-field textarea { width: 100%; padding: var(--space-2, .5rem); border-radius: var(--radius-sm, .625rem);
+  border: 1px solid hsl(var(--border)); background: hsl(var(--card)); color: hsl(var(--foreground)); font: inherit; font-size: .8125rem; }
+.pe-field textarea { resize: vertical; }
+.pe-field input:focus-visible, .pe-field textarea:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
 .pe-repeat { margin: 0; padding: .35rem .55rem; border-radius: calc(var(--radius) - 2px); font-size: .75rem;
   border: 1px solid hsl(var(--point) / .6); color: hsl(var(--point-text)); word-break: keep-all; }
 .pe-eff { display: flex; flex-direction: column; gap: var(--space-2, .5rem); padding-top: var(--space-3, .75rem); border-top: 1px solid hsl(var(--border)); }

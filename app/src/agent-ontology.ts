@@ -66,7 +66,9 @@ export interface MapProcedure { id: string; title: string; agent: string; polici
 export interface MapPolicy { id: string; title: string }
 export interface MapNode { id: string; kind: "agent" | "procedure" | "policy"; x: number; y: number; r: number;
                            label: string; anchor: "start" | "end" | "middle" }
-export interface MapLink { from: string; to: string; kind: "has" | "governs" | "returns" }
+/** 그래프의 선 하나 = 저장된 관계 하나. `type` 은 저장 이름 그대로라 선 모양을 그래프 보기와 같은 판정
+ *  (`edgeKindOf`)이 정한다: 절차와 Agent, Checker 와 Maker 는 RELATED_TO, 정책과 절차는 ABOUT(끈). */
+export interface MapLink { from: string; to: string; type: "RELATED_TO" | "ABOUT" }
 
 /** 지도 높이: 한쪽에 절차가 많으면 그만큼 키운다(이름표 한 줄에 30px). */
 export function mapHeight(procedures: MapProcedure[], agents: MapAgent[]): number {
@@ -107,8 +109,8 @@ export function layoutMap(agents: MapAgent[], procedures: MapProcedure[], polici
       const dx = rx * Math.sqrt(Math.max(0, 1 - ((y - cy) / ry) ** 2));
       const x = right ? c.x + dx : c.x - dx;
       nodes.push({ id: p.id, kind: "procedure", x: round(x), y: round(y), r: 12, label: p.title, anchor: right ? "start" : "end" });
-      links.push({ from: a.id, to: p.id, kind: "has" });
-      for (const pol of p.policies) links.push({ from: pol, to: p.id, kind: "governs" });
+      links.push({ from: p.id, to: a.id, type: "RELATED_TO" });
+      for (const pol of p.policies) links.push({ from: pol, to: p.id, type: "ABOUT" });
     });
   });
   policies.forEach((pol, i) => {
@@ -116,7 +118,7 @@ export function layoutMap(agents: MapAgent[], procedures: MapProcedure[], polici
     nodes.push({ id: pol.id, kind: "policy", x: round(Math.max(110, Math.min(width - 110, slot * (i + 1) * (policies.length === 1 ? 0.75 : 1)))),
                  y: 30, r: 16, label: pol.title, anchor: "middle" });
   });
-  if (order.length > 1) links.push({ from: order[order.length - 1].id, to: order[0].id, kind: "returns" });
+  if (order.length > 1) links.push({ from: order[order.length - 1].id, to: order[0].id, type: "RELATED_TO" });
   const known = new Set(nodes.map((n) => n.id));
   return { nodes, links: links.filter((l) => known.has(l.from) && known.has(l.to)) };
 }

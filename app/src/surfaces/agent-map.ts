@@ -9,6 +9,8 @@ import { api, cfg, isCommunitySpace } from "../api";
 import { COPY } from "../copy";
 import { esc } from "../components";
 import { icon } from "../icons";
+import { edgeKindOf } from "../view-prefs";
+import { palette as signal, hexStr } from "../theme";
 import { layoutMap, mapHeight, policySlug, type MapAgent, type MapPolicy, type MapProcedure, type Props } from "../agent-ontology";
 import type { AgentRole } from "../lnb";
 import { announceRolesChanged } from "../role-composer";
@@ -93,6 +95,13 @@ export function updateAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host
 }
 
 type Pick = { kind: "agent" | "procedure" | "policy"; id: string } | null;
+
+/** 그래프 보기의 선 색(theme.linkRamp)과 초점색을 CSS 변수로. 테마마다 값이 다르다. */
+function linkVars(): string {
+  const mode = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+  const p = signal[mode];
+  return `--am-link-base:${p.linkRamp.base};--am-link-cross:${p.linkRamp.cross};--am-link-fade:${p.linkRamp.fade};--am-point:${hexStr(p.focus)}`;
+}
 let picked: Pick = null;
 let legacyOpen = false;
 /** 지난번에 그린 지도의 실제 폭(px). 다음 배치가 이 폭에 맞춘다. */
@@ -113,16 +122,20 @@ export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: 
   const ag = new Map(data.agents.map((a) => [a.id, a]));
   if (picked && !at.has(picked.id)) picked = null;
 
-  const line = (a: { x: number; y: number }, b: { x: number; y: number }, cls: string) =>
-    `<line class="${cls}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`;
+  // 선 모양은 그래프 보기와 같은 판정이다(`edgeKindOf`, view3d 의 dashedLink·quietAtWhole·linkColorFn):
+  // 방향 없는 관계는 파선 헤어라인, 주제를 건너면 cross 잉크, 끈(ABOUT)은 짚거나 고른 노드에 닿을 때만 보인다.
+  // 짚은 노드에 닿은 선은 초점색, 나머지는 물러난다. 색은 테마의 linkRamp 다(아래 CSS 변수).
+  // 근거: [[decision:the-graph-whole-view-is-the-infra-layout-in-vinc-orbs-2026-10-28]]
+  const domainOf = new Map<string, string>([...data.agents, ...data.procedures, ...data.policies].map((x) => [x.id, x.domain]));
   let svg = "";
   let lines = "";
   for (const l of links) {
     const a = at.get(l.from)!, b = at.get(l.to)!;
-    if (l.kind === "has") lines += line(a, b, "am-has");
-    else if (l.kind === "governs") lines += line({ x: a.x, y: a.y + 16 }, b, "am-gov");
-    else lines += `<path class="am-ret" d="M${a.x - 26},${a.y + 30} C ${a.x - 110},${a.y + 170} ${b.x + 110},${b.y + 170} ${b.x + 26},${b.y + 30}"/>
-      <text class="am-ret-t" x="${(a.x + b.x) / 2}" y="${a.y + 150}" text-anchor="middle">${esc(M.returns)}</text>`;
+    const cross = (domainOf.get(l.from) || "") !== (domainOf.get(l.to) || "");
+    const kind = edgeKindOf({ type: l.type, cross_domain: cross });
+    const cls = ["am-l", kind === "related" || kind === "bridge" ? "am-dash" : "", kind === "cross" ? "am-cross" : "",
+                 l.type === "ABOUT" ? "am-tether" : ""].filter(Boolean).join(" ");
+    lines += `<line class="${cls}" data-a="${esc(l.from)}" data-b="${esc(l.to)}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`;
   }
   for (const n of nodes) {
     const sel = picked?.id === n.id ? " is-sel" : "";
@@ -146,7 +159,7 @@ export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: 
     <p class="hint agents-lead">${esc(M.lead)}</p>
     <p class="agents-status" role="status"></p>
     <div class="am-stage">
-      <div class="am-canvas-wrap"><svg class="am-lines" viewBox="0 0 ${W} ${H}" aria-hidden="true">${lines}</svg>
+      <div class="am-canvas-wrap" style="${linkVars()}"><svg class="am-lines" viewBox="0 0 ${W} ${H}" aria-hidden="true">${lines}</svg>
         <canvas class="am-orbs" aria-hidden="true"></canvas>
         <svg class="am-svg" viewBox="0 0 ${W} ${H}" role="group" aria-label="${esc(M.mapLabel)}">${svg}</svg></div>
       <aside class="am-side"></aside>
@@ -203,6 +216,21 @@ export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: 
   }
 
   const board = el.querySelector<HTMLElement>(".agent-map")!;
+  /** 짚은 노드(없으면 고른 노드)에 닿은 선을 앞으로, 나머지는 뒤로. 끈은 닿을 때만 보인다. */
+  let hoverId: string | null = null;
+  const emphasize = () => {
+    const id = hoverId ?? picked?.id ?? null;
+    const wrap = board.querySelector(".am-canvas-wrap");
+    wrap?.classList.toggle("has-focus", !!id);
+    wrap?.querySelectorAll<SVGLineElement>(".am-l").forEach((ln) =>
+      ln.classList.toggle("is-near", !!id && (ln.dataset.a === id || ln.dataset.b === id)));
+  };
+  board.addEventListener("mouseover", (e) => {
+    const n = (e.target as Element).closest<HTMLElement>(".am-node");
+    const id = n?.dataset.id ?? null;
+    if (id !== hoverId) { hoverId = id; emphasize(); }
+  });
+  board.addEventListener("mouseleave", () => { hoverId = null; emphasize(); });
   /** 옆 칸을 채운다. 절차면 그 자리에 편집 칸을 붙인다(다른 면으로 가지 않는다). */
   const fillSide = () => {
     const box = board.querySelector<HTMLElement>(".am-side")!;
@@ -223,6 +251,7 @@ export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: 
     });
   };
   fillSide();
+  emphasize();
   const status = (s: string) => { board.querySelector(".agents-status")!.textContent = s; };
   // 고르기는 다시 그리지 않는다: 선택 표시와 옆 칸만 바꾸고, 3D 몸통은 같은 캔버스에서 상태만 바꾼다.
   // 전체를 다시 그리면 WebGL 캔버스가 새로 생겨 첫 장면까지 비어 보인다(누를 때마다 깜빡였다).
@@ -230,6 +259,7 @@ export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: 
     picked = { kind: t.dataset.pick as "agent" | "procedure" | "policy", id: t.dataset.id! };
     board.querySelectorAll<HTMLElement>(".am-node, .am-row").forEach((x) => x.classList.toggle("is-sel", x.dataset.id === picked!.id));
     fillSide();
+    emphasize();
     void import("./agent-orbs").then((m) => m.selectOrb(picked?.id ?? null)).catch(() => {});
     if (t.closest(".am-node")) t.focus({ preventScroll: true });
   };

@@ -419,7 +419,6 @@ const EN = {
       counts: (agents: number, procedures: number, policies: number) =>
         `${agents} ${agents === 1 ? "agent" : "agents"} · ${procedures} ${procedures === 1 ? "procedure" : "procedures"} · ${policies} ${policies === 1 ? "policy" : "policies"}`,
       mapLabel: "Graph of the agents, their procedures and the policies that govern them",
-      returns: "Failures go back to the Maker",
       agent: "Agent",
       procedure: "Procedure",
       policy: "Policy",
@@ -1856,7 +1855,6 @@ const KO: Deck = {
       lead: "일은 Agent 둘이 합니다. Maker가 만들고, Checker는 만든 과정을 보지 않고 결과만 검사합니다. 점 하나하나가 Agent가 과제에 맞춰 읽는 절차이고, 정책은 여러 절차가 함께 지키는 강제 제한입니다.",
       counts: (agents: number, procedures: number, policies: number) => `Agent ${agents} · 절차 ${procedures} · 정책 ${policies}`,
       mapLabel: "Agent와 절차, 절차를 다스리는 정책의 관계 그래프",
-      returns: "실패는 Maker로",
       agent: "Agent",
       procedure: "절차",
       policy: "정책",

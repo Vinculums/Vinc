@@ -63,8 +63,10 @@ test('the map lays the execute agent left, the verify agent right, and is the sa
   const node = (id) => one.nodes.find((n) => n.id === id);
   assert.ok(node('concept:agent-maker').x < node('concept:agent-checker').x);
   assert.ok(one.nodes.filter((n) => n.kind === 'procedure').every((n) => n.r >= 12), 'procedure dots are big enough to press');
-  assert.deepEqual(one.links.filter((l) => l.kind === 'governs'), [{ from: readOnly.id, to: 'concept:procedure-a', kind: 'governs' }]);
-  assert.deepEqual(one.links.filter((l) => l.kind === 'returns'), [{ from: 'concept:agent-checker', to: 'concept:agent-maker', kind: 'returns' }]);
+  // 선은 저장된 관계 그대로다: 정책은 ABOUT(끈), 절차와 Agent·Checker 와 Maker 는 RELATED_TO.
+  assert.deepEqual(one.links.filter((l) => l.type === 'ABOUT'), [{ from: readOnly.id, to: 'concept:procedure-a', type: 'ABOUT' }]);
+  assert.ok(one.links.some((l) => l.from === 'concept:agent-checker' && l.to === 'concept:agent-maker' && l.type === 'RELATED_TO'));
+  assert.ok(one.links.some((l) => l.from === 'concept:procedure-b' && l.to === 'concept:agent-maker' && l.type === 'RELATED_TO'));
   // a link to a policy the map does not hold is dropped, not drawn to nowhere
   const orphan = layoutMap(agents, [{ ...procs[0], policies: ['decision:policy-gone'] }], []);
   assert.equal(orphan.links.some((l) => l.from === 'decision:policy-gone'), false);
