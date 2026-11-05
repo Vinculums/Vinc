@@ -25,9 +25,11 @@ export interface MapData {
 /** 로스터의 역할마다 계약을 읽어, 절차가 있는 것을 Agent 로 본다. 절차는 노드를 하나씩 읽는다(제목·설명·props).
  *  Agent 가 하나도 없으면 null: 그 스페이스는 직함 역할 보드를 그대로 쓴다. */
 export async function loadAgentMap(roles: AgentRole[]): Promise<MapData | null> {
-  const reads = await Promise.all(roles.map((r) => api.role(cfg.owner, r.id).catch(() => null)));
+  // 역할마다 한 번: `detail=procedures` 가 그 Agent 의 절차(제목·설명·주제·props·rev)와 정책을 한 쿼리로 싣는다.
+  // 절차마다 노드를 따로 읽으면 화면을 열 때 요청이 절차 수만큼 늘었다(2026-11-05 실측: 열 때 42건).
+  const reads = await Promise.all(roles.map((r) => api.role(cfg.owner, r.id, true).catch(() => null)));
   const agents: MapData["agents"] = [];
-  const procIndex = new Map<string, { agent: string; policies: string[] }>();
+  const procedures: MapData["procedures"] = [];
   const policies = new Map<string, MapData["policies"][number]>();
   reads.forEach((got, i) => {
     const procs = got?.executed && Array.isArray(got.procedures) ? got.procedures : [];
@@ -36,37 +38,25 @@ export async function loadAgentMap(roles: AgentRole[]): Promise<MapData | null> 
     const props = (node.props || {}) as Props;
     agents.push({ id: roles[i].id, title: node.title || roles[i].title, tier: String(props.tier || ""),
                   mission: String(props.mission || node.one_liner || ""), props, domain: String(node.domain || roles[i].domain || "") });
-    for (const p of procs) procIndex.set(p.id, { agent: roles[i].id, policies: Array.isArray(p.policies) ? p.policies : [] });
+    for (const p of procs) procedures.push({ id: p.id, agent: roles[i].id, policies: Array.isArray(p.policies) ? p.policies : [],
+      title: String(p.title || p.id).replace(/ \((Maker|Checker) procedure\)$/, ""), one_liner: String(p.one_liner || ""),
+      props: (p.props || {}) as Props, domain: String(p.domain || ""), rev: Number(p.rev) });
     for (const pol of Array.isArray(got.policies) ? got.policies : [])
-      policies.set(pol.id, { id: pol.id, title: pol.title || policySlug(pol.id), rule: pol.rule || {}, domain: "" });
+      policies.set(pol.id, { id: pol.id, title: pol.title || policySlug(pol.id), rule: pol.rule || {}, domain: String(pol.domain || "") });
   });
   if (!agents.length) return null;
-  // 역할 읽기는 절차에 붙은 정책만 돌려준다. 붙은 절차가 하나도 없는 정책도 지도에 있어야 다시 붙일 수 있으므로
-  // 결정 목록에서 `decision:policy-` 를 따로 모은다. 목록을 못 읽으면 붙은 정책만으로 그린다.
+  // 역할 읽기는 절차에 붙은 정책만 싣는다. 아무 절차도 다스리지 않는 정책도 그래프에 있어야 다시 붙일 수 있으므로
+  // 결정 목록에서 `decision:policy-` 중 아직 없는 것만 따로 읽는다(보통 0건). 목록을 못 읽으면 붙은 정책만으로 그린다.
   try {
     const tree: any = await api.navTree(cfg.owner, { nodes: true, kind: "decision" });
     const loose = ([] as any[]).concat(...((tree?.domains || []).map((d: any) => d.nodes || [])), tree?.unfiled || [])
-      .map((n: any) => String(n?.id || "")).filter((id: string) => id.startsWith("decision:policy-"));
+      .map((n: any) => String(n?.id || "")).filter((id: string) => id.startsWith("decision:policy-") && !policies.has(id));
     const got = await Promise.all(loose.map((id: string) => api.nodeContext(cfg.owner, id, 1).catch(() => null)));
     got.forEach((n: any, i: number) => {
-      if (!n || n.executed === false) return;
-      const had = policies.get(loose[i]);
-      policies.set(loose[i], { id: loose[i], title: had?.title || String(n.title || policySlug(loose[i])),
-        rule: had?.rule || ((n.props || {}) as Props).rule as Props || {}, domain: String(n.domain || "") });
+      if (n && n.executed !== false) policies.set(loose[i], { id: loose[i], title: String(n.title || policySlug(loose[i])),
+        rule: ((n.props || {}) as Props).rule as Props || {}, domain: String(n.domain || "") });
     });
   } catch { /* 붙은 정책만으로 그린다 */ }
-  const ids = [...procIndex.keys()];
-  const nodes = await Promise.all(ids.map((id) => api.nodeContext(cfg.owner, id, 1).catch(() => null)));
-  const procedures: MapData["procedures"] = [];
-  nodes.forEach((node: any, i) => {
-    // node-context 는 평평한 꼴이다: `node` 칸은 id 문자열이고 title·one_liner·props 는 바깥에 있다.
-    if (!node || node.executed === false) return;
-    const meta = procIndex.get(ids[i])!;
-    procedures.push({ id: ids[i], agent: meta.agent, policies: meta.policies,
-      title: String(node.title || ids[i]).replace(/ \((Maker|Checker) procedure\)$/, ""),
-      one_liner: String(node.one_liner || ""), props: (node.props || {}) as Props, domain: String(node.domain || ""),
-      rev: Number(node.rev) });
-  });
   const agentIds = new Set(agents.map((a) => a.id));
   return { agents, procedures, policies: [...policies.values()], legacy: roles.filter((r) => !agentIds.has(r.id)) };
 }

@@ -391,3 +391,17 @@ def test_the_roster_contracts_with_their_procedure_index_fit_the_read_budget():
         out = roles.contract(r['name'], B())
         assert out.get('executed'), (r['id'], out.get('error'), out.get('bytes'))
         assert len(roles.serialize_result(out).encode('utf-8')) < roles.CONTRACT_CAP
+
+
+def test_the_app_detail_read_carries_each_procedure_in_one_query_and_the_contract_does_not(procedure_graph):
+    """The Agents screen reads procedures through `detail=procedures` instead of one node read each (measured
+    2026-11-05: 42 node reads to open the screen). The MCP and REST contract stays compact."""
+    got = role_read.read('concept:agent-maker', owner=OWNER, store=procedure_graph, detail=True)
+    plan = next(p for p in got['procedures'] if p['id'] == 'concept:procedure-plan')
+    assert plan['title'] == 'Plan (Maker procedure)' and plan['one_liner'] == 'Plan the packages.'
+    assert plan['domain'] == 'agent' and plan['props']['kind'] == 'procedure' and isinstance(plan['rev'], int)
+    assert got['policies'][0]['domain'] == 'agent'
+    plain = role_read.read('concept:agent-maker', owner=OWNER, store=procedure_graph)
+    assert set(plain['procedures'][0]) == {'id', 'policies'}
+    contract = tools.call('vinc_role', {'role': 'agent-maker'}, Bridge(procedure_graph))
+    assert set(contract['procedures'][0]) == {'id', 'policies'}

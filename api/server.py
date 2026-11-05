@@ -1242,7 +1242,7 @@ class VincApp:
             return {"executed": False, "error": "invalid role pagination"}
         return self._read(lambda r: read(p.get("role"), owner=_req(p, "owner"), store=r,
             limit=limit, offset=offset,
-            roster=p.get("roster") == "1"))
+            roster=p.get("roster") == "1", detail=p.get("detail") == "procedures"))
 
     def read_role_export(self, p):
         """내 역할 하나를 호스트 파일로 낸다(skill·claude·gpt·agents-md·vincpack·mcp). 조회 전용."""
