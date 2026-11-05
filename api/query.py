@@ -3727,6 +3727,16 @@ def retrieval_overrides() -> list[str]:
     return out
 
 
+def retrieval_switches() -> dict:
+    """노드 재채점과 brief 규칙의 **실제** 값. `/health` 가 늘 싣는다 — 운영 값은 저장소 변수에만
+    있어서 밖에서 확인할 길이 없었다. ColBERT 는 설정이 on 이어도 numpy 가 없으면 꺼지므로
+    환경변수가 아니라 :func:`vinc_rag.colbert.rescore_on` 을 읽는다.
+    근거: [[vinc.canon.rag-production-state]]"""
+    from vinc_rag import colbert as _colbert
+    return {"VINC_NODE_COLBERT": "on" if _colbert.rescore_on() else "off",
+            "VINC_BRIEF_RULE": _brief_rule()}
+
+
 def _brief_token_decisive(top: dict, second: dict) -> bool:
     """1위가 2위를 토큰으로 갈랐는가 — 엄격 규칙이면 `_STRICT_MARGIN`, 아니면 1."""
     margin = _STRICT_MARGIN if _brief_strict_on() else 1   # 1 이면 현행과 글자 그대로 같다
@@ -4638,10 +4648,20 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         # v3 는 의미만 기권을 재채점 **전** 순서의 앞 다섯으로 본다(재채점이 기권 대상을 바꾸지 않게).
         # 재채점이 안 된 질의는 기존 규칙 그대로 간다.
         v3 = _brief_rule_v3() and rescored and bool(full)
+        learned = _brief_rule_learned() and rescored
+        configured = _brief_rule()
+        if configured != "production" and not (v3 or learned):
+            # 학습 규칙이 설정돼 있어도 재채점이 안 된 질의는 기존 규칙이 답한다. 그 사실을 답에 싣는다:
+            # 없으면 평가도 사람도 어느 규칙의 답인지 가를 수 없다(토큰이 빠진 노드 하나로도 재채점이 빠진다).
+            # 근거: [[vinc.canon.rag-production-state]]
+            _rs = res.get("node_rescore") or {}
+            base["resolution"] = {"rule": "production", "configured": configured,
+                                  "rescore": _rs.get("state") or "missing"}
+            if _rs.get("reason"):
+                base["resolution"]["reason"] = _rs["reason"]
         if _brief_semantic_none({**res, "node_hits": _brief_v3_prod_head(full)} if v3 else res):
             base["note"] = "no sufficiently close semantic candidate"
             return base
-        learned = _brief_rule_learned() and rescored
         if v3:
             status, picked, _p = _brief_resolve_v3(query, res.get("node_hits") or [], res)
             base["resolution"] = {"rule": "v3", "p": None if _p is None else round(_p, 4)}

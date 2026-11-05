@@ -174,7 +174,35 @@ def test_not_rescored_falls_back_to_production(run_brief, monkeypatch):
     monkeypatch.setattr(q, "_brief_resolve_v3", lambda *a: called.append(1) or ("choose", [], None))
     res = _res(_lexical_hits(), node_rescore={"state": "skipped", "reason": "tokens missing"})
     out = run_brief("what is it", res)
-    assert not called and "resolution" not in out
+    assert not called
+    # 되돌아간 사실이 답에 남는다: 어느 규칙이 답했는지, 무엇이 설정돼 있었는지, 왜 재채점이 없었는지.
+    assert out["resolution"] == {"rule": "production", "configured": "v3", "rescore": "skipped",
+                                 "reason": "tokens missing"}
+
+
+def test_fallback_is_named_on_a_semantic_none_answer_too(run_brief):
+    far = [_hit(i, colbert=0.5, prod_rank=i, distance=0.9) for i in range(1, 6)]
+    out = run_brief("what is it", _res(far, node_rescore={"state": "skipped", "reason": "no owner scope"}))
+    assert out["status"] == "none"
+    assert out["resolution"]["rule"] == "production" and out["resolution"]["configured"] == "v3"
+
+
+def test_production_rule_adds_no_resolution_key(run_brief):
+    out = run_brief("what is it", _res(_lexical_hits()), rule="production")
+    assert "resolution" not in out
+
+
+def test_retrieval_switches_report_the_effective_values(monkeypatch):
+    from vinc_rag import colbert
+    monkeypatch.delenv("VINC_BRIEF_RULE", raising=False)
+    monkeypatch.delenv("VINC_NODE_COLBERT", raising=False)
+    assert q.retrieval_switches() == {"VINC_NODE_COLBERT": "off", "VINC_BRIEF_RULE": "production"}
+    monkeypatch.setenv("VINC_BRIEF_RULE", "v3")
+    monkeypatch.setenv("VINC_NODE_COLBERT", "on")
+    monkeypatch.setattr(colbert, "rescore_on", lambda: True)
+    assert q.retrieval_switches() == {"VINC_NODE_COLBERT": "on", "VINC_BRIEF_RULE": "v3"}
+    monkeypatch.setattr(colbert, "rescore_on", lambda: False)   # 설정은 on 이지만 numpy 가 없으면 실제로는 꺼진다
+    assert q.retrieval_switches()["VINC_NODE_COLBERT"] == "off"
 
 
 def test_switch_is_explicit_and_defaults_to_production(monkeypatch, run_brief):
