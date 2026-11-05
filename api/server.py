@@ -2990,6 +2990,8 @@ class _Handler(BaseHTTPRequestHandler):
             overrides = q.retrieval_overrides()
             if overrides:
                 body["retrieval_overrides"] = overrides
+            # 노드 재채점과 brief 규칙의 실제 값은 늘 싣는다(켜진 것이 정상이라 위 목록에 넣지 않는다).
+            body["retrieval_switches"] = q.retrieval_switches()
             # 색인이 잔해로 막혔다 — 그 팔이 꺼져 있고 그 표의 쓰기가 거절된다(fts_index 면
             # 문서 저장·삭제가 전부다). 재기동이 고친다(`_heal_search_indexes`). 정상이면 키가 없다.
             for key, attr in (("vector_index", "vector_index_remnant"),
