@@ -106,7 +106,7 @@ let picked: Pick = null;
 let legacyOpen = false;
 /** 지난번에 그린 지도의 실제 폭(px). 다음 배치가 이 폭에 맞춘다. */
 let lastWidth = 0;
-const short = (s: string) => { const v = s.replace(/^Policy:\s*/, ""); return v.length > 22 ? v.slice(0, 21) + "…" : v; };
+const short = (s: string) => { const v = s.replace(/^Policy:\s*/, ""); return v.length > 20 ? v.slice(0, 19) + "…" : v; };
 
 /** 지도 면을 그린다. `drawLegacy` 는 직함 역할이 남은 스페이스에서 옛 보드를 아래에 그린다. */
 export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: HTMLElement) => void): void {
