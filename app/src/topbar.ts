@@ -86,6 +86,15 @@ export function refreshTopbar() {
   }
 }
 
+/** 표면이 거는 검색 거르개. 걸려 있으면 검색 칸에 치는 글자가 드롭다운 대신 이리로 간다(그래프의 나침반).
+ *  Enter 는 그대로 전문 검색(드롭다운). 표면을 떠날 때 null 로 푼다. */
+let searchFilter: ((q: string) => void) | null = null;
+export function setSearchFilter(fn: ((q: string) => void) | null) {
+  searchFilter = fn;
+  const q = document.getElementById("tb-q") as HTMLInputElement | null;
+  if (fn && q?.value.trim()) fn(q.value.trim());
+}
+
 /** 렌즈 버튼 자리 — 머리 맨 끝. 그래프에서만 View 가 채운다. */
 export function lensSlot(): HTMLElement | null { return $("tb-lens"); }
 
@@ -142,14 +151,22 @@ export function setTopbarLead(html: string | null): HTMLElement | null {
   return lead;
 }
 
-/** 그래프의 앞자리 — 지금 범위(LNB 가 고른 주제). 고른 것이 없으면 "그래프" 한 낱말. */
+/** 그래프의 앞자리 — 지금 범위(LNB 가 고른 주제). 고른 것이 없으면 "그래프" 한 낱말.
+ *  그 글자 바로 오른쪽에 표면이 넘긴 도구(나침반의 시간 · 범례 버튼)가 선다: 요소를 옮겨 붙이므로 배선이 남는다. */
 let graphScope = "";
+let leadTools: HTMLElement | null = null;
+export function setTopbarLeadTools(el: HTMLElement | null) {
+  if (leadTools && leadTools !== el) leadTools.remove();
+  leadTools = el;
+  paintGraphLead();
+}
 function paintGraphLead() {
   if (!onGraph()) return;
   const segs = graphScope.split("/").filter(Boolean);
-  setTopbarLead(`<span class="tb-lead-name">${esc(COPY.ui.topbar.graph)}</span>${
+  const lead = setTopbarLead(`<span class="tb-lead-name">${esc(COPY.ui.topbar.graph)}</span>${
     segs.length ? `<span class="tb-lead-sep" aria-hidden="true">·</span><span class="tb-lead-scope">${
       esc(segs.join(" / "))}</span>` : ""}`);
+  if (lead && leadTools) lead.append(leadTools);
 }
 
 export function mountTopbar() {
@@ -200,6 +217,23 @@ export function mountTopbar() {
   const chatEl = $("tb-chat");
   const findCard = $("tb-find");
   const findOpen = $("tb-find-open");
+  // 검색 칸은 LNB 맨 위에 산다(문서·그래프 같은 자리). 머리에는 제목과 문서 | 그래프 전환만 남는다.
+  // 칸은 늘 펼쳐져 있다. 결과 드롭다운은 칸 아래로, 묻기 답은 LNB 오른쪽으로 뜬다(app.css #lnb-search).
+  const lnbTop = $("lnb-top");
+  if (findCard && lnbTop) {
+    let slot = $("lnb-search");
+    if (!slot) { slot = document.createElement("div"); slot.id = "lnb-search"; slot.className = "lnb-search"; lnbTop.after(slot); }
+    slot.appendChild(findCard);
+    findCard.setAttribute("data-expanded", "true");
+  }
+  const docked = !!findCard?.closest("#lnb-search");
+  // LNB 는 넘치는 것을 자른다. 그래서 결과와 묻기 답은 화면에 고정해 LNB 오른쪽에 띄운다: 그 자리(위·왼쪽)를 CSS 변수로 준다
+  const placeFloats = () => { if (!docked) return; const lnb = $("lnb")?.getBoundingClientRect(), s = $("lnb-search")?.getBoundingClientRect(); if (!lnb || !s) return;
+    const root = document.documentElement.style, room = innerWidth - lnb.right - 24;
+    // LNB 오른쪽에 자리가 모자라면(좁은 창의 서랍) 칸 바로 아래, 화면 안쪽에 띄운다
+    if (room >= 320) { root.setProperty("--lnbs-top", `${Math.round(s.top)}px`); root.setProperty("--lnbs-left", `${Math.round(lnb.right + 12)}px`); root.setProperty("--lnbs-w", `min(34rem, ${room}px)`); }
+    else { root.setProperty("--lnbs-top", `${Math.round(s.bottom + 6)}px`); root.setProperty("--lnbs-left", `${Math.max(8, Math.round(s.left))}px`); root.setProperty("--lnbs-w", `${Math.round(innerWidth - Math.max(8, s.left) - 8)}px`); } };
+  if (docked) { window.addEventListener("resize", placeFloats); const l = $("lnb"); if (l) new ResizeObserver(placeFloats).observe(l); placeFloats(); }
 
   // ── 접힌 칸 ↔ 펼친 검색 ────────────────────────────────────────────────
   // 펼침은 칸의 `data-expanded` 하나가 말한다(CSS 가 그 하나만 본다). 펼친 검색은 오른쪽
@@ -211,6 +245,7 @@ export function mountTopbar() {
     if (focus) { qEl.focus(); qEl.select(); }
   };
   const collapse = () => {
+    if (docked) return;                            // LNB 에 놓인 칸은 접지 않는다
     if (chatEl && !chatEl.hidden) return;          // 묻기 답을 읽는 중이다
     findCard?.removeAttribute("data-expanded");
     findOpen?.setAttribute("aria-expanded", "false");
@@ -224,7 +259,8 @@ export function mountTopbar() {
     if (fk) fk.textContent = /mac/i.test(navigator.platform) ? "⌘K" : "Ctrl K";
     findOpen.setAttribute("aria-label", COPY.ui.topbar.searchPh);
     findOpen.setAttribute("aria-expanded", "false");
-    findOpen.addEventListener("click", () => expand());
+    // 접힌 LNB 띠에서는 이 단추(돋보기)만 보인다: 누르면 LNB 를 펴고 칸에 초점을 준다
+    findOpen.addEventListener("click", () => { if (docked && $("shell")?.dataset.lnb !== "open") $("tb-shell-toggle")?.click(); window.setTimeout(() => expand(), 0); });
   }
   findCard?.addEventListener("focusout", () => window.setTimeout(() => {
     if (!findCard.contains(document.activeElement)) collapse();
@@ -344,6 +380,7 @@ export function mountTopbar() {
     q.setAttribute("aria-expanded", "false");
   };
   const open = () => {
+    placeFloats();
     box.hidden = false;
     q.setAttribute("aria-expanded", "true");
   };
@@ -505,6 +542,8 @@ export function mountTopbar() {
     // (라이브 검색을 그대로 두면 미완성 문장이 대화 로그에 쌓인다).
     if (mode === "ask") return;
     const raw = q.value.trim();
+    // 표면이 거르개를 걸었으면(그래프) 치는 대로 그 표면을 거르고 드롭다운은 띄우지 않는다. 전문 검색은 Enter 로.
+    if (searchFilter) { searchFilter(raw); close(); return; }
     if (raw.length < 2) { hits = []; weakHits = []; close(); return; }
     timer = window.setTimeout(() => void run(raw), 250);
   });
@@ -516,6 +555,7 @@ export function mountTopbar() {
   }, 120));
   q.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
+      if (searchFilter && q.value) { q.value = ""; searchFilter(""); }
       close(); closeModeMenu();
       if (mode === "ask") void closeChat();
       q.blur(); collapse(); return;
@@ -537,6 +577,7 @@ export function mountTopbar() {
       timer = undefined;
       if (raw.length >= 2) {
         if (!await run(raw)) return;
+        if (searchFilter) { open(); return; }   // 그래프: Enter 는 전문 결과를 칸 아래에 펼친다(고르는 것은 사람이)
         if (hits.length) { go(hits[0]); return; }
         if (weakHits.length) return; // 약한 후보는 사용자가 펼쳐서 고른다. Enter로 자동 착지하지 않는다.
       }
@@ -553,6 +594,8 @@ export function mountTopbar() {
   document.addEventListener("keydown", (e) => {
     if (!(e.key === "k" && (e.metaKey || e.ctrlKey))) return;
     e.preventDefault();
+    // LNB 가 접혀 있으면 먼저 연다(칸이 거기 산다)
+    if (docked && $("shell")?.dataset.lnb !== "open") $("tb-shell-toggle")?.click();
     expand();
   }, true);
 }

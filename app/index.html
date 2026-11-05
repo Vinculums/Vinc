@@ -58,14 +58,15 @@
       <aside id="lnb" aria-label="Documents">
         <div class="lnb-top" id="lnb-top">
           <nav class="lnb-nav" id="rail-kinds" aria-label="Kinds"></nav>
-          <button class="tb-icon" id="tb-shell-toggle" type="button" aria-controls="lnb"></button>
         </div>
         <!-- 머리(`#lnb-head`)와 트리(`#lnb-body`)는 lnb.ts 가 이 자리(바닥 앞)에 심는다. -->
+        <!-- 바닥: 설정 · 접기 손잡이(오른쪽 끝). 맨 위 줄은 홈 · Agent 둘이 폭을 나눠 쓴다. -->
         <div class="lnb-foot" id="lnb-foot">
           <button class="rail-btn rail-settings" id="rail-settings" type="button"
                   aria-haspopup="dialog">
             <span id="rail-settings-badge" class="rail-n" hidden></span>
           </button>
+          <button class="tb-icon" id="tb-shell-toggle" type="button" aria-controls="lnb"></button>
         </div>
       </aside>
       <!-- 뷰 머리 — 내용 카드의 **윗줄**이다(떠 있지 않다). 앞: 지금 자리(문서는 경로,

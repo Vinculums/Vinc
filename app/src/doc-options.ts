@@ -16,6 +16,8 @@ export type DocLines = "compact" | "standard" | "relaxed";
 export type DocPrefs = { text: DocText; width: DocWidth; lines: DocLines };
 
 export const DOC_PREFS_KEY = "vinc.doc.prefs";
+/** 옵션·범례 단추를 내지 않는다(발주자 지시). 단추와 패널 코드는 지우는 중이다. */
+const DOC_OPTIONS_OFF = true;
 export const DOC_DEFAULTS: DocPrefs = { text: "medium", width: "standard", lines: "standard" };
 const CHOICES = {
   text: ["small", "medium", "large"],
@@ -63,8 +65,10 @@ const onDocs = () => /^#home(\/|$)/.test(location.hash) || location.hash === "" 
 export function mountDocOptions() {
   prefs = load();
   applyDocPrefs(prefs);
+  // 문서 면의 옵션·범례 단추는 걷었다. 저장된 읽기 값(글자 크기·폭·줄 간격)은 그대로 얹는다.
   const slot = document.getElementById("tb-docopts");
-  if (!slot || btn) return;
+  if (slot) { slot.hidden = true; slot.innerHTML = ""; }
+  if (!slot || btn || DOC_OPTIONS_OFF) return;
   const tip = COPY.ui.docOpts.tip;
   slot.innerHTML = `<button class="lens-btn" id="doc-opts" type="button" aria-haspopup="dialog"
       aria-expanded="false" aria-controls="doc-opts-panel" data-tip="${esc(tip)}"
