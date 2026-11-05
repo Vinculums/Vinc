@@ -318,3 +318,76 @@ def test_rest_pins_by_query_and_answers_409_with_the_current_pin(graph):
         assert status == 400 and body['error']['code'] == 'invalid_argument'
     finally:
         srv.close()
+
+
+@pytest.fixture
+def procedure_graph(monkeypatch):
+    """An agent with two procedures; a policy Decision is about one of them (vinc.plan.agent-ontology-2026-11-05)."""
+    monkeypatch.setenv('VINC_PK_NAMESPACED', 'off')
+    store, previous = _fresh_store()
+    payload = json.loads((ROOT / 'agents/roles.json').read_text(encoding='utf-8'))
+    maker = next(r for r in payload['roles'] if r['id'] == 'concept:agent-maker')
+    props = {**maker['props'], 'procedures': ['concept:procedure-plan', 'concept:procedure-build']}
+    nodes = [{'id': maker['id'], 'type': 'concept', 'title': 'Maker', 'domain': maker['domain'],
+              'one_liner': props['mission'], 'props': props},
+             {'id': 'concept:procedure-plan', 'type': 'concept', 'title': 'Plan (Maker procedure)', 'domain': 'agent',
+              'one_liner': 'Plan the packages.', 'props': {'agent': maker['id'], 'kind': 'procedure'}},
+             {'id': 'concept:procedure-build', 'type': 'concept', 'title': 'Build (Maker procedure)', 'domain': 'agent',
+              'one_liner': 'Build one package.', 'props': {'agent': maker['id'], 'kind': 'procedure'}},
+             {'id': 'decision:policy-read-only-procedures', 'type': 'decision', 'title': 'Policy: read-only',
+              'domain': 'agent', 'props': {'rule': {'disallowed_tools': ['Edit', 'Write']}, 'valid_from': '2026-11-05'}}]
+    edges = [{'from': 'decision:policy-read-only-procedures', 'to': 'concept:procedure-plan', 'type': 'about',
+              'evidence': 'The plan procedure is read-only.'}]
+    try:
+        result = fragment.merge_fragment({'owner': OWNER, 'nodes': nodes, 'edges': edges}, store=store)
+        assert not result.get('warnings'), result
+        yield store
+    finally:
+        store.close()
+        _restore(previous)
+
+
+def test_an_agent_read_carries_its_procedures_and_the_policies_about_them(procedure_graph):
+    got = tools.call('vinc_role', {'role': 'agent-maker'}, Bridge(procedure_graph))
+    assert not got.get('isError'), got
+    assert got['procedures'] == [{'id': 'concept:procedure-plan', 'policies': ['decision:policy-read-only-procedures']},
+                                 {'id': 'concept:procedure-build', 'policies': []}]
+    assert got['policies'] == [{'id': 'decision:policy-read-only-procedures', 'title': 'Policy: read-only',
+                                'rule': {'disallowed_tools': ['Edit', 'Write']}}]
+    assert '- concept:procedure-plan (policies: decision:policy-read-only-procedures)' in got['rendered']
+    assert '"disallowed_tools": ["Edit", "Write"]' in got['rendered']
+
+
+def test_a_changed_policy_rule_moves_the_pin(procedure_graph):
+    first = tools.call('vinc_role', {'role': 'agent-maker'}, Bridge(procedure_graph))
+    fragment.merge_fragment({'owner': OWNER, 'nodes': [{'id': 'decision:policy-read-only-procedures', 'type': 'decision',
+                             'props': {'rule': {'disallowed_tools': ['Edit']}, 'valid_from': '2026-11-05'}}]},
+                            store=procedure_graph)
+    second = tools.call('vinc_role', {'role': 'agent-maker'}, Bridge(procedure_graph))
+    assert first['hash'] != second['hash']
+
+
+def test_a_role_without_procedures_keeps_the_hash_of_its_five_fields():
+    out = {'id': 'concept:agent-x', 'title': 'X', 'domain': 'agent', 'props': {'mission': 'm'}, 'works_with': {}}
+    from store import canon
+    assert roles.contract_hash(out) == canon.digest({k: out.get(k) for k in roles.CONTRACT_FIELDS})
+
+
+def test_the_roster_contracts_with_their_procedure_index_fit_the_read_budget():
+    """Measured 2026-11-05: the Maker with 15 procedures and one policy is 8,809 of 10,000 bytes. A contract over
+    the cap is refused, not cut, so a new procedure that crosses it must fail here first."""
+    payload = json.loads((ROOT / 'agents/roles.json').read_text(encoding='utf-8'))
+    policy = {'id': 'decision:policy-read-only-procedures', 'title': 'Policy: a read-only procedure has no edit tools '
+              '(Edit, Write, NotebookEdit) and no fs.write capability',
+              'rule': {'capabilities': {'deny': ['fs.write']}, 'disallowed_tools': ['Edit', 'Write', 'NotebookEdit']}}
+    for r in payload['roles']:
+        procs = [{'id': p, 'policies': [policy['id']]} for p in r['props'].get('procedures') or []]
+        class B:
+            owner = OWNER
+            def request(self, *_a, **_k):
+                return {'executed': True, 'found': True, 'relations': [], 'peers': [], 'procedures': procs,
+                        'policies': [policy] if procs else [],
+                        'node': {'id': r['id'], 'title': r['label'], 'domain': r['domain'], 'props': r['props'], 'rev': 1}}
+        out = roles.contract(r['name'], B())
+        assert out.get('executed'), (r['id'], out.get('error'), out.get('bytes'))
+        assert len(roles.serialize_result(out).encode('utf-8')) < roles.CONTRACT_CAP

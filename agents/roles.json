@@ -16,7 +16,7 @@
         "verify"
       ],
       "props": {
-        "authority_note": "These lists are the agent-level invariants. Each skill carries its source role's full lists under `sources`.",
+        "authority_note": "These lists are the agent-level invariants. Each procedure carries its source role's full lists under `sources`.",
         "budget": {
           "cost_usd": 3,
           "model_calls": 4
@@ -96,6 +96,13 @@
           }
         ],
         "plan_doc": "vinc.plan.maker-checker-agent-redesign-2026-11-04",
+        "procedures": [
+          "concept:procedure-review-a-diff",
+          "concept:procedure-run-gates-and-acceptance",
+          "concept:procedure-drive-end-to-end-qa",
+          "concept:procedure-audit-security",
+          "concept:procedure-check-a-metric-catalogue"
+        ],
         "reads": [
           "vinc.reference.single-agent-loop-principles-2026-11-04",
           "vinc.plan.maker-checker-agent-redesign-2026-11-04",
@@ -103,16 +110,9 @@
         ],
         "rung": "fast",
         "rung_note": "hands.review in concept:model-routing-vincos.",
-        "skills": [
-          "concept:skill-review-a-diff",
-          "concept:skill-run-gates-and-acceptance",
-          "concept:skill-drive-end-to-end-qa",
-          "concept:skill-audit-security",
-          "concept:skill-check-a-metric-catalogue"
-        ],
         "tier": "verify",
         "tools": [
-          "vinc (graph MCP): read this role's node and the active skill's node first; write what the role may author"
+          "vinc (graph MCP): read this role's node and the active procedure's node first; write what the role may author"
         ],
         "work_budget": {
           "note": "the Checker never escalates and never re-runs its own verdict",
@@ -140,7 +140,7 @@
         "role"
       ],
       "props": {
-        "authority_note": "These lists are the agent-level invariants: the structural person-only actions the gate can refuse and the tools no Maker run may use. Each skill carries its own never, person_only, gates, capabilities and tools at its top level (union of its sources), and the harness applies the agent's and the active skill's lists together (vinc.spec.maker-checker-harness section 2). Trimmed on 2026-11-04 from the union of all source roles, which had put every role's sign-offs on every run.",
+        "authority_note": "These lists are the agent-level invariants: the structural person-only actions the gate can refuse and the tools no Maker run may use. Each procedure carries its own never, person_only, gates, capabilities and tools at its top level (union of its sources), and the harness applies the agent's and the active procedure's lists together (vinc.spec.maker-checker-harness section 2). Trimmed on 2026-11-04 from the union of all source roles, which had put every role's sign-offs on every run.",
         "budget": {
           "cost_usd": 3,
           "model_calls": 4
@@ -176,13 +176,13 @@
         ],
         "harness_spec": "vinc.spec.maker-checker-harness",
         "isolation": "worktree",
-        "mission": "Does the work in one context: loads the skill the task needs by address, works inside the repositories and paths that skill declares, and leaves one verifiable result for the Checker. Runs as several instances only when packages are independent.",
+        "mission": "Does the work in one context: loads the procedure the task needs by address, works inside the repositories and paths that procedure declares, and leaves one verifiable result for the Checker. Runs as several instances only when packages are independent.",
         "never": [
           "merge, deploy or push a tag without the person's approval for that action",
           "send outward messages without approval",
           "delete or overwrite the owner's files, buy anything, or handle passwords, banking, certificate pages or phone verification (the hands hard rules and the gate's sensitive-window check; not person_only ids because the adopted vocabulary has none for them)",
           "edit the Checker's verdict or the gates the Checker ran",
-          "widen the task scope past the package or the skill's declared paths",
+          "widen the task scope past the package or the procedure's declared paths",
           "call vinc_delete or vinc_merge_nodes"
         ],
         "never_checks": [
@@ -218,6 +218,23 @@
           }
         ],
         "plan_doc": "vinc.plan.maker-checker-agent-redesign-2026-11-04",
+        "procedures": [
+          "concept:procedure-build-a-package",
+          "concept:procedure-write-korean-copy",
+          "concept:procedure-write-docs-from-the-graph",
+          "concept:procedure-keep-claims-true",
+          "concept:procedure-change-design-tokens",
+          "concept:procedure-author-screens-and-motion",
+          "concept:procedure-prepare-a-release",
+          "concept:procedure-ship-and-watch-a-deploy",
+          "concept:procedure-declare-infrastructure",
+          "concept:procedure-diagnose-an-incident",
+          "concept:procedure-research-from-measurement",
+          "concept:procedure-keep-a-metric-catalogue",
+          "concept:procedure-keep-the-graph-honest",
+          "concept:procedure-plan-packages-and-waves",
+          "concept:procedure-decide-in-decided-form"
+        ],
         "reads": [
           "vinc.reference.single-agent-loop-principles-2026-11-04",
           "vinc.plan.maker-checker-agent-redesign-2026-11-04",
@@ -225,26 +242,9 @@
         ],
         "rung": "cheapest",
         "rung_note": "Routed by task class (concept:model-routing-vincos: hands.default cheapest, hands.plan strong), escalating one rung once per task.",
-        "skills": [
-          "concept:skill-build-a-package",
-          "concept:skill-write-korean-copy",
-          "concept:skill-write-docs-from-the-graph",
-          "concept:skill-keep-claims-true",
-          "concept:skill-change-design-tokens",
-          "concept:skill-author-screens-and-motion",
-          "concept:skill-prepare-a-release",
-          "concept:skill-ship-and-watch-a-deploy",
-          "concept:skill-declare-infrastructure",
-          "concept:skill-diagnose-an-incident",
-          "concept:skill-research-from-measurement",
-          "concept:skill-keep-a-metric-catalogue",
-          "concept:skill-keep-the-graph-honest",
-          "concept:skill-plan-packages-and-waves",
-          "concept:skill-decide-in-decided-form"
-        ],
         "tier": "execute",
         "tools": [
-          "vinc (graph MCP): read this role's node and the active skill's node first; write what the role may author"
+          "vinc (graph MCP): read this role's node and the active procedure's node first; write what the role may author"
         ],
         "work_budget": {
           "note": "Maker, Checker, Maker, Checker; the second fail goes to the owner (decision:maker-checker-harness-rulings-2026-11-04)",

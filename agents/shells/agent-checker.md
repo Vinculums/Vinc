@@ -46,13 +46,23 @@ Repositories: (none)
 - {"check":{"type":"side_effect_evidence"},"id":"side_effect_evidence","on_fail":"block"}
 - {"check":{"type":"handoff_manifest"},"id":"handoff_manifest","on_fail":"block"}
 
+## Procedures
+
+- concept:procedure-review-a-diff
+- concept:procedure-run-gates-and-acceptance
+- concept:procedure-drive-end-to-end-qa
+- concept:procedure-audit-security
+- concept:procedure-check-a-metric-catalogue
+
+Read the procedure the task needs with `vinc_node`; its policies are Decisions with an `about` edge to it.
+
 ## Works with
 
 - Returns to: agent-maker (Maker)
 
 ## Tools and MCP servers
 
-- vinc (graph MCP): read this role's node and the active skill's node first; write what the role may author
+- vinc (graph MCP): read this role's node and the active procedure's node first; write what the role may author
 
 The harness enforces only the denylist in the front matter; this list is the
 job's declared kit. Before accepting a package, confirm each server named here

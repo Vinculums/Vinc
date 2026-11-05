@@ -19,6 +19,45 @@ def _summaries(rows: list[dict]) -> dict:
     return out
 
 
+PROCEDURE_PREFIX = "concept:procedure-"
+POLICY_PREFIX = "decision:policy-"
+
+
+def _procedures(props: dict, *, owner: str, cfg, store) -> tuple[list[dict], list[dict]] | dict:
+    """(procedures, policies). Procedures in the agent's own order as {id, policies: [ids]}; each policy once as
+    {id, title, rule}. The index stays small because a role contract has a byte budget (vinc_mcp.roles.CONTRACT_CAP):
+    a procedure's body is one vinc_node away. A missing procedure is skipped; a failed read returns the error dict.
+    근거: [[vinc.canon.terminology §3.2]]"""
+    ids = [p for p in props.get("procedures") or [] if isinstance(p, str) and p.startswith(PROCEDURE_PREFIX)]
+    if not ids:
+        return [], []
+    edges = q.node_edges(nodes=ids, owner=owner, type="ABOUT", dir="in", limit=1000, cfg=cfg, store=store)
+    if not edges.get("executed"):
+        return {"error": edges.get("error"), "note": edges.get("note", "")}
+    governs: dict[str, list[str]] = {}
+    for e in edges["edges"]:
+        if e.get("type") == "ABOUT" and str(e.get("from", "")).startswith(POLICY_PREFIX) and e.get("to") in ids:
+            governs.setdefault(e["to"], []).append(e["from"])
+    policies = []
+    for pid in sorted({x for v in governs.values() for x in v}):
+        got = q.node(pid, owner=owner, cfg=cfg, store=store)
+        if not got.get("executed"):
+            return {"error": got.get("error"), "note": got.get("note", "")}
+        if got.get("found"):
+            n = got["node"]
+            policies.append({"id": pid, "title": n.get("title") or "", "rule": (n.get("props") or {}).get("rule") or {}})
+    known = {p["id"] for p in policies}
+    found = q.execute(q.QueryPlan("roles", "MATCH (n:Concept) WHERE n.owner_id = $owner AND n.concept_id IN $ids "
+                                  "RETURN n.concept_id AS id", {"owner": owner, "ids": [pkns.key(owner, i) for i in ids]}),
+                      cfg, store=store)
+    if not found.get("executed"):
+        return {"error": found.get("error"), "note": found.get("note", "")}
+    present = {pkns.strip(r["id"]) for r in found["rows"]}
+    procedures = [{"id": pid, "policies": [x for x in sorted(governs.get(pid, [])) if x in known]}
+                  for pid in ids if pid in present]
+    return procedures, policies
+
+
 _COLUMNS = ("RETURN n.concept_id AS id, n.title AS title, n.domain AS domain, "
             "n.one_liner AS mission, n.props AS props")
 
@@ -100,8 +139,13 @@ def read(role: str | None = None, *, owner: str | None = None, store=None, cfg=N
         if not rid:
             return {**out, "relations": relations}
         peers = sorted({e["from"] for e in relations} | {e["to"] for e in relations})
+        got = _procedures(node["node"].get("props") or {}, owner=owner, cfg=cfg, store=store)
+        if isinstance(got, dict):
+            return {**base, **got}
+        procedures, policies = got
         return {**base, "executed": True, "found": True, "node": node["node"],
-                "relations": relations, "peers": [indexed[n] for n in peers]}
+                "relations": relations, "peers": [indexed[n] for n in peers],
+                **({"procedures": procedures} if procedures else {}), **({"policies": policies} if policies else {})}
     finally:
         if owns:
             store.close()

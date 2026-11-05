@@ -53,13 +53,13 @@ def _load(p: Path) -> dict:
 
 
 def _nodes(p: Path) -> list[dict]:
-    """Role nodes of a pack. Skill nodes (concept:skill-*) ride beside them since 2026-11-04 and
-    are checked by SkillContract below."""
+    """Role nodes of a pack. Procedure nodes (concept:procedure-*) ride beside them since 2026-11-05 and
+    are checked by ProcedureContract below."""
     return [n for n in _load(p)["fragment"]["nodes"] if n["id"].startswith(roles.ID_PREFIX)]
 
 
-def _skills(p: Path) -> list[dict]:
-    return [n for n in _load(p)["fragment"]["nodes"] if n["id"].startswith("concept:skill-")]
+def _procedures(p: Path) -> list[dict]:
+    return [n for n in _load(p)["fragment"]["nodes"] if n["id"].startswith("concept:procedure-")]
 
 
 def _all_nodes(p: Path) -> list[dict]:
@@ -177,31 +177,51 @@ class RenderedLikeThePromptSurface(unittest.TestCase):
                     self.assertNotIn("—", text)    # 화면 노출 텍스트, em-dash 금지(D38)
 
 
-class SkillContract(unittest.TestCase):
-    """2026-11-04: the default pack carries skills beside its two agents. A skill is a concept whose id
-    starts with concept:skill-, names its agent, and carries the same lists a role does, so the harness
-    applies them together with the agent's."""
+class ProcedureContract(unittest.TestCase):
+    """2026-11-05: the default pack carries procedures beside its two agents (vinc.plan.agent-ontology-2026-11-05). A
+    procedure is a concept whose id starts with concept:procedure-, names its agent, and carries only what its agent does
+    not: the harness composes agent and procedure, so a repeated item is a second place to keep in step."""
 
-    def test_every_skill_names_an_agent_in_the_pack_and_carries_the_lists(self):
+    LISTS = (("disallowed_tools", None), ("capabilities", "deny"), ("never", None), ("gates", None))
+
+    def test_every_procedure_names_an_agent_in_the_pack_and_carries_the_lists(self):
         for p in PACKS:
             role_ids = {n["id"] for n in _nodes(p)}
-            for n in _skills(p):
-                with self.subTest(pack=p.name, skill=n["id"]):
+            for n in _procedures(p):
+                with self.subTest(pack=p.name, procedure=n["id"]):
                     self.assertEqual(n["type"], "concept")
                     self.assertEqual(n["domain"], roles.DOMAIN)
                     props = n["props"]
-                    self.assertEqual(props["kind"], "skill")
+                    self.assertEqual(props["kind"], "procedure")
                     self.assertIn(props["agent"], role_ids)
                     self.assertEqual(n["one_liner"], props["description"])
                     for k in REQUIRED_PROPS:
                         self.assertIn(k, props)
-                    self.assertEqual(props["gates"], BASE_GATES)
                     self.assertEqual((props["reads"], props["paths"], props["repos"]), ([], [], []))
-                    self.assertEqual(sorted(n["tags"]), sorted(["skill", props["agent"].rsplit("-", 1)[-1]]))
+                    self.assertEqual(sorted(n["tags"]), sorted(["procedure", props["agent"].rsplit("-", 1)[-1]]))
 
-    def test_the_default_pack_is_two_agents_and_four_skills(self):
+    def test_a_procedure_never_repeats_what_its_agent_carries(self):
+        for p in PACKS:
+            agents = {n["id"]: n["props"] for n in _nodes(p)}
+            for n in _procedures(p):
+                a, props = agents[n["props"]["agent"]], n["props"]
+                for field, nested in self.LISTS:
+                    mine = ((props.get(field) or {}).get(nested) or []) if nested else (props.get(field) or [])
+                    theirs = ((a.get(field) or {}).get(nested) or []) if nested else (a.get(field) or [])
+                    with self.subTest(pack=p.name, procedure=n["id"], field=field):
+                        self.assertEqual([x for x in mine if x in theirs], [])
+                actions = {x.get("action") for x in a.get("person_only") or []}
+                self.assertEqual([x for x in props.get("person_only") or [] if x.get("action") in actions], [], n["id"])
+
+    def test_the_agents_carry_the_universal_gates(self):
+        for n in _nodes(DEFAULT):
+            self.assertEqual(n["props"]["gates"], BASE_GATES, n["id"])
+
+    def test_the_default_pack_is_two_agents_and_four_procedures(self):
         self.assertEqual([n["id"] for n in _nodes(DEFAULT)], ["concept:agent-maker", "concept:agent-checker"])
-        self.assertEqual(len(_skills(DEFAULT)), 4)
+        self.assertEqual(len(_procedures(DEFAULT)), 4)
+        listed = [x for n in _nodes(DEFAULT) for x in n["props"]["procedures"]]
+        self.assertEqual(sorted(listed), sorted(n["id"] for n in _procedures(DEFAULT)))
 
 
 class _FreshSpace(Bridge):
