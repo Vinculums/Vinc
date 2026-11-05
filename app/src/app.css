@@ -3628,7 +3628,13 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
    포인트 색은 테두리와 고른 표시에만 쓴다(채움이 아니다). 정책은 점선과 알약, 정책이 붙은 절차는 가운데 점. */
 .agent-map .am-stage { display: grid; grid-template-columns: minmax(0, 1fr) 18rem; gap: var(--space-4, 1rem); align-items: start; }
 @media (max-width: 960px) { .agent-map .am-stage { grid-template-columns: minmax(0, 1fr); } }
-.am-svg { width: 100%; height: auto; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--card)); }
+.am-canvas-wrap { position: relative; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--card)); overflow: hidden; }
+.am-orbs { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.am-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.am-svg { position: relative; display: block; width: 100%; height: auto; }
+/* 몸통을 3D orb 가 그리면 SVG 의 점은 누르는 자리로만 남는다(보이지 않게). 선택 고리도 orb 셰이더의 것이다. */
+.am-has-orbs .am-node circle, .am-has-orbs .am-pol circle { fill: transparent !important; stroke: transparent !important; }
+.am-has-orbs .am-mark { display: none; }
 .am-has { stroke: hsl(var(--border)); stroke-width: 1.2; }
 .am-gov { stroke: hsl(var(--muted-foreground) / .7); stroke-width: 1.2; stroke-dasharray: 4 4; }
 .am-ret { fill: none; stroke: hsl(var(--caption-foreground)); stroke-dasharray: 5 5; }
@@ -3652,7 +3658,7 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 .am-chips { display: flex; flex-wrap: wrap; gap: .3rem; }
 .am-chip { display: inline-flex; align-items: center; height: 1.375rem; padding: 0 .5rem; border-radius: 999px;
   border: 1px solid hsl(var(--border)); font: 500 .6875rem var(--font-mono); color: hsl(var(--foreground)); background: none; }
-.am-chip-pol { font-family: inherit; border-style: dashed; cursor: pointer; }
+.am-chip-pol { font-family: inherit; border-style: dashed; cursor: pointer; height: auto; min-height: 1.375rem; padding: .2rem .55rem; text-align: left; line-height: 1.35; border-radius: .7rem; }
 .am-facts { margin: 0; padding-left: 1.1rem; font-size: .8125rem; }
 .am-acts { display: flex; flex-wrap: wrap; gap: var(--space-2, .5rem); margin-top: var(--space-2, .5rem); }
 .am-gov-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .25rem; }

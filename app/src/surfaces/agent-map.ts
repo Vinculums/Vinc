@@ -15,9 +15,9 @@ import type { AgentRole } from "../lnb";
 import { announceRolesChanged } from "../role-composer";
 
 export interface MapData {
-  agents: (MapAgent & { mission: string; props: Props })[];
-  procedures: (MapProcedure & { one_liner: string; props: Props })[];
-  policies: (MapPolicy & { rule: Props })[];
+  agents: (MapAgent & { mission: string; props: Props; domain: string })[];
+  procedures: (MapProcedure & { one_liner: string; props: Props; domain: string })[];
+  policies: (MapPolicy & { rule: Props; domain: string })[];
   legacy: AgentRole[];
 }
 
@@ -34,10 +34,10 @@ export async function loadAgentMap(roles: AgentRole[]): Promise<MapData | null> 
     const node = got.node || {};
     const props = (node.props || {}) as Props;
     agents.push({ id: roles[i].id, title: node.title || roles[i].title, tier: String(props.tier || ""),
-                  mission: String(props.mission || node.one_liner || ""), props });
+                  mission: String(props.mission || node.one_liner || ""), props, domain: String(node.domain || roles[i].domain || "") });
     for (const p of procs) procIndex.set(p.id, { agent: roles[i].id, policies: Array.isArray(p.policies) ? p.policies : [] });
     for (const pol of Array.isArray(got.policies) ? got.policies : [])
-      policies.set(pol.id, { id: pol.id, title: pol.title || policySlug(pol.id), rule: pol.rule || {} });
+      policies.set(pol.id, { id: pol.id, title: pol.title || policySlug(pol.id), rule: pol.rule || {}, domain: "" });
   });
   if (!agents.length) return null;
   // 역할 읽기는 절차에 붙은 정책만 돌려준다. 붙은 절차가 하나도 없는 정책도 지도에 있어야 다시 붙일 수 있으므로
@@ -45,11 +45,13 @@ export async function loadAgentMap(roles: AgentRole[]): Promise<MapData | null> 
   try {
     const tree: any = await api.navTree(cfg.owner, { nodes: true, kind: "decision" });
     const loose = ([] as any[]).concat(...((tree?.domains || []).map((d: any) => d.nodes || [])), tree?.unfiled || [])
-      .map((n: any) => String(n?.id || "")).filter((id: string) => id.startsWith("decision:policy-") && !policies.has(id));
+      .map((n: any) => String(n?.id || "")).filter((id: string) => id.startsWith("decision:policy-"));
     const got = await Promise.all(loose.map((id: string) => api.nodeContext(cfg.owner, id, 1).catch(() => null)));
     got.forEach((n: any, i: number) => {
-      if (n && n.executed !== false) policies.set(loose[i], { id: loose[i], title: String(n.title || policySlug(loose[i])),
-        rule: ((n.props || {}) as Props).rule as Props || {} });
+      if (!n || n.executed === false) return;
+      const had = policies.get(loose[i]);
+      policies.set(loose[i], { id: loose[i], title: had?.title || String(n.title || policySlug(loose[i])),
+        rule: had?.rule || ((n.props || {}) as Props).rule as Props || {}, domain: String(n.domain || "") });
     });
   } catch { /* 붙은 정책만으로 그린다 */ }
   const ids = [...procIndex.keys()];
@@ -61,7 +63,7 @@ export async function loadAgentMap(roles: AgentRole[]): Promise<MapData | null> 
     const meta = procIndex.get(ids[i])!;
     procedures.push({ id: ids[i], agent: meta.agent, policies: meta.policies,
       title: String(node.title || ids[i]).replace(/ \((Maker|Checker) procedure\)$/, ""),
-      one_liner: String(node.one_liner || ""), props: (node.props || {}) as Props });
+      one_liner: String(node.one_liner || ""), props: (node.props || {}) as Props, domain: String(node.domain || "") });
   });
   const agentIds = new Set(agents.map((a) => a.id));
   return { agents, procedures, policies: [...policies.values()], legacy: roles.filter((r) => !agentIds.has(r.id)) };
@@ -90,21 +92,21 @@ export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: 
   const line = (a: { x: number; y: number }, b: { x: number; y: number }, cls: string) =>
     `<line class="${cls}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`;
   let svg = "";
+  let lines = "";
   for (const l of links) {
     const a = at.get(l.from)!, b = at.get(l.to)!;
-    if (l.kind === "has") svg += line(a, b, "am-has");
-    else if (l.kind === "governs") svg += line({ x: a.x, y: a.y + 16 }, b, "am-gov");
-    else svg += `<path class="am-ret" d="M${a.x - 26},${a.y + 30} C ${a.x - 110},${a.y + 170} ${b.x + 110},${b.y + 170} ${b.x + 26},${b.y + 30}"/>
+    if (l.kind === "has") lines += line(a, b, "am-has");
+    else if (l.kind === "governs") lines += line({ x: a.x, y: a.y + 16 }, b, "am-gov");
+    else lines += `<path class="am-ret" d="M${a.x - 26},${a.y + 30} C ${a.x - 110},${a.y + 170} ${b.x + 110},${b.y + 170} ${b.x + 26},${b.y + 30}"/>
       <text class="am-ret-t" x="${(a.x + b.x) / 2}" y="${a.y + 150}" text-anchor="middle">${esc(M.returns)}</text>`;
   }
   for (const n of nodes) {
     const sel = picked?.id === n.id ? " is-sel" : "";
     const label = `${n.kind === "agent" ? M.agent : n.kind === "policy" ? M.policy : M.procedure}: ${n.label}`;
     if (n.kind === "policy") {
-      const w = Math.min(200, Math.max(96, short(n.label).length * 6.6 + 24));
       svg += `<g class="am-node am-pol${sel}" data-pick="policy" data-id="${esc(n.id)}" tabindex="0" role="button" aria-label="${esc(label)}">
-        <rect x="${n.x - w / 2}" y="${n.y - n.r}" width="${w}" height="${n.r * 2}" rx="${n.r}"/>
-        <title>${esc(n.label)}</title><text x="${n.x}" y="${n.y + 4}" text-anchor="middle">${esc(short(n.label))}</text></g>`;
+        <circle cx="${n.x}" cy="${n.y}" r="${n.r}"/><title>${esc(n.label)}</title>
+        <text x="${n.x}" y="${n.y + n.r + 14}" text-anchor="middle">${esc(short(n.label))}</text></g>`;
     } else {
       const dx = n.anchor === "end" ? -(n.r + 6) : n.anchor === "start" ? n.r + 6 : 0;
       const dy = n.kind === "agent" ? n.r + 18 : 4;
@@ -129,7 +131,9 @@ export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: 
     <p class="hint agents-lead">${esc(M.lead)}</p>
     <p class="agents-status" role="status"></p>
     <div class="am-stage">
-      <svg class="am-svg" viewBox="0 0 ${W} ${H}" role="group" aria-label="${esc(M.mapLabel)}">${svg}</svg>
+      <div class="am-canvas-wrap"><svg class="am-lines" viewBox="0 0 ${W} ${H}" aria-hidden="true">${lines}</svg>
+        <canvas class="am-orbs" aria-hidden="true"></canvas>
+        <svg class="am-svg" viewBox="0 0 ${W} ${H}" role="group" aria-label="${esc(M.mapLabel)}">${svg}</svg></div>
       <aside class="am-side" aria-live="polite">${side()}</aside>
     </div>
     <h2 class="am-list-h">${esc(M.listTitle)}</h2>
@@ -140,6 +144,17 @@ export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: 
   if (legacyOpen && data.legacy.length) drawLegacy(el.querySelector<HTMLElement>(".am-legacy-host")!);
   const drawn = el.querySelector<SVGSVGElement>(".am-svg")?.getBoundingClientRect().width || 0;
   if (drawn && Math.abs(drawn - W) > 24) { lastWidth = drawn; drawAgentMap(el, data, drawLegacy); return; }
+  // 노드 몸통은 그래프 보기와 같은 3D orb 다(WebGL). 못 그리면 SVG 의 점이 그대로 남는다.
+  const canvas = el.querySelector<HTMLCanvasElement>(".am-orbs");
+  if (canvas) {
+    const domainOf = new Map<string, string>([...data.agents, ...data.procedures, ...data.policies].map((x) => [x.id, x.domain]));
+    const sel = picked?.id ?? null;
+    void import("./agent-orbs").then((m) => {
+      if (!canvas.isConnected) return;
+      const ok = m.mountOrbs(canvas, nodes.map((n) => ({ ...n, domain: domainOf.get(n.id) || "" })), W, H, sel);
+      canvas.closest(".am-canvas-wrap")?.classList.toggle("am-has-orbs", ok);
+    }).catch(() => { /* SVG 점으로 남는다 */ });
+  }
 
   function side(): string {
     if (!picked) return `<p class="hint">${esc(M.pick)}</p>`;

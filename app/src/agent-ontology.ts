@@ -112,7 +112,7 @@ export function layoutMap(agents: MapAgent[], procedures: MapProcedure[], polici
   policies.forEach((pol, i) => {
     const slot = width / (policies.length + 1);
     nodes.push({ id: pol.id, kind: "policy", x: round(Math.max(110, Math.min(width - 110, slot * (i + 1) * (policies.length === 1 ? 0.75 : 1)))),
-                 y: 36, r: 16, label: pol.title, anchor: "middle" });
+                 y: 30, r: 16, label: pol.title, anchor: "middle" });
   });
   if (order.length > 1) links.push({ from: order[order.length - 1].id, to: order[0].id, kind: "returns" });
   const known = new Set(nodes.map((n) => n.id));
