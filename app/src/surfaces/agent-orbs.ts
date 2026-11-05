@@ -57,23 +57,32 @@ export function mountOrbs(canvas: HTMLCanvasElement, nodes: OrbNode[], width: nu
   place(selected);
   scene.add(layer.body, layer.halo);
 
-  // 안의 빛이 천천히 흐른다. 움직임을 줄인 사용자에게는 한 번만 그린다. 캔버스가 문서에서 빠지면 멈춘다.
+  // 그래프 보기의 유휴 규칙(view-idle-frames, F6)과 같다: 열린 뒤 2.5초와 고를 때 잠깐만 그리고, 그 뒤에는 마지막
+  // 장면을 둔 채 멈춘다. 매 프레임 그리면 한 장은 가벼워도(인스턴스 23개, 드로우콜 2) 화면이 열려 있는 내내 GPU 가
+  // 쉬지 못한다. 움직임을 줄인 사용자에게는 깨어 있는 동안에도 한 장만 그린다. 캔버스가 문서에서 빠지면 치운다.
   const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  let raf = 0;
+  let raf = 0, awakeUntil = performance.now() + 2500, running = false;
   const t0 = performance.now();
   const frame = () => {
     if (!canvas.isConnected) { stop(); return; }
     layer.flush((performance.now() - t0) / 1000, dist);
     renderer.render(scene, camera);
-    if (!still) raf = requestAnimationFrame(frame);
+    running = !still && performance.now() < awakeUntil;
+    raf = running ? requestAnimationFrame(frame) : 0;
+  };
+  const wake = (ms: number) => {
+    awakeUntil = Math.max(awakeUntil, performance.now() + ms);
+    if (!running) frame();
   };
   const stop = () => {
     cancelAnimationFrame(raf);
+    running = false;
     scene.remove(layer.body, layer.halo);
     layer.dispose();
     renderer.dispose();
+    renderer.forceContextLoss();   // dispose 만으로는 문맥이 남는다. 브라우저가 쥘 수 있는 WebGL 문맥 수는 정해져 있다
   };
-  current = { stop, select: (id) => { place(id); if (still) frame(); } };
+  current = { stop, select: (id) => { place(id); wake(600); } };
   frame();
   return true;
 }
