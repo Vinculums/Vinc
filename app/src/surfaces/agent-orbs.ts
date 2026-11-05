@@ -36,7 +36,7 @@ export function mountOrbs(canvas: HTMLCanvasElement, nodes: OrbNode[], width: nu
   const mode = themeMode();
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
   renderer.setSize(width, height, false);
-  renderer.setClearColor(0x000000, 0);
+  renderer.setClearAlpha(0);   // 뒤는 카드 배경이 비친다(색을 정하지 않는다)
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = EXPOSURE[mode];
 
