@@ -24,7 +24,7 @@ const themeMode = () => (document.documentElement.dataset.theme === "dark" ? "da
 const idDate = (id: string) => { const m = /-(20\d\d-\d\d-\d\d)$/.exec(String(id)); return m ? m[1] : ""; };
 export function compassDataFrom(nodes: any[], edges: any[]): CompassData {
   const out = nodes.filter((n) => n.kind !== "domain" && n.kind !== "area").map((n) => ({
-    id: n.id, k: String(n.id).startsWith("concept:doc.") ? "doc" : n.kind, t: n.label || n.title || n.id, d: n.domain || "vinc",
+    id: n.id, k: String(n.id).startsWith("concept:doc.") ? "doc" : n.kind, t: n.label || n.title || n.id, d: n.domain || "",   // 주제 없는 노드는 빈 값 그대로 둔다: 어느 뿌리에 설지는 mountCompass 가 정한다
     // 날짜: 사건은 그래프 읽기의 ts 가 곧 그 일이 있었던 날이다(updated_at 은 마지막으로 고친 때라 뒤에 둔다).
     // 결정은 내용 시간 칸이 없어 props.valid_from(결정한 날)을, 그것도 없으면 id 끝의 날짜(…-2026-09-20, 이 그래프의 이름 관례)를 쓴다.
     ts: String(n.ts || n.updated_at || "").slice(0, 10), ct: String(n.content_ts || "").slice(0, 10) || idDate(n.id) || undefined,
@@ -60,25 +60,34 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   const W0 = data;
   const MEANING = new Set(['RELATED_TO', 'PREREQUISITE_OF', 'DERIVES_FROM', 'INHERITS_FROM', 'RETURNS_TO', 'CONNECTS']);
   const ATTACH = new Set(['ABOUT', 'ATTACHES_TO', 'MENTIONS']);
-  const nodes = W0.nodes, byId = new Map(nodes.map((n) => [n.id, n]));
+  // 뿌리: 이 그래프의 최상위 주제가 하나뿐이면 그 주제가 뿌리다('vinc' 만 쓰는 그래프는 예전과 같다). 둘 이상이거나 하나도 없으면
+  // 이름 없는 가상 뿌리('')가 모든 최상위 주제를 품는다. 주제 없는 노드는 뿌리에 직접 서고, 이름을 지어 붙이지 않는다.
+  // RD 는 뿌리가 경로에서 차지하는 칸 수다(영역 = 뿌리 다음 칸을 자를 때 쓴다). ⚠ 코드 어디에도 최상위 이름을 박지 말 것.
+  const tops = new Set(W0.nodes.map((n) => String(n.d || '').split('/')[0]).filter(Boolean));
+  const ROOT = tops.size === 1 ? [...tops][0] : '', RD = ROOT ? 1 : 0;
+  const nodes = W0.nodes.map((n) => (n.d ? n : { ...n, d: ROOT })), byId = new Map(nodes.map((n) => [n.id, n]));
   const edges = W0.edges.map(([a, b, t]) => ({ a: byId.get(a), b: byId.get(b), t })).filter((e) => e.a && e.b);
   const adj = new Map(nodes.map((n) => [n.id, []])); for (const e of edges) { adj.get(e.a.id).push(e); adj.get(e.b.id).push(e); }
   const newest = nodes.map((n) => n.ts).filter(Boolean).sort().pop();
   const fresh = (n) => { const w = when(n); return !!w && (Date.parse(newestW()) - Date.parse(w)) / 864e5 <= 7; };   // '최근' = 내용 시간으로 7일 안
   let _nw = ''; const newestW = () => _nw || (_nw = nodes.map(when).filter(Boolean).sort().pop() || '');
-  // 주제: 노드의 domain 사슬에서 만든다. 'vinc/agent/roles' → vinc, vinc/agent, vinc/agent/roles
+  // 주제: 노드의 domain 사슬에서 만든다. 'vinc/agent/roles' → vinc, vinc/agent, vinc/agent/roles (가상 뿌리면 '' 가 맨 앞에 붙는다)
   const topics = new Map();
   const tget = (p) => { if (!topics.has(p)) topics.set(p, { id: `topic:${p}`, path: p, k: 'topic', direct: [], sub: new Set(), count: 0 }); return topics.get(p); };
-  for (const n of nodes) { const parts = (n.d || 'vinc').split('/'); for (let i = 1; i <= parts.length; i++) { const t = tget(parts.slice(0, i).join('/')); t.count++; if ((n.ts || '') > (t.ts || '')) t.ts = n.ts; if (i < parts.length) t.sub.add(parts.slice(0, i + 1).join('/')); } tget(n.d || 'vinc').direct.push(n); }
+  const chainOf = (d) => { const o = ROOT ? [] : [''], s = d ? d.split('/') : []; for (let i = 1; i <= s.length; i++) o.push(s.slice(0, i).join('/')); return o; };
+  const rootTopic = tget(ROOT); if (!ROOT) rootTopic.t = C.rootTopic;   // 뿌리는 노드가 없어도 늘 있다. 가상 뿌리만 이름표(t)를 갖는다
+  for (const n of nodes) { const ch = chainOf(n.d);
+    ch.forEach((p, i) => { const t = tget(p); t.count++; if ((n.ts || '') > (t.ts || '')) t.ts = n.ts; if (i < ch.length - 1) t.sub.add(ch[i + 1]); });
+    tget(ch[ch.length - 1]).direct.push(n); }
   // ── 주제 색: 그래프 보기와 같은 규칙(tintPlan)이다. 영역마다 보석색 하나, 그 안의 주제는 색상각을 조금씩 돌린다 ─────────────
   let TOPIC_COL = new Map(), AREA_COL = new Map();
   function buildTopicColours() { const plan = tintPlan([...topics.keys()], themeMode()); TOPIC_COL = plan.topics; AREA_COL = plan.areas; }
-  const topicColour = (p) => { if (!p || p === 'vinc') return 'hsl(var(--muted-foreground))';   // 맨 위 주제는 어느 영역도 아니라 중립색
-    const s = (p || 'vinc').split('/'); for (let i = s.length; i >= 1; i--) { const c = TOPIC_COL.get(s.slice(0, i).join('/')); if (c) return c; } return 'hsl(var(--muted-foreground))'; };
-  const topicOf = (n) => (n.k === 'topic' ? n.path : n.d || 'vinc');
+  const topicColour = (p) => { if (!p || p === ROOT) return 'hsl(var(--muted-foreground))';   // 뿌리는 어느 영역도 아니라 중립색
+    const s = p.split('/'); for (let i = s.length; i >= 1; i--) { const c = TOPIC_COL.get(s.slice(0, i).join('/')); if (c) return c; } return 'hsl(var(--muted-foreground))'; };
+  const topicOf = (n) => (n.k === 'topic' ? n.path : n.d);
   const colv = (n) => topicColour(topicOf(n)), mix = (c, p) => `color-mix(in srgb, ${c} ${p}%, var(--c-card))`;
   const isMean = (n) => ['concept', 'doc', 'bridge'].includes(n.k) || n.m > 0;
-  const titleOf = (n) => { if (n.k === 'topic') return n.path.split('/').pop(); const s = (n.t || n.id).replace(/\s*\((?:\d{4}-\d\d-\d\d|pstack principle|Anthropic)[^)]*\)/g, '');
+  const titleOf = (n) => { if (n.k === 'topic') return n.path ? n.path.split('/').pop() : C.rootTopic; const s = (n.t || n.id).replace(/\s*\((?:\d{4}-\d\d-\d\d|pstack principle|Anthropic)[^)]*\)/g, '');
     return ['concept', 'doc', 'bridge'].includes(n.k) ? s.replace(/^([^:]{3,40}):.*$/, '$1') : s; };
   const short = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
   const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
@@ -122,9 +131,10 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   function gather(c) {
     const up = [], left = [], right = [], bridges = [], shelf = { decision: [], record: [], episode: [], doc: [] };
     if (c.k === 'topic') {
-      const parent = c.path.includes('/') ? topics.get(c.path.split('/').slice(0, -1).join('/')) : null;
+      // 뿌리 아래 첫 칸 주제의 부모는 가상 뿌리('')다. 뿌리 자신은 부모가 없다
+      const parent = c.path === ROOT ? null : topics.get(c.path.includes('/') ? c.path.split('/').slice(0, -1).join('/') : '');
       if (parent) up.push({ n: parent, rel: C.rel.parentTopic, main: true });
-      const childOf = (d) => (d && d.startsWith(c.path + '/') ? `${c.path}/${d.slice(c.path.length + 1).split('/')[0]}` : null);
+      const childOf = (d) => (!d || d === c.path ? null : !c.path ? d.split('/')[0] : d.startsWith(c.path + '/') ? `${c.path}/${d.slice(c.path.length + 1).split('/')[0]}` : null);
       // 다리: 잇는 끝이 이 주제의 하위 주제 둘 이상이면 오른쪽 하위 주제 사이로, 아니면 왼쪽 개념 부채에
       for (const n of c.direct.filter(isMean)) {
         if (n.k === 'bridge') { const subs = [...new Set(bridgeEnds(n).map((m) => childOf(m.d)).filter(Boolean))]; if (subs.length >= 1) { bridges.push({ n, subs, outside: bridgeEnds(n).some((m) => !childOf(m.d)) }); continue; } }
@@ -134,7 +144,7 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
       for (const n of c.direct.filter((x) => !isMean(x))) (shelf[n.k] || shelf.record).push(n);
       for (const p of [...c.sub].sort((a, b) => topics.get(b).count - topics.get(a).count)) right.push({ n: topics.get(p), rel: C.rel.subtopic });
     } else {
-      up.push({ n: topics.get(c.d || 'vinc'), rel: C.rel.topic, main: true });
+      up.push({ n: topics.get(c.d), rel: C.rel.topic, main: true });
       for (const e of adj.get(c.id)) {
         const o = e.a === c ? e.b : e.a, out = e.a === c;
         if (ATTACH.has(e.t)) { if (out) up.push({ n: o, rel: C.rel.attachedTo, e }); else (shelf[o.k] || shelf.record).push(o); continue; }
@@ -555,9 +565,9 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
   svg.addEventListener('pointermove', (e) => { tip.style.left = `${e.clientX + 14}px`; tip.style.top = `${e.clientY + 12}px`; });
   svg.addEventListener('pointerleave', () => { tip.style.display = 'none'; svg.classList.remove('hot'); });
   onWin('keydown', (e) => { if (e.target.closest?.('input,textarea,[contenteditable],dialog') || !root.isConnected || root.closest('[hidden]')) return; if (e.altKey && e.key === 'ArrowLeft') { if (hi > 0) { hi--; setPath(hist[hi].map(byAny), false); } } else if (e.altKey && e.key === 'ArrowRight') { if (hi < hist.length - 1) { hi++; setPath(hist[hi].map(byAny), false); } }
-    else if (e.key === 'Escape' || (e.key === 'Backspace' && path.length > 1)) { if (e.key === 'Escape') setPath([topics.get('vinc')]); else setPath(path.slice(0, -1)); } });
+    else if (e.key === 'Escape' || (e.key === 'Backspace' && path.length > 1)) { if (e.key === 'Escape') setPath([topics.get(ROOT)]); else setPath(path.slice(0, -1)); } });
   // 찾기: 주제 사슬을 따라 펼친 다음 그 노드를 편다
-  const chainTo = (n) => { const p = (n.k === 'topic' ? n.path : n.d || 'vinc').split('/'), out = []; for (let i = 1; i <= p.length; i++) out.push(topics.get(p.slice(0, i).join('/'))); if (n.k !== 'topic') out.push(n); return out; };
+  const chainTo = (n) => { const out = chainOf(topicOf(n)).map((p) => topics.get(p)); if (n.k !== 'topic') out.push(n); return out; };
   let QUERY = '';
   const norm = (s) => String(s || '').toLowerCase();
   const matchQ = (n) => !QUERY || norm(n.t || n.path || n.id).includes(QUERY) || norm(n.id).includes(QUERY);
@@ -659,12 +669,13 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
   { const _r2 = render; render = function () { _r2(); drawDock(); markPins(); drawPins(); }; }
   buildTopicColours();
   // 정해진 자리: 모든 주제를 지금과 같은 규칙으로 한꺼번에 펼쳐(목록 자리까지 비워) 한 번 잰다. 하나씩 들어가든 전체를 펼치든 주제는 이 자리에 선다
-  (function buildCanon() { const saveM = MODE, saveP = path; CANON = true; MODE = 'all'; path = [topics.get('vinc')];
+  (function buildCanon() { const saveM = MODE, saveP = path; CANON = true; MODE = 'all'; path = [topics.get(ROOT)];
     const m = new Map(); for (const tp of topics.values()) { const set = new Set(); for (const s2 of tp.sub) set.add(`topic:${s2}`); m.set(tp.id, set); }
-    try { const L = layoutTree(topics.get('vinc'), m, null); TPOS = new Map(L.comps.filter((c) => c.hub.k === 'topic').map((c) => [c.hub.id, { x: c.hub.x, y: c.hub.y, th12: c.th12 }])); }
+    try { const L = layoutTree(topics.get(ROOT), m, null); TPOS = new Map(L.comps.filter((c) => c.hub.k === 'topic').map((c) => [c.hub.id, { x: c.hub.x, y: c.hub.y, th12: c.th12 }])); }
     finally { CANON = false; MODE = saveM; path = saveP; } })();
 
-  setPath(ctx.startPath ? ctx.startPath.map(byAny).filter(Boolean) : [topics.get('vinc')]);
+  { const sp = ctx.startPath ? ctx.startPath.map(byAny).filter(Boolean) : [];   // 시작 길이 이 데이터에 없는 주제를 가리키면 뿌리에서 시작한다
+    setPath(sp.length ? sp : [topics.get(ROOT)]); }
   // ── 렌즈 패널: 옵션(기간)과 범례(종류는 누르면 끄고 켠다 = 범례가 곧 필터) ────────────────────────────────
   const KLABEL = COPY.ui.compass.kinds;
   const countKinds = () => { const c = {}; if (LZ) for (const o of LZ.items) if (o.src && o.k !== "topic" && o.role !== "hub") { const k = kindKey(o.src); c[k] = (c[k] || 0) + 1; } return c; };
@@ -722,7 +733,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
     const colOf = (w) => { const ms = Date.parse(w); if (ms < D0 || ms > D1 + 864e5) return -1; const c = unit(ms) - first; return c >= 0 && c < ncol ? c : -1; };
     const fmt = (ms) => { const d = new Date(ms).toISOString(); return grain === 'month' ? d.slice(0, 7) : d.slice(5, 10); };
     const hidden = first > 0 || first + ncol < total;
-    const keyOf = (n) => { const s2 = (n.d || 'vinc').split('/'), a = s2[1] || '(vinc)'; return OPENROW.has(a) && s2[2] ? `${a}/${s2[2]}` : a; };
+    const keyOf = (n) => { const s2 = n.d.split('/'), a = s2[RD] || `(${ROOT || C.rootTopic})`; return OPENROW.has(a) && s2[RD + 1] ? `${a}/${s2[RD + 1]}` : a; };
     const grid = new Map(); for (const n of rows) { const c = colOf(when(n)); if (c < 0) continue; const k = keyOf(n); if (!grid.has(k)) grid.set(k, new Map()); const m = grid.get(k); if (!m.has(c)) m.set(c, []); m.get(c).push(n); }
     LASTGRID = grid;
     const keys = [...grid.keys()].sort((a, b) => a.split('/')[0].localeCompare(b.split('/')[0]) || (a.includes('/') - b.includes('/')) || a.localeCompare(b));
@@ -751,8 +762,8 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
   const row = (n, lvl) => `<button class="trow" data-id="${esc(n.id)}" style="--lv:${lvl}"><svg viewBox="-7 -7 14 14">${shape(n.k, 0, 0, 5, colv(n), !!n.vu)}</svg><span>${esc(short(titleOf(n), 60))}</span><em>${when(n) ? when(n).slice(5) : ''}</em></button>`;
   function treeList(items) {
     if (!items.length) return '';
-    const byTopic = new Map(); for (const n of items) { const d = n.d || 'vinc'; if (!byTopic.has(d)) byTopic.set(d, []); byTopic.get(d).push(n); }
-    const paths = [...byTopic.keys()].sort(), areaOf = (d) => d.split('/').slice(0, 2).join('/');
+    const byTopic = new Map(); for (const n of items) { const d = n.d; if (!byTopic.has(d)) byTopic.set(d, []); byTopic.get(d).push(n); }
+    const paths = [...byTopic.keys()].sort(), areaOf = (d) => d.split('/').slice(0, RD + 1).join('/');
     // 처음에는 맨 위(영역)까지만 보이게 모두 접는다. 영역을 펴면 그 아래 주제들은 펼친 채로 나온다
     if (!grpTouched) CLOSEDGRP.clear();
     const newest = (a, b) => when(b).localeCompare(when(a)) || a.k.localeCompare(b.k);
@@ -768,12 +779,12 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
     for (const d of paths) {
       const a = areaOf(d), segs = d.split('/');
       if (!doneArea.has(a)) { doneArea.add(a); const open = !CLOSEDGRP.has(a);
-        h += `<button class="tgrp" data-grp="${esc(a)}" style="--lv:0;--c:${colv({ k: 'topic', path: a })}" aria-expanded="${open}">${open ? '▾' : '▸'} ${esc(a.split('/')[1] || a)}<em>${areaN.get(a)}</em></button>`; }
+        h += `<button class="tgrp" data-grp="${esc(a)}" style="--lv:0;--c:${colv({ k: 'topic', path: a })}" aria-expanded="${open}">${open ? '▾' : '▸'} ${esc(a.split('/')[RD] || a || C.rootTopic)}<em>${areaN.get(a)}</em></button>`; }
       if (CLOSEDGRP.has(a)) continue;
       if (d === a) { h += body(byTopic.get(d), 1); continue; }
-      for (let i = 3; i < segs.length; i++) { const anc = segs.slice(0, i).join('/'); if (shownAnc.has(anc) || byTopic.has(anc)) continue; shownAnc.add(anc);
-        h += `<div class="tgrp anc" style="--lv:${i - 2}">${esc(segs[i - 1])}</div>`; }
-      const depth = segs.length - 2, open = !CLOSEDGRP.has(d);
+      for (let i = RD + 2; i < segs.length; i++) { const anc = segs.slice(0, i).join('/'); if (shownAnc.has(anc) || byTopic.has(anc)) continue; shownAnc.add(anc);
+        h += `<div class="tgrp anc" style="--lv:${i - RD - 1}">${esc(segs[i - 1])}</div>`; }
+      const depth = segs.length - RD - 1, open = !CLOSEDGRP.has(d);
       h += `<button class="tgrp" data-grp="${esc(d)}" style="--lv:${depth};--c:${colv({ k: 'topic', path: d })}" aria-expanded="${open}">${open ? '▾' : '▸'} ${esc(segs[segs.length - 1])}<em>${byTopic.get(d).length}</em></button>`;
       if (open) h += body(byTopic.get(d), depth + 1);
     }
@@ -798,7 +809,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
   // ── LNB 트리의 줄: 거르개(검색 ∧ 기간 ∧ 종류)를 지난 노드를 주제별로. 뜻의 층(depth 0) 아래에 붙은 것(depth 1) ──────
   const passes = (n) => n.k !== 'topic' && matchQ(n) && !KOFF.has(kindKey(n)) && (!TSEL || (!!when(n) && when(n) >= TSEL[0] && when(n) <= TSEL[1]));
   function treeGroups() {
-    const by = new Map(); for (const n of nodes) { if (!passes(n)) continue; const d = n.d || 'vinc'; if (!by.has(d)) by.set(d, []); by.get(d).push(n); }
+    const by = new Map(); for (const n of nodes) { if (!passes(n)) continue; const d = n.d; if (!by.has(d)) by.set(d, []); by.get(d).push(n); }
     const newestFirst = (a, b) => (when(b) || '').localeCompare(when(a) || '') || titleOf(a).localeCompare(titleOf(b));
     const out = [];
     for (const d of [...by.keys()].sort()) { const its = by.get(d), inList = new Set(its.map((n) => n.id)), kids = new Map(), loose = [], rows = [];
@@ -841,5 +852,5 @@ prevPos = new Map(); render(); treeChanged(); return; }
   function goTo(id) { const n = byAny(id); if (!n) return; const o = LZ && LZ.items.find((q) => q.id === n.id && q.chain);
     WIDE = true; if (o) setPath(o.role === 'hub' ? o.chain : [...o.chain, n]); else setPath(chainTo(n)); }
   const centre = () => (path.length ? path[path.length - 1].id : '');
-  return { destroy, side, tools, filter: setQuery, open: goTo, tree: treeGroups, mark: treeMark, colour: topicColour, centre };
+  return { destroy, side, tools, filter: setQuery, open: goTo, tree: treeGroups, mark: treeMark, colour: (p) => (!p || p === ROOT ? '' : topicColour(p)), centre };   // 뿌리는 색을 입지 않는다(LNB 줄은 잉크 그대로)
 }

@@ -386,17 +386,17 @@ _GEN_BODY = {
     # (`api/fragment.py` `_EDGE_TYPES`·`WIRE_EDGES`). 빼면 Validity 절이 쓰라는 supersedes 를
     # 이 절이 부정하게 된다.
     "en": ("## Domains in this graph\n{domains}\n"
-           "A slash makes a tree: 'vinc/design' files that node "
-           "under 'vinc', with nothing extra to author. "
-           "Walk it with vinc_neighbors('domain:vinc').\n\n"
+           "A slash makes a tree: '{example}' files that node "
+           "under '{top}', with nothing extra to author. "
+           "Walk it with vinc_neighbors('domain:{top}').\n\n"
            "## Ratified vocabulary\n"
            "node types: {nodes}\n"
            "edge types: {edges} (beyond the eight in Relations).\n"
            "Anything else you write is kept and marked proposed, for a person to ratify."),
     "ko": ("## 이 그래프의 도메인\n{domains}\n"
-           "슬래시가 계층이 됩니다: 'vinc/design' 은 그 노드를 'vinc' "
+           "슬래시가 계층이 됩니다: '{example}' 은 그 노드를 '{top}' "
            "아래 둡니다. 따로 저작할 것이 없습니다. "
-           "vinc_neighbors('domain:vinc') 로 걸어 내려가십시오.\n\n"
+           "vinc_neighbors('domain:{top}') 로 걸어 내려가십시오.\n\n"
            "## 재가된 어휘\n"
            "노드 타입: {nodes}\n"
            "엣지 타입: {edges}(관계 절의 여덟 외에).\n"
@@ -453,10 +453,32 @@ def collect(store, *, owner: str | None = None, themes=None) -> dict:
                               for r in (res.get("rows") or []) if r.get("domain")}}
 
 
+def _walk_example(facts: dict) -> tuple[str, str]:
+    """생성 문장의 계층 예시 두 개: (예시 경로, 걸어 내려갈 최상위 주제). **이 그래프의 실제 도메인**에서 고른다.
+
+    ⚠ 최상위 이름을 박지 말 것. 'vinc' 를 박았을 때 `vinc_neighbors('domain:vinc')` 는 'vinc' 를 안 쓰는
+    그래프에서 빈손으로 돌아왔다(VIN-927). 최상위는 노드가 가장 많은 쪽(같으면 이름순 앞)이고, 예시 경로는
+    그 아래 가장 큰 도메인의 첫 두 칸이다. 도메인이 아직 없으면 이름 없는 예시를 낸다.
+    """
+    counts = facts.get("domain_counts") or {}
+    doms = [str(d) for d in facts.get("domains") or [] if d]
+    tally: dict[str, int] = {}
+    for d in doms:
+        top = d.split("/")[0]
+        tally[top] = tally.get(top, 0) + int(counts.get(d, 0) or 0)
+    if not tally:
+        return "topic/subtopic", "topic"
+    top = max(sorted(tally), key=lambda t: tally[t])
+    below = sorted((d for d in doms if d.startswith(top + "/")),
+                   key=lambda d: (-int(counts.get(d, 0) or 0), d))
+    return ("/".join(below[0].split("/")[:2]) if below else top + "/subtopic"), top
+
+
 def generated_block(facts: dict, *, lang: str = "en") -> str:
     """스토어 사실 → 생성 구역 텍스트(마커 포함)."""
     e = _EMPTY[lang]
     doms = list(facts.get("domains") or [])
+    example, top = _walk_example(facts)
     counts = facts.get("domain_counts") or {}
     if doms:
         shown = doms[:DOMAIN_LIMIT]
@@ -467,7 +489,7 @@ def generated_block(facts: dict, *, lang: str = "en") -> str:
     else:
         line = e["domains"]
     body = _GEN_BODY[lang].format(
-        domains=line,
+        domains=line, example=example, top=top,
         nodes=", ".join(facts.get("node_types") or []) or e["nodes"],
         edges=", ".join(facts.get("edge_types") or []) or e["edges"])
     return _GEN_HEAD[lang] + "\n" + body + "\n" + _GEN_TAIL

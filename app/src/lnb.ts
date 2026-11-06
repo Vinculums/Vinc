@@ -79,11 +79,13 @@ const themeMode = (): ThemeMode =>
 /** 줄의 style 에 얹을 조각. ⚠ 깊이 잉크는 CSS 가 **부분문자열**로 읽는다
  *  (app.css 의 `[style*="--ink:0"]`) — `--ink:N` 리터럴을 깨지 않도록 **뒤에** 붙인다. */
 /** 주제 하나의 색. 그래프에서는 나침반이 쓰는 색 그대로(gsrc.colour), 문서에서는 같은 규칙으로 만든 표에서
- *  가장 가까운 조상의 색을 쓴다. 맨 위 주제(vinc)는 어느 영역도 아니라 색이 없다(중립 잉크). */
+ *  가장 가까운 조상의 색을 쓴다. 뿌리(최상위 주제가 하나뿐일 때 그 주제)는 어느 영역도 아니라 색이 없다(중립 잉크).
+ *  그래프에서는 그 판정도 나침반의 `colour` 가 한다(빈 문자열). 문서에서는 `planTints` 가 정한 `tintRoot` 다. */
 const tintOf = (domain: string): string => {
   const d = domain.trim();
-  if (!d || d === "vinc") return "";
+  if (!d) return "";
   if (gsrc?.colour) return gsrc.colour(d);
+  if (d === tintRoot) return "";
   const segs = d.split("/");
   for (let i = segs.length; i >= 1; i--) { const c = tints?.get(segs.slice(0, i).join("/")); if (c) return c; }
   return "";
@@ -94,10 +96,13 @@ const tintStyle = (domain: string): string => {
 };
 /** 문서 트리의 색 표: 나침반과 같게 주제 경로의 모든 조상까지 넣어 tintPlan 을 돌린다(넣는 집합이 같아야 같은 색이 나온다). */
 function planTints(domains: string[]): Map<string, string> {
-  const all = new Set<string>();
-  for (const d of domains) { const segs = (d || "vinc").split("/").filter(Boolean); segs.forEach((_, i) => all.add(segs.slice(0, i + 1).join("/"))); }
+  const all = new Set<string>(), tops = new Set<string>();
+  for (const d of domains) { const segs = (d || "").split("/").filter(Boolean); if (segs.length) tops.add(segs[0]); segs.forEach((_, i) => all.add(segs.slice(0, i + 1).join("/"))); }
+  tintRoot = tops.size === 1 ? [...tops][0] : "";   // 최상위가 둘 이상이면 뿌리는 이름 없는 가상 뿌리라 색을 뺄 주제가 없다
   return tintPlan([...all], themeMode()).topics;
 }
+/** 문서 트리의 뿌리 주제(`planTints` 가 정한다). `tints` 와 같은 때 같은 집합에서 만들어진다. */
+let tintRoot = "";
 
 /** 새 역할의 기본 주제와 기존 호환 주제. 목록 발견은 이 주제로 제한하지 않는다. */
 export const AGENT_TOPICS = ["agent", "vinc/agent"] as const;
@@ -554,8 +559,12 @@ type DomNode = { seg: string; path: string; group?: NavGroup; kids: DomNode[] };
  *  이 없어 문서를 안 갖고 자식만 갖는다 — 그래도 행은 낸다(그 이름이 계층이다). */
 function nestGroups(groups: NavGroup[]): DomNode[] {
   const root: DomNode = { seg: "", path: "", kids: [] };
+  let loose: DomNode | null = null;
   for (const g of groups) {
     const segs = g.domain.split("/").filter(Boolean);
+    // 그래프: 주제 없는 노드는 이름 없는 가상 뿌리에 직접 선다(최상위 주제가 여럿일 때). 줄은 "주제 없음" 하나로 맨 끝에 낸다.
+    // 경로가 빈 문자열이라 누르면 접고 펴기만 한다(문서 트리의 미분류 줄과 같다). 문서 트리는 예전 그대로 이 묶음을 내지 않는다.
+    if (!segs.length) { if (gsrc) loose = { seg: COPY.ui.lnb.unfiled, path: "", group: g, kids: [] }; continue; }
     let cur = root;
     segs.forEach((seg, i) => {
       const path = segs.slice(0, i + 1).join("/");
@@ -565,6 +574,7 @@ function nestGroups(groups: NavGroup[]): DomNode[] {
     });
     cur.group = g;
   }
+  if (loose) root.kids.push(loose);
   return root.kids;
 }
 const subDocs = (n: DomNode): number =>
