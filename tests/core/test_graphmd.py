@@ -158,6 +158,33 @@ class TemplateTests(unittest.TestCase):
         ratified = graphmd.generated_block({"edge_types": ["refutes"]}, lang="en")
         self.assertIn("edge types: refutes (beyond the eight in Relations)", ratified)
 
+    def test_the_walk_sentence_names_a_top_level_topic_of_this_graph(self):
+        """VIN-927: 'vinc' 가 박혀 있어서 `vinc_neighbors('domain:vinc')` 가 'vinc' 를 안 쓰는 그래프에서 빈손이었다.
+        최상위는 노드가 가장 많은 쪽, 예시 경로는 그 아래 가장 큰 도메인의 첫 두 칸이다."""
+        other = {"domains": ["work/alpha/deep", "work/zebra", "research/papers"],
+                 "domain_counts": {"work/alpha/deep": 9, "work/zebra": 4, "research/papers": 5}}
+        en = graphmd.generated_block(other, lang="en")
+        self.assertIn("'work/alpha' files that node under 'work'", en)
+        self.assertIn("vinc_neighbors('domain:work')", en)
+        self.assertNotIn("domain:vinc", en)
+        self.assertNotIn("'vinc/design'", en)
+        ko = graphmd.generated_block(other, lang="ko")
+        self.assertIn("'work/alpha' 은 그 노드를 'work' 아래", ko)
+        self.assertIn("vinc_neighbors('domain:work')", ko)
+        mine = {"domains": ["vinc/ai/eval", "vinc/design/surfaces", "agent/maker"],
+                "domain_counts": {"vinc/ai/eval": 98, "vinc/design/surfaces": 79, "agent/maker": 3}}
+        self.assertIn("vinc_neighbors('domain:vinc')", graphmd.generated_block(mine, lang="en"))
+        self.assertIn("'vinc/ai' files that node under 'vinc'", graphmd.generated_block(mine, lang="en"))
+
+    def test_the_walk_sentence_is_deterministic_and_has_a_fallback(self):
+        tie = {"domains": ["b/x", "a/y"], "domain_counts": {"b/x": 3, "a/y": 3}}
+        self.assertEqual(graphmd._walk_example(tie), ("a/y", "a"))
+        self.assertEqual(graphmd._walk_example({"domains": ["solo"]}), ("solo/subtopic", "solo"))
+        for lang in ("en", "ko"):
+            empty = graphmd.generated_block({}, lang=lang)
+            self.assertIn("domain:topic", empty)
+            self.assertNotIn("domain:vinc", empty)
+
     def test_em_dash_is_a_fix(self):
         text = self._built("en").replace("one reusable idea", "one reusable idea — really")
         res = graphmd.check(text)

@@ -443,6 +443,7 @@ const EN = {
     },
     compass: {
       lens: "Compass lens",
+      rootTopic: "All topics",
       time: "Time", legend: "Legend", all: "All",
       kinds: { concept: "Concept", doc: "Document", decision: "Decision", record: "Record", episode: "Event", bridge: "Bridge", topic: "Topic" },
       rel: { parentTopic: "Parent topic", concept: "Concept in this topic", subtopic: "Subtopic", topic: "Topic", attachedTo: "Attached to",
@@ -1930,6 +1931,7 @@ const KO: Deck = {
     },
     compass: {
       lens: "나침반 렌즈",
+      rootTopic: "모든 주제",
       time: "시간", legend: "범례", all: "전체",
       kinds: { concept: "개념", doc: "문서", decision: "결정", record: "기록", episode: "사건", bridge: "다리", topic: "주제" },
       rel: { parentTopic: "위 주제", concept: "속한 개념", subtopic: "하위 주제", topic: "주제", attachedTo: "붙은 곳",
