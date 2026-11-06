@@ -276,11 +276,41 @@ _READBACK_BUDGET = 256 * 1024
 _CLAIM_PROPS = ("subject_path", "measured_at", "measured_ref")
 
 
-#: 이 그래프가 기록을 갖는 리포. 오타 난 한정자는 **조용히 새 네임스페이스를 만든다**
-#: (`vnic:` 는 어떤 것과도 안 맞고 아무 오류도 안 난다). 거부하지 않고 경고만 하는
-#: 이유는 리포가 늘 수 있고 목록이 낡을 수 있어서다 — 막는 것보다 말하는 것이 맞다.
-#: 정본은 역할 스냅샷의 `repos`(`agents/roles.json`).
-_KNOWN_REPOS = frozenset({"vinc", "vinc-homepage", "vincs-app"})
+#: 리포 이름은 **형식만** 검사한다(`repo:path`). 어느 리포를 아는지는 그래프마다 다르다 — 코드에
+#: 박은 목록은 이 제품을 쓰는 다른 사람에게 늘 틀렸고 vincos 같은 새 리포에도 틀렸다. 대신 그래프에
+#: 이미 있는 기록의 리포를 모아, **처음 보는 이름**이면 오타일 수 있다고 말한다(막지 않는다).
+#: 근거: [[vinc.canon.graph-conventions §5.1]]
+_REPO_CACHE: dict[tuple[int, str], tuple[float, set[str]]] = {}
+_REPO_CACHE_TTL = 300.0
+
+
+def _known_repos(store, owner: str) -> set[str]:
+    """이 소유자의 Record·Decision 이 `subject_path` 에 쓴 리포 이름들. 몇 분 캐시한다(적재마다 훑지 않게)."""
+    import time as _time
+    key = (id(store), owner or "")
+    hit = _REPO_CACHE.get(key)
+    now = _time.monotonic()
+    if hit and hit[0] > now:
+        return hit[1]
+    repos: set[str] = set()
+    for label in ("Record", "Decision"):
+        try:
+            rows = store.run(f"MATCH (n:{label}) WHERE n.owner_id = $o AND n.props CONTAINS 'subject_path' "
+                             "RETURN n.props AS p", {"o": owner}) or []
+        except Exception:
+            rows = []
+        for r in rows:
+            try:
+                sp = (json.loads(r.get("p") or "{}") or {}).get("subject_path")
+            except (TypeError, ValueError):
+                continue
+            for v in (sp if isinstance(sp, list) else [sp]):
+                if isinstance(v, str):
+                    repo, _path = _split_subject(_norm_subject_path(v))
+                    if repo:
+                        repos.add(repo)
+    _REPO_CACHE[key] = (now + _REPO_CACHE_TTL, repos)
+    return repos
 
 
 def _split_subject(v: str) -> tuple[str, str]:
@@ -315,21 +345,26 @@ def _norm_subject_path(v) -> str:
     return f"{repo}:{path}" if repo and path else path
 
 
-def _subject_repo_warnings(norm: str, nid: str, warnings: list[str]) -> None:
-    """접은 `subject_path` 가 리포를 안 담았거나 모르는 리포면 경고한다(지우지 않는다)."""
+def _subject_repo_warnings(norm: str, nid: str, warnings: list[str], known_repos=None) -> None:
+    """접은 `subject_path` 가 리포를 안 담았으면, 또는 그래프가 처음 보는 리포면 경고한다(지우지 않는다).
+
+    `known_repos` 는 그래프의 기존 리포 집합을 돌려주는 함수다. 없거나 그래프가 아직 아무 리포도
+    모르면(첫 기록) 이름은 묻지 않는다."""
     repo, path = _split_subject(norm)
     if path and not repo:
         warnings.append(
             f"props.subject_path '{norm}' names no repository (id={nid}) — stored, "
-            f"but a bare path cannot be compared across repositories; "
-            f"use one of {', '.join(sorted(_KNOWN_REPOS))}")
-    elif repo and repo not in _KNOWN_REPOS:
-        warnings.append(
-            f"props.subject_path repository '{repo}' is not one this graph knows "
-            f"(id={nid}) — stored, but a typo here makes a namespace of its own")
+            f"but a bare path cannot be compared across repositories; write it as repo:path")
+    elif repo and known_repos is not None:
+        known = known_repos()
+        if known and repo not in known:
+            warnings.append(
+                f"props.subject_path repository '{repo}' is new to this graph (id={nid}) — stored; "
+                f"if it is a typo it makes a namespace of its own (known: {', '.join(sorted(known)[:8])})")
+            known.add(repo)          # 같은 적재 안에서 같은 이름을 거듭 말하지 않는다
 
 
-def _claim_props(props, label: str, nid: str, warnings: list[str]):
+def _claim_props(props, label: str, nid: str, warnings: list[str], known_repos=None):
     """예약 주장 필드를 정규화한다. props 원본은 건드리지 않는다(부분 재전송 함정).
 
     형식 위반은 **지우지 않고 경고한다**: props 는 자유 속성이라 서버가 값을 버리면
@@ -347,7 +382,7 @@ def _claim_props(props, label: str, nid: str, warnings: list[str]):
                 if label == "Decision" and k == "subject_path":
                     for raw in (props[k] if isinstance(props[k], list) else [props[k]]):
                         if isinstance(raw, str):
-                            _subject_repo_warnings(_norm_subject_path(raw), nid, warnings)
+                            _subject_repo_warnings(_norm_subject_path(raw), nid, warnings, known_repos)
                     continue
                 warnings.append(
                     f"props.{k} is a claim field carried by Record only (id={nid}) — "
@@ -358,7 +393,7 @@ def _claim_props(props, label: str, nid: str, warnings: list[str]):
         norm = _norm_subject_path(raw)
         if norm != raw:
             out = {**props, "subject_path": norm}
-        _subject_repo_warnings(norm, nid, warnings)
+        _subject_repo_warnings(norm, nid, warnings, known_repos)
     at = props.get("measured_at")
     if at is not None:
         from . import docstore as _ds      # 지연 import — 날짜 검증기 1벌 유지
@@ -652,7 +687,8 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
             if label == "Decision" and isinstance(_pv, dict):
                 # 결정의 유효구간은 props 에 산다. 형식 검사는 Record 열과 같다.
                 _pv = _decision_interval(_pv, current.get("props"), nid, warnings)
-            _set("props", json.dumps(_claim_props(_pv, label, nid, warnings),
+            _set("props", json.dumps(_claim_props(_pv, label, nid, warnings,
+                                                   known_repos=lambda: _known_repos(store, owner)),
                                      ensure_ascii=False, sort_keys=True))
 
         def _promote(col: str, val: str, source: str) -> None:

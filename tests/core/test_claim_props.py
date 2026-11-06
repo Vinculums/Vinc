@@ -146,8 +146,8 @@ class ConventionsTemplateTests(unittest.TestCase):
 
     def test_기본_관례_템플릿이_주장_필드를_말한다(self):
         from api import graphmd
-        for name, body in (("en", graphmd._TPL_EN), ("ko", graphmd._TPL_KO)):
-            self.assertIn("subject_path", body, name)
+        for lang in ("en", "ko"):
+            self.assertIn("subject_path", graphmd.build(None, lang=lang)["text"], lang)
 
     def test_ingest_스키마가_주장_필드를_선언한다(self):
         from vinc_mcp.tools import _FRAGMENT_SCHEMA
@@ -195,9 +195,10 @@ class RepoQualifierWarningTests(unittest.TestCase):
     목록은 낡을 수 있다. 오타 난 한정자가 특히 나쁜 이유는 조용히 자기만의
     네임스페이스를 만들면서 아무 오류도 안 내기 때문이다."""
 
-    def _warn(self, path):
+    def _warn(self, path, known=("vinc", "vinc-homepage", "vincs-app")):
         w: list = []
-        frag._claim_props({"subject_path": path}, "Record", "record:x", w)
+        frag._claim_props({"subject_path": path}, "Record", "record:x", w,
+                          known_repos=lambda: set(known))
         return w
 
     def test_맨_경로는_리포가_없다고_말한다(self):
@@ -206,7 +207,16 @@ class RepoQualifierWarningTests(unittest.TestCase):
 
     def test_모르는_리포는_말한다(self):
         w = self._warn("vnic:api/sync.py")
-        self.assertTrue(any("not one this graph knows" in x for x in w), w)
+        self.assertTrue(any("is new to this graph" in x for x in w), w)
+
+    def test_리포_목록은_코드가_아니라_그래프에서_온다(self):
+        """vincos 처럼 새 리포도, 다른 사용자의 리포도 그 그래프가 이미 쓴 이름이면 조용하다."""
+        self.assertEqual(self._warn("vincos:vincos/zones.py", known=("vinc", "vincos")), [])
+        self.assertEqual(self._warn("acme:src/app.py", known=("acme",)), [])
+
+    def test_첫_기록은_이름을_묻지_않는다(self):
+        """그래프가 아직 아무 리포도 모르면 비교할 것이 없다. 형식만 본다."""
+        self.assertEqual(self._warn("anything:src/x.py", known=()), [])
 
     def test_아는_리포는_조용하다(self):
         for good in ("vinc:api/sync.py", "vinc-homepage:account/src/x.ts",
