@@ -80,7 +80,7 @@ const themeMode = (): ThemeMode =>
  *  (app.css 의 `[style*="--ink:0"]`) — `--ink:N` 리터럴을 깨지 않도록 **뒤에** 붙인다. */
 /** 주제 하나의 색. 그래프에서는 나침반이 쓰는 색 그대로(gsrc.colour), 문서에서는 같은 규칙으로 만든 표에서
  *  가장 가까운 조상의 색을 쓴다. 뿌리(최상위 주제가 하나뿐일 때 그 주제)는 어느 영역도 아니라 색이 없다(중립 잉크).
- *  그래프에서는 그 판정도 나침반의 `colour` 가 한다(빈 문자열). 문서에서는 `planTints` 가 정한 `tintRoot` 다. */
+ *  그래프에서는 뿌리인지도 나침반의 `colour` 가 가린다(빈 문자열). 문서에서는 `planTints` 가 정한 `tintRoot` 다. */
 const tintOf = (domain: string): string => {
   const d = domain.trim();
   if (!d) return "";
