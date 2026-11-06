@@ -3767,7 +3767,9 @@ details.pe-group[open] > summary::before { transform: rotate(90deg); }
 .cmp svg.g #rays, .cmp svg.g #tree { transition: opacity .3s .2s; } svg.g.moving #rays, svg.g.moving #tree { opacity: 0; transition: none; }
 .cmp svg.g.hot .ray { opacity: .2; } svg.g.hot .ray.near { opacity: 1; } svg.g .ray { transition: opacity .15s; }
 .cmp svg.g .topic rect { transition: fill .15s; } svg.g .topic:hover rect { filter: brightness(.97); }
-.cmp svg.g .node.far { opacity: .42; } svg.g .node.far text { font-size: 10.5px; } svg.g .ray.far { opacity: .32; } svg.g .ray.path { opacity: 1; }
+/* 먼 층의 흐림: 라이트는 밝은 바탕에 묻혀 덜 흐리게 둔다 */
+.cmp { --cmp-far-node: .62; --cmp-far-ray: .55; } [data-theme="dark"] .cmp { --cmp-far-node: .42; --cmp-far-ray: .32; }
+.cmp svg.g .node.far { opacity: var(--cmp-far-node); } svg.g .node.far text { font-size: 10.5px; } svg.g .ray.far { opacity: var(--cmp-far-ray); } svg.g .ray.path { opacity: 1; }
 .cmp svg.g .node.onpath .ring { opacity: .7; stroke-dasharray: 3 3; } svg.g .stub { cursor: pointer; } svg.g .stub.far { opacity: .6; }
 @media (prefers-reduced-motion: reduce) { svg.g .node, .cmp svg.g #rays, .cmp svg.g #tree { transition: none; } }
 .cmp #cmp-menu { position: fixed; z-index: 6; width: 250px; background: var(--c-card); border: 1px solid var(--c-line); border-radius: 12px; padding: 6px; box-shadow: var(--shadow-elev-2); }

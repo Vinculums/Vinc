@@ -85,7 +85,9 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   const topicColour = (p) => { if (!p || p === ROOT) return 'hsl(var(--muted-foreground))';   // 뿌리는 어느 영역도 아니라 중립색
     const s = p.split('/'); for (let i = s.length; i >= 1; i--) { const c = TOPIC_COL.get(s.slice(0, i).join('/')); if (c) return c; } return 'hsl(var(--muted-foreground))'; };
   const topicOf = (n) => (n.k === 'topic' ? n.path : n.d);
-  const colv = (n) => topicColour(topicOf(n)), mix = (c, p) => `color-mix(in srgb, ${c} ${p}%, var(--c-card))`;
+  // 섞기: 주제 색을 카드색 쪽으로 바랜다. 라이트는 카드가 거의 흰색이고 보석 토큰의 대비 바닥도 3:1(다크 5.5:1)이라
+  // 같은 비율로 바래면 빛살 끝이 배경 대비 1.3 안팎으로 사라진다. 그래서 라이트에서는 바래는 몫을 45%만 쓴다(30% → 69%, 55% → 80%)
+  const colv = (n) => topicColour(topicOf(n)), mix = (c, p) => `color-mix(in srgb, ${c} ${themeMode() === 'light' ? Math.round(100 - (100 - p) * .45) : p}%, var(--c-card))`;
   const isMean = (n) => ['concept', 'doc', 'bridge'].includes(n.k) || n.m > 0;
   const titleOf = (n) => { if (n.k === 'topic') return n.path ? n.path.split('/').pop() : C.rootTopic; const s = (n.t || n.id).replace(/\s*\((?:\d{4}-\d\d-\d\d|pstack principle|Anthropic)[^)]*\)/g, '');
     return ['concept', 'doc', 'bridge'].includes(n.k) ? s.replace(/^([^:]{3,40}):.*$/, '$1') : s; };
@@ -107,6 +109,7 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   }
   // 빛살: 가운데 쪽이 굵고 바깥으로 가늘다. 양끝은 노드와 같은 중심의 원호로, 틈만큼 떨어져 잘린다
   function ray(a, b, i, w0 = 3, w1 = .5) {
+    if (themeMode() === 'light') { w0 *= 1.45; w1 = Math.max(w1 * 1.6, 1); }   // 밝은 바탕에서는 가는 띠가 묻힌다: 라이트만 굵게, 바깥 끝도 1 아래로 가늘어지지 않게
     const th = Math.atan2(b.y - a.y, b.x - a.x), ra = a.r + GAP, rb = b.r + GAP;
     const pts = [...arcPts(a.x, a.y, ra, th, Math.asin(Math.min(.95, w0 / ra))), ...arcPts(b.x, b.y, rb, th + Math.PI, Math.asin(Math.min(.95, w1 / rb))).reverse()];
     const x0 = a.x + Math.cos(th) * ra, y0 = a.y + Math.sin(th) * ra, x1 = b.x - Math.cos(th) * rb, y1 = b.y - Math.sin(th) * rb;
