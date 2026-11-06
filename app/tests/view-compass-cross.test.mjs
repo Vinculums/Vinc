@@ -81,3 +81,35 @@ test('all topics: every topic is drawn and every parent line follows the gaps as
   const xy = [...at.values()];
   for (let i = 0; i < xy.length; i++) for (let j = i + 1; j < xy.length; j++) assert.ok(Math.hypot(xy[i][0] - xy[j][0], xy[i][1] - xy[j][1]) > 100, 'two hubs share a spot');
 });
+
+// 다리: 주제가 없는 다리는 끝들이 만나는 주제에 서고, 끝 주제에서도 반대편 끝과 함께 보인다
+function bridged() {
+  const nodes = [], edges = [];
+  for (const d of ['root/alpha/one', 'root/alpha/two', 'root/beta/one']) for (let i = 0; i < 3; i++) nodes.push({ id: `concept:${d}-${i}`, kind: 'concept', title: `${d} ${i}`, label: `${d} ${i}`, domain: d, ts: '2026-11-01', degree: 1 });
+  nodes.push({ id: 'bridge:inner', kind: 'bridge', title: 'Inner junction', label: 'Inner junction', domain: '', ts: '2026-11-01', degree: 2 });
+  nodes.push({ id: 'bridge:outer', kind: 'bridge', title: 'Outer junction', label: 'Outer junction', domain: '', ts: '2026-11-01', degree: 2 });
+  edges.push({ source: 'bridge:inner', target: 'concept:root/alpha/one-0', type: 'CONNECTS' }, { source: 'bridge:inner', target: 'concept:root/alpha/two-0', type: 'CONNECTS' });
+  edges.push({ source: 'bridge:outer', target: 'concept:root/alpha/one-1', type: 'CONNECTS' }, { source: 'bridge:outer', target: 'concept:root/beta/one-1', type: 'CONNECTS' });
+  const host = document.createElement('div');
+  document.body.append(host);
+  return { h: mountCompass(host, compassDataFrom(nodes, edges), {}), host };
+}
+const roleOf = (host, id) => host.querySelector(`.node[data-id="${id}"]`)?.getAttribute('data-role') || null;
+
+test('a bridge stands at the topic where its ends meet, not always at the root', () => {
+  const { h, host } = bridged();
+  assert.equal(roleOf(host, 'bridge:outer'), 'bridge', 'the cross-area bridge stays at the root');
+  assert.equal(roleOf(host, 'bridge:inner'), null, 'the bridge inside alpha is not on the root layer');
+  h.open('topic:root/alpha');
+  assert.equal(roleOf(host, 'bridge:inner'), 'bridge', 'it stands in alpha, between its two subtopics');
+});
+
+test('an end topic shows the bridges that touch it, named with the other ends', () => {
+  const { h, host } = bridged();
+  h.open('topic:root/alpha/one');
+  for (const [id, other] of [['bridge:inner', 'two'], ['bridge:outer', 'one']]) {
+    const g = host.querySelector(`.node[data-id="${id}@@topic:root/alpha/one"]`);
+    assert.ok(g, `${id} shows at its end topic`);
+    assert.ok(g.innerHTML.includes('↔') && g.innerHTML.includes(other), `${id} names the other end`);
+  }
+});
