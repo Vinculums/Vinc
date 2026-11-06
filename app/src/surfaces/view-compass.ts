@@ -68,6 +68,14 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   const nodes = W0.nodes.map((n) => (n.d ? n : { ...n, d: ROOT })), byId = new Map(nodes.map((n) => [n.id, n]));
   const edges = W0.edges.map(([a, b, t]) => ({ a: byId.get(a), b: byId.get(b), t })).filter((e) => e.a && e.b);
   const adj = new Map(nodes.map((n) => [n.id, []])); for (const e of edges) { adj.get(e.a.id).push(e); adj.get(e.b.id).push(e); }
+  // 다리는 주제를 갖지 않는다(여러 주제 사이에 있다). 그래서 다리를 끝들이 만나는 주제, 곧 끝 노드들 주제의 가장 가까운 공통 조상에 둔다.
+  // 같은 영역 안의 끝들을 잇는 다리는 그 영역 층에 서고, 영역을 넘는 다리만 뿌리에 남는다. 끝마다의 주제(BENDS)는 끝 층에서 다리를 보일 때 쓴다
+  const BENDS = new Map();
+  for (const b of nodes) { if (b.k !== 'bridge') continue; const raw = W0.nodes.find((n) => n.id === b.id);
+    const ds = [...new Set(adj.get(b.id).filter((e) => e.t === 'CONNECTS').map((e) => (e.a === b ? e.b : e.a).d).filter((d) => d && d !== ROOT))];
+    BENDS.set(b.id, ds); if (raw && raw.d || !ds.length) continue;
+    const seg = ds.map((d) => d.split('/')); let k = 0; while (seg.every((x) => k < x.length && x[k] === seg[0][k])) k++;
+    if (k > RD) b.d = seg[0].slice(0, k).join('/'); }
   const newest = nodes.map((n) => n.ts).filter(Boolean).sort().pop();
   const fresh = (n) => { const w = when(n); return !!w && (Date.parse(newestW()) - Date.parse(w)) / 864e5 <= 7; };   // '최근' = 내용 시간으로 7일 안
   let _nw = ''; const newestW = () => _nw || (_nw = nodes.map(when).filter(Boolean).sort().pop() || '');
@@ -85,6 +93,11 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   const topicColour = (p) => { if (!p || p === ROOT) return 'hsl(var(--muted-foreground))';   // 뿌리는 어느 영역도 아니라 중립색
     const s = p.split('/'); for (let i = s.length; i >= 1; i--) { const c = TOPIC_COL.get(s.slice(0, i).join('/')); if (c) return c; } return 'hsl(var(--muted-foreground))'; };
   const topicOf = (n) => (n.k === 'topic' ? n.path : n.d);
+  // 끝 주제 → 그 주제에 닿은(그러나 다른 층에 선) 다리들. 이름표는 '다리 이름 ↔ 반대편 끝들'
+  const FARB = new Map();
+  for (const [id, ds] of BENDS) { const b = byId.get(id), name = (b.t || id).replace(/ junction$/i, '');
+    for (const d of ds) { if (d === b.d) continue; const others = [...new Set(ds.filter((x) => x !== d).map((x) => x.split('/').pop()))];
+      if (!FARB.has(d)) FARB.set(d, []); FARB.get(d).push({ n: b, rel: C.rel.bridge, label: `${name} ↔ ${others.join(', ')}`, farEnds: ds.filter((x) => x !== d) }); } }
   // 섞기: 주제 색을 카드색 쪽으로 바랜다. 라이트는 카드가 거의 흰색이고 보석 토큰의 대비 바닥도 3:1(다크 5.5:1)이라
   // 같은 비율로 바래면 빛살 끝이 배경 대비 1.3 안팎으로 사라진다. 그래서 라이트에서는 바래는 몫을 45%만 쓴다(30% → 69%, 55% → 80%)
   const colv = (n) => topicColour(topicOf(n)), mix = (c, p) => `color-mix(in srgb, ${c} ${themeMode() === 'light' ? Math.round(100 - (100 - p) * .45) : p}%, var(--c-card))`;
@@ -146,6 +159,8 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
       left.sort((a, b) => b.n.m - a.n.m || b.n.g - a.n.g);
       for (const n of c.direct.filter((x) => !isMean(x))) (shelf[n.k] || shelf.record).push(n);
       for (const p of [...c.sub].sort((a, b) => topics.get(b).count - topics.get(a).count)) right.push({ n: topics.get(p), rel: C.rel.subtopic });
+      // 이 주제에 끝이 닿은 다리(다리가 선 곳은 다른 층이다): 반대편 끝 주제의 이름을 붙여 3시에 둔다. 누르면 그 다리를 편다
+      for (const b of FARB.get(c.path) || []) right.push(b);
     } else {
       up.push({ n: topics.get(c.d), rel: C.rel.topic, main: true });
       for (const e of adj.get(c.id)) {
@@ -267,11 +282,14 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
       const put = (p, role, extra = {}) => { const r = Math.hypot(p.x - hub.x, p.y - hub.y);
         // 지나온 길의 노드는 반드시 자기 층(허브)으로 펼쳐져야 한다. 앞 층의 부채에 먼저 나와도 여기서 그리지 않고, 나중에 그 허브로 빛살만 잇는다.
         // (이걸 안 하면 길의 노드가 앞 층의 잎으로 먼저 놓여 펼쳐지지 못하고, 지금 층을 잃어 맨 위 vinc 로 돌아간 것처럼 보였다)
+        // 끝 층의 다리 항목은 다리가 선 층(다른 곳)에 이미 그려져도 여기에 따로 둔다: 같은 노드의 별칭(id@@층)이라 그 층의 다리를 가리지 않는다
+        if (p.u.farEnds && !kids.has(p.u.n.id)) { const o = { id: `${p.u.n.id}@@${node.id}`, src: p.u.n, k: p.u.n.k, x: p.x, y: p.y, r: sizeU(p.u), c: colv(p.u.n), label: p.u.label, farEnds: p.u.farEnds,
+            role, rel: p.u.rel, ang: p.ang, level: i, comp: hub.id, chain }; items.push(o); comp.items.push(o); return; }
         if (onPath.has(p.u.n.id) && !kids.has(p.u.n.id)) { comp.items.push({ linkId: p.u.n.id, e: p.u.e }); return; }
         if (kids.has(p.u.n.id) && queued.has(p.u.n.id)) { comp.items.push({ linkId: p.u.n.id, e: p.u.e }); return; }   // 같은 노드가 두 관계로 두 번 나오면 한 번만 편다
         if (kids.has(p.u.n.id) && !placed.has(p.u.n.id)) { queued.add(p.u.n.id); comp.slots.set(p.u.n.id, { ang: Math.atan2(p.y - hub.y, p.x - hub.x), r, e: p.u.e }); queue.push({ node: p.u.n, parent: comp }); return; }
         if (placed.has(p.u.n.id)) { comp.items.push({ link: placed.get(p.u.n.id), e: p.u.e }); return; }
-        comp.items.push(mk(p.u.n, p.x, p.y, sizeU(p.u), { role, rel: p.u.rel, e: p.u.e, ang: p.ang, level: i, comp: hub.id, chain, ...extra })); };
+        comp.items.push(mk(p.u.n, p.x, p.y, sizeU(p.u), { role, rel: p.u.rel, e: p.u.e, ang: p.ang, level: i, comp: hub.id, chain, ...(p.u.label ? { label: p.u.label, farEnds: p.u.farEnds } : {}), ...extra })); };
       const take = (list, a0, a1, rMin, gap, role) => { if (!list.length) return; const c = th12 + (a0 + a1) / 2, cc = Math.cos(rad(c));
         const P = Math.abs(Math.sin(rad(c))) > .7 ? colPlace(list, hub, c, Math.abs(cc) < .05 ? 0 : cc < 0 ? -1 : 1, sizeU) : fanPlace(list, hub, th12 + a0, th12 + a1, rMin, gap, sizeU);
         P.pos.forEach((p) => put(p, role)); };
@@ -281,14 +299,19 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
       take(G.right, ...REL.right, cp.rR || 170, 40, 'right');
       // 다리: 이 층의 하위 주제들 사이(펼쳐진 하위 주제는 그 자리 각도로 센다)
       const angOf = new Map([...comp.items.filter((o) => o.role === 'right').map((o) => [o.id, Math.atan2(o.y - hub.y, o.x - hub.x)]), ...[...comp.slots].map(([id, s]) => [id, s.ang])]);
+      const posOf = new Map([...comp.items.filter((o) => o.role === 'right').map((o) => [o.id, [o.x, o.y]]), ...[...comp.slots].map(([id, s]) => [id, [hub.x + Math.cos(s.ang) * s.r, hub.y + Math.sin(s.ang) * s.r]])]);
       for (const b of G.bridges) { const angs = b.subs.map((s) => angOf.get(`topic:${s}`)).filter((a) => a != null); if (!angs.length || placed.has(b.n.id)) continue;
         if (onPath.has(b.n.id) && !kids.has(b.n.id)) continue;
         let a = Math.atan2(angs.reduce((s, x) => s + Math.sin(x), 0), angs.reduce((s, x) => s + Math.cos(x), 0)), r = Math.max(hub.r + 70, (cp.rR || 170) - 90);
+        // 3시가 위·아래로 서서 하위 주제가 두 줄 목록이면, 다리는 두 줄 사이 빈 길(3시 축) 위, 잇는 하위 주제들의 가운데 거리에 선다
+        const c3 = rad(th12 + 90); if (Math.abs(Math.sin(c3)) > .7) { const ds = b.subs.map((x) => posOf.get(`topic:${x}`)).filter(Boolean).map(([x, y]) => (x - hub.x) * Math.cos(c3) + (y - hub.y) * Math.sin(c3));
+          if (ds.length) { a = c3; r = ds.reduce((s, x) => s + x, 0) / ds.length; } }
         // 다리끼리 이름표가 겹치지 않게: 겹치면 안쪽으로 한 칸, 더 들어갈 수 없으면 옆으로 조금 돈다
         const bw = (o) => 7 * Math.min(20, (o.label || '').replace(/ junction$/i, '').length) + 16, myW = 7 * Math.min(20, titleOf(b.n).replace(/ junction$/i, '').length) + 16;
         const busy = () => { const x = hub.x + Math.cos(a) * r, y = hub.y + Math.sin(a) * r;
           return items.some((o) => o.role === 'bridge' && Math.abs(o.x - x) < (bw(o) + myW) / 2 && Math.abs(o.y - y) < 30) || items.some((o) => o.role === 'right' && o.comp === hub.id && Math.hypot(o.x - x, o.y - y) < o.r + 26); };
-        for (let k = 0; k < 16 && busy(); k++) { if (r - 26 > hub.r + 60) r -= 26; else a += .14; }
+        const lane = Math.abs(Math.sin(c3)) > .7 && a === c3;
+        for (let k = 0; k < 16 && busy(); k++) { if (lane) r += 26; else if (r - 26 > hub.r + 60) r -= 26; else a += .14; }
         if (kids.has(b.n.id)) { if (queued.has(b.n.id)) continue; queued.add(b.n.id); comp.slots.set(b.n.id, { ang: a, r }); queue.push({ node: b.n, parent: comp }); continue; }   // 다리를 눌렀으면 그 자리에서 다리의 나침반을 편다
         comp.items.push(mk(b.n, hub.x + Math.cos(a) * r, hub.y + Math.sin(a) * r, 8, { role: 'bridge', subs: b.subs.map((s) => `topic:${s}`), outside: b.outside, ang: a, level: i, comp: hub.id, chain })); }
       const kinds = [['decision', KIND.decision], ['record', KIND.record], ['episode', KIND.episode], ['doc', KIND.doc]].filter(([k]) => G.shelf[k].length);
@@ -385,6 +408,10 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
       if (hub.parentHub && MODE === 'all' && hub.route) rays += routeS(hub.route, hub, hub.parentHub);
       else if (hub.parentHub) drawRay(hub.parentHub, hub, hub.viaE, comp.pinOnly ? 2.2 : 3.4, comp.pinOnly ? .8 : 1.2, comp.pinOnly ? 'pinpath' : 'path');          // 펼쳐 들어온 길: 굵게(고정 노드로 가는 길은 조금 가늘게)
       for (const o of comp.items) { if (o.link) { drawRay(hub, o.link, o.e, 1.4, .5, `${far} link`); continue; }
+        if (o.role === 'bridge' && MODE === 'all') { for (const d of BENDS.get(o.id) || []) { const t = at.get(`topic:${d}`); if (!t) continue;
+            const mx = (o.x + t.x) / 2, my = (o.y + t.y) / 2, L = Math.hypot(t.x - o.x, t.y - o.y), bx = mx - (t.y - o.y) / L * L * .12, by = my + (t.x - o.x) / L * L * .12;
+            rays += `<path class="ray blink" data-a="${esc(o.id)}" data-b="${esc(t.id)}" d="M${o.x.toFixed(1)} ${o.y.toFixed(1)}Q${bx.toFixed(1)} ${by.toFixed(1)} ${t.x.toFixed(1)} ${t.y.toFixed(1)}" fill="none" style="stroke:${mix(t.c, 70)}" stroke-width="1.6" stroke-dasharray="6 5"/>`; }
+          continue; }
         if (o.role === 'bridge') { for (const s of o.subs) { const t = at.get(s); if (t) drawRay({ ...o, c: mix(o.c, 70) }, { ...t, c: mix(t.c, 60) }, null, 1.2, 1, far); } continue; }
         drawRay(hub, o, o.e, o.role === 'left' ? 3 : 2.4, .5, comp.pinOnly ? 'pinpath' : far); }
       if (comp.stub) { const s = comp.stub; deco += `<g class="stub ${far}" data-id="${esc(hub.id)}" data-chain="${esc(comp.chain.map((n) => n.id).join('|'))}"><line x1="${(hub.x + Math.cos(s.ang) * (hub.r + 5)).toFixed(1)}" y1="${(hub.y + Math.sin(s.ang) * (hub.r + 5)).toFixed(1)}" x2="${s.x.toFixed(1)}" y2="${s.y.toFixed(1)}" style="stroke:${mix(hub.c, 55)}" stroke-width="2.2" stroke-linecap="round"/><text class="badge" x="${s.x.toFixed(1)}" y="${(s.y + 4).toFixed(1)}" text-anchor="${Math.cos(s.ang) < -.3 ? 'end' : Math.cos(s.ang) > .3 ? 'start' : 'middle'}" dx="${Math.cos(s.ang) < -.3 ? -6 : Math.cos(s.ang) > .3 ? 6 : 0}" dy="${Math.sin(s.ang) > .3 ? 10 : Math.sin(s.ang) < -.3 ? -6 : 0}">${esc(s.text)}</text></g>`; }
@@ -399,7 +426,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
       if (o.role === 'hub') { const a = o.parentHub ? Math.atan2(o.y - o.parentHub.y, o.x - o.parentHub.x) : rad(135), dx = Math.cos(a + Math.PI / 2), dy = Math.sin(a + Math.PI / 2);
         return o.k === 'topic' ? `<text class="hub" x="0" y="${o.r + 20}" text-anchor="middle">${esc(short(o.label, 28))}</text><text class="badge" x="0" y="${o.r + 34}" text-anchor="middle">${esc(C.topicCount(o.src.count))}</text>` : `<text class="hub" x="${(-o.r * .7 - 8)}" y="${o.r + 16}" text-anchor="end">${esc(short(o.label, 28))}${o.k === 'topic' ? `<tspan class="badge" dx="6">${esc(C.topicCount(o.src.count))}</tspan>` : ''}</text>`; }
       if (o.role === 'right' && o.k === 'topic') { const flip = Math.cos(o.ang) < 0; return `<text class="l1" x="${flip ? -(o.r + 7) : o.r + 7}" y="4" text-anchor="${flip ? 'end' : 'start'}">${esc(short(o.label, 18))}<tspan class="badge" dx="5">${o.src.count}</tspan></text>`; }
-      if (o.role === 'up' || o.role === 'left' || o.role === 'right') return rot(o, 7, 'l1', 24);
+      if (o.role === 'up' || o.role === 'left' || o.role === 'right') return rot(o, 7, 'l1', o.farEnds ? 40 : 24);
       if (o.role === 'bridge') return `<text class="l2" x="0" y="${o.r + 13}" text-anchor="middle">${esc(short(o.label.replace(/ junction$/i, ''), 20))}</text>`;
       return `<text x="${o.r + 7}" y="4">${esc(short(o.label, 24))}</text>`; };
     // 초승달: 그 층 허브와 다른 주제의 노드에, 그 층 허브 주제의 색으로
@@ -410,7 +437,8 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
       return `<g class="cres">${shape(o.k, +dx.toFixed(2), +dy.toFixed(2), o.r, topicColour(ht))}${shape(o.k, 0, 0, o.r + 1.3, 'var(--c-bg)')}</g>`; };
     // 다리 = 갈래 고리. 잇는 주제마다 고리 한 조각을 그 주제 쪽으로 향하게 두고, 그 주제의 색으로 칠한다.
     // 조각 수가 곧 몇 주제를 잇는가이고, 조각의 방향이 곧 빛살이 나가는 방향이다. 이 층 밖으로도 이어지면 회색 조각이 하나 더 붙는다.
-    const junction = (o) => { const ts = (o.subs || []).map((s) => at.get(s)).filter(Boolean).map((q) => ({ a: Math.atan2(q.y - o.y, q.x - o.x), c: q.c }));
+    const junction = (o) => { const ts = o.farEnds ? o.farEnds.map((d, i, l) => ({ a: -Math.PI / 2 + i * 2 * Math.PI / l.length, c: topicColour(d) }))
+        : (o.subs || []).map((s) => at.get(s)).filter(Boolean).map((q) => ({ a: Math.atan2(q.y - o.y, q.x - o.x), c: q.c }));
       if (o.outside) { const avg = Math.atan2(ts.reduce((s, q) => s + Math.sin(q.a), 0), ts.reduce((s, q) => s + Math.cos(q.a), 0)); ts.push({ a: avg + Math.PI, c: 'var(--c-mute)' }); }
       if (!ts.length) return shape('concept', 0, 0, o.r, o.c, true);
       ts.sort((x, y) => x.a - y.a); const n = ts.length, R = o.r, w = 2.6;
@@ -418,7 +446,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
       const arc = (a, c) => { const a0 = a - half, a1 = a + half, P = (q) => `${(Math.cos(q) * R).toFixed(2)} ${(Math.sin(q) * R).toFixed(2)}`;
         return `<path class="shape" d="M${P(a0)}A${R} ${R} 0 0 1 ${P(a1)}" fill="none" style="stroke:${c}" stroke-width="${w}" stroke-linecap="round"/>`; };
       return ts.map((q) => arc(q.a, q.c)).join('') + `<circle class="shape" r="${(R * .32).toFixed(2)}" style="fill:${mix(o.c, 80)}"/>`; };
-    const body = (o) => o.k === 'bridge' ? junction(o) : crescent(o) + (o.k === 'topic' ? ringS(o.r, o.role === 'hub' || fresh(o.src) ? o.c : mix(o.c, 70), o.role === 'hub' ? 2.6 : 2)
+    const body = (o) => o.k === 'bridge' && (o.role === 'bridge' || o.farEnds) ? junction(o) : crescent(o) + (o.k === 'topic' ? ringS(o.r, o.role === 'hub' || fresh(o.src) ? o.c : mix(o.c, 70), o.role === 'hub' ? 2.6 : 2)
       : shape(o.k, 0, 0, o.r, o.src.vu ? o.c : fresh(o.src) ? o.c : mix(o.c, 55), !!o.src.vu)) + '';
     const compOf = new Map(L.comps.map((c) => [c.hub.id, c]));
     const filtTag = (o) => { const f = FILT.get(o.id); return o.role === 'hub' && f ? `<text class="badge ftag" x="0" y="${-o.r - 9}" text-anchor="middle">${[...f].map((k) => GROUPS.find((g) => g[0] === k)[1]).join(' · ')}${esc(C.only)}</text>` : ''; };
@@ -520,7 +548,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
 
   // ── 다니기: 누르면 그 자리에서 펼친다. 지나온 층의 노드를 누르면 그 층으로 접고 거기서 새로 펼친다 ─────────────────
   let hist = [], hi = -1;
-  const byAny = (id) => byId.get(id) || (id.startsWith('topic:') ? topics.get(id.slice(6)) : null);
+  const byAny = (id) => byId.get(id) || byId.get(String(id).split('@@')[0]) || (id.startsWith('topic:') ? topics.get(id.slice(6)) : null);   // '다리id@@층id' 는 끝 층에 둔 다리의 별칭
   function setPath(P, push = true) { path = P; if (push) { hist = hist.slice(0, hi + 1); hist.push(P.map((n) => n.id)); hi = hist.length - 1; } render(); navUI(); }
   function navUI() { const tr = $id('trail'); if (!tr) return;
     $id('trail').innerHTML = path.map((n, i) => `<button data-level="${i}" class="${i === path.length - 1 ? 'cur' : ''}" title="${esc(n.t || n.path || n.id)}">${n.k === 'topic' ? '▦ ' : ''}${esc(short(titleOf(n), 26))}</button>`).join('<span>›</span>'); }
