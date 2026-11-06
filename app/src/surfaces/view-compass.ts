@@ -369,10 +369,17 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
         const A = e.a.id === inner.id ? inner : outer, B = A === inner ? outer : inner, src = e.t === 'PREREQUISITE_OF' || e.t === 'RETURNS_TO' ? A : B, dst = src === A ? B : A;
         rays += bead((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2, Math.atan2(dst.y - src.y, dst.x - src.x), mix(src.c, 90), e.t).replace(/class="ray"/, `class="ray ${cls}" data-a="${A.id}" data-b="${B.id}"`); } };
     const at = new Map(L.items.map((o) => [o.id, o])), fl = L.comps.length - 1;
-    // 전체 펼치기의 부모 선: 층 상자 사이의 빈 통로만 따라 꺾어 간다(다른 층의 상자를 지나지 않는다). 양끝은 두 허브의 둘레에서 자른다
-    const routeS = (pts, h, p) => { const q = pts.map(([x, y]) => [x, y]), cut = (a, b, r) => { const d = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [a[0] + (b[0] - a[0]) / d * r, a[1] + (b[1] - a[1]) / d * r]; };
-      q[0] = cut(q[0], q[1], p.r + 5); q[q.length - 1] = cut(q[q.length - 1], q[q.length - 2], h.r + 5);
-      return `<path class="ray path" d="M${q.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join('L')}" fill="none" style="stroke:${mix(h.c, 80)}" stroke-width="${themeMode() === 'light' ? 2.6 : 2}" stroke-linejoin="round" stroke-linecap="round"/>`; };
+    // 전체 펼치기의 부모 선: 상자 사이의 빈 길(줄기·통로)을 따라가되, 꺾는 곳마다 양옆 구간의 절반까지 굴려 곧은 토막 없이
+    // 한 줄기 곡선으로 그린다. 지나가는 자리는 통로 안이라 다른 층의 상자를 거의 지나지 않는다. 양끝은 두 허브의 둘레에서 자른다
+    const routeS = (pts, h, p) => { const q = pts.map(([x, y]) => [x, y]), n = q.length, f = (a) => `${a[0].toFixed(1)} ${a[1].toFixed(1)}`;
+      const unit = (a, b) => { const d = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / d, (b[1] - a[1]) / d, d]; };
+      const u0 = unit(q[0], q[1]), u1 = unit(q[n - 1], q[n - 2]);
+      q[0] = [q[0][0] + u0[0] * (p.r + 5), q[0][1] + u0[1] * (p.r + 5)]; q[n - 1] = [q[n - 1][0] + u1[0] * (h.r + 5), q[n - 1][1] + u1[1] * (h.r + 5)];
+      let d = `M${f(q[0])}`;
+      for (let i = 1; i < n - 1; i++) { const a = q[i - 1], b = q[i], c = q[i + 1], [ax, ay, l1] = unit(b, a), [cx, cy, l2] = unit(b, c);
+        const r1 = i === 1 ? l1 : l1 / 2, r2 = i === n - 2 ? l2 : l2 / 2;   // 끝 구간은 통째로, 가운데 구간은 이웃 모서리와 반씩 나눈다
+        d += `L${f([b[0] + ax * r1, b[1] + ay * r1])}Q${f(b)} ${f([b[0] + cx * r2, b[1] + cy * r2])}`; }
+      return `<path class="ray path" d="${d}L${f(q[n - 1])}" fill="none" style="stroke:${mix(h.c, 80)}" stroke-width="${themeMode() === 'light' ? 2.6 : 2}" stroke-linejoin="round" stroke-linecap="round"/>`; };
     for (const comp of L.comps) {
       const far = comp.far ? 'far' : '', hub = comp.hub;
       if (hub.parentHub && MODE === 'all' && hub.route) rays += routeS(hub.route, hub, hub.parentHub);

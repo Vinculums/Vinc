@@ -60,16 +60,22 @@ test('no fan label stands vertical', () => {
   }
 });
 
-test('all topics: every topic is drawn and every parent line bends only at right angles', () => {
+test('all topics: every topic is drawn and every parent line follows the gaps as one rounded curve', () => {
   const { h, host } = graph();
   h.tools.querySelector('[data-all]').click();
   const at = hubs(host);
   assert.equal(at.size, 1 + 6 + 18, 'the root, six areas and eighteen topics');
   const routes = host.querySelectorAll('#cmp-rays path.ray.path').map((p) => p.getAttribute('d'));
-  assert.equal(routes.length, 24, 'one routed line per topic below the root');
+  assert.equal(routes.length, 24, 'one line per topic below the root');
   for (const d of routes) {
-    const pts = d.slice(1).split('L').map((q) => q.trim().split(/\s+/).map(Number));
-    for (let i = 1; i < pts.length; i++) assert.ok(Math.abs(pts[i][0] - pts[i - 1][0]) < .5 || Math.abs(pts[i][1] - pts[i - 1][1]) < .5, `segment ${i} of ${d.slice(0, 40)} is not straight`);
+    // 꺾는 곳은 모두 굴린다(Q). 굴림 사이를 잇는 곧은 토막(L)은 통로의 축을 따라서만 간다
+    const cmds = [...d.matchAll(/([MLQC])([^MLQC]*)/g)].map(([, c, a]) => [c, a.trim().split(/\s+/).map(Number)]);
+    assert.equal(cmds[0][0], 'M'); assert.ok(cmds.some(([c]) => c === 'Q'), `${d.slice(0, 40)} turns with a curve`);
+    let cur = cmds[0][1];
+    for (const [c, a] of cmds.slice(1)) {
+      if (c === 'L') assert.ok(Math.abs(a[0] - cur[0]) < .5 || Math.abs(a[1] - cur[1]) < .5, `a straight run of ${d.slice(0, 40)} is not on an axis`);
+      cur = a.slice(-2);
+    }
   }
   // 층 허브끼리는 서로 떨어져 있다(같은 자리에 겹쳐 쌓이지 않는다)
   const xy = [...at.values()];
