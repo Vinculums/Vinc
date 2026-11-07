@@ -11,7 +11,7 @@ import { createGraphLoader } from "../view-graph-loader";
 import { retainedViews, restoreRetained } from "../view-retained";
 import type { DragEnd } from "./drag-connect";
 import { gateway3dSvg, mark3dSvg } from "./view-planar";
-import { mountCompass, compassDataFrom, type CompassHandle } from "./view-compass";
+import { mountCompass, compassDataFrom, type CompassHandle, type CompassState } from "./view-compass";
 import { recede } from "../recede";
 import { causalCone, spotOf, type Spot } from "../spotlight";
 import { openShareSheet } from "../sheets";
@@ -249,6 +249,9 @@ export async function renderView(el: HTMLElement, resume = false) {
 
   let g3: any = null;                 // 3D 인스턴스 (L0/L1)
   let compass: CompassHandle | null = null;   // 나침반 렌즈(그래프 보기)
+  // 같은 범위를 다시 그릴 때(`keepCamera`: 변경 감지 새로고침 · 쓰고 난 뒤) 나침반이 보던 자리. 다음 마운트가 한 번 받아 간다
+  let compassKeep: CompassState | null = null;
+  let compassDisposeWrapped = false;   // dispose 를 나침반 정리로 한 번만 감싼다(마운트마다 감싸면 사슬이 자란다)
   const compassOnly = true;                   // 3D 전체 보기는 걷었다. 아래 3D 경로는 지우는 중이다
   /** 옵션 재마운트에 넘길 카메라(view3d.Cam3). show(…, {keepCamera}) 가 채우고
    *  showGraphScope 가 한 번 쓰고 비운다 — 좌표가 같은 재마운트에서만 뜻이 있다. */
@@ -306,6 +309,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     paintedMode = mode;
     shownTints = tintMap(curNodes.map((n) => n.domain), mode);
     (g3 as { __retheme?: () => void } | null)?.__retheme?.();
+    compass?.retheme();
     // 떠 있는 노드 카드의 주제 표식(openRelsCard) — 지도와 같은 표를 읽는다.
     document.querySelectorAll<HTMLElement>(".float-mark[data-domain]").forEach((mk) => {
       const t = shownTints?.get(mk.dataset.domain || "");
@@ -749,10 +753,11 @@ export async function renderView(el: HTMLElement, resume = false) {
     if (e.key === "Escape") {
       // 가장 나중에 뜬 것부터 접는다. 카드가 렌즈 패널보다 앞이다 — 카드는 방금
       // 고른 노드에 딸린 것이고, 패널은 그보다 오래 떠 있던 크롬이다(D70).
-      if (isFloatPanelOpen()) { closeFloatPanel(); return; }
-      if (!viewPanel.hidden) { void closePanel(); return; }
-      if (!detail.hidden) { closeRail(); return; }
-      if (trail.length > 1) { trail.pop(); void show(trail[trail.length - 1]); }
+      // 여기서 접었으면 나침반이 같은 Esc 로 뿌리까지 되감지 않게 표시한다(나침반은 defaultPrevented 를 본다)
+      if (isFloatPanelOpen()) { e.preventDefault(); closeFloatPanel(); return; }
+      if (!viewPanel.hidden) { e.preventDefault(); void closePanel(); return; }
+      if (!detail.hidden) { e.preventDefault(); closeRail(); return; }
+      if (trail.length > 1) { e.preventDefault(); trail.pop(); void show(trail[trail.length - 1]); }
       return;
     }
     if (e.key === "f" || e.key === "F") fitAll();
@@ -1761,7 +1766,9 @@ export async function renderView(el: HTMLElement, resume = false) {
       const chain = domains.length === 1 ? domains[0].split("/").map((_, i, a) => `topic:${a.slice(0, i + 1).join("/")}`) : undefined;
       // LNB = 문서 트리와 같은 그림의 노드 트리(lnb.ts). 시간 · 범례 = 머리의 "그래프" 글자 오른쪽 버튼이 여는 창.
       let ready = false;
-      compass = mountCompass(canvas, compassDataFrom(nodes, curEdges), { startPath: chain,
+      const restore = compassKeep; compassKeep = null;
+      compass = mountCompass(canvas, compassDataFrom(nodes, curEdges), { startPath: chain, restore,
+        store: `${cfg.owner}|${cfg.team || ""}`,
         onTree: (o) => repaintLnbGraph(o),
         onChange: () => { if (ready && compass) setLnbGraphActive(compass.centre()); },
         onDestroy: () => { setLnbGraphSource(null); setTopbarLeadTools(null); } });
@@ -1771,8 +1778,10 @@ export async function renderView(el: HTMLElement, resume = false) {
       ready = true;
       setLnbGraphActive(cmp.centre());
       setSearchFilter((q) => compass?.filter(q));
-      const prevDispose = disposeView;
-      disposeView = () => { prevDispose?.(); setSearchFilter(null); if (compass) { compass.destroy(); compass = null; } };
+      if (!compassDisposeWrapped) {
+        const prevDispose = disposeView; compassDisposeWrapped = true;
+        disposeView = () => { prevDispose?.(); setSearchFilter(null); if (compass) { compass.destroy(); compass = null; } };
+      }
       markDisplayed(p, domains);
       keepCam = null;   // 시간순 가지 배치 안내(noteLayout)는 3D 의 일이라 나침반에서는 띄우지 않는다
       return;
@@ -3521,6 +3530,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     // 옵션만 바뀐 재마운트는 카메라를 잇는다 — 전체 맞춤으로 되감기는 것이 "옵션을
     // 누르면 보던 곳을 잃는다"의 정체였다(실측 2026-08-17). 캡처는 파괴 **전에**.
     keepCam = opts?.keepCamera && g3 ? camera3d(g3) : null;
+    compassKeep = opts?.keepCamera && compass ? compass.snapshot() : null;
     ctxCache = null;                           // 층이 바뀌면 노드 맥락 메모도 버린다
     spot = null;   // 렌더러가 통째로 갈리므로 점등도 함께 버린다(핸들이 사라진다)
     dropPick();
