@@ -606,7 +606,36 @@ def _t_decide_paths(args, bridge):
     return bridge.request("GET", "/decide-paths", params=params)
 
 
+def _run_state_writes(nodes) -> list[str]:
+    """실행 기록의 프로토콜 상태 필드를 고치려는 노드 id 들.
+
+    대기·승인·답은 실행 프로토콜만 쓴다. 도구로 `state`·`approved`·`answer` 를 바꿀 수 있으면
+    에이전트 자격이 사람만 답하는 대기를 스스로 풀 수 있다. host·trace_ref 같은 나머지 필드는
+    그대로 `props_patch` 로 더한다."""
+    from . import run_protocol
+    blocked = []
+    for node in nodes if isinstance(nodes, list) else []:
+        nid = node.get("id") if isinstance(node, dict) else None
+        if not isinstance(nid, str) or not nid.startswith(run_protocol.RUN_PREFIX):
+            continue
+        keys = set()
+        for field in ("props", "props_patch"):
+            if isinstance(node.get(field), dict):
+                keys |= set(node[field])
+        if keys & set(run_protocol.STATE_KEYS):
+            blocked.append(nid)
+    return blocked
+
+
 def _t_ingest(args, bridge):
+    blocked = _run_state_writes(args.get("nodes"))
+    if blocked:
+        from . import run_protocol
+        return {"kind": "ingest", "executed": False, "error": "run_state_protected",
+                "nodes": blocked,
+                "note": ("Refused: a run record's " + ", ".join(run_protocol.STATE_KEYS)
+                         + " belong to the run protocol. Answer a waiting run with vinc_run_submit, "
+                         "or as a person in " + run_protocol.PERSON_PATH + ". Nothing was written.")}
     fragment = {"nodes": args.get("nodes") or [], "edges": args.get("edges") or [],
                 "owner": _owner(args, bridge), **_mutation_options(args)}
     if "review_claims" in args:
@@ -1065,7 +1094,8 @@ _SUMMARY: dict[str, str] = {
         "policy and the budget left. Submit each step's output with vinc_run_submit."),
     "vinc_run_submit": (
         "Submit one step of a run. Vinc runs the role's gates on the output, stops at a person-only "
-        "action with a question, resumes on an answer, and ends the run with its record."),
+        "action with a question, resumes on an answer, and ends the run with its record. A "
+        "person-only question is answered by a person in the Vinc app, not by you."),
     "vinc_runs": (
         "List recorded agent runs, newest first. Pass cited to see only the runs that cited one "
         "claim, with whether that claim has been retired."),
@@ -1916,7 +1946,7 @@ TOOLS.append({"name": "vinc_events", "reference":
     (
         (
         "Read change events after a cursor: role.reading_changed, run.citation_superseded, "
-        "role.lesson_added and run.answered. Returns {events, cursor, has_more, truncated, head}. "
+        "role.lesson_added, run.waiting and run.answered. Returns {events, cursor, has_more, truncated, head}. "
         "Omit since to get only the current cursor, or pass since:'0' to start at the beginning; pass "
         "the returned cursor back while has_more. eventId is stable, so drop ids you have seen. "
         "Read-only."
@@ -1987,15 +2017,22 @@ TOOLS.append({"name": "vinc_run_submit", "reference":
         "or abandon. Output runs the role's gates: block returns failed_checks and the run stays "
         "open; a person-only request or an interrupting gate makes the run wait for a person; pass "
         "ends it as success. Name person_only_requests and capabilities held for approval before "
-        "acting, never after. A claim that something ran is blocked. Only the output's hash and "
-        "length are stored."
+        "acting, never after. A waiting run's decision.kind says who answers: person_only only a "
+        "signed-in person in the Vinc app (your answer is refused with person_answer_required), "
+        "ask_first you as the person chose. A request expires after expires_in_s (default 3600, at "
+        "most 43200) and the run ends blocked. A claim that something ran is blocked. Only the "
+        "output's hash and length are stored."
     )
     ),
     "inputSchema": {"type": "object", "properties": {
         "run": {"type": "string", "description": "The run id vinc_run_start returned."},
         "output": {"type": "string", "maxLength": 131072},
-        "answer": {"type": "string", "enum": ["approve", "decline"]},
+        "answer": {"type": "string", "enum": ["approve", "decline"],
+                   "description": "Only for an ask_first decision, as the person chose."},
         "abandon": {"type": "boolean"},
+        "expires_in_s": {"type": "integer", "minimum": 60, "maximum": 43200,
+                         "description": "Seconds a person has to answer if this step makes the "
+                                        "run wait; default 3600."},
         "person_only_requests": {"type": "array", "items": {"type": "object", "properties": {
             "action": {"type": "string"}, "reason": {"type": "string"}},
             "required": ["action", "reason"], "additionalProperties": False}},

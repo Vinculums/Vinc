@@ -127,12 +127,20 @@ def test_a_person_only_action_waits_for_an_answer_and_approval_resumes_the_run()
     assert stuck["run_state"]["state"] == "waiting"
     with pytest.raises(tools.InvalidArgument):
         call(bridge, "vinc_run_submit", run=run, answer="maybe")
-    resumed = call(bridge, "vinc_run_submit", run=run, answer="approve")
-    assert resumed["state"] == "working" and resumed["approved"] == ["merge"]
+    # 사람만 하는 행동이라 에이전트 자격(도구 호출)의 답은 거절되고 실행은 그대로 기다린다.
+    refused = call(bridge, "vinc_run_submit", run=run, answer="approve")
+    assert refused["executed"] is False and refused["error"] == "person_answer_required"
+    assert "Vinc app" in refused["note"] and bridge.runs[run]["state"] == "waiting"
+    assert ask["decision"]["kind"] == "person_only"
+    resumed = run_protocol.person_answer({"run": run, "ask": 1, "answer": "approve"}, bridge,
+                                         "user:test", actor="user:test")
+    assert resumed["executed"] and resumed["state"] == "working" and resumed["via"] == "person"
+    assert bridge.runs[run]["approved"] == ["merge"]
     assert "pending" not in bridge.runs[run]
     # run.answered 이벤트(api/events.py)가 읽는 자리.
     assert bridge.runs[run]["answer"] == "approve" and bridge.runs[run]["answered_actions"] == ["merge"]
-    assert bridge.runs[run]["answered_at"]
+    assert bridge.runs[run]["answered_at"] and bridge.runs[run]["answer_via"] == "person"
+    assert bridge.runs[run]["answered_by"] == "user:test"
     # 승인된 행동을 다시 요청해도 되묻지 않는다.
     final = call(bridge, "vinc_run_submit", run=run, output=PLAIN,
                  person_only_requests=[{"action": "merge", "reason": "approved above"}])
@@ -144,9 +152,10 @@ def test_declining_ends_the_run_blocked_and_abandon_ends_it_abandoned():
     run = start(bridge, run_id="r-6")["run"]
     call(bridge, "vinc_run_submit", run=run, output="Plan ready.",
          person_only_requests=[{"action": "migration", "reason": "schema change"}])
-    declined = call(bridge, "vinc_run_submit", run=run, answer="decline")
+    declined = run_protocol.person_answer({"run": run, "ask": 1, "answer": "decline"}, bridge,
+                                          "user:test", actor="user:test")
     assert declined["state"] == "done" and declined["outcome"] == "blocked"
-    assert declined["end_reason"] == "declined by a person"
+    assert bridge.runs[run]["end_reason"] == "declined by a person"
     assert bridge.runs[run]["answer"] == "decline" and bridge.runs[run]["answered_actions"] == ["migration"]
     second = start(bridge, run_id="r-7")["run"]
     assert call(bridge, "vinc_run_submit", run=second, abandon=True)["outcome"] == "abandoned"

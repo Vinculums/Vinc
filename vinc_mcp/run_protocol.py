@@ -10,6 +10,13 @@ Vinc 는 그 산출물에 역할의 게이트(`OutputGate`)를 돌리고, 사람
 한계: 호스트가 낸 문장은 증거가 아니다. 무언가를 했다는 주장은 `role_check` 와 같이 게이트에서
 막힌다(증거는 호스트가 관측한 도구 호출에서만 온다). 산출물 원문은 그래프에 넣지 않고 해시와
 길이만 남긴다.
+
+대기에는 종류가 있다. `person_only`(역할이 사람만 한다고 적은 행동, 또는 게이트의 끼어들기)는
+사람의 로그인 세션만 답한다: `vinc_run_submit` 의 answer 는 에이전트 자격(MCP OAuth·멤버 키·
+범위 키)으로 오므로 거절하고, 사람은 계정 백엔드의 서명된 세션 프록시를 거쳐 `person_answer` 로
+답한다. `ask_first`(먼저 묻기)는 호스트가 사람에게 물어 그 답을 `vinc_run_submit` 으로 내도 된다.
+요청은 만료된다(기본 1시간, 최대 12시간). 만료된 요청에는 누구도 답할 수 없고 실행은 막힌 채
+끝난다.
 근거: [[vinc.research.agent-harness-and-eval-without-a-model-api-2026-10-25]]
 """
 from __future__ import annotations
@@ -18,7 +25,9 @@ import datetime
 import hashlib
 import json
 import re
+import threading
 import uuid
+import zlib
 
 from . import role_output_gate
 from .capability_maps import capability_verdict
@@ -32,6 +41,24 @@ STATES = ("working", "waiting", "done")
 #: 열린 실행의 outcome. 끝나기 전에는 아무 결론도 나지 않았다.
 OPEN_OUTCOME = "waiting"
 ANSWERS = ("approve", "decline")
+#: 사람이 세션으로 답할 때의 답. reply 는 행동을 승인하지 않고 글로 답해 실행을 이어 가게 한다.
+PERSON_ANSWERS = ("approve", "decline", "reply")
+ANSWER_TEXT_MAX = 2000
+#: 대기의 종류. person_only 는 사람 세션만, ask_first 는 호스트가 사람에게 물어 답해도 된다.
+DECISION_KINDS = ("person_only", "ask_first")
+#: 답이 어느 길로 왔는가. person 은 서명된 세션 프록시, agent 는 도구 호출이다.
+ANSWER_VIA = ("person", "agent")
+#: 사람에게 묻는 요청의 수명(초). 호스트가 `expires_in_s` 로 고르고, 안 주면 기본값이다.
+EXPIRES_DEFAULT_S = 3600
+EXPIRES_MIN_S = 60
+EXPIRES_MAX_S = 43200
+#: 호스트가 적은 행동 설명(person_only_requests 의 reason)을 요청에 남기는 상한.
+REASON_MAX = 2000
+#: 사람만 답하는 대기를 에이전트가 답하려 할 때 알려 주는 사람의 길.
+PERSON_PATH = "the Approvals screen of the Vinc app (https://vincs.io/app/), signed in"
+#: 실행 기록의 프로토콜 상태 필드. 도구 쓰기(`vinc_ingest`)로는 바꾸지 못한다(tools.py).
+STATE_KEYS = ("state", "pending", "approved", "asks", "last_asked_at", "answer", "answered_at",
+              "answered_actions", "answered_by", "answer_via", "answer_text", "task_cancelled")
 TASK_MAX = 4000
 SUBJECT_MAX = 500
 #: 실행한 호스트 이름(예 "codex-cli 0.162.1"). 실행 기록의 host 가 된다.
@@ -66,6 +93,60 @@ def _now() -> datetime.datetime:
 
 def _stamp(moment: datetime.datetime) -> str:
     return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _parse_stamp(text) -> datetime.datetime | None:
+    try:
+        return datetime.datetime.strptime(str(text or ""), "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=datetime.timezone.utc)
+    except ValueError:
+        return None
+
+
+def expires_at(pending: dict) -> str:
+    """요청의 만료 시각. 만료 필드가 없는 기록은 물은 때부터 기본 수명으로 센다."""
+    if pending.get("expires_at"):
+        return str(pending["expires_at"])
+    asked = _parse_stamp(pending.get("asked_at"))
+    return _stamp(asked + datetime.timedelta(seconds=EXPIRES_DEFAULT_S)) if asked else ""
+
+
+def expired(pending: dict, now: datetime.datetime | None = None) -> bool:
+    until = _parse_stamp(expires_at(pending))
+    return until is not None and (now or _now()) >= until
+
+
+def decision_kind(pending: dict, policy: dict | None = None) -> str:
+    """대기의 종류. 종류 필드가 없는 기록은 역할의 person_only 와 견주고, 모르면 person_only 다."""
+    kind = pending.get("kind")
+    if kind in DECISION_KINDS:
+        return kind
+    actions = [a for a in pending.get("actions") or [] if isinstance(a, str)]
+    if policy is None or not actions:
+        return "person_only"
+    person = {p.get("action") for p in policy.get("person_only") or [] if isinstance(p, dict)}
+    return "person_only" if any(a in person for a in actions) else "ask_first"
+
+
+def decision(pending: dict, policy: dict | None = None) -> dict:
+    """사람에게 보이는 대기 하나: 종류, 질문, 행동마다 호스트가 적은 설명, 물은 때와 만료."""
+    actions = [a for a in pending.get("actions") or [] if isinstance(a, str)]
+    kind = decision_kind(pending, policy)
+    requests = [r for r in pending.get("requests") or [] if isinstance(r, dict)]
+    if not requests:
+        requests = [{"action": a, "reason": "", "kind": kind} for a in actions]
+    return {"kind": kind, "question": str(pending.get("question") or ""), "actions": actions,
+            "requests": requests, "checks": list(pending.get("checks") or []),
+            "asked_at": str(pending.get("asked_at") or ""), "expires_at": expires_at(pending)}
+
+
+#: 같은 실행의 읽기·검사·저장을 한 줄로 세운다. 허브는 레플리카 하나라 프로세스 안의 잠금으로
+#: 답이 두 번 적용되지 않는다. 여러 레플리카로 늘리면 저장 쪽에서 rev 를 대조해야 한다.
+_LOCKS = tuple(threading.RLock() for _ in range(64))
+
+
+def _lock(eid: str) -> threading.RLock:
+    return _LOCKS[zlib.crc32(eid.encode("utf-8")) % len(_LOCKS)]
 
 
 def _failure(error: str, note: str, **extra) -> dict:
@@ -131,6 +212,13 @@ def _view(props: dict, eid: str, policy: dict | None = None, **extra) -> dict:
            "step": props["step"], **extra}
     if props.get("capability_flags"):
         out["capability_flags"] = list(props["capability_flags"])
+    if props.get("answer") and props["state"] != "waiting":
+        # 마지막 답. reply 의 글은 여기서만 호스트에게 간다.
+        last = {"answer": props["answer"], "answered_at": props.get("answered_at", ""),
+                "via": props.get("answer_via") or "agent"}
+        if props.get("answer_text"):
+            last["text"] = props["answer_text"]
+        out["last_answer"] = last
     if props["state"] == "waiting":
         pending = props.get("pending") or {}
         out["question"] = pending.get("question", "")
@@ -138,8 +226,17 @@ def _view(props: dict, eid: str, policy: dict | None = None, **extra) -> dict:
         #: 몇 번째 질문인가. MCP Tasks 의 작업 id 가 이 번호를 쓴다(`run_tasks.py`).
         out["ask"] = int(props.get("asks") or 0)
         out["asked_at"] = pending.get("asked_at", "")
-        out["next"] = ("A person decides first. Show the question, then call vinc_run_submit with "
-                       "answer approve or decline. No output is accepted while it waits.")
+        out["decision"] = decision(pending, policy)
+        out["expires_at"] = out["decision"]["expires_at"]
+        if out["decision"]["kind"] == "person_only":
+            out["next"] = ("Only a person answers this, in " + PERSON_PATH + ". An agent's answer "
+                           "is refused. Show the question and tell the person where to answer, then "
+                           "poll vinc_runs with run until the run is no longer waiting. No output "
+                           "is accepted while it waits.")
+        else:
+            out["next"] = ("A person decides first. Show the question, then call vinc_run_submit "
+                           "with answer approve or decline as the person chose, or the person "
+                           "answers in " + PERSON_PATH + ". No output is accepted while it waits.")
     elif props["state"] == "working":
         out["next"] = ("Do this step, then call vinc_run_submit with output. Name an action in "
                        "person_only_requests before taking it when the role lists it as person "
@@ -345,6 +442,17 @@ def _question(actions: list[str], policy: dict, checks: list[str]) -> str:
     return "A gate asks a person to decide: " + ", ".join(checks) + "."
 
 
+def _expires_in(args: dict):
+    """(요청의 수명 초, 오류 문장). 안 주면 기본값이다."""
+    raw = args.get("expires_in_s")
+    if raw is None:
+        return EXPIRES_DEFAULT_S, None
+    if isinstance(raw, bool) or not isinstance(raw, int) or not EXPIRES_MIN_S <= raw <= EXPIRES_MAX_S:
+        return 0, (f"Invalid: expires_in_s is a whole number of seconds from {EXPIRES_MIN_S} to "
+                   f"{EXPIRES_MAX_S} (12 hours).")
+    return raw, None
+
+
 def _requests(args: dict, policy: dict, approved: list[str]):
     """호스트가 하려는 행동을 셋으로 가른다: 사람만(게이트로), 먼저 묻기, 금지. 이미 승인된 것은 뺀다."""
     raw = args.get("person_only_requests")
@@ -385,6 +493,21 @@ def submit(args: dict, bridge, owner: str) -> dict:
     if len(modes) != 1:
         return _failure("one_input_required", "Invalid: pass exactly one of output, answer or "
                                               "abandon.")
+    with _lock(eid):
+        return _submit(args, bridge, owner, eid, modes[0])
+
+
+def _expire(bridge, owner: str, eid: str, props: dict) -> dict:
+    """만료된 요청을 닫는다: 실행은 막힌 채 끝나고 그 사실을 돌려준다."""
+    props["expired_at"] = _stamp(_now())
+    _end(props, "blocked", "the request expired before a person answered")
+    failed = _saved(bridge, owner, eid, props)
+    return failed or _failure(
+        "request_expired", "Refused: the request expired before anyone answered, so the run "
+        "ended as blocked. Start a new run to ask again.", run_state=_view(props, eid))
+
+
+def _submit(args: dict, bridge, owner: str, eid: str, mode: str) -> dict:
     props = _load(bridge, owner, eid)
     if props is None:
         return {"kind": "run", "executed": False, "found": False, "error": "run_not_found",
@@ -397,7 +520,6 @@ def submit(args: dict, bridge, owner: str) -> dict:
     if not got.get("executed") or not got.get("found"):
         return {**got, "kind": "run"}
     policy = got["props"]
-    mode = modes[0]
     used, bad = _used_capabilities(args)
     if bad:
         return _failure("invalid_capabilities_used", bad)
@@ -410,10 +532,19 @@ def submit(args: dict, bridge, owner: str) -> dict:
         _end(props, "abandoned", "abandoned by the host")
         return _finish(bridge, owner, eid, props)
     if props["state"] == "waiting":
+        if expired(props.get("pending") or {}):
+            return _expire(bridge, owner, eid, props)
         if mode != "answer":
             return _failure("invalid_run_state", "Invalid: the run waits for an answer, not output.",
-                            run_state=_view(props, eid))
-        return _answer(args, bridge, owner, eid, props, policy)
+                            run_state=_view(props, eid, policy))
+        if decision_kind(props.get("pending") or {}, policy) == "person_only":
+            # 도구 호출은 언제나 에이전트 자격으로 온다. 사람만 답하는 대기는 세션 프록시로만 답한다.
+            return _failure(
+                "person_answer_required", "Refused: only a person may answer this decision, and "
+                "this call came with an agent credential, so nothing changed. The person answers "
+                "it in " + PERSON_PATH + ". Poll vinc_runs with run to see the answer.",
+                run_state=_view(props, eid, policy))
+        return _answer(args, bridge, owner, eid, props, policy, via="agent")
     if mode == "answer":
         return _failure("invalid_run_state", "Invalid: the run is not waiting for an answer.")
     over = _over_budget(policy, props)
@@ -428,15 +559,27 @@ def _finish(bridge, owner, eid, props, **extra) -> dict:
     return failed or _view(props, eid, **extra)
 
 
-def _answer(args, bridge, owner, eid, props, policy) -> dict:
+def _answer(args, bridge, owner, eid, props, policy, *, via: str, by: str = "",
+            text: str = "") -> dict:
     answer = args.get("answer")
-    if answer not in ANSWERS:
-        return _failure("invalid_answer", "Invalid: answer is approve or decline.")
+    allowed = PERSON_ANSWERS if via == "person" else ANSWERS
+    if answer not in allowed:
+        return _failure("invalid_answer", "Invalid: answer is " + ", ".join(allowed) + ".")
     pending = props.pop("pending", {}) or {}
     props["answered_at"] = _stamp(_now())
     #: `run.answered` 이벤트(api/events.py)가 읽는다. 다음 답이 오면 덮여 새 이벤트가 된다.
     props["answer"] = answer
     props["answered_actions"] = list(pending.get("actions") or [])
+    props["answer_via"] = via
+    for key, value in (("answered_by", by), ("answer_text", text)):
+        if value:
+            props[key] = value
+        else:
+            props.pop(key, None)
+    if answer == "reply":
+        # 글로 답한 것은 승인이 아니다. 실행은 이어 가고 같은 행동은 다시 물어야 한다.
+        props["state"] = "working"
+        return _resume(bridge, owner, eid, props, policy)
     if answer == "decline":
         _end(props, "blocked", "declined by a person")
         return _finish(bridge, owner, eid, props)
@@ -448,7 +591,60 @@ def _answer(args, bridge, owner, eid, props, policy) -> dict:
 
 def _resume(bridge, owner, eid, props, policy) -> dict:
     failed = _saved(bridge, owner, eid, props)
-    return failed or _view(props, eid, policy, approved=props["approved"])
+    return failed or _view(props, eid, policy, approved=list(props.get("approved") or []))
+
+
+def person_answer(args: dict, bridge, owner: str, *, actor: str) -> dict:
+    """사람이 세션으로 답한다. 계정의 서명된 세션 프록시만 부른다(`http_server.graph_owner_request`).
+
+    `ask` 는 사람이 본 질문 번호다. 그 질문이 아직 열려 있을 때만 답이 들어가므로 같은 질문에는
+    한 번만 답한다. 재개는 `vinc_run_submit` 의 answer 와 같은 `_answer` 를 지난다."""
+    base = {"kind": "run.answer", "executed": False}
+    eid = _resolve(args.get("run"))
+    if eid is None:
+        return {**base, "error": "run_required", "note": "Invalid: pass the run id."}
+    ask = args.get("ask")
+    if isinstance(ask, str) and ask.isdigit():
+        ask = int(ask)
+    if isinstance(ask, bool) or not isinstance(ask, int) or ask < 1:
+        return {**base, "error": "ask_required",
+                "note": "Invalid: pass ask, the question number the waiting run showed."}
+    answer = args.get("answer")
+    if answer not in PERSON_ANSWERS:
+        return {**base, "error": "invalid_answer",
+                "note": "Invalid: answer is " + ", ".join(PERSON_ANSWERS) + "."}
+    text = args.get("text")
+    if text is not None and not isinstance(text, str):
+        return {**base, "error": "invalid_text", "note": "Invalid: text is a string."}
+    text = (text or "").strip()
+    if len(text) > ANSWER_TEXT_MAX or (answer == "reply" and not text):
+        return {**base, "error": "invalid_text", "note": f"Invalid: a reply needs text, and text "
+                f"is at most {ANSWER_TEXT_MAX} characters."}
+    if not isinstance(actor, str) or not actor.startswith("user:"):
+        return {**base, "error": "person_required", "note": "Refused: no signed-in person."}
+    with _lock(eid):
+        props = _load(bridge, owner, eid)
+        if props is None:
+            return {**base, "found": False, "error": "run_not_found", "note": "Unknown run."}
+        if "_error" in props:
+            return {**props["_error"], **base}
+        if props.get("state") != "waiting" or int(props.get("asks") or 0) != ask:
+            return {**base, "error": "already_answered", "note": "Refused: this question is no "
+                    "longer open. It was answered, it ended, or a newer question replaced it.",
+                    "run_state": _view(props, eid)}
+        if expired(props.get("pending") or {}):
+            return {**_expire(bridge, owner, eid, props), "kind": "run.answer"}
+        got = _fresh_role(bridge, owner, props["role"])
+        if not got.get("executed") or not got.get("found"):
+            return {**got, **base}
+        out = _answer({"answer": answer}, bridge, owner, eid, props, got["props"], via="person",
+                      by=actor, text=text)
+        if not out.get("executed"):
+            return {**out, "kind": "run.answer"}
+        return {"kind": "run.answer", "executed": True, "run": eid, "run_id": props["run_id"],
+                "ask": ask, "answer": answer, "answered_at": props["answered_at"],
+                "answered_by": actor, "via": "person", "state": props["state"],
+                "outcome": props["outcome"]}
 
 
 def _output(args, bridge, owner, eid, props, policy, flags=()) -> dict:
@@ -459,6 +655,9 @@ def _output(args, bridge, owner, eid, props, policy, flags=()) -> dict:
     gate_requests, asks, never, bad = _requests(args, policy, list(props.get("approved") or []))
     if bad:
         return _failure("invalid_person_only_requests", bad)
+    ttl, bad = _expires_in(args)
+    if bad:
+        return _failure("invalid_expires_in", bad)
     props["step"] = int(props.get("step", 0)) + 1
     props["output_ref"] = {"sha256": hashlib.sha256(output.encode("utf-8")).hexdigest(),
                            "chars": len(output)}
@@ -489,12 +688,22 @@ def _output(args, bridge, owner, eid, props, policy, flags=()) -> dict:
     actions = list(dict.fromkeys(list(result.person_only_actions) + asks))
     if result.verdict == "interrupt" or actions:
         props["state"] = "waiting"
-        asked_at = _stamp(_now())
+        now = _now()
+        asked_at = _stamp(now)
         props["asks"] = int(props.get("asks") or 0) + 1
         props["last_asked_at"] = asked_at
+        person = set(result.person_only_actions) | {g["action"] for g in gate_requests}
+        reasons = {i["action"]: str(i["reason"]).strip()[:REASON_MAX]
+                   for i in args.get("person_only_requests") or []}
+        requests = [{"action": a, "reason": reasons.get(a, ""),
+                     "kind": "person_only" if a in person else "ask_first"} for a in actions]
+        # 게이트가 끼어든 것(행동 없이)과 사람만 하는 행동이 하나라도 있으면 사람만 답한다.
+        kind = ("person_only" if result.verdict == "interrupt" or not actions
+                or any(r["kind"] == "person_only" for r in requests) else "ask_first")
         props["pending"] = {"actions": actions, "checks": list(result.failed_checks),
                             "question": _question(actions, policy, list(result.failed_checks)),
-                            "asked_at": asked_at}
+                            "asked_at": asked_at, "kind": kind, "requests": requests,
+                            "expires_at": _stamp(now + datetime.timedelta(seconds=ttl))}
         failed = _saved(bridge, owner, eid, props)
         return failed or _view(props, eid, policy)
     _end(props, "success", "gates passed")

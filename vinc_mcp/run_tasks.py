@@ -14,6 +14,10 @@
 
 사람의 답은 elicitation 의 `accept` 와 `answer: approve|decline` 뿐이다. 사용자가 입력창을 거절하거나
 닫은 것은 답이 아니므로 실행은 대기 그대로 남는다.
+
+입력창은 먼저 묻는(`ask_first`) 대기에만 낸다. 사람만 답하는(`person_only`) 대기는 호스트가 답할 수
+없으므로 작업은 `working` 으로 남아 사람이 Vinc 앱에서 답할 때까지 기다리고, 되묻기 대신 대기
+보기를 그대로 낸다.
 근거: [[vinc.research.agent-harness-and-eval-without-a-model-api-2026-10-25]]
 """
 from __future__ import annotations
@@ -28,6 +32,9 @@ SUBMIT_TOOL = "vinc_run_submit"
 ASK_KEY = "decision"
 POLL_MS = 5000
 TASK_SEP = ".q"
+#: 사람만 답하는 대기의 작업 상태 문장. 호스트는 답하지 못하고 기다린다.
+PERSON_WAIT = ("Waiting for a person to answer in " + run_protocol.PERSON_PATH
+               + ". The task completes when they answer.")
 
 
 class TaskError(ValueError):
@@ -103,11 +110,15 @@ def carry(result, params, args):
         return None
     caps = client_capabilities(params)
     question = str(result.get("question") or "")
+    person = (result.get("decision") or {}).get("kind") == "person_only"
     if tasks_declared(caps):
         now = str(result.get("asked_at") or "")
         return {"resultType": "task", "taskId": task_id(result["run"], int(result["ask"])),
-                "status": "input_required", "statusMessage": question, "createdAt": now,
+                "status": "working" if person else "input_required",
+                "statusMessage": PERSON_WAIT if person else question, "createdAt": now,
                 "lastUpdatedAt": now, "ttlMs": None, "pollIntervalMs": POLL_MS}
+    if person:
+        return None
     if elicits(caps):
         return modern.input_required(input_requests(question), client_capabilities=caps)
     return None
@@ -137,7 +148,10 @@ def get(bridge, owner: str, params: dict, wrap) -> dict:
         if props.get("task_cancelled") == ask:
             return _task(props, eid, ask, "cancelled", statusMessage="The task was cancelled; the "
                          "run still waits for a person.")
-        question = str((props.get("pending") or {}).get("question") or "")
+        pending = props.get("pending") or {}
+        if run_protocol.decision_kind(pending) == "person_only":
+            return _task(props, eid, ask, "working", statusMessage=PERSON_WAIT)
+        question = str(pending.get("question") or "")
         return _task(props, eid, ask, "input_required", statusMessage=question,
                      inputRequests=input_requests(question))
     view = run_protocol._view(props, eid)
@@ -151,6 +165,8 @@ def update(bridge, owner: str, params: dict) -> dict:
     answer = answer_of(params.get("inputResponses"))
     if answer and _current(props, ask) and props.get("task_cancelled") != ask:
         out = run_protocol.submit({"run": eid, "answer": answer}, bridge, owner)
+        if out.get("error") == "person_answer_required":
+            raise ValueError(str(out.get("note")))
         if not out.get("executed"):
             raise RuntimeError(str(out.get("error") or out.get("note") or "answer was not applied"))
     return {}

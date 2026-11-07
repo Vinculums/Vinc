@@ -787,6 +787,19 @@
         }
       }
     },
+    "/runs/waiting": {
+      "get": {
+        "operationId": "read_waiting_runs",
+        "summary": "Runs waiting for a person's answer, with each pending decision.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
     "/agent-writes": {
       "get": {
         "operationId": "read_agent_writes",

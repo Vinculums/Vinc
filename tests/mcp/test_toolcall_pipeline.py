@@ -78,7 +78,8 @@ def test_failure_inventory_covers_every_public_tool():
     path = Path(__file__).parent.parent / "fixtures" / "tool_failure_shapes.json"
     inventory = json.loads(path.read_text(encoding="utf-8"))
     assert set(inventory["tools"]) == {tool["name"] for tool in tools.TOOLS}
-    codes = {"success", "invalid_argument", "not_found", "upstream_unavailable", "internal"}
+    codes = {"success", "invalid_argument", "not_found", "upstream_unavailable", "internal",
+             "person_answer_required", "request_expired", "run_state_protected"}
     assert all(rows and all(row["shape"] and row["code"] in codes for row in rows)
                for rows in inventory["tools"].values())
 
