@@ -7941,7 +7941,7 @@ def decisions_about_plan(ids: list[str], *, owner: str | None = None) -> QueryPl
     if owner:
         where += " AND c.owner_id = $owner AND d.owner_id = $owner"
         params["owner"] = owner
-    # props 는 은퇴 판정용이다. Decision 은 유효구간 열이 없고 `props.valid_until` 에 둔다.
+    # props 는 은퇴 여부를 보려고 싣는다. Decision 은 유효구간 열이 없고 `props.valid_until` 에 둔다.
     cypher = (f"MATCH (d:Decision)-[:ABOUT]->(c:Concept) WHERE {where} "
               "RETURN d.decision_id AS id, d.title AS title, c.concept_id AS subject, "
               "d.props AS props")
@@ -7950,10 +7950,10 @@ def decisions_about_plan(ids: list[str], *, owner: str | None = None) -> QueryPl
 
 
 def _current_decisions(rows: list[dict], today: str) -> tuple[list[dict], int]:
-    """은퇴한 결정(`props.valid_until` 이 오늘이나 그 전)을 상충 판정 입력에서 뺀다.
+    """은퇴한 결정(`props.valid_until` 이 오늘이나 그 전)을 상충 검사 입력에서 뺀다.
 
-    시간 정책은 대체된 결정을 지우지 말고 남기라고 한다. 그런데 남긴 결정이 판정에
-    그대로 들어가면 대체할 때마다 옛 결정과 새 결정이 `decisions_on_same_subject` 로
+    시간 정책은 대체된 결정을 지우지 말고 남기라고 한다. 그런데 남긴 결정이 검사에
+    그대로 들어가면 대체할 때마다 대체된 결정과 새 결정이 `decisions_on_same_subject` 로
     영원히 보고된다 — 정책을 지킬수록 신호가 소음이 된다. 기준은 `decide_paths` 와 같은
     :func:`_retired_claim` 하나다. 반환 ``(현재 결정, 뺀 수)``."""
     keep: list[dict] = []
@@ -7993,7 +7993,7 @@ def _decide_conflicts(edges: list[dict],
     저장 방향 그대로 비교하면 "A 가 B 의 선행, B 는 A 에서 파생"(일치)을 상충으로
     내고 "A 가 B 의 선행, A 는 B 에서 파생"(모순)은 놓친다. ②의 ``type`` 은 흐름
     source→target 을 실은 관계, ``reverse_type`` 은 그 반대 흐름을 실은 관계다.
-    자기 고리(A→A)는 내지 않는다(종전과 같다).
+    자기 고리(A→A)는 내지 않는다.
 
     싣는 순서는 구조 상충(②·④) → ③ → ① 이다. ①은 결정 수의 제곱으로 늘어
     상한(:data:`_CONFLICT_CAP`)을 혼자 채우므로, 드물고 확실한 상충이 그 뒤에서
