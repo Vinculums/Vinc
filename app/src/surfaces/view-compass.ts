@@ -46,7 +46,7 @@ const pinIcon = (s = 14) => `<svg class="pin-ic" viewBox="0 0 24 24" width="${s}
 const CMP_HTML = () => `<div class="cmp-stage"><svg class="g" id="cmp-g" role="group" aria-label="${escHtml(COPY.ui.compass.lens)}"></svg></div><div id="cmp-tip"></div>`;
 /** LNB 맨 위의 검색 칸(topbar.ts, setSearchFilter) · 시간 · 범례의 종류가 한 거르개다: 함께 건 결과가 나침반과 LNB 트리(lnb.ts
  *  setLnbGraphSource)에 같이 나온다. LNB 에는 고정 판만 서고, 시간과 범례는 머리의 "그래프" 글자 오른쪽 버튼이 여는 창이다. */
-const SIDE_HTML = `<div class="cmp-sec" id="cmp-dock" hidden></div>`;
+const SIDE_HTML = `<div class="cmp-sec" id="cmp-sum"></div><div class="cmp-sec" id="cmp-dock" hidden></div>`;
 const TOOLS_HTML = () => `<button class="cmp-tbtn" type="button" data-pop="time" aria-haspopup="dialog" aria-expanded="false">${escHtml(COPY.ui.compass.time)}</button><button class="cmp-tbtn" type="button" data-pop="legend" aria-haspopup="dialog" aria-expanded="false">${escHtml(COPY.ui.compass.legend)}</button>`;
 
 const C0 = () => COPY.ui.compass;
@@ -689,7 +689,64 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   svg.addEventListener('pointerleave', () => { hoverNode = null; });
   // P 하나만(⌘/Ctrl+P 는 인쇄다). 입력 칸 · 숨은 면에서는 듣지 않는다
   onWin('keydown', (e) => { if (e.key.toLowerCase() !== 'p' || e.ctrlKey || e.metaKey || e.altKey || !hoverNode || e.target.closest?.('input,textarea,[contenteditable]') || !root.isConnected || root.closest('[hidden]')) return; togglePin(hoverNode); });
-  { const _r2 = render; render = function () { _r2(); drawDock(); markPins(); }; }
+  // ── 가운데 요약: 사이드바 맨 위에 지금 가운데의 종류 · 주제 · 날짜 · 유효 기간과 대체 · 관계 종류별 수 · 많이 이어진 이웃.
+  // 방향 있는 관계(선행 · 파생 · 상속 · 대체 · 되돌림)는 줄을 누르면 그 관계를 따라 사슬을 곧게 연다(갈래가 갈리면 그 자리에서 멈춘다)
+  const sum = $id('sum'), SC = () => C.sum;
+  const RELT = [['PREREQUISITE_OF', 'pre'], ['DERIVES_FROM', 'der'], ['INHERITS_FROM', 'inh'], ['SUPERSEDES', 'sup'], ['RETURNS_TO', 'ret']];
+  const relOf = (n) => { const out = new Map(), rel = [], att = { decision: 0, record: 0, episode: 0, doc: 0 };
+    for (const e of adj.get(n.id) || []) { const o = e.a === n ? e.b : e.a; if (!o || o === n) continue;
+      if (ATTACH.has(e.t)) { if (e.b === n && att[o.k] != null) att[o.k]++; else if (e.a === n) rel.push(o); continue; }
+      const r = RELT.find(([t]) => t === e.t); if (!r) { if (e.t === 'RELATED_TO' || e.t === 'CONNECTS') rel.push(o); continue; }
+      const k = `${r[1]}:${e.a === n ? 'out' : 'in'}`; if (!out.has(k)) out.set(k, []); if (!out.get(k).includes(o)) out.get(k).push(o); }
+    return { out, rel: [...new Set(rel)], att }; };
+  // 따라가기: 같은 종류 · 같은 방향의 이웃이 하나뿐인 동안 잇는다. 갈래(둘 이상) · 되돌아옴 · 12칸이면 멈춘다
+  function chainFrom(n, type, dir, first) { const out = [], seen = new Set([n.id]); let cur = first;
+    while (cur && !seen.has(cur.id) && out.length < 12) { out.push(cur); seen.add(cur.id);
+      const nx = (adj.get(cur.id) || []).filter((e) => e.t === type && (dir === 'out' ? e.a === cur : e.b === cur)).map((e) => (dir === 'out' ? e.b : e.a));
+      cur = nx.length === 1 ? nx[0] : null; }
+    return out; }
+  const SUMOPEN = new Set();
+  const ico = (n) => `<svg viewBox="-7 -7 14 14">${n.k === 'topic' ? topicRing(5, colv(n), 1.8) : shape(n.k, 0, 0, 5, colv(n), !!n.vu)}</svg>`;
+  const nb = (o, extra = '') => `<button class="sn" data-go="${esc(o.id)}" title="${esc(o.t || o.path || o.id)}" ${extra}>${ico(o)}<span>${esc(short(titleOf(o), 34))}</span></button>`;
+  function drawSum() {
+    const n = path[path.length - 1]; if (!sum || !n) return; const S = SC(); let h = '';
+    h += `<div class="sh">${ico(n)}<b>${esc(short(titleOf(n), 60))}</b></div>`;
+    if (n.k === 'topic') {
+      const ns = nodes.filter((m) => m.d === n.path || (n.path && m.d.startsWith(n.path + '/')) || (!n.path)), c = {}; for (const m of ns) c[m.k] = (c[m.k] || 0) + 1;
+      const last = ns.map(when).filter(Boolean).sort().pop();
+      h += `<div class="sk">${esc(C.rel.topic)}${n.path ? ' · ' + esc(n.path) : ''}${last ? ' · ' + esc(S.latest(last)) : ''}</div>`;
+      h += `<div class="sr">${Object.entries(c).map(([k, v]) => `${esc(KIND[k] || k)} ${v}`).join(' · ') || esc(S.empty)}${n.sub && n.sub.size ? ` · ${esc(S.subtopics(n.sub.size))}` : ''}</div>`;
+      const top = ns.filter(isMean).sort((a, b) => (b.g || 0) - (a.g || 0)).slice(0, 5);
+      if (top.length) h += `<div class="sl">${esc(S.mostLinked)}</div>${top.map((o) => nb(o)).join('')}`;
+    } else {
+      const d = when(n);
+      h += `<div class="sk">${esc(KIND[n.k] || n.k)}${n.d ? ' · ' + esc(n.d) : ''}${d ? ' · ' + esc(d) : ''}</div>`;
+      const R = relOf(n), sup = R.out.get('sup:in') || [], old = R.out.get('sup:out') || [];
+      if (n.vf || n.vu) h += `<div class="sv${n.vu ? ' closed' : ''}">${esc(n.vu ? S.held(n.vf || '', String(n.vu).slice(0, 10)) : S.holds(n.vf))}</div>`;
+      if (sup.length) h += `<div class="sv closed">${esc(S.replacedBy)} ${sup.map((o) => nb(o)).join('')}</div>`;
+      for (const [type, key] of RELT) for (const dir of ['in', 'out']) { const l = R.out.get(`${key}:${dir}`); if (!l || !l.length || (type === 'SUPERSEDES' && dir === 'in')) continue;
+        const id = `${key}:${dir}`, open = SUMOPEN.has(id);
+        h += `<div class="sf"><button class="sfr" data-follow="${type}|${dir}" title="${esc(S.followTip)}"><i class="sg sg-${key}"></i><span>${esc(S.rel[key][dir])}</span><b>${l.length}</b><em>›</em></button>`;
+        if (l.length > 1) h += `<button class="sfx" data-sx="${id}" aria-expanded="${open}">${open ? '▾' : '▸'}</button>`;
+        h += `</div>`;
+        if (open || l.length === 1) h += `<div class="sfl">${l.slice(0, 12).map((o) => nb(o, `data-chain="${type}|${dir}"`)).join('')}</div>`; }
+      if (R.rel.length) h += `<div class="sl">${esc(S.related(R.rel.length))}</div>${R.rel.sort((a, b) => (b.g || 0) - (a.g || 0)).slice(0, 5).map((o) => nb(o)).join('')}`;
+      const at = Object.entries(R.att).filter(([, v]) => v); if (at.length) h += `<div class="sr">${esc(S.attached)} ${at.map(([k, v]) => `${esc(KIND[k] || k)} ${v}`).join(' · ')}</div>`;
+    }
+    if (ctx.onOpen) h += `<button class="btn btn-sm sdet" data-sopen="1">${esc(S.details)}</button>`;
+    sum.innerHTML = h; }
+  sum && sum.addEventListener('click', (e) => { const n = path[path.length - 1]; if (!n) return;
+    const x = e.target.closest('[data-sx]'); if (x) { SUMOPEN.has(x.dataset.sx) ? SUMOPEN.delete(x.dataset.sx) : SUMOPEN.add(x.dataset.sx); drawSum(); return; }
+    if (e.target.closest('[data-sopen]')) { ctx.onOpen?.(n.id); return; }
+    const f = e.target.closest('[data-follow]'), g = e.target.closest('[data-go]');
+    if (f || (g && g.dataset.chain)) { const [type, dir] = (f ? f.dataset.follow : g.dataset.chain).split('|');
+      const firsts = (adj.get(n.id) || []).filter((q) => q.t === type && (dir === 'out' ? q.a === n : q.b === n)).map((q) => (dir === 'out' ? q.b : q.a));
+      const first = g ? byAny(g.dataset.go) : firsts.length === 1 ? firsts[0] : null;
+      if (!first) { const id = `${RELT.find(([t]) => t === type)[1]}:${dir}`; SUMOPEN.add(id); drawSum(); return; }   // 갈래가 여럿이면 먼저 고르게 편다
+      WIDE = true; setPath([...path, ...chainFrom(n, type, dir, first)]); return; }
+    if (g) { const o = byAny(g.dataset.go); if (!o) return; const inLayer = LZ && LZ.items.some((q) => q.id === o.id && q.comp === n.id);
+      if (inLayer) setPath([...path, o]); else goTo(o.id); } });
+  { const _r2 = render; render = function () { _r2(); drawDock(); markPins(); drawSum(); }; }
   buildTopicColours();
   // 전체 배치(네 팔). 맨 위 주제의 상자를 가운데 두고, 그 하위 주제 가지를 아래·오른쪽·위·왼쪽 팔에 나눈다. 팔은 바람개비처럼
   // 맨 위 상자의 한 모서리에서 시계 방향으로 뻗어(위 팔은 오른쪽으로, 오른쪽 팔은 아래로 …) 서로의 자리에 들어가지 않는다.
