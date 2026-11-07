@@ -82,15 +82,6 @@ test('a bridge stands at the topic where its ends meet, not always at the root',
   assert.equal(roleOf(host, 'bridge:inner'), 'bridge', 'it stands in alpha, between its two subtopics');
 });
 
-test('an end topic shows the bridges that touch it, named with the other ends', () => {
-  const { h, host } = bridged();
-  h.open('topic:root/alpha/one');
-  for (const [id, other] of [['bridge:inner', 'two'], ['bridge:outer', 'one']]) {
-    const g = host.querySelector(`.node[data-id="${id}@@topic:root/alpha/one"]`);
-    assert.ok(g, `${id} shows at its end topic`);
-    assert.ok(g.innerHTML.includes('↔') && g.innerHTML.includes(other), `${id} names the other end`);
-  }
-});
 
 test('an opened bridge keeps the junction mark of the legend, not a pill', () => {
   // 다리를 눌러 가운데로 오면 종류의 기본 모양으로 떨어져 알약(둥근 사각형)이 됐다. 범례와 같은 호와 점이어야 한다

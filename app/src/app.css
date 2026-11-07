@@ -3567,11 +3567,7 @@ details.pe-group[open] > summary::before { transform: rotate(90deg); }
 
 .cmp-stage { position: relative; overflow: hidden; }
 .cmp svg.g { position: absolute; inset: 0; width: 100%; height: 100%; }
-.cmp #cmp-menu .mi { display: flex; justify-content: space-between; width: 100%; border: 0; background: none; color: var(--c-ink); font: var(--fs-sm) var(--font-ui); padding: 6px 8px; border-radius: 8px; cursor: pointer; text-align: left; }
-.cmp #cmp-menu .mh { padding: 6px 8px 8px; font-weight: 700; border-bottom: 1px solid var(--c-line); margin-bottom: 4px; } .cmp #cmp-menu .mh small { display: block; font-weight: 400; color: var(--c-mute); }
-.cmp #cmp-menu .mi b { color: var(--c-mute); font-weight: 600; } .cmp #cmp-menu .mi:hover, .cmp #cmp-menu .mi:focus-visible { background: color-mix(in srgb, var(--c-point) 10%, var(--c-card)); outline: none; }
-.cmp #cmp-menu .mi.on, .cmp #cmp-menu .mi.on b { color: var(--c-point); } .cmp #cmp-menu .mi:disabled { opacity: .35; cursor: default; } .cmp #cmp-menu .mf { color: var(--c-mute); font-size: 11px; padding: 6px 8px 2px; }
-.cmp #cmp-menu[hidden], .cmp-side #cmp-dock[hidden] { display: none; }
+.cmp-side #cmp-dock[hidden] { display: none; }
 .cmp svg.g .node.out { opacity: .16; }
 .cmp svg.g .more-btn { font: 600 11.5px var(--font-ui); fill: var(--c-point); cursor: pointer; } .cmp svg.g .more-btn:hover { text-decoration: underline; }
 /* 렌즈 패널(옵션·범례)의 나침반 칸 */
@@ -3606,12 +3602,6 @@ details.pe-group[open] > summary::before { transform: rotate(90deg); }
 .cmp svg.g .node.far { opacity: var(--cmp-far-node); } svg.g .node.far text { font-size: 10.5px; } svg.g .ray.far { opacity: var(--cmp-far-ray); } svg.g .ray.path { opacity: 1; }
 .cmp svg.g .node.onpath .ring { opacity: .7; stroke-dasharray: 3 3; } svg.g .stub { cursor: pointer; } svg.g .stub.far { opacity: .6; }
 @media (prefers-reduced-motion: reduce) { svg.g .node, .cmp svg.g #rays, .cmp svg.g #tree { transition: none; } }
-.cmp #cmp-menu { position: fixed; z-index: 6; width: 250px; background: var(--c-card); border: 1px solid var(--c-line); border-radius: 12px; padding: 6px; box-shadow: var(--shadow-elev-2); }
-.cmp #cmp-menu .mh { padding: 6px 8px 8px; font-weight: 700; font-size: 13px; border-bottom: 1px solid var(--c-line); margin-bottom: 4px; } #cmp-menu .mh small { display: block; font-weight: 400; color: var(--c-mute); font-size: 11.5px; }
-.cmp #cmp-menu .mi { display: flex; justify-content: space-between; width: 100%; border: 0; background: none; color: var(--c-ink); font: 13px var(--font-ui); padding: 6px 8px; border-radius: 8px; cursor: pointer; text-align: left; }
-.cmp #cmp-menu .mi b { color: var(--c-mute); font-weight: 600; } #cmp-menu .mi:hover, .cmp #cmp-menu .mi:focus-visible { background: color-mix(in srgb, var(--c-point) 10%, var(--c-card)); outline: none; }
-.cmp #cmp-menu .mi.on { color: var(--c-point); } #cmp-menu .mi.on b { color: var(--c-point); } #cmp-menu .mi:disabled { opacity: .35; cursor: default; } #cmp-menu .mf { color: var(--c-mute); font-size: 11px; padding: 6px 8px 2px; }
-.cmp svg.g .ftag { font-size: 10.5px; fill: var(--c-point); }
 .cmp svg.g .node.out { opacity: .16; }
 .cmp svg.g .more-btn { font: 600 11.5px var(--font-ui); fill: var(--c-point); cursor: pointer; } .cmp svg.g .more-btn:hover { text-decoration: underline; } svg.g.hot .node.pick { opacity: 1; } svg.g .node.pick .ring { opacity: 1; }
 .cmp-side #cmp-dock { }
@@ -3622,12 +3612,6 @@ details.pe-group[open] > summary::before { transform: rotate(90deg); }
 .cmp-side #cmp-dock .px { border: 0; background: none; color: var(--c-mute); cursor: pointer; font-size: 11px; padding: 2px 6px; }
 .cmp svg.g .pinmark circle { fill: var(--c-point); stroke: var(--c-bg); stroke-width: 1.4; } .cmp svg.g .pinmark svg { color: var(--c-bg); }
 /* 고정한 노드는 그래프 안 제자리에 남는다(view-compass.ts pinLayout). 화면 밖으로 나가면 가장자리에 방향 표가 선다 */
-.cmp #cmp-pins { position: absolute; inset: 0; pointer-events: none; }
-.cmp #cmp-pins .pedge { position: absolute; transform: translate(-50%, -50%); pointer-events: auto; display: inline-flex; align-items: center; gap: 4px; max-width: 14rem;
-  padding: 3px 9px 3px 6px; border-radius: 999px; border: 1px solid var(--c); background: var(--c-card);
-  color: var(--c-ink); font: 600 12px var(--font-ui); cursor: pointer; box-shadow: var(--shadow-elev-2); }
-.cmp #cmp-pins .pedge i { font-style: normal; color: var(--c); display: inline-block; } .cmp #cmp-pins .pedge .pin-ic { color: var(--c-point); flex: none; }
-.cmp #cmp-pins .pedge span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cmp svg.g .node.pinned { cursor: grab; opacity: 1; } .cmp svg.g .node.pinned text { fill: var(--c-ink); font-weight: 700; font-size: 12.5px; }
 .cmp svg.g .node.pinned .ring { opacity: 1; stroke: var(--c-point); stroke-width: 1.6; stroke-dasharray: 2.5 2.5; }
 .cmp svg.g .ray.pinray, .cmp svg.g .ray.pinpath { opacity: .85; }
@@ -3635,7 +3619,6 @@ details.pe-group[open] > summary::before { transform: rotate(90deg); }
 .cmp svg.g.lod1 .node:not([data-role="hub"]):not(.pinned) text, .cmp svg.g.lod1 #cmp-deco .more-btn { display: none; }
 .cmp svg.g.lod2 .node[data-role="shelf"], .cmp svg.g.lod2 #cmp-tree, .cmp svg.g.lod2 .node[data-role="left"], .cmp svg.g.lod2 .node[data-role="up"] { display: none; }
 .cmp-tbtn[aria-pressed="true"] { color: hsl(var(--point-text)); border-color: hsl(var(--point) / .6); }
-.cmp #cmp-menu .mi .pin-b { display: inline-flex; color: var(--c-point); }
 .cmp-pinh { display: flex; align-items: center; gap: 5px; } .cmp-pinh .pin-ic { color: hsl(var(--point)); }
 .cmp svg.g .pinmark:not(.self) circle { fill: color-mix(in srgb, var(--c-point) 55%, var(--c-card)); }
 .cmp #cmp-tip { position: fixed; pointer-events: none; background: var(--c-card); border: 1px solid var(--c-line); border-radius: 8px; padding: 4px 8px; font-size: 12.5px; max-width: 460px; display: none; z-index: 3; box-shadow: var(--shadow-elev-2); }
@@ -3681,25 +3664,8 @@ details.pe-group[open] > summary::before { transform: rotate(90deg); }
 .cmp-side .btn.on { border-color: var(--c-point); color: var(--c-point); }
 .cmp-side .cmp-tleg { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11.5px; color: var(--c-soft); } .cmp-side .cmp-tleg i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
 .cmp-side .cmp-bars { height: 80px; } .cmp-side .cmp-bars rect.sel { fill: none; stroke: var(--c-point); stroke-width: 1.2; } .cmp-side .cmp-bars text { font: 9px var(--font-ui); fill: var(--c-mute); }
-.cmp-side .cmp-tg .gh, .cmp-side .cmp-tg .gr { display: grid; grid-template-columns: 6.5rem repeat(var(--n), minmax(3px, 1fr)) 2rem; gap: 2px; align-items: center; }
-.cmp-side .cmp-tg .gh span { font-size: 9.5px; color: var(--c-mute); white-space: nowrap; overflow: visible; } .cmp-side .cmp-tg .gr { margin-top: 2px; }
-.cmp-side .gk { border: 0; background: none; color: var(--c-ink); font: 600 12px var(--font-ui); text-align: left; cursor: pointer; padding: 1px 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cmp-side .gr.sub .gk { font-weight: 400; color: var(--c-soft); padding-left: 14px; cursor: default; }
-.cmp-side .gc { height: 13px; border: 0; border-radius: 3px; cursor: pointer; padding: 0; } .cmp-side .gc:hover, .cmp-side .gc.on { outline: 2px solid var(--c-point); }
-.cmp-side .gt { font-size: 10.5px; color: var(--c-mute); text-align: right; }
-.cmp-side .cmp-tl-h { font: 600 12px var(--font-ui); color: var(--c-soft); } .cmp-side .cmp-tl-h small { font-weight: 400; color: var(--c-mute); }
-.cmp-side .cmp-tlist { display: grid; gap: 1px; }
-.cmp-side .trow { display: grid; grid-template-columns: 14px 1fr auto; gap: 8px; align-items: center; width: 100%; border: 0; background: none; color: var(--c-ink); font: 12.5px/1.35 var(--font-ui); text-align: left; padding: 3px 4px; border-radius: 6px; cursor: pointer; }
-.cmp-side .trow:hover, .cmp-side .trow:focus-visible { background: color-mix(in srgb, var(--c-point) 9%, var(--c-card)); outline: none; } .cmp-side .trow svg { width: 12px; height: 12px; overflow: visible; } .cmp-side .trow em { color: var(--c-mute); font-style: normal; font-size: 11px; }
 .cmp svg.g.hot .node.pick { opacity: 1; } .cmp svg.g .node.pick .ring { opacity: 1; }
-.cmp-side .cmp-gnav { display: flex; align-items: center; gap: var(--space-1); font-size: 11.5px; color: var(--c-mute); } .cmp-side .cmp-gnav span { margin-right: auto; } .cmp-side .cmp-gnav .btn { height: 1.4rem; padding: 0 6px; }
 .cmp-side .cmp-lr { grid-template-columns: 44px 1fr; margin: 3px 0; } .cmp-side .cmp-lr span { color: var(--c-ink); }
-.cmp-side .cmp-gnav span { color: var(--c-mute); }
-.cmp-side .cmp-gnav[hidden] { display: none; }
-.cmp-side .trow { padding-left: calc(4px + var(--lv, 0) * 12px); }
-.cmp-side .tgrp { display: flex; gap: 6px; align-items: baseline; width: 100%; border: 0; background: none; color: var(--c-ink); font: 600 12px var(--font-ui); text-align: left; padding: 5px 4px 2px calc(4px + var(--lv, 0) * 12px); cursor: pointer; border-left: 2px solid var(--c, transparent); }
-.cmp-side .tgrp em { font-style: normal; font-weight: 400; color: var(--c-mute); margin-left: auto; } .cmp-side .tgrp.anc { color: var(--c-soft); font-weight: 600; cursor: default; border-left-color: transparent; }
-.cmp-side .tmore { font-size: 11px; color: var(--c-mute); padding: 1px 4px 2px calc(26px + var(--lv, 0) * 12px); }
 
 /* 검색 칸은 LNB 맨 위(topbar.ts 가 옮겨 심는다). 늘 펼친 모습, 드롭다운은 칸 아래로, 묻기 답은 LNB 오른쪽으로 */
 .lnb-search { padding: var(--space-2) var(--space-3) var(--space-1); position: relative; z-index: 50; }
