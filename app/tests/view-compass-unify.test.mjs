@@ -81,16 +81,12 @@ function touching(L) {
 const th12 = () => new Map(LZ().comps.filter((c) => c.hub.k === 'topic').map((c) => [c.hub.id, ((c.th12 % 360) + 360) % 360]));
 const step = (h, ids) => { h.open('topic:root'); for (const id of ids) { h.open(id); assert.equal(h.centre(), id, `${id} opens`); } };
 
-test('a topic faces the same way opened one at a time and in All, and again after toggling All', async () => {
-  const { h, host } = mount(3); await idle();
+test('a topic faces the same way whichever path reaches it', async () => {
+  const { h } = mount(3); await idle();
   const ids = ['topic:root/alpha/one', 'topic:root/beta/two', 'topic:root/gamma/three', 'topic:root/delta/one', 'topic:root/eps/two'];
   const seen = new Map();
   for (const id of ids) { h.open(id); for (const [k, v] of th12()) seen.set(k, v); }
-  h.tools.querySelector('[data-all]').click();
-  const all = th12();
-  for (const [k, v] of seen) assert.equal(v, all.get(k), `${k} faces ${v} one at a time and ${all.get(k)} in All`);
-  h.tools.querySelector('[data-all]').click();
-  for (const id of ids) { h.open(id); for (const [k, v] of th12()) assert.equal(v, all.get(k), `${k} after toggling All`); }
+  for (const id of [...ids].reverse()) { h.open(id); for (const [k, v] of th12()) assert.equal(v, seen.get(k), `${k} faces the same way on the way back`); }
 });
 
 test('a path through a bridge draws no node or label over another layer', async () => {
@@ -111,19 +107,11 @@ test('a path that turns draws no node or label over another layer', async () => 
   assert.deepEqual(touching(LZ()), [], 'turned path');
 });
 
-test('measuring layer sizes leaves the mode, the open path and the filters as they were', async () => {
+test('measuring layer sizes leaves the open path and the filters as they were', async () => {
   const { h: first } = mount(5);
   first.open('concept:beta-two-4');
   const restore = { ...first.snapshot(), filt: [['topic:root/beta/two', ['left']]], koff: ['episode'] };
-  // 처음 한 번: 한가할 때 잴 틈 없이 전체 펼치기를 눌러 그 자리에서 잰다
-  const { h } = mount(5, { restore }); const before = h.snapshot();
-  const keep = (s) => ({ path: s.path, filt: s.filt, koff: s.koff, tsel: s.tsel, query: s.query });
-  const allBtn = h.tools.querySelector('[data-all]');
-  allBtn.click(); assert.equal(h.snapshot().mode, 'all');
-  assert.deepEqual(keep(h.snapshot()), keep(before), 'measuring on the first All press');
-  allBtn.click(); assert.equal(h.snapshot().mode, 'path');
-  assert.deepEqual(keep(h.snapshot()), keep(before), 'back to one at a time');
-  // 둘째: 마운트 뒤 한가할 때 재기
+  // 마운트 뒤 한가할 때 층 크기를 잰다. 잰 뒤에도 스냅숏이 담는 것(길 · 거르기 · 끈 종류 · 기간 · 찾기 · 카메라)은 그대로다
   const { h: h2 } = mount(5, { restore }); const b2 = h2.snapshot(); await idle();
   assert.deepEqual(h2.snapshot(), b2, 'the idle measure changes nothing the snapshot keeps');
 });

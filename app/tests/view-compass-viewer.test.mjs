@@ -60,17 +60,18 @@ test('a record from the six o\'clock list opens as the centre', () => {
   assert.equal(hubId(host), 'record:r1');
 });
 
-test('a snapshot carries the open path, All and the filters into a new mount', () => {
+test('a snapshot carries the open path and the filters into a new mount', () => {
   const nodes = []; for (const d of ['root/a', 'root/b']) for (let i = 0; i < 3; i++) nodes.push(node(`concept:${d}-${i}`, 'concept', d));
   const first = mount(nodes);
   first.h.open('concept:root/b-1');
-  first.host.querySelector('[data-all]')?.click?.();
   const snap = first.h.snapshot();
   first.h.destroy();
   assert.deepEqual(snap.path.at(-1), 'concept:root/b-1');
   const second = mount(nodes, [], { restore: snap });
   assert.equal(second.h.centre(), 'concept:root/b-1', 'the new mount opens where the old one was');
-  assert.equal(second.h.snapshot().mode, snap.mode, 'All carries over');
+  // 전체 보기가 있던 때 저장된 자리(mode: 'all')도 하나씩 열기로 연다
+  const old = mount(nodes, [], { restore: { ...snap, mode: 'all' } });
+  assert.equal(old.h.centre(), 'concept:root/b-1'); assert.equal(old.h.snapshot().mode, 'path');
   // 새 데이터에 없는 노드로 된 자리는 버리고 뿌리에서 시작한다
   const third = mount([node('concept:x', 'concept', 'root/x')], [], { restore: snap });
   assert.notEqual(third.h.centre(), 'concept:root/b-1');
@@ -84,6 +85,12 @@ test('pins are kept per space and a broken stored value does not stop the mount'
   const b = mount([node('concept:p', 'concept', 'root/a')], [], { store: 'me|team-1' });
   assert.ok(b.h.snapshot(), 'mounts with the team pins');
   assert.equal(localStorage.getItem('vinc.pins:me|team-1'), JSON.stringify(['concept:p']), 'the team pins are untouched');
+});
+
+test('the graph has no All button: it opens one layer at a time', () => {
+  const { h } = mount([node('concept:a', 'concept', 'root/a'), node('concept:b', 'concept', 'root/b')]);
+  assert.equal(h.tools.querySelector('[data-all]'), null);
+  assert.equal(h.snapshot().mode, 'path');
 });
 
 test('an Escape the view already handled does not also send the compass back to the root', () => {
@@ -106,7 +113,6 @@ test('cancelling the idle measure does not clear an unrelated timer with the sam
   try {
     const nodes = []; for (const d of ['idle/a', 'idle/b', 'idle/c']) for (let i = 0; i < 2; i++) nodes.push(node(`concept:${d}-${i}`, 'concept', d));
     const { h, host } = mount(nodes);
-    host.querySelector('[data-all]')?.click?.();
     h.open('concept:idle/b-1');
     h.destroy();
     assert.ok(cancelled.includes(IDLE), 'the idle measure is cancelled through cancelIdleCallback');
