@@ -180,7 +180,7 @@ class ShellSizeSpecTests(unittest.TestCase):
         사이가 0 이라 둘이 한 장의 카드가 된다. 그래서 아래 것들은 머리를 비켜설 값을 재지
         않는다(`--chrome-top` 은 0 이다). 하나만 되돌리면 본문이 머리 밑으로 지나가거나,
         머리와 카드 사이에 틈이 생긴다.
-        근거: [[decision:the-desktop-shell-docks-search-and-the-view-switch-in-a-view-header-2026-10-23]]"""
+        근거: [[decision:documents-and-graph-share-one-lnb-tree-2026-11-06]]"""
         self.assertIn("row-gap: 0", decl("#shell"), "머리와 내용 카드 사이에 틈이 있다")
         self.assertIn("grid-row: 2", decl("#surface"), "내용 카드가 머리 칸까지 올라온다")
         self.assertIn("grid-row: 2", decl("#docpane-slot"), "문서 열이 머리 칸까지 올라온다")

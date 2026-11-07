@@ -47,8 +47,8 @@ class TemplateTests(unittest.TestCase):
 
     def test_templates_fit_the_line_budget(self):
         for lang in ("en", "ko"):
-            n = len(self._built(lang).rstrip().split("\n"))
-            self.assertLessEqual(n, graphmd.LINE_WARN, f"{lang}: {n} lines")
+            n = graphmd.prose_line_count(self._built(lang))
+            self.assertLessEqual(n, graphmd.LINE_WARN, f"{lang}: {n} prose lines")
 
     def test_templates_are_line_for_line_parallel(self):
         """EN/ko 1:1 은 규격(§4)의 요구인데 여태 관례로만 지켜졌다 — 여기서 고정한다.
@@ -117,7 +117,7 @@ class TemplateTests(unittest.TestCase):
 
     def test_unknown_edge_blocks(self):
         text = self._built("en").replace(
-            "- about: Episode or Decision to Concept or Decision.",
+            "- about: an Episode or Decision to what it is about",
             "- refutes: Concept to Concept.")
         res = graphmd.check(text)
         rules = [f["rule"] for f in res["findings"]]
@@ -142,21 +142,48 @@ class TemplateTests(unittest.TestCase):
 
     def test_the_generated_region_names_the_evidenced_schema_edges(self):
         """2026-11-01 튜토리얼 초안이 물렸다: 생성 구역이 "edge types: none beyond the six
-        above" 라고 해서, Validity 절이 쓰라는 supersedes 를 같은 파일이 부정했다(VIN-876)."""
+        above" 라고 해서, Validity 절이 쓰라는 supersedes 를 같은 파일이 부정했다(VIN-876).
+        2026-11-05 부터 supersedes·returns_to 는 코드에서 만든 Relations 절이 말하고, 생성 구역은
+        그 절 밖의 재가 어휘만 말한다."""
         for lang in ("en", "ko"):
             with self.subTest(lang=lang):
                 block = graphmd.generated_block({}, lang=lang)
-                self.assertIn("supersedes", block)
-                self.assertIn("returns_to", block)
                 self.assertNotIn("edge types: none beyond the six above", block)
                 self.assertNotIn("엣지 타입: 위 여섯 외에 없음", block)
+                rel = "\n".join(graphmd.schema_section("relations", lang))
+                self.assertIn("supersedes", rel)
+                self.assertIn("returns_to", rel)
         en = graphmd.generated_block({}, lang="en")
-        self.assertIn("edge types: none ratified yet. Built in beyond the six relations "
-                      "above, each needing evidence: supersedes (new to old, same kind) and "
-                      "returns_to (between two distinct roles).\n", en)
-        # 재가된 엣지가 있어도 스키마 엣지 문장은 남는다(목록이 그것을 대신하지 않는다).
+        self.assertIn("edge types: none ratified yet (beyond the eight in Relations).\n", en)
         ratified = graphmd.generated_block({"edge_types": ["refutes"]}, lang="en")
-        self.assertIn("edge types: refutes. Built in beyond", ratified)
+        self.assertIn("edge types: refutes (beyond the eight in Relations)", ratified)
+
+    def test_the_walk_sentence_names_a_top_level_topic_of_this_graph(self):
+        """VIN-927: 'vinc' 가 박혀 있어서 `vinc_neighbors('domain:vinc')` 가 'vinc' 를 안 쓰는 그래프에서 빈손이었다.
+        최상위는 노드가 가장 많은 쪽, 예시 경로는 그 아래 가장 큰 도메인의 첫 두 칸이다."""
+        other = {"domains": ["work/alpha/deep", "work/zebra", "research/papers"],
+                 "domain_counts": {"work/alpha/deep": 9, "work/zebra": 4, "research/papers": 5}}
+        en = graphmd.generated_block(other, lang="en")
+        self.assertIn("'work/alpha' files that node under 'work'", en)
+        self.assertIn("vinc_neighbors('domain:work')", en)
+        self.assertNotIn("domain:vinc", en)
+        self.assertNotIn("'vinc/design'", en)
+        ko = graphmd.generated_block(other, lang="ko")
+        self.assertIn("'work/alpha' 은 그 노드를 'work' 아래", ko)
+        self.assertIn("vinc_neighbors('domain:work')", ko)
+        mine = {"domains": ["vinc/ai/eval", "vinc/design/surfaces", "agent/maker"],
+                "domain_counts": {"vinc/ai/eval": 98, "vinc/design/surfaces": 79, "agent/maker": 3}}
+        self.assertIn("vinc_neighbors('domain:vinc')", graphmd.generated_block(mine, lang="en"))
+        self.assertIn("'vinc/ai' files that node under 'vinc'", graphmd.generated_block(mine, lang="en"))
+
+    def test_the_walk_sentence_is_deterministic_and_has_a_fallback(self):
+        tie = {"domains": ["b/x", "a/y"], "domain_counts": {"b/x": 3, "a/y": 3}}
+        self.assertEqual(graphmd._walk_example(tie), ("a/y", "a"))
+        self.assertEqual(graphmd._walk_example({"domains": ["solo"]}), ("solo/subtopic", "solo"))
+        for lang in ("en", "ko"):
+            empty = graphmd.generated_block({}, lang=lang)
+            self.assertIn("domain:topic", empty)
+            self.assertNotIn("domain:vinc", empty)
 
     def test_em_dash_is_a_fix(self):
         text = self._built("en").replace("one reusable idea", "one reusable idea — really")
@@ -193,8 +220,8 @@ class TemplateTests(unittest.TestCase):
 
     def test_build_preserves_prose_and_replaces_only_the_block(self):
         original = self._built("en").replace(
-            "- Do not invent a domain name inline.",
-            "- Do not invent a domain name inline.\n- My own house rule.")
+            "- Do not create a node for something you did not search for first.",
+            "- Do not create a node for something you did not search for first.\n- My own house rule.")
         out = graphmd.build(None, existing=original, day="2026-09-09")
         self.assertTrue(out["executed"])
         self.assertTrue(out["replaced"])
@@ -497,6 +524,9 @@ class ConventionsRouteTests(_StoreCase):
         self.assertEqual(out["source"], "doc")
         self.assertNotIn("missing", out)
         self.assertIn("내 관례", out["text"])
+        # 소유자 문서에도 스키마 절은 코드에서 실린다(VIN-925)
+        self.assertEqual(out["schema_sections"], "generated")
+        self.assertIn("supersedes", out["text"])
 
     def test_the_response_names_the_id_the_app_must_write_to(self):
         """앱의 [저장]은 이 값으로 쓴다. 응답이 실제 자리와 다르면 저장은 성공하고
@@ -600,8 +630,8 @@ class ConventionsRouteTests(_StoreCase):
         app = self._app()
         code, first = app.write_conventions_build({"owner": "user:a"})
         self.assertEqual(code, 200, first)
-        mine = first["text"].replace("- Do not invent a domain name inline.",
-                                     "- Do not invent a domain name inline.\n- My rule.")
+        mine = first["text"].replace("- Do not create a node for something you did not search for first.",
+                                     "- Do not create a node for something you did not search for first.\n- My rule.")
         ds.put_doc(self.A, owner="user:a", text=mine,
                    doc_id=graphmd.conventions_doc_id("user:a"), title="GRAPH.md")
         self._seed_domains()                       # 그 사이 그래프가 자란다
@@ -628,3 +658,89 @@ class ConventionsRouteTests(_StoreCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GeneratedSchemaSectionTests(unittest.TestCase):
+    """스키마 절은 쓰기 경로의 상수에서 만든다(VIN-925).
+    근거: [[decision:graph-md-schema-sections-are-generated-from-code-on-every-read-2026-11-05]]"""
+
+    def _sec(self, key, lang="en"):
+        return "\n".join(graphmd.schema_section(key, lang))
+
+    def test_every_allowed_pair_clause_appears_in_relations(self):
+        from api import fragment as fr
+        rest = fr._ALLOWED_PAIRS_HINT.partition(": ")[2]
+        for lang in ("en", "ko"):
+            rel = self._sec("relations", lang)
+            for clause in (c.strip() for c in rest.split("; ") if c.strip()):
+                self.assertIn(clause, rel, lang)
+
+    def test_node_kinds_list_the_fields_each_table_keeps(self):
+        from api import fragment as fr
+        nodes = self._sec("nodes")
+        for label in ("Record", "Decision", "Concept", "Episode"):
+            line = next(ln for ln in nodes.splitlines() if ln.startswith(f"- {label}:"))
+            for f in graphmd._kept(label):
+                self.assertIn(f, line, label)
+        for prefix in fr._NODE_MAP:
+            self.assertIn(f"{prefix}:", nodes)
+
+    def test_a_changed_constant_changes_the_section(self):
+        from unittest import mock
+        from api import fragment as fr
+        with mock.patch.object(fr, "_CLAIM_PROPS", fr._CLAIM_PROPS + ("probe_field",)):
+            self.assertIn("probe_field", self._sec("nodes"))
+        self.assertNotIn("probe_field", self._sec("nodes"))
+
+    def test_evidence_is_required_only_where_the_write_path_skips_without_it(self):
+        rel = self._sec("relations")
+        line = next(ln for ln in rel.splitlines() if ln.startswith("Evidence is required"))
+        self.assertIn("supersedes and returns_to", line)
+        self.assertNotIn("relates_to", line.split("stored on")[0])
+
+    def test_en_and_ko_sections_are_line_parallel(self):
+        for key in graphmd.SCHEMA_KEYS:
+            self.assertEqual(len(graphmd.schema_section(key, "en")),
+                             len(graphmd.schema_section(key, "ko")), key)
+
+    def test_an_owner_documents_wrong_schema_text_is_replaced(self):
+        built = graphmd.build(None, lang="en", day="d")["text"]
+        wrong = built.replace("Evidence is required on", "Evidence is optional; it was once required on")
+        self.assertNotEqual(wrong, built)
+        fixed, inserted = graphmd.with_schema_sections(wrong)
+        self.assertEqual(inserted, [])
+        self.assertNotIn("Evidence is optional", fixed)
+        self.assertEqual(fixed, built)
+
+    def test_missing_sections_are_inserted_in_spec_order_outside_the_generated_region(self):
+        built = graphmd.build(None, lang="en", day="d")["text"]
+        lines = built.splitlines()
+        # 스키마 절을 모두 걷어낸 손 파일
+        keep, skip = [], False
+        for ln in lines:
+            if ln.startswith("## "):
+                skip = any(graphmd._is_heading(ln, k) for k in graphmd.SCHEMA_KEYS)
+            elif graphmd.GEN_START_RE.match(ln):
+                skip = False
+            if not skip:
+                keep.append(ln)
+        bare = "\n".join(keep) + "\n"
+        out, inserted = graphmd.with_schema_sections(bare)
+        self.assertEqual(sorted(inserted), sorted(graphmd.SCHEMA_KEYS))
+        order = [k for k, _ in graphmd.SECTIONS]
+        seen = [k for ln in out.splitlines() for k in order if graphmd._is_heading(ln, k)]
+        self.assertEqual(seen, sorted(seen, key=order.index))
+        gen = next(i for i, ln in enumerate(out.splitlines()) if graphmd.GEN_START_RE.match(ln))
+        for key in graphmd.SCHEMA_KEYS:
+            at = next(i for i, ln in enumerate(out.splitlines()) if graphmd._is_heading(ln, key))
+            self.assertLess(at, gen, key)
+        # 다시 돌려도 같다
+        self.assertEqual(graphmd.with_schema_sections(out), (out, []))
+
+    def test_the_prose_budget_does_not_count_schema_sections(self):
+        built = graphmd.build(None, lang="en", day="d")["text"]
+        total = len(built.rstrip().split("\n"))
+        prose = graphmd.prose_line_count(built)
+        schema = sum(len(graphmd.schema_section(k, "en")) for k in graphmd.SCHEMA_KEYS)
+        self.assertLess(prose, total - schema + 1)
+        self.assertLessEqual(prose, graphmd.LINE_WARN)

@@ -21,7 +21,7 @@ import { loaderBlock } from "../src/vinc-loaders.js";
 /** 고정 설정. 노드는 데스크톱 기본(0.7)의 두 배라 종류별 모양이 읽힌다. */
 const PREFS: ViewPrefs = {
   ...defaultPrefs(),
-  view: "3d", edges: "always", when: 1, unlinked: "show", labels: "hover",
+  view: "compass", edges: "always", when: 1, unlinked: "show", labels: "hover",
   nodeScale: 1.4, edgeOff: [],
 };
 

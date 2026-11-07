@@ -21,6 +21,7 @@ import { buildAgentRoster, teamRank, setLnbActive, showAgentRail, type AgentRole
 import { announceRolesChanged, copyRolePrompt, openRoleComposer, TEAM_ROLES } from "../role-composer";
 import { loaderRows } from "../vinc-loaders.js";
 import { mountAgentWrites } from "../agent-writes";
+import { loadAgentMap, updateAgentMap, type MapData } from "./agent-map";
 
 /** 팀 안의 자리 순서 — 리드 · 조율 · 구성원(레일 목록과 같다). */
 const SEAT_RANK: Record<string, number> = { lead: 0, coordinator: 1 };
@@ -46,7 +47,9 @@ export async function renderAgentsBoard(el: HTMLElement, live: () => boolean): P
   if (!el.querySelector(".agents-board")) {
     el.innerHTML = `<div class="home agents agents-board"><div class="home-read">${loaderRows(COPY.ui.common.loading, { count: 6 })}</div></div>`;
   }
+  let lastPaint = 0;
   const paint = async () => {
+    lastPaint = Date.now();
     let roles: AgentRole[];
     try { roles = buildAgentRoster(await api.roleRoster(cfg.owner)); } catch {
       if (!live()) return;
@@ -56,13 +59,21 @@ export async function renderAgentsBoard(el: HTMLElement, live: () => boolean): P
       return;
     }
     if (!live()) return;
-    draw(el, roles, () => void paint());
+    // Agent 에 절차가 있는 스페이스는 관계 지도가 기본 면이다. 직함 역할이 남았으면 지도 아래에서 펼친다.
+    // 근거: [[vinc.canon.terminology §3.2]]
+    let map: MapData | null = null;
+    try { map = await loadAgentMap(roles); } catch { map = null; }
+    if (!live()) return;
+    if (map) updateAgentMap(el, map, (host) => draw(host, map!.legacy, () => void paint()));
+    else draw(el, roles, () => void paint());
   };
   // 편집 면이나 이 보드가 저장하면 레일이 다시 읽고 이 신호를 낸다 — 보드도 그때 다시 그린다.
   // 떠난 보드의 구독은 **자기 자신만** 푼다. 공용 해제(leaveAgentsBoard)를 부르면, 그 사이 새로
   // 그린 보드의 구독까지 풀려 저장한 뒤에도 보드가 옛 모습으로 남는다.
   const off = () => window.removeEventListener("vinc:agents-changed", onChanged);
-  const onChanged = () => { if (live()) void paint(); else off(); };
+  // 방금 읽은 직후의 신호는 건너뛴다: 화면을 열면 레일도 로스터를 읽고 곧바로 이 신호를 내서, 같은 자료를 두 번
+  // 읽게 된다. 쓰기 뒤의 신호는 몇 초 뒤라 그대로 다시 읽는다.
+  const onChanged = () => { if (!live()) { off(); return; } if (Date.now() - lastPaint > 1500) void paint(); };
   window.addEventListener("vinc:agents-changed", onChanged);
   offChanged = off;
   await paint();

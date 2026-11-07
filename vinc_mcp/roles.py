@@ -168,6 +168,21 @@ def _policy_sections(props: dict) -> list[tuple[str, list[str]]]:
             for key in POLICY_KEYS if key in props]
 
 
+def _procedure_lines(role: dict) -> list[str]:
+    """The agent's procedures as an index, one line each; the body is read by address when the task needs it.
+    A policy that governs a procedure is a Decision with an about edge to it; its rule joins the procedure's lists.
+    근거: [[vinc.canon.terminology §3.2]]"""
+    detail = {p["id"]: p for p in role.get("procedures") or [] if isinstance(p, dict) and p.get("id")}
+    ids = [p for p in (role.get("props") or {}).get("procedures") or [] if isinstance(p, str)] or list(detail)
+    if not ids:
+        return []
+    lines = [f"- {pid}" + (f" (policies: {', '.join(detail[pid]['policies'])})" if (detail.get(pid) or {}).get("policies") else "")
+             for pid in ids]
+    rules = [f"- {p['id']}: {json.dumps(p.get('rule') or {}, sort_keys=True)}" for p in role.get("policies") or [] if p.get("id")]
+    return lines + ([""] + ["Policies (a rule joins the lists of each procedure it is about and never widens the agent's):"] + rules if rules else []) \
+        + ["", "Read the procedure the task needs with `vinc_node`; its policies are Decisions with an `about` edge to it."]
+
+
 def render_shell(role: dict, *, compact: bool = False) -> str:
     """스냅샷 항목 → 역할 껍데기(`agents/shells/<name>.md`) 본문. 결정론이다 — 같은 입력이면 같은
     바이트가 나와야 `--check` 가 성립하고, `prompts/get` 이 껍데기와 같은 계약을
@@ -185,6 +200,8 @@ def render_shell(role: dict, *, compact: bool = False) -> str:
             lines += ["", "## Machine checks for Never", _gate_bullets(props["never_checks"])]
         for head, bullets in _policy_sections(props):
             lines += ["", f"## {head}", *bullets]
+        if _procedure_lines(role):
+            lines += ["", "## Procedures", *_procedure_lines(role)]
         if role.get("works_with"):
             lines += ["", "## Works with"]
             for direction, peers in role["works_with"].items():
@@ -261,8 +278,13 @@ def render_shell(role: dict, *, compact: bool = False) -> str:
         "",
         _gate_bullets(props.get("gates")),
     ]
-    if props.get("test_command"):
-        body += ["", "Test command:", "", "```", props["test_command"], "```"]
+    tc = props.get("test_command")
+    if tc:
+        # 절차에서 옮겨 온 값은 출처별 사전({"dev-core": "…"})일 수 있다: 한 줄씩 "이름: 명령"으로 쓴다
+        lines = [f"{k}: {v}" for k, v in tc.items()] if isinstance(tc, dict) else [str(tc)]
+        body += ["", "Test command:", "", "```", *lines, "```"]
+    if _procedure_lines(role):
+        body += ["", "## Procedures", "", *_procedure_lines(role)]
     together = role.get("works_with") or {}
     if together:
         body += ["", "## Works with", ""]
@@ -711,7 +733,10 @@ def contract_hash(out: dict) -> str:
     """역할 계약의 내용 해시. 커뮤니티 가져오기 영수증과 같은 정규 JSON(키 정렬·비ASCII 그대로·
     공백 없음)의 UTF-8 sha256 16진수다."""
     from store import canon
-    return canon.digest({key: out.get(key) for key in CONTRACT_FIELDS})
+    # 절차(procedures)는 있을 때만 덮는다: 정책은 강제 제한이라 바뀌면 고정이 움직여야 하고, 절차가 없는 역할의
+    # 해시는 그대로여야 기존 고정과 가져오기 영수증이 맞는다. 근거: [[vinc.canon.terminology §3.2]]
+    fields = CONTRACT_FIELDS + tuple(k for k in ("procedures", "policies") if out.get(k))
+    return canon.digest({key: out.get(key) for key in fields})
 
 
 def _pin_error(expected_hash, expected_rev, role) -> dict | None:
@@ -772,6 +797,9 @@ def contract(role: str | None, bridge, *, forced_owner: str | None = None,
     out = {"kind": "role", "executed": True, "found": True, "id": rid,
            "title": node.get("title") or "", "domain": node.get("domain") or "",
            "props": entry["props"], "works_with": groups}
+    for key in ("procedures", "policies"):
+        if got.get(key):
+            out[key] = entry[key] = got[key]
     pin = {"rev": node.get("rev"), "hash": contract_hash(out)}
     if (expected_hash is not None and expected_hash != pin["hash"]
             or expected_rev is not None and expected_rev != pin["rev"]):
@@ -852,7 +880,7 @@ def get_prompt(name: str, arguments: dict | None, bridge,
                forced_owner: str | None = None) -> dict:
     """`prompts/get` — 역할 하나의 계약. 껍데기와 **같은 바이트**를 데이터 울타리에 넣는다.
 
-    이름은 역할 슬러그(`agent-dev-core`)라 id 는 `concept:` 을 붙여 얻는다. 접두사
+    이름은 역할 슬러그(`agent-maker`)라 id 는 `concept:` 을 붙여 얻는다. 접두사
     검사를 **브리지 호출보다 먼저** 한다 — 클라이언트가 준 문자열이 임의의 노드 id 로
     번역돼 조회로 나가는 자리를 아예 없앤다."""
     slug = str(name or "").strip()

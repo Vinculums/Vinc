@@ -61,6 +61,8 @@ type GraphLoaderContext = {
   patienceMs?: number;
   /** 시험용 저장 배치 읽기 제한. 화면 대기 시간은 patienceMs와 별개다. */
   rootsTimeoutMs?: number;
+  /** 배치를 받지 않는다(나침반). 서버가 준 그래프만 넘긴다. */
+  noLayout?: boolean;
   /** 시험용 따라 묻기 간격과 기한. 없으면 `FOLLOW_EVERY_MS`·`FOLLOW_FOR_MS`. */
   followEveryMs?: number;
   followForMs?: number;
@@ -113,7 +115,9 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
     },
 
     async fetchGraph(p: ViewPrefs, scope: { domains?: string[] }): Promise<FetchedGraph> {
-      const { useRoots, scopeKey, options } = graphReadPlan(p, scope.domains || []);
+      const plan = graphReadPlan(p, scope.domains || []), { scopeKey, options } = plan;
+      // 나침반은 받은 그래프를 스스로 배치한다. 시간순 가지(워커 배치·허브 배치 묻기)는 3D 의 것이라 부르지 않는다.
+      const useRoots = plan.useRoots && !ctx.noLayout;
       let cached = loader.reuseGraph && rawGraph?.executed && rawGraphScope === scopeKey && rawGraph;
       loader.reuseGraph = false;
       const mySeq = ctx.seq();

@@ -259,6 +259,7 @@
     "vinc.canon.linear-workflow",
     "vinc.canon.mcp-contract",
     "vinc.canon.principles",
+    "vinc.canon.rag-production-state",
     "vinc.canon.repo-workflow",
     "vinc.canon.share-pack",
     "vinc.canon.team-dpa",
@@ -801,14 +802,17 @@
     "decision:created-is-earliest-known-recording",
     "decision:design-token-values-live-in-the-graph-and-the-hub-directory-is-gone-2026-10-29",
     "decision:detect-the-replica-overlap-and-defer-the-single-writer-fence-2026-09-04",
+    "decision:documents-and-graph-share-one-lnb-tree-2026-11-06",
     "decision:each-area-volume-carries-its-name-at-its-area-topic-2026-10-29",
     "decision:english-is-the-default-surface-language",
     "decision:escape-once-at-the-boundary",
     "decision:every-written-field-has-a-read-path",
     "decision:figma-app-boards-no-longer-gate-a-release-2026-09-26",
     "decision:framework-integrations-ship-zep-shaped-knowledge-packages-first-2026-09-28",
+    "decision:graph-md-schema-sections-are-generated-from-code-on-every-read-2026-11-05",
     "decision:hide-implementation-preserve-evidence-surface-failure",
     "decision:identity-rides-on-the-first-door-not-a-whoami",
+    "decision:job-title-roles-retired-from-the-roster-2026-11-04",
     "decision:keep-the-chunk-vector-index-behind-a-flag-and-run-each-vector-query-alone-2026-10-03",
     "decision:ladybug-extensions-ship-from-a-vinc-release-not-the-repo-2026-09-26",
     "decision:large-topic-conversion-admission-2026-10-16",
@@ -835,6 +839,7 @@
     "decision:swap-the-production-encoder-to-bge-m3-ko-int8-after-the-hub-encoder-work-2026-10-18",
     "decision:temporal-model-operational-policy-2026-09-09",
     "decision:the-agent-rail-opens-an-agents-board-and-roles-edit-in-place-2026-10-24",
+    "decision:the-agents-screen-edits-agents-procedures-and-policies-in-place-2026-11-06",
     "decision:the-ambient-azure-identity-is-read-only",
     "decision:the-app-reads-its-own-view-addresses-through-the-shared-parser",
     "decision:the-default-agent-tool-surface-is-reads-plus-role-gated-writes-2026-10-31",
@@ -845,6 +850,7 @@
     "decision:the-desktop-signs-in-and-shows-the-account-graph-live-and-local-mode-is-a-setting",
     "decision:the-document-tree-opens-three-levels-and-a-row-click-only-folds-2026-09-26",
     "decision:the-eval-harness-lives-in-top-level-rag-eval-not-inside-vinc-rag-2026-10-01",
+    "decision:the-graph-is-one-2d-compass-lens-2026-11-06",
     "decision:the-graph-opens-as-3d-time-branches-with-related-lines",
     "decision:the-graph-whole-view-is-the-infra-layout-in-vinc-orbs-2026-10-28",
     "decision:the-hub-hands-the-writer-over-at-boot-instead-of-stopping-the-old-revision-2026-10-17",
@@ -938,6 +944,7 @@
     "record:keep-index-mode-survived-104-trials-on-ladybug-0-21-2-at-two-cores-while-the-unguarded-control-crashed-1-of-20-2026-10-18",
     "record:korean-titled-nodes-answer-with-provenance-excerpts-2026-09-14",
     "record:korean-to-korean-node-misses-are-the-semantic-second-candidate-lost-to-a-tie-at-the-top-five-cut-2026-10-19",
+    "record:linux-50-forced-kill-reopen-requalification-on-main-2026-11-04",
     "record:log-analytics-attributes-hub-mcp-requests-by-owner-hash-since-2026-09-02",
     "record:main-ci-red-before-the-roster-merge-2026-08-23",
     "record:mcp-state-store-is-fail-soft-and-must-be-local",
@@ -1106,6 +1113,9 @@
     "decision:detect-the-replica-overlap-and-defer-the-single-writer-fence-2026-09-04": {
       "validity": "current"
     },
+    "decision:documents-and-graph-share-one-lnb-tree-2026-11-06": {
+      "validity": "current"
+    },
     "decision:each-area-volume-carries-its-name-at-its-area-topic-2026-10-29": {
       "validity": "current"
     },
@@ -1124,10 +1134,16 @@
     "decision:framework-integrations-ship-zep-shaped-knowledge-packages-first-2026-09-28": {
       "validity": "current"
     },
+    "decision:graph-md-schema-sections-are-generated-from-code-on-every-read-2026-11-05": {
+      "validity": "current"
+    },
     "decision:hide-implementation-preserve-evidence-surface-failure": {
       "validity": "current"
     },
     "decision:identity-rides-on-the-first-door-not-a-whoami": {
+      "validity": "current"
+    },
+    "decision:job-title-roles-retired-from-the-roster-2026-11-04": {
       "validity": "current"
     },
     "decision:keep-the-chunk-vector-index-behind-a-flag-and-run-each-vector-query-alone-2026-10-03": {
@@ -1140,6 +1156,9 @@
       "validity": "unknown"
     },
     "decision:lnb-picks-in-the-graph-open-the-floating-card-and-the-side-pane-2026-10-28": {
+      "validity": "current"
+    },
+    "decision:maker-and-checker-replace-the-job-title-roster-2026-11-04": {
       "validity": "current"
     },
     "decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24": {
@@ -1205,6 +1224,9 @@
     "decision:the-agent-rail-opens-an-agents-board-and-roles-edit-in-place-2026-10-24": {
       "validity": "current"
     },
+    "decision:the-agents-screen-edits-agents-procedures-and-policies-in-place-2026-11-06": {
+      "validity": "current"
+    },
     "decision:the-ambient-azure-identity-is-read-only": {
       "validity": "current"
     },
@@ -1234,6 +1256,9 @@
     },
     "decision:the-eval-harness-lives-in-top-level-rag-eval-not-inside-vinc-rag-2026-10-01": {
       "validity": "unknown"
+    },
+    "decision:the-graph-is-one-2d-compass-lens-2026-11-06": {
+      "validity": "current"
     },
     "decision:the-graph-opens-as-3d-time-branches-with-related-lines": {
       "validity": "current"
@@ -1514,6 +1539,9 @@
     "record:korean-to-korean-node-misses-are-the-semantic-second-candidate-lost-to-a-tie-at-the-top-five-cut-2026-10-19": {
       "validity": "current"
     },
+    "record:linux-50-forced-kill-reopen-requalification-on-main-2026-11-04": {
+      "validity": "current"
+    },
     "record:log-analytics-attributes-hub-mcp-requests-by-owner-hash-since-2026-09-02": {
       "validity": "current"
     },
@@ -1755,9 +1783,6 @@
       "validity": "current"
     },
     "record:writing-a-trap-down-does-not-stop-it-a-check-does": {
-      "validity": "current"
-    },
-    "decision:maker-and-checker-replace-the-job-title-roster-2026-11-04": {
       "validity": "current"
     },
     "record:vinc-orb-kit-rendered-offline-with-blender-cycles-2026-11-04": {

@@ -635,6 +635,7 @@ export type TimeBasis = "recorded" | "content";
 export type GraphNode = {
   id: string; label: string; domain: string; degree: number;
   kind?: string;      // concept | decision | bridge | episode | record | entity (F2 — 부착 축)
+  topic_description?: boolean;   // 주제 설명 문서의 미러. 화면은 노드로 그리지 않는다
   domain2?: string;   // bridge 전용 — target_domain (노드 domain = source_domain)
   ts?: string;        // D43 — created/date 우선, 없으면 updated_at. 빈 문자열 가능
   // D72 — 내용 시점(그 노드가 말하는 일이 언제 있었나). 축을 `content` 로 요청하면
@@ -887,6 +888,10 @@ export const api = {
     }
     return { nodes: [...nodes.values()], edges };
   },
+  /** 역할 하나의 계약과 그 절차·정책(`procedures` [{id, policies}], `policies` [{id, title, rule}]).
+   *  로스터는 계약 전문 없이 오므로 지도와 편집 면은 이것으로 읽는다. 근거: [[vinc.canon.terminology §3.2]] */
+  role: (owner: string, role: string, detail = false): Promise<any> =>
+    call("/roles", { owner, role, ...(detail ? { detail: "procedures" } : {}) }, undefined, { team: cfg.team || null }),
   /** 역할에 붙은 평가 카드(조회 전용, 최신순). `role` 은 짧은 이름도 받는다. */
   evalCards: (owner: string, role: string, limit = 20) =>
     call("/eval-cards", { owner, role, limit }, undefined, { team: cfg.team || null }),

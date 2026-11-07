@@ -8,8 +8,8 @@
 - 전환이 표면마다 다른 자리에 서면 누른 자리에서 손이 빗나간다.
 - 보기 설정과 범례는 캔버스 안이 아니라 머리 맨 끝 한 자리다. 그래프는 렌즈, 문서 면은 읽기 설정.
 
-근거: [[decision:the-desktop-shell-docks-search-and-the-view-switch-in-a-view-header-2026-10-23]]
-근거: [[decision:the-view-header-ends-with-the-options-and-legend-of-the-current-surface-2026-10-28]]
+근거: [[decision:documents-and-graph-share-one-lnb-tree-2026-11-06]]
+근거: [[decision:the-graph-is-one-2d-compass-lens-2026-11-06]]
 """
 from __future__ import annotations
 
@@ -109,10 +109,15 @@ class HeaderIsTheTopOfTheCard(unittest.TestCase):
 
 
 class OneColumn(unittest.TestCase):
-    def test_header_and_page_share_the_column(self):
-        col = "max-width: calc(var(--page-col) + var(--page-inset) * 2)"
-        self.assertIn(col, _rule(".tb-col"))
-        self.assertIn(col, _rule(".home"))
+    def test_header_lead_follows_the_column_and_trail_the_card_edge(self):
+        # 본문은 칼럼이다. 머리의 앞자리는 그 칼럼의 첫 글자선에(좁으면 본문 여백), 뒤 묶음은 카드 안쪽 끝에 선다.
+        # 그래프는 본문이 카드 전체를 써서 앞자리도 카드 안쪽 끝이다
+        self.assertIn("max-width: calc(var(--page-col) + var(--page-inset) * 2)", _rule(".home"))
+        col = _rule(".tb-col")
+        self.assertIn("calc((100cqi - var(--page-col) - var(--page-inset) * 2) / 2 + var(--page-inset))", col)
+        self.assertIn("max(var(--page-inset),", col)
+        self.assertIn("padding: 0 var(--head-inset)", col)
+        self.assertIn("padding-left: var(--head-inset)", _rule('#shell[data-surface="view"] .tb-col'))
 
     def test_the_header_leaves_room_for_the_body_scrollbar(self):
         bars = re.findall(r"(?m)^#topbar \{[^}]*\}", CSS)

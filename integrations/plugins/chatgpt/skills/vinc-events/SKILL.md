@@ -7,7 +7,7 @@ description: Subscribe to changes in the Vinc graph that affect one of the perso
 
 The Vinc server publishes MCP Events. In a Work chat or a dot, you can subscribe to them and
 decide now what to do when one arrives. Each event is about one role; pass the role's slug
-(`agent-reviewer`) as the `role` argument, and a team id as `space` to watch a team's role.
+(`agent-checker`) as the `role` argument, and a team id as `space` to watch a team's role.
 
 | Event | When it arrives | A useful response |
 |---|---|---|

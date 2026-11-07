@@ -15,7 +15,7 @@
 // 근거: [[decision:view-offers-two-layouts-by-centre-and-time-branches-2026-10-11]]
 /** 배치는 시간순 가지 하나다. 3D 전체 보기를 인프라 배치 하나로 정하면서 `중심에서`(hub) 선택지를
  *  걷었다. 서버가 주는 중심에서 좌표는 가지 배치가 오기 전의 자리 잡기로만 쓴다(`serverLayoutFor`).
- *  근거: [[decision:the-graph-whole-view-is-the-infra-layout-in-vinc-orbs-2026-10-28]] */
+ *  근거: [[decision:the-graph-is-one-2d-compass-lens-2026-11-06]] */
 type ViewLayout = "temporalRoots";
 export const LAYOUTS: ViewLayout[] = ["temporalRoots"];
 export const isRootsLayout = (layout: ViewLayout) => layout === "temporalRoots";
@@ -27,9 +27,10 @@ export const normalizeLayout = (_v: unknown): ViewLayout => "temporalRoots";
 /** 그래프 탭의 보기는 3D 전체 보기 하나다. 저장값이나 주소(`/as/<관점>`)에 남은 옛 관점
  *  (`2d`·`timeline`·`bundle`)은 `VIEWPOINTS.includes` 가 걸러 3D 로 접힌다. 주소 문법의
  *  `/as/` 칸은 MCP 서버의 파서와 나눠 쓰는 계약이라 그대로 둔다(`view-url.ts`).
- *  근거: [[decision:the-graph-whole-view-is-the-infra-layout-in-vinc-orbs-2026-10-28]] */
-export type Viewpoint = "3d";
-export const VIEWPOINTS: Viewpoint[] = ["3d"];
+ *  근거: [[decision:the-graph-is-one-2d-compass-lens-2026-11-06]] */
+/** 그래프 보기는 나침반(`compass`) 하나다: 가운데가 지금 보는 것인 렌즈(view-compass.ts). 저장값의 다른 이름(`3d` 등)도 여기로 읽는다. */
+export type Viewpoint = "compass";
+export const VIEWPOINTS: Viewpoint[] = ["compass"];
 
 /** 연결선 갈래(D74) — **범례가 곧 필터**다(발주자 지시 2026-08-02).
  *
@@ -148,7 +149,7 @@ const DEFAULTS: ViewPrefs = {
   //: 첫 그림은 3D 시간순 가지에 선을 상시로 그리고, 범례는 방향 없는 관계 선만 켠다.
   //: 선 기본이 `none` 이던 결정을 이 첫 그림이 덮는다.
   //: 근거: [[decision:the-graph-opens-as-3d-time-branches-with-related-lines]]
-  view: "3d", size: "links", nodeScale: 0.7, edgeScale: 1,
+  view: "compass", size: "links", nodeScale: 0.7, edgeScale: 1,
   labels: "hover", arrows: true, edges: "always", spread: 1, cone: 0.7,
   unlinked: "show", layout: "temporalRoots",
   //: 읽는 면의 기본 폭(rem). `app.css` 의 `#docpane` 폴백과 같은 값이다.
@@ -231,7 +232,7 @@ export function loadPrefs(): ViewPrefs {
     // 옮기지 않으므로, 그 뒤에 사람이 고른 값은 그대로 남는다.
     if (pv < 4) for (const k of FIRST_LOOK) p[k] = DEFAULTS[k];
     return {
-      view: VIEWPOINTS.includes(p.view) ? p.view : "3d",
+      view: VIEWPOINTS.includes(p.view) ? p.view : "compass",
       size: p.size === "uniform" ? "uniform" : "links",
       nodeScale: clamp(p.nodeScale, NODE_SCALE.min, NODE_SCALE.max, DEFAULTS.nodeScale),
       edgeScale: clamp(p.edgeScale, EDGE_SCALE.min, EDGE_SCALE.max, 1),

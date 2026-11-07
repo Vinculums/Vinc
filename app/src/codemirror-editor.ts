@@ -582,11 +582,11 @@ function buildDecorationsUnsafe(view: EditorView): DecorationSet {
   const state = view.state;
   const sel = state.selection;
   const activeLines = new Set<number>();
-  // 읽기 모드에는 "활성 줄"이 없다 — 커서가 없으니 소스를 보일 이유도 없다.
+  // 커서가 없으면 "활성 줄"도 없다 — 읽기 모드와, 편집할 수 있어도 아직 포커스가 없는 편집기.
   // (이게 없으면 문서를 열자마자 1행이 `# 제목` 처럼 원문으로 보였다 — 선택이
-  //  기본 0 이라 1행이 활성으로 잡혔다.)
+  //  기본 0 이라 1행이 활성으로 잡혔다. 편집 모드로 열린 문서도 같았다.)
   const editable = state.facet(EditorView.editable);
-  if (editable) for (const r of sel.ranges) {
+  if (editable && view.hasFocus) for (const r of sel.ranges) {
     let l = state.doc.lineAt(r.from).number;
     const last = state.doc.lineAt(r.to).number;
     for (; l <= last; l++) activeLines.add(l);
@@ -649,7 +649,8 @@ const livePreview = ViewPlugin.fromClass(class {
     // 프론트매터 접기/펼치기는 문서도 선택도 뷰포트도 바꾸지 않는다 — 이 항이
     // 없으면 눌러도 화면이 그대로다(다음 타이핑에서야 뒤늦게 반영된다).
     const toggled = u.transactions.some((t) => t.effects.some((e) => e.is(fmToggle)));
-    if (u.docChanged || u.selectionSet || u.viewportChanged || toggled)
+    // 포커스가 들고 나면 활성 줄이 생기고 사라진다(위 `buildDecorationsUnsafe`).
+    if (u.docChanged || u.selectionSet || u.viewportChanged || u.focusChanged || toggled)
       this.decorations = buildDecorations(u.view);
   }
 }, { decorations: (v) => v.decorations });

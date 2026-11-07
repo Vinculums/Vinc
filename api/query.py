@@ -45,7 +45,7 @@ from store.querybase import (  # noqa: E402,F401  (재수출)
     _validity_cols,
     domain_counts_plan,
     domain_subtree_where,
-    domains,
+    domains as _domain_rows,
     execute,
     holds_during,
     normalize_query_tokens,
@@ -2350,6 +2350,7 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
         # 브릿지 소속은 파생값이다 — 배치보다 **먼저** 확정해야 hub·rank 가 같은
         # 도메인을 읽는다(_derive_bridge_domains 주석).
         _derive_bridge_domains(shaped)
+        _mark_topic_descriptions(shaped, owner, cfg, store)
         # 씨앗이 있는 화면(L2, 한 노드의 이웃)에는 주제 마크를 안 낸다. 거기서의
         # 주어는 그 노드이고 담는 관계는 지도 **전체**를 볼 때의 뼈대라, 초점 화면에
         # 끼우면 ego 이웃이 아닌 것이 이웃인 척한다(테스트 넷이 이걸 잡았다).
@@ -2383,6 +2384,7 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
             rows += ax.get("rows", [])
     shaped = shape_graph(rows)
     _derive_bridge_domains(shaped)
+    _mark_topic_descriptions(shaped, owner, cfg, store)
     shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout,
                                        topic_marks=True, cone=cone)
     used = _apply_basis(shaped, basis)
@@ -3078,13 +3080,18 @@ def _domain_context(store, node_id: str, *, owner: str, offset: int, cfg=None) -
     ring = _domain_neighbors(node_id, owner=owner, limit=None, cfg=cfg, store=store)
     if not ring.get("executed") or ring.get("error"):
         return {**base, "status": "query_failed", "error": ring.get("error") or ring.get("note")}
-    rows = ring["neighbors"]
+    # 주제 설명의 미러는 그 주제의 노드가 아니다(설명은 아래 `description` 이 따로 싣는다).
+    # 목록과 수에서 같이 빼야 열과 엣지의 대조(membership_drift)가 어긋나지 않는다
+    mirrors = _topic_description_mirrors_by_domain(owner, cfg, store) or {}
+    rows = [r for r in ring["neighbors"] if not (r["rel"] == "IN_DOMAIN" and r["id"] in mirrors)]
     children = [r for r in rows if r["rel"] == "PARENT_OF"]
     members = [r for r in rows if r["rel"] == "IN_DOMAIN"]
     counts = store.run(domain_hierarchy.scoped_counts_cypher(),
                        {"owner": owner, "domain": domain, "prefix": domain + "/"}) or []
-    direct = sum(int(r.get("total") or 0) for r in counts if r.get("domain") == domain)
-    subtree = sum(int(r.get("total") or 0) for r in counts)
+    direct = sum(int(r.get("total") or 0) for r in counts if r.get("domain") == domain) \
+        - sum(1 for d in mirrors.values() if d == domain)
+    subtree = sum(int(r.get("total") or 0) for r in counts) \
+        - sum(1 for d in mirrors.values() if d == domain or d.startswith(domain + "/"))
     expected_children = {domain + "/" + r["domain"][len(domain) + 1:].split("/")[0]
                          for r in counts if r.get("domain", "").startswith(domain + "/")}
     parent_path = domain.rpartition("/")[0]
@@ -3725,6 +3732,16 @@ def retrieval_overrides() -> list[str]:
     if not _retrieval._node_semantic_arm_on():
         out.append("VINC_NODE_SEMANTIC_ARM")
     return out
+
+
+def retrieval_switches() -> dict:
+    """노드 재채점과 brief 규칙의 **실제** 값. `/health` 가 늘 싣는다 — 운영 값은 저장소 변수에만
+    있어서 밖에서 확인할 길이 없었다. ColBERT 는 설정이 on 이어도 numpy 가 없으면 꺼지므로
+    환경변수가 아니라 :func:`vinc_rag.colbert.rescore_on` 을 읽는다.
+    근거: [[vinc.canon.rag-production-state]]"""
+    from vinc_rag import colbert as _colbert
+    return {"VINC_NODE_COLBERT": "on" if _colbert.rescore_on() else "off",
+            "VINC_BRIEF_RULE": _brief_rule()}
 
 
 def _brief_token_decisive(top: dict, second: dict) -> bool:
@@ -4638,10 +4655,20 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         # v3 는 의미만 기권을 재채점 **전** 순서의 앞 다섯으로 본다(재채점이 기권 대상을 바꾸지 않게).
         # 재채점이 안 된 질의는 기존 규칙 그대로 간다.
         v3 = _brief_rule_v3() and rescored and bool(full)
+        learned = _brief_rule_learned() and rescored
+        configured = _brief_rule()
+        if configured != "production" and not (v3 or learned):
+            # 학습 규칙이 설정돼 있어도 재채점이 안 된 질의는 기존 규칙이 답한다. 그 사실을 답에 싣는다:
+            # 없으면 평가도 사람도 어느 규칙의 답인지 가를 수 없다(토큰이 빠진 노드 하나로도 재채점이 빠진다).
+            # 근거: [[vinc.canon.rag-production-state]]
+            _rs = res.get("node_rescore") or {}
+            base["resolution"] = {"rule": "production", "configured": configured,
+                                  "rescore": _rs.get("state") or "missing"}
+            if _rs.get("reason"):
+                base["resolution"]["reason"] = _rs["reason"]
         if _brief_semantic_none({**res, "node_hits": _brief_v3_prod_head(full)} if v3 else res):
             base["note"] = "no sufficiently close semantic candidate"
             return base
-        learned = _brief_rule_learned() and rescored
         if v3:
             status, picked, _p = _brief_resolve_v3(query, res.get("node_hits") or [], res)
             base["resolution"] = {"rule": "v3", "p": None if _p is None else round(_p, 4)}
@@ -6492,6 +6519,69 @@ def _norm_title(title: str) -> tuple[str, frozenset]:
 # ⚠ 결정용 `dec-*` 접두 규칙을 되살리지 말 것 — 결정은 이제 별도 라벨이고 이 조회는
 # `MATCH (c:Concept)` 이라 애초에 안 긁어온다(타입이 생기면 관례는 물러난다).
 _DOC_CONCEPT_PREFIX = "concept:doc."
+
+
+def _topic_description_mirrors_by_domain(owner: str | None, cfg=None, store=None) -> dict[str, str] | None:
+    """주제 설명 문서 미러의 논리 id → 그 미러가 선 주제. 설명은 주제(Domain)가 글을 못 담아 문서로 두고
+    그 미러의 domain 으로 주제에 속한다(`api/topic_description.py`). 그래서 미러가 그 주제의 노드처럼
+    읽힌다. 지도 표시·주제 수·주제 상세가 이 한 벌로 그것을 가른다. 읽기에 실패하면 None 이고, 부르는
+    쪽은 수를 고치지 않고 그대로 둔다(빼다 만 수보다 낫다)."""
+    if not owner:
+        return {}
+    from api import topic_description
+    res = execute(QueryPlan("topic_description_mirrors",
+        "MATCH (d:_DocMeta) WHERE d.origin = $origin AND d.owner_id = $owner "
+        "RETURN d.doc_id AS doc_id", {"origin": topic_description.ORIGIN, "owner": owner},
+        note="topic description mirrors"), cfg, store=store)
+    if not res.get("executed"):
+        return None
+    ids = [_DOC_CONCEPT_PREFIX + str(r["doc_id"]) for r in res.get("rows", []) if r.get("doc_id")]
+    if not ids:
+        return {}
+    got = execute(QueryPlan("topic_description_mirror_domains",
+        "MATCH (c:Concept) WHERE c.owner_id = $owner AND c.concept_id IN $ids "
+        "RETURN c.concept_id AS id, c.domain AS domain",
+        {"owner": owner, "ids": pkns.keys(owner, ids)}, note="topic description mirror topics"),
+        cfg, store=store)
+    if not got.get("executed"):
+        return None
+    return {pkns.strip(str(r["id"])): str(r.get("domain") or "") for r in got.get("rows", []) if r.get("id")}
+
+
+def _mark_topic_descriptions(shaped: dict, owner: str, cfg=None, store=None) -> None:
+    """주제 설명 미러에 ``topic_description: true`` 를 단다. 화면은 이 표시로 그것을 지도·트리·수에서
+    뺀다(설명 자체는 주제 상세가 보여 준다). 표시만 달고 노드를 빼지 않는다: 문서 읽기와 다른
+    소비자는 그대로 받는다."""
+    if not shaped.get("nodes") or not owner:
+        return
+    ids = _topic_description_mirrors_by_domain(owner, cfg, store)
+    if not ids:
+        return
+    for n in shaped["nodes"]:
+        if n.get("id") in ids:
+            n["topic_description"] = True
+
+
+def domains(*, owner: str | None = None, cfg=None, store=None, debug: bool = False) -> dict:
+    """주제별 노드 수(:func:`store.querybase.domains`)에서 주제 설명 미러를 뺀다. 설명은 그 주제의
+    노드가 아니라 주제에 대한 글이다. 뺀 수는 숨기지 않고 행의 ``topic_descriptions`` 로 밝힌다.
+    설명만 남은 주제도 행은 남긴다(total 0): 주제는 있고, 그 설명에 닿는 길이 여기다."""
+    res = _domain_rows(owner=owner, cfg=cfg, store=store, debug=debug)
+    if not res.get("executed") or not owner:
+        return res
+    mirrors = _topic_description_mirrors_by_domain(owner, cfg, store)
+    if not mirrors:
+        return res
+    per: dict[str, int] = {}
+    for d in mirrors.values():
+        per[d or "(none)"] = per.get(d or "(none)", 0) + 1
+    rows = []
+    for r in res.get("rows", []):
+        n = min(per.get(r["domain"], 0), r["concepts"])
+        rows.append({**r, "concepts": r["concepts"] - n, "total": r["total"] - n,
+                     "topic_descriptions": n} if n else r)
+    rows.sort(key=lambda r: (-r["total"], r["domain"]))
+    return {**res, "rows": rows}
 
 
 def _structural_role(cid: str) -> str:

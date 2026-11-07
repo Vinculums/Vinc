@@ -184,7 +184,7 @@ class OfficialPacksMeetTheContract(unittest.TestCase):
     """계약은 한 벌이다 — 공식 팩도 사람이 쓰는 역할과 같은 검사를 통과해야 한다."""
 
     def test_every_pack_role_is_silent(self):
-        self.assertEqual(len(PACKS), 5)
+        self.assertEqual(len(PACKS), 1)   # 직함 역할 팩 넷은 내렸다: Default Agents 하나
         for p in PACKS:
             pack = json.loads(p.read_text(encoding="utf-8"))
             for n in pack["fragment"]["nodes"]:
@@ -197,8 +197,7 @@ class ConventionsAlwaysCarryRoles(unittest.TestCase):
 
     def _file(self, lang="en"):
         tpl = graphmd._TPL_KO if lang == "ko" else graphmd._TPL_EN
-        text = tpl.format(header=graphmd._HEADER[lang].format(v=graphmd.SPEC_VERSION, day="d"),
-                          generated=graphmd.generated_block({"domains": ["vinc/x"]}, lang=lang))
+        text = graphmd.build(None, lang=lang, day="d")["text"]
         # Roles 절을 걷어 낸 옛 파일
         lines = text.splitlines()
         i = next(k for k, ln in enumerate(lines) if graphmd._is_heading(ln, "roles"))
@@ -206,14 +205,14 @@ class ConventionsAlwaysCarryRoles(unittest.TestCase):
         return "\n".join(lines[:i] + lines[j:]) + "\n"
 
     def test_a_file_that_has_it_is_untouched(self):
-        full = graphmd._TPL_EN.format(header="h", generated="g")
+        full = graphmd.build(None, lang="en", day="d")["text"]
         same, added = graphmd.with_roles_section(full)
         self.assertFalse(added)
         self.assertEqual(same, full)
 
     def test_default_roles_reserve_the_prefix_in_both_languages(self):
-        self.assertIn("agent- prefix is reserved for roles", graphmd._TPL_EN)
-        self.assertIn("agent- 접두사는 역할 전용", graphmd._TPL_KO)
+        self.assertIn("The prefix is reserved for roles", "\n".join(graphmd.schema_section("roles", "en")))
+        self.assertIn("이 접두사는 역할 전용", "\n".join(graphmd.schema_section("roles", "ko")))
 
     def test_missing_roles_is_added_in_order_and_still_checks(self):
         for lang in ("en", "ko"):

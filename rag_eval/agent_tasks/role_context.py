@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 ROLE_ARM = "R"
 #: 맥락 모드 어댑터가 주는 읽기 도구(VIN-827 의 문서 읽기 포함). 같은 이름의 MCP 도구로 실행한다.
 READ_TOOLS = ("vinc_brief", "vinc_search", "vinc_doc_get")
-DEFAULT_ROLE = "concept:agent-dev-core"
+DEFAULT_ROLE = "concept:agent-maker"
 #: 글자 수 한도. 이 핀에서 P0 의 가장 큰 역할(161,022자)이 들어가는 값이다.
 DEFAULT_LIMIT = 400_000
 

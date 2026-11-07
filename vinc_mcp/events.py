@@ -113,7 +113,7 @@ class CallbackFailure(Exception):
 # ── 이벤트 정의(events/list) ─────────────────────────────────────────────────
 
 _ROLE_ARG = {"type": "string", "description":
-             "The role to watch: an agent slug (agent-dev-core) or its concept:agent- id."}
+             "The role to watch: an agent slug (agent-maker) or its concept:agent- id."}
 _SPACE_ARG = {"type": "string", "description":
               "A team id to watch that team's space; omit for your personal graph."}
 INPUT_SCHEMA = {"type": "object", "properties": {"role": _ROLE_ARG, "space": _SPACE_ARG},

@@ -1242,7 +1242,7 @@ class VincApp:
             return {"executed": False, "error": "invalid role pagination"}
         return self._read(lambda r: read(p.get("role"), owner=_req(p, "owner"), store=r,
             limit=limit, offset=offset,
-            roster=p.get("roster") == "1"))
+            roster=p.get("roster") == "1", detail=p.get("detail") == "procedures"))
 
     def read_role_export(self, p):
         """내 역할 하나를 호스트 파일로 낸다(skill·claude·gpt·agents-md·vincpack·mcp). 조회 전용."""
@@ -1874,18 +1874,22 @@ class VincApp:
             if got.get("executed") and (got.get("text") or "").strip():
                 # 마커가 깨진 문서는 교체하지 않는다(build 가 executed=False) — 그때는
                 # 저장본 그대로다. 추측해서 고쳐 쓰지 않는 것이 build 와 같은 태도다.
+                # 저장본에 Roles 절이 있었는지는 끼우기 전에 본다(응답의 roles_section 이 그것을 말한다).
+                roles_default = not any(graphmd._is_heading(ln, "roles")
+                                        for ln in got["text"].splitlines())
                 fresh = graphmd.build(r, owner=owner, themes=self.themes,
                                       existing=got["text"], restamp=False)
                 text = fresh["text"] if fresh.get("executed") else got["text"]
-                # Roles 절이 없는 파일이면 기본 절을 끼워 읽힌다(저장본은 그대로).
-                # 역할을 쓰는 어시스턴트가 계약을 보는 문이 여기 하나라서다.
-                # 근거: [[vinc.canon.agent-roles §5]]
-                text, roles_default = graphmd.with_roles_section(text)
+                # 스키마 절(노드 종류·관계·쓰기·문서·시간·역할)은 저장본이 무엇을 적었든 코드에서
+                # 다시 만들어 싣는다(저장본은 그대로). 마커가 깨져 build 가 거절한 문서에도 싣는다.
+                # 근거: [[vinc.canon.agent-roles §5]], [[vinc.canon.graph-conventions §5.1]]
+                text, _inserted = graphmd.with_schema_sections(text)
                 return {"kind": "conventions", "executed": True, "source": "doc",
                         "owner": owner or "", "scope": _owner_scope(owner),
                         "doc_id": doc_id, "text": text,
                         "generated_recomputed": bool(fresh.get("executed")),
                         "roles_section": "default" if roles_default else "own",
+                        "schema_sections": "generated",
                         "updated_at": got.get("updated_at") or ""}
             built = graphmd.build(r, owner=owner, themes=self.themes, lang=lang,
                                   day=_dt.date.today().isoformat())
@@ -2990,6 +2994,8 @@ class _Handler(BaseHTTPRequestHandler):
             overrides = q.retrieval_overrides()
             if overrides:
                 body["retrieval_overrides"] = overrides
+            # 노드 재채점과 brief 규칙의 실제 값은 늘 싣는다(켜진 것이 정상이라 위 목록에 넣지 않는다).
+            body["retrieval_switches"] = q.retrieval_switches()
             # 색인이 잔해로 막혔다 — 그 팔이 꺼져 있고 그 표의 쓰기가 거절된다(fts_index 면
             # 문서 저장·삭제가 전부다). 재기동이 고친다(`_heal_search_indexes`). 정상이면 키가 없다.
             for key, attr in (("vector_index", "vector_index_remnant"),

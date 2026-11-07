@@ -33,7 +33,7 @@ feed and posts each event to the routine.
    pip install vincs
    export VINC_API_KEY=vinc_ro_...          # a read-only key from the vincs.io account page
    export VINC_FORWARD_TOKEN=crsr_...       # the routine's webhook key
-   vinc --target account events tail --role agent-reviewer \
+   vinc --target account events tail --role agent-checker \
      --kind role.reading_changed --kind run.citation_superseded \
      --cursor-file ~/.vinc-reviewer.cursor \
      --forward https://api2.cursor.sh/automations/webhook/<routine-id>

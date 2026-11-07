@@ -53,12 +53,23 @@ def _load(p: Path) -> dict:
 
 
 def _nodes(p: Path) -> list[dict]:
+    """Role nodes of a pack. Procedure nodes (concept:procedure-*) ride beside them since 2026-11-05 and
+    are checked by ProcedureContract below."""
+    return [n for n in _load(p)["fragment"]["nodes"] if n["id"].startswith(roles.ID_PREFIX)]
+
+
+def _procedures(p: Path) -> list[dict]:
+    return [n for n in _load(p)["fragment"]["nodes"] if n["id"].startswith("concept:procedure-")]
+
+
+def _all_nodes(p: Path) -> list[dict]:
     return _load(p)["fragment"]["nodes"]
 
 
 class PackContract(unittest.TestCase):
-    def test_five_packs_and_the_default_is_one_of_them(self):
-        self.assertEqual(len(PACKS), 5, [p.name for p in PACKS])
+    def test_one_pack_and_it_is_the_default(self):
+        """직함 역할 팩 넷은 내렸다(2026-11-06): 직함 역할이 로스터에서 물러났다."""
+        self.assertEqual(len(PACKS), 1, [p.name for p in PACKS])
         self.assertIn(DEFAULT, PACKS)
 
     def test_every_pack_passes_the_share_pack_validator(self):
@@ -167,6 +178,53 @@ class RenderedLikeThePromptSurface(unittest.TestCase):
                     self.assertNotIn("—", text)    # 화면 노출 텍스트, em-dash 금지(D38)
 
 
+class ProcedureContract(unittest.TestCase):
+    """2026-11-05: the default pack carries procedures beside its two agents (vinc.plan.agent-ontology-2026-11-05). A
+    procedure is a concept whose id starts with concept:procedure-, names its agent, and carries only what its agent does
+    not: the harness composes agent and procedure, so a repeated item is a second place to keep in step."""
+
+    LISTS = (("disallowed_tools", None), ("capabilities", "deny"), ("never", None), ("gates", None))
+
+    def test_every_procedure_names_an_agent_in_the_pack_and_carries_the_lists(self):
+        for p in PACKS:
+            role_ids = {n["id"] for n in _nodes(p)}
+            for n in _procedures(p):
+                with self.subTest(pack=p.name, procedure=n["id"]):
+                    self.assertEqual(n["type"], "concept")
+                    self.assertEqual(n["domain"], roles.DOMAIN)
+                    props = n["props"]
+                    self.assertEqual(props["kind"], "procedure")
+                    self.assertIn(props["agent"], role_ids)
+                    self.assertEqual(n["one_liner"], props["description"])
+                    for k in REQUIRED_PROPS:
+                        self.assertIn(k, props)
+                    self.assertEqual((props["reads"], props["paths"], props["repos"]), ([], [], []))
+                    self.assertEqual(sorted(n["tags"]), sorted(["procedure", props["agent"].rsplit("-", 1)[-1]]))
+
+    def test_a_procedure_never_repeats_what_its_agent_carries(self):
+        for p in PACKS:
+            agents = {n["id"]: n["props"] for n in _nodes(p)}
+            for n in _procedures(p):
+                a, props = agents[n["props"]["agent"]], n["props"]
+                for field, nested in self.LISTS:
+                    mine = ((props.get(field) or {}).get(nested) or []) if nested else (props.get(field) or [])
+                    theirs = ((a.get(field) or {}).get(nested) or []) if nested else (a.get(field) or [])
+                    with self.subTest(pack=p.name, procedure=n["id"], field=field):
+                        self.assertEqual([x for x in mine if x in theirs], [])
+                actions = {x.get("action") for x in a.get("person_only") or []}
+                self.assertEqual([x for x in props.get("person_only") or [] if x.get("action") in actions], [], n["id"])
+
+    def test_the_agents_carry_the_universal_gates(self):
+        for n in _nodes(DEFAULT):
+            self.assertEqual(n["props"]["gates"], BASE_GATES, n["id"])
+
+    def test_the_default_pack_is_two_agents_and_four_procedures(self):
+        self.assertEqual([n["id"] for n in _nodes(DEFAULT)], ["concept:agent-maker", "concept:agent-checker"])
+        self.assertEqual(len(_procedures(DEFAULT)), 4)
+        listed = [x for n in _nodes(DEFAULT) for x in n["props"]["procedures"]]
+        self.assertEqual(sorted(listed), sorted(n["id"] for n in _procedures(DEFAULT)))
+
+
 class _FreshSpace(Bridge):
     """기본 팩만 들어간 새 스페이스를 답하는 가짜 사이드카."""
 
@@ -204,21 +262,21 @@ class DefaultPackOnTheWire(unittest.TestCase):
     def setUp(self):
         self.nodes = _nodes(DEFAULT)
 
-    def test_a_fresh_space_lists_the_four_default_roles_as_prompts(self):
+    def test_a_fresh_space_lists_the_two_default_agents_as_prompts(self):
         got = roles.list_prompts(_FreshSpace(self.nodes))
         self.assertEqual([p["name"] for p in got["prompts"]],
-                         ["agent-curator", "agent-researcher", "agent-reviewer", "agent-steward"])
+                         ["agent-checker", "agent-maker"])
         # 고르는 화면의 부제는 one_liner(=mission)다.
         by_name = {p["name"]: p["description"] for p in got["prompts"]}
-        self.assertTrue(by_name["agent-steward"].startswith("Keep the graph honest"))
+        self.assertTrue(by_name["agent-maker"].startswith("Do the work in one context"))
 
     def test_get_prompt_hydrates_a_default_role(self):
-        got = roles.get_prompt("agent-reviewer", {}, _FreshSpace(self.nodes))
+        got = roles.get_prompt("agent-checker", {}, _FreshSpace(self.nodes))
         text = got["messages"][0]["content"]["text"]
-        self.assertTrue(got["description"].startswith("Check every claim"))
+        self.assertTrue(got["description"].startswith("Check finished work"))
         self.assertIn("disallowedTools: Edit, Write, NotebookEdit", text)
         self.assertIn("## Never", text)
-        self.assertIn("edit any node or document", text)
+        self.assertIn("edit any node, document or file", text)
 
 
 class RoleCheckAcceptsEveryPackRole(unittest.TestCase):
@@ -249,14 +307,14 @@ class RoleCheckAcceptsEveryPackRole(unittest.TestCase):
                     self.assertEqual(role_gate_contract.check(n["props"]), [])
 
     def test_never_checks_are_wired_not_decorative(self):
-        nodes = _nodes(AGENTS / "software-agents.json")
-        got = self._check(nodes, "concept:agent-reviewer-judgement", "I will edit the file now.")
+        nodes = _nodes(DEFAULT)   # Checker 의 never_checks 가 편집을 막는다
+        got = self._check(nodes, "concept:agent-checker", "I will edit the file now.")
         self.assertEqual(got["verdict"], "block", got)
         self.assertIn("never_forbidden_actions", got["failed_checks"])
 
     def test_person_only_actions_reach_the_interrupt(self):
-        nodes = _nodes(AGENTS / "infra-ops-agents.json")
-        got = self._check(nodes, "concept:agent-release", "Please publish the release when ready.")
+        nodes = _nodes(DEFAULT)   # Maker 의 person_only 에 publish 가 있다
+        got = self._check(nodes, "concept:agent-maker", "Please publish the release when ready.")
         self.assertEqual(got["verdict"], "interrupt", got)
         self.assertIn("publish", got["person_only_actions"])
 

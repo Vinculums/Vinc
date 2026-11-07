@@ -194,32 +194,13 @@ async function renderSettings(
           <span>px</span>
         </label>
       </div>
-      <hr class="settings-sep" />
-      <div class="settings-row">
-        <div class="settings-row-copy">
-          <strong>${esc(U.readingOpenOpts)}</strong>
-          <p class="hint">${esc(U.readingOpenOptsHint)}</p>
-        </div>
-        <button class="btn" type="button" id="s-open-lens">${esc(U.readingOpenOpts)}</button>
-      </div>
-      <p class="hint" id="s-lens-note" hidden></p>`;
+`;   // 그래프의 '보기 옵션 열기' 줄은 걷었다: 옵션·범례 단추가 없어지고 그 손잡이는 LNB 의 나침반 칸으로 갔다
     body.querySelector<HTMLInputElement>("#s-rail-w")!.addEventListener("change", (e) => {
       const n = Number((e.target as HTMLInputElement).value);
       const next = Math.min(RAIL_MAX, Math.max(RAIL_MIN, n / 16));
       savePrefs({ ...loadPrefs(), railW: next });
       document.getElementById("shell")?.style.setProperty("--rail-size", `${next}rem`);
       (e.target as HTMLInputElement).value = String(Math.round(next * 16));
-    });
-    body.querySelector("#s-open-lens")!.addEventListener("click", () => {
-      const lens = document.getElementById("view-lens");
-      if (!lens) {
-        const note = body.querySelector<HTMLElement>("#s-lens-note")!;
-        note.hidden = false;
-        note.textContent = U.readingOpenOptsNeedView;
-        return;
-      }
-      sheet.close();
-      lens.click();
     });
   }
 
