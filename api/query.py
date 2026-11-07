@@ -6521,7 +6521,7 @@ def _mark_topic_descriptions(shaped: dict, owner: str, cfg=None, store=None) -> 
     못 담아 문서로 두고 그 미러의 domain 으로 주제에 속한다(`api/topic_description.py`). 그래서
     미러가 그 주제의 노드처럼 실려 온다. 화면은 이 표시로 그것을 지도·트리·수에서 뺀다
     (설명 자체는 주제 상세가 보여 준다). 표시만 달고 노드를 빼지 않는다: 문서 읽기와 다른
-    소비자는 그대로 받는다. 근거: [[vinc.research.graph-write-method-2026-10-14]] §16.3"""
+    소비자는 그대로 받는다."""
     if not shaped.get("nodes") or not owner:
         return
     from api import topic_description
