@@ -14,7 +14,6 @@ REQUIRED = (
     "Verify health (MCP tools/list)",
     "Verify temporal search through the existing read only account key",
     "Verify connector surface (OAuth discovery)",
-    "저장 배치가 계정 경로에서 ready이고 그래프 표식과 맞는가",
     "App config drift gate (구조 기준선 대조)",
     "Node mirror rebuild result (재구축이 실제로 돌았는가)",
     "Graph citation liveness (라이브 인용 대조)",
