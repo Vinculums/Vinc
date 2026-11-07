@@ -1,0 +1,150 @@
+# 가벼운 운영 동작: 컨테이너 앱의 현재 리비전 재시작.
+#
+# Azure 쓰기는 main 의 OIDC 워크플로로만 간다. 에이전트도 오너도 로컬에 쓰기 신원을 두지 않는다.
+# 환경변수는 여기서 바꾸지 않는다: 허브는 hub-deploy, 계정은 Vinc-homepage account-deploy 가
+# 리포 변수에서 싣는다. 무거운 작업(수리·재구축·복구)은 각자의 워크플로가 있다.
+# 근거: [[vinc.ops.azure-identity-split-2026-08-30]] · 결정 decision:azure-writes-go-through-main-oidc-workflows-and-no-agent-holds-owner-2026-11-07
+#
+# ⚠ 허용 동작은 tests/platform/test_azure_ops_workflow.py 가 고정한다. 동작을 늘리려면 그 검사를
+#    같은 PR 에서 고친다(배포·역할·삭제 동사는 이 파일에 들어오지 않는다).
+# ⚠ 허브는 한 리비전·한 레플리카다. 재시작하는 동안 짧게 끊긴다.
+name: azure-ops
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "대상 컨테이너 앱"
+        type: choice
+        options: [vinc-account, vinc-hub]
+        default: vinc-account
+      action:
+        description: "동작"
+        type: choice
+        options: [restart]
+        default: restart
+      confirm:
+        description: "대상 앱 이름을 그대로 다시 적는다(실수 방지)"
+        type: string
+        default: ""
+      reason:
+        description: "왜 하는가(실행 요약에 남는다)"
+        type: string
+        default: ""
+# 허브 재시작은 배포·수리와 한 줄에 선다. 겹치면 내려 둔 허브가 다시 뜨거나 두 리비전이 겹친다.
+concurrency:
+  group: ${{ inputs.app == 'vinc-hub' && 'hub-deploy' || 'azure-ops-account' }}
+  cancel-in-progress: false
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  op:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # 손으로 돌리는 실행은 운영 담당만(repo 변수 PROD_OPERATORS). 쓰기 토큰은 main 에만 나오므로
+      # 이 가드를 지운 브랜치 판은 Azure 에 닿지 못한다.
+      - name: Operator gate
+        if: "!contains(format(',{0},', vars.PROD_OPERATORS), format(',{0},', github.triggering_actor))"
+        env:
+          ACTOR: ${{ github.triggering_actor }}
+        run: |
+          echo "::error::이 워크플로는 PROD_OPERATORS 에 있는 계정만 돌린다(지금 $ACTOR)."
+          exit 1
+      # 입력은 env 로만 넘긴다. 문자열 입력을 셸 본문에 바로 끼우면 그 값이 명령이 된다.
+      - name: Guard
+        env:
+          APP: ${{ inputs.app }}
+          ACTION: ${{ inputs.action }}
+          CONFIRM: ${{ inputs.confirm }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          case "$APP" in vinc-account|vinc-hub) ;; *) echo "::error::허용되지 않은 앱: $APP"; exit 1 ;; esac
+          case "$ACTION" in restart) ;; *) echo "::error::허용되지 않은 동작: $ACTION"; exit 1 ;; esac
+          if [ "$CONFIRM" != "$APP" ]; then
+            echo "::error::confirm 에 대상 앱 이름($APP)을 그대로 적을 것" >&2; exit 1
+          fi
+          if [ -z "${REASON// /}" ] || [ "${#REASON}" -gt 200 ]; then
+            echo "::error::reason 은 비울 수 없고 200자 안이어야 한다" >&2; exit 1
+          fi
+      - name: Azure profile for this run only
+        run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Restart the latest revision
+        id: restart
+        env:
+          APP: ${{ inputs.app }}
+        run: |
+          set -euo pipefail
+          rev=$(az containerapp show --name "$APP" -g vincsRG --query "properties.latestRevisionName" -o tsv)
+          if [ -z "$rev" ]; then echo "::error::현재 리비전 이름을 못 읽었다" >&2; exit 1; fi
+          echo "restarting $APP revision $rev"
+          az containerapp revision restart --name "$APP" -g vincsRG --revision "$rev" --output none
+          echo "revision=$rev" >> "$GITHUB_OUTPUT"
+      - name: Verify the hub answers tools/list
+        if: inputs.app == 'vinc-hub'
+        env:
+          MCP_TOKEN: ${{ secrets.VINC_MCP_TOKEN }}
+        run: |
+          set -euo pipefail
+          sleep 15
+          deadline=$(( $(date +%s) + 360 ))
+          i=0
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            i=$((i + 1))
+            code=$(curl -s -o "$RUNNER_TEMP/tools.json" -w '%{http_code}' --max-time 100 \
+              https://vinc-hub.grayplant-559d42e3.koreacentral.azurecontainerapps.io/mcp \
+              -X POST -H "Authorization: Bearer $MCP_TOKEN" -H "Content-Type: application/json" \
+              -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' || true)
+            if [ "$code" = "200" ] && grep -q '"tools"' "$RUNNER_TEMP/tools.json"; then
+              echo "tools/list 200 (attempt $i)"; exit 0
+            fi
+            echo "  tools/list $code, asking again"
+            sleep 15
+          done
+          echo "::error::재시작 뒤 허브가 tools/list 에 답하지 않는다" >&2
+          exit 1
+      # 계정 앱의 직접 FQDN 은 401 이 정상이라 정적 웹 앱을 거쳐 묻는다(account-deploy 와 같다).
+      - name: Verify the account health
+        if: inputs.app == 'vinc-account'
+        env:
+          REV: ${{ steps.restart.outputs.revision }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 24); do
+            body=$(curl -s --max-time 15 https://gentle-field-0e806e300.7.azurestaticapps.net/api/health || true)
+            if printf '%s' "$body" | grep -q '"status":"ok"' && printf '%s' "$body" | grep -qF "\"revision\":\"$REV\""; then
+              echo "health ok on $REV (attempt $i)"; exit 0
+            fi
+            echo "  not ok yet (attempt $i)"
+            sleep 10
+          done
+          echo "::error::재시작 뒤 계정 health 가 ok 가 되지 않았다($REV)" >&2
+          exit 1
+      - name: Record the run
+        if: always()
+        env:
+          APP: ${{ inputs.app }}
+          ACTION: ${{ inputs.action }}
+          REASON: ${{ inputs.reason }}
+          ACTOR: ${{ github.triggering_actor }}
+          REV: ${{ steps.restart.outputs.revision }}
+          STATUS: ${{ job.status }}
+        run: |
+          {
+            echo "### azure-ops"
+            echo "- app: \`$APP\`, action: \`$ACTION\`, revision: \`${REV:-none}\`"
+            echo "- actor: \`$ACTOR\`, status: \`$STATUS\`"
+            echo "- reason: $REASON"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove the per-run Azure profile
+        if: always()
+        run: |
+          case "${AZURE_CONFIG_DIR:-}" in
+            "$RUNNER_TEMP"/azure-*) rm -rf "$AZURE_CONFIG_DIR" ;;
+          esac

@@ -218,7 +218,12 @@ class ThisRepo(unittest.TestCase):
         열둘이 된 경위: `layout-deploy.yml`(2026-10-12)은 `vinc-layout` 하나의 이미지를 바꾼다.
         같은 앱에 `containerapp update` 둘이 겹치면 뒤의 것이 앞의 것을 덮고 끝의 이미지 대조가
         엉뚱한 런에서 실패한다. 스토어를 안 물어 허브 그룹 키는 빌리지 않는다.
-        근거: [[decision:time-branch-layout-is-computed-on-the-hub-per-topic-2026-10-12]]"""
+        근거: [[decision:time-branch-layout-is-computed-on-the-hub-per-topic-2026-10-12]]
+
+        `azure-ops.yml` 은 컨테이너 앱의 현재 리비전을 재시작한다. 허브를 고르면 `hub-deploy` 의
+        그룹 키를 빌린다: 배포·수리 도중의 재시작은 내려 둔 허브를 다시 띄우거나 두 리비전을
+        겹치게 한다. 재시작을 중간에 끊지 않도록 취소하지 않는다. dispatch 로만 돈다.
+        근거: [[vinc.ops.azure-identity-split-2026-08-30]]"""
         import yaml
         serial = []
         for p in sorted((_ROOT / ".github" / "workflows").glob("*.yml")):
@@ -226,7 +231,7 @@ class ThisRepo(unittest.TestCase):
             c = (doc or {}).get("concurrency")
             if isinstance(c, dict) and c.get("cancel-in-progress") is False:
                 serial.append(p.name)
-        self.assertEqual(serial, ["encode-m3-probe.yml", "hub-capacity-trial.yml", "hub-data-repair.yml", "hub-deploy.yml", "hub-durability-latency.yml",
+        self.assertEqual(serial, ["azure-ops.yml", "encode-m3-probe.yml", "hub-capacity-trial.yml", "hub-data-repair.yml", "hub-deploy.yml", "hub-durability-latency.yml",
                                   "hub-handoff-rehearsal.yml", "hub-relevance-measure.yml", "hub-store-rebuild.yml",
                                   "hub-store-recover.yml", "hub-verify-current.yml", "infra.yml", "integrations-publish.yml", "layout-deploy.yml", "pk-migrate.yml",
                                   "prefetch-bench.yml", "release.yml", "topic-copy-rehearsal.yml", "topic-snapshot-audit.yml"], serial)
