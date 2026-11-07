@@ -515,50 +515,19 @@ jobs:
           echo "  az containerapp update -n vinc-hub -g vincsRG --image \"\$img\"" >&2
           exit 1
 
-      # 인코더는 같은 이미지를 쓴다 — 접두·풀링·양자화 규약이 한 파일에 있고, 허브와
-      # 인코더가 다른 리비전을 들면 **에러 없이 벡터만 갈라진다**(접두 유무의 코사인이
-      # 0.95~0.97 이라 눈에 안 띈다). 그래서 같은 SHA 로 함께 올린다.
-      # 앱이 없으면 조용히 건너뛴다 — 인코더 도입 전 상태에서도 이 워크플로가 돌아야 한다.
-      # 스토어를 안 물으므로 단일 writer 순서 조정(위)이 필요 없다.
-      - name: Deploy encoder (same image) — 없는 것과 확인 못 한 것을 가른다
-        # 🔴 전에는 `2>/dev/null` 로 조회 실패를 통째로 "없음"으로 읽고 `exit 0` 했다.
-        # 일시적 API 오류·스로틀링 하나면 허브만 새 이미지로 가고 인코더는 옛것에 남는다.
-        # 그 상태가 위험한 이유는 모델이 **이미지의 ENV** 로 오기 때문이다 — 통과 접두를
-        # 붙이는 허브 워커와 질의 접두를 붙이는 vinc-encode 가 서로 다른 모델이 되고,
-        # 그러면 벡터가 다른 공간에 놓인다. 코사인 0.95~0.97 에 예외 0건이라 헬스체크도
-        # 로그도 통과한다. 모델 교체(Decision B)에서 정확히 이것이 막아야 할 고장이다.
+      # 위 스텝이 Running 을 보고해도 라이브 템플릿이 이 커밋의 이미지인지는 별개라 다시 읽어
+      # 대조한다. `hub    = <이미지>` 줄은 `scripts/qa/deploy_agent.py` 가 배포된 커밋을 읽는
+      # 표식이므로 모양을 바꾸려면 그쪽 파서도 같이 고친다.
+      - name: 허브가 이 커밋의 이미지로 서 있는가
         run: |
           set -euo pipefail
-          if err=$(az containerapp show -n vinc-encode -g vincsRG --output none 2>&1); then
-            echo "ENCODE_PRESENT=1" >> "$GITHUB_ENV"
-          elif printf '%s' "$err" | grep -qiE 'ResourceNotFound|was not found|could not be found'; then
-            echo "vinc-encode 없음 — 건너뛴다"
-            echo "ENCODE_PRESENT=0" >> "$GITHUB_ENV"
-            exit 0
-          fi
-          # --min-replicas 0: 허브가 인코더를 제 컨테이너 안에 들었으므로 vinc-encode 를 부르는 쪽이
-          # 없다. 같은 이미지를 유지한 채(되돌릴 때 그대로 쓰도록) 유휴 레플리카 0 으로 둔다.
-          # 기준선(app-config-baseline.json)도 같은 커밋에서 0 이다.
-          python scripts/reconcile_encoder_update.py \
-            --image "vincacr.azurecr.io/vinc-hub:$DEPLOY_SHA" --min-replicas 0
-          echo "vinc-encode 갱신: $DEPLOY_SHA (minReplicas 0)"
-
-      - name: 두 앱이 같은 이미지인가 (인코더 공간 일치)
-        # 위 스텝이 성공을 보고해도 갱신이 라이브에 반영됐는지는 별개다. 여기서 다시
-        # 읽어 대조한다 — 같은 이미지 = 같은 ENV = 같은 인코더 공간이고, 이 리포에는
-        # 두 앱을 잇는 코드가 없어서 이 대조 말고는 확인할 자리가 없다.
-        if: env.ENCODE_PRESENT == '1'
-        run: |
-          set -euo pipefail
-          h=$(az containerapp show -n vinc-hub    -g vincsRG --query 'properties.template.containers[0].image' -o tsv)
-          e=$(az containerapp show -n vinc-encode -g vincsRG --query 'properties.template.containers[0].image' -o tsv)
+          h=$(az containerapp show -n vinc-hub -g vincsRG --query 'properties.template.containers[0].image' -o tsv)
           echo "hub    = ${h}"
-          echo "encode = ${e}"
-          [ "$h" = "$e" ] || {
-            echo "::error::두 앱의 이미지가 다르다 — 통과 인코더와 질의 인코더가 다른 공간에 있다" >&2
+          [ "$h" = "vincacr.azurecr.io/vinc-hub:$DEPLOY_SHA" ] || {
+            echo "::error::허브 템플릿의 이미지가 이 배포의 이미지가 아니다" >&2
             exit 1
           }
-          echo "인코더 공간 일치 확인"
+          echo "허브 이미지 일치 확인"
 
       # 리비전이 Running 이 되는 것은 MCP 가 붙잡기 모드로 포트를 연 순간이다 — 스토어는
       # 그 뒤 writer 인계를 기다렸다가 복원된다. 그래서 첫 응답이 붙잡힌 끝의 503 일 수 있고,
@@ -693,7 +662,7 @@ jobs:
       - name: 새 앱을 포함한 라이브 기준선 수집 (시크릿 값 제외)
         if: env.LAYOUT_PRESENT == '1'
         run: |
-          python scripts/gate_app_config.py --write --require-present --apps vinc-hub vinc-encode vinc-account vinc-layout \
+          python scripts/gate_app_config.py --write --require-present --apps vinc-hub vinc-account vinc-layout \
             --baseline "$RUNNER_TEMP/layout-app-config.json"
 
       - uses: actions/upload-artifact@v4

@@ -37,14 +37,12 @@ def _one_cpu_baseline():
     hub = baseline["vinc-hub"]
     hub["resources"] = {"cpu": 1.0, "ephemeralStorage": "4Gi", "memory": "2Gi"}
     hub["env_names"] = sorted(set(hub["env_names"]) | set(trial.LOCAL_ENCODER_ENV))
-    baseline["vinc-encode"]["scale"]["minReplicas"] = 1
     return baseline
 
 
 def state():
     return {"baseline": _one_cpu_baseline(), "images": {
-        "vinc-hub": ["acr/image:fixed"], "vinc-encode": ["acr/image:fixed"],
-        "vinc-account": ["acr/account:fixed"]}}
+        "vinc-hub": ["acr/image:fixed"], "vinc-account": ["acr/account:fixed"]}}
 
 
 def app(cpu=1, revision="old"):
@@ -99,7 +97,7 @@ class CapacitySafety(unittest.TestCase):
     def test_side_service_or_auth_drift_fails(self):
         saved = state()
         changed = trial.expected_profile(saved["baseline"], 2)
-        changed["vinc-encode"]["scale"]["minReplicas"] = 0
+        changed["vinc-account"]["scale"]["minReplicas"] += 1
         with patch.object(trial, "public_state", return_value=(changed, saved["images"])):
             with self.assertRaises(RuntimeError):
                 trial.verify_profile(saved, 2)

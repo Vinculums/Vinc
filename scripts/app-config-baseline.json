@@ -99,39 +99,6 @@
     ],
     "volumes": []
   },
-  "vinc-encode": {
-    "auth": null,
-    "containers": [
-      "vinc-encode"
-    ],
-    "env_names": [
-      "VINC_EMBED_ENCODE_TOKEN",
-      "VINC_ROLE"
-    ],
-    "ingress": {
-      "allowInsecure": false,
-      "customDomains": [],
-      "external": false,
-      "targetPort": 8791,
-      "transport": "Http"
-    },
-    "mounts": [],
-    "resources": {
-      "cpu": 1.0,
-      "ephemeralStorage": "4Gi",
-      "memory": "2Gi"
-    },
-    "scale": {
-      "cooldownPeriod": 300,
-      "maxReplicas": 1,
-      "minReplicas": 0
-    },
-    "secret_names": [
-      "encode-token",
-      "vincacrazurecrio-vincacr"
-    ],
-    "volumes": []
-  },
   "vinc-hub": {
     "auth": null,
     "containers": [

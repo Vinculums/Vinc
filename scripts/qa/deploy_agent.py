@@ -143,16 +143,11 @@ class GitHub:
 
 
 def parse_images(log):
-    images = []
-    for label in ("hub", "encode"):
-        matches = re.findall(r"\b" + label + r"\s+=\s+vincacr\.azurecr\.io/vinc-hub:([0-9a-f]{40})\s*$",
-                             log, flags=re.MULTILINE)
-        if len(matches) != 1:
-            raise ValueError("missing or ambiguous observed image")
-        images.append(matches[0])
-    if images[0] != images[1]:
-        raise ValueError("hub and encoder images differ")
-    return images[0]
+    matches = re.findall(r"\bhub\s+=\s+vincacr\.azurecr\.io/vinc-hub:([0-9a-f]{40})\s*$",
+                         log, flags=re.MULTILINE)
+    if len(matches) != 1:
+        raise ValueError("missing or ambiguous observed image")
+    return matches[0]
 
 
 def parse_verification(log):
