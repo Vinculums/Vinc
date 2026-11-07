@@ -6,17 +6,11 @@
 *.cron      text eol=lf
 *.py        text eol=lf
 # Dockerfile 은 리눅스 러너의 도커가 읽는다. CRLF 로 체크아웃되면 `RUN` 의 줄
-# 이음이 `
-` 을 달고 셸로 들어간다 — 위 *.sh 와 같은 이유다.
+# 이음이 `` 을 달고 셸로 들어간다 — 위 *.sh 와 같은 이유다.
 Dockerfile* text eol=lf
 Caddyfile   text eol=lf
 deploy/**   text eol=lf
 scripts/**  text eol=lf
-# 위 줄이 PNG·ICO 까지 텍스트로 잡아 커밋 때 CRLF 바이트를 LF 로 바꿔 이미지를 깨뜨렸다(2026-11-04 실측:
-# 구슬 PNG 의 blob 해시가 파일과 달랐고, 로고 PNG 는 새 worktree 마다 수정됨으로 떴다). 이미지는 바이너리다.
-scripts/**/*.png binary
-scripts/**/*.ico binary
-scripts/**/*.jpg binary
 
 # 역할 껍데기는 agents_sync.py --gen 이 LF 로 쓴다. 이 줄이 없으면 체크아웃이 CRLF 로
 # 되돌려, 내용이 하나도 안 바뀌어도 --gen 마다 열여섯 파일이 수정으로 뜬다. 늘 시끄러운
@@ -28,8 +22,7 @@ agents/shells/** text eol=lf
 agents/roles.json text eol=lf
 
 # ladybug 확장 해시 목록은 릴리스 러너가 `-c` 로 읽는다. CRLF 로 체크아웃되면 파일 이름
-# 끝에 `
-` 가 붙는데, GNU sha256sum 은 넘기지만 perl `shasum` 은 파일을 못 읽는다(실측).
+# 끝에 `` 가 붙는데, GNU sha256sum 은 넘기지만 perl `shasum` 은 파일을 못 읽는다(실측).
 packaging/lbug-ext-*.sha256 text eol=lf
 
 # 폰트는 바이너리다. Windows 작업트리에서 텍스트로 오인되면 CRLF 변환이 파일을

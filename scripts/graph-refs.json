@@ -1017,7 +1017,6 @@
     "record:upstream-republished-the-ladybug-0-21-algo-extension-in-place-2026-10-20",
     "record:vin314-live-exp01-rerun-prefetch-cites-a-node-in-1-of-6-2026-10-07",
     "record:vin318-live-exp02-r2-parity-tool-calls-2-vs-1-2026-10-07",
-    "record:vinc-orb-kit-rendered-offline-with-blender-cycles-2026-11-04",
     "record:vinc-tests-need-a-clean-interpreter-on-windows",
     "record:web-app-shifted-and-flashed-before-the-shell-ran",
     "record:weighted-path-is-computed-in-python-not-by-the-engine",
@@ -1783,9 +1782,6 @@
       "validity": "current"
     },
     "record:writing-a-trap-down-does-not-stop-it-a-check-does": {
-      "validity": "current"
-    },
-    "record:vinc-orb-kit-rendered-offline-with-blender-cycles-2026-11-04": {
       "validity": "current"
     }
   }
