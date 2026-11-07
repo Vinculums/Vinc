@@ -62,6 +62,10 @@
         <!-- 머리(`#lnb-head`)와 트리(`#lnb-body`)는 lnb.ts 가 이 자리(바닥 앞)에 심는다. -->
         <!-- 바닥: 설정 · 접기 손잡이(오른쪽 끝). 맨 위 줄은 홈 · Agent 둘이 폭을 나눠 쓴다. -->
         <div class="lnb-foot" id="lnb-foot">
+          <!-- 승인함: 사람의 답을 기다리는 실행과 그 수. 계정 그래프일 때만 보인다(lnb.ts). -->
+          <button class="rail-btn rail-approvals" id="rail-approvals" type="button" hidden>
+            <span id="rail-approvals-badge" class="rail-n" hidden></span>
+          </button>
           <button class="rail-btn rail-settings" id="rail-settings" type="button"
                   aria-haspopup="dialog">
             <span id="rail-settings-badge" class="rail-n" hidden></span>

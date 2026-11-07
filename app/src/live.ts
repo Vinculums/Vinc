@@ -103,6 +103,8 @@ async function apply(): Promise<void> {
       // 조용히: 로딩 표시 없이 받아서 갈아 끼운다. 실패하면 있던 트리를 그대로 둔다.
       refreshLnb({ quiet: true }),
       import("./conventions").then((m) => m.refreshBadge()),
+      // 승인함 메뉴의 숫자. 실행이 대기에 들어가는 것도 쓰기라 표식이 바뀐다.
+      import("./surfaces/approvals").then((m) => m.refreshApprovalsBadge()),
     ]);
     if (surface.status === "fulfilled" && surface.value === false) {
       // 표면이 지금은 아니라고 했다. 바뀐 것은 여전히 안 보였으므로 다시 기다린다.
