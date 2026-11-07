@@ -336,7 +336,6 @@ const EN = {
     loading: (d: number) => d > 0 ? `Arranging ${d} topics…` : "Arranging this View…",
     preview: "Partial overview · Loading the full View…",
     // 시간순 가지 배치가 오래 걸리면 중심에서 배치로 먼저 보여 준다(그동안의 안내).
-    layoutPending: "Time branches are still being laid out. Showing by centre until they're ready.",
     layoutFailed: "Time branches couldn't be laid out for this graph, so it's shown by centre.",
     error: "View couldn't load. Retry anytime. Your documents are untouched.",
     // 스토어를 못 읽는 상태 전용. "비어 있다"와 **반드시 다른 말**이어야 한다 —
@@ -550,9 +549,7 @@ const EN = {
     // 범례(U1) — 닫힌 층을 화면이 스스로 가르친다. 형태는 정본(D35) 그대로.
     legend: {
       title: "Legend",
-      lensTip: "View and legend",
       summary: "shape = type · line = relation · one focus color",
-      shapes: "Shape = type",
       concept: "Concept",
       decision: "Decision",
       record: "Record",
@@ -565,15 +562,12 @@ const EN = {
       gateway: "Elsewhere (not in this topic)",
       lines: "Line = relation",
       // D74 — 범례 항목이 스위치다. 힌트는 캡션 옆에 작게(항목마다 반복하면 소음).
-      linesToggle: "click to hide",
       // v2 — 갈래 행이 견본 선을 함께 그리므로 괄호 설명(화살표·옅게)은 그림이 진다.
       directed: "Leads to",
       related: "Related (no direction)",
       cross: "Crosses topics",
-      bridgeLine: "Through a bridge",
       focus: "The focus color marks one thing at a time.",
       // v2 — 마크는 렌더러가 실제로 그리는 것 그대로다. 캡션이 어느 셋인지 밝힌다.
-      drawnAs3d: "the 3D geometry itself",
       // 몸통 키트: 모든 종이 같은 유리와 안의 빛을 쓰고 껍질 모양만 다르다.
       markNote3d: {
         concept: "Glass sphere · a cloud of light drifts inside",
@@ -586,37 +580,23 @@ const EN = {
         gateway: "Its own kind in outline · no faces, so nothing behind it is hidden",
       } as Record<string, string>,
       // v2 — 물러남(recede) 단계. 값은 recede.ts 가 토큰에서 읽어 채운다.
-      tiersCap: "Recede = dimming",
-      tierFocus: "Focus",
-      tierLine: (p: number) => `Lines ${p}%`,
-      tierText: (p: number) => `Text ${p}%`,
-      tiersHelp: "Point at something and all but it and its neighbours step back to "
-        + "these values. Canon across every view; reduced motion drops the easing, "
-        + "not the effect.",
       // v2 — 3단 상호작용: 가리키기(밝히기) · 누르기(숨기기) · 이것만(솔로).
-      solo: "Only",
       reset: "Show all",
       status: (shown: number, all: number, links: number) =>
         `${shown} of ${all} kinds shown · ${links} links`,
-      statusHover: (n: number, label: string) =>
-        `While you point, only the ${n} ${label} lines stay lit. Click to hide them.`,
     },
     // 상단 바(D56·D57) — 셸의 유일한 크롬. 검색이 조회 동선의 제1 진입점이다.
     coach: {
       // 자리를 말하는 문구는 자리가 바뀔 때 함께 바뀌어야 한다. 이 줄은 렌즈가
       // 하단 바에 살던 시절의 "Bottom left" 로 남아 D71(상단 바 이동) 이후 줄곧
       // 틀린 곳을 가리키고 있었다 — 코치 문구는 틀리면 안 가르치는 것보다 나쁘다.
-      lensTitle: "Top right",
-      lensBody: "switch how you look at the View, and read the legend.",
-      menuTitle: "Right-click a node",
       // 메뉴에 실제로 있는 것만 적는다: 열기 · 여기서부터 공유하기 · 지우기
       // (`COPY.ui.menu` 둘 + `COPY.ui.viewx.del`, 조립은 `surfaces/view.ts` nodeMenu).
       // 여기 있던 "trace from it" 은 2026-08-17 에 사라진 제스처를 가리키고 있었다:
       // [[vinc.plan.document-reading]] §2.1. 지우기는 첫 화면에서 가르치지 않는다.
-      menuBody: "open it or share just that part.",
       ok: "Got it",
     },
-    menu: { open: "Open", shareHere: "Share from here" },
+    menu: { open: "Open" },
     topbar: {
       // 첫 자리는 View 다(2026-09-22). 코드명과 화면 이름을 맞춘다. D61 의
       // "Home 으로 노출"은 이 지시가 덮는다.
@@ -881,63 +861,40 @@ const EN = {
     panel: {
       options: "Options",
       allTopics: "All topics",
-      nodeSize: "Size", byConnections: "by connections", uniform: "uniform",
-      labels: "Labels", onHover: "on hover", off: "off",
+      labels: "Labels", off: "off",
       arrows: "Direction arrows", on: "on",
-      edgeShow: "Links",
       edgeShowName: {
-        none: "nodes only", always: "always", particles: "particles",
+        none: "nodes only", particles: "particles",
       } as Record<string, string>,
-      unlinkedNodes: "Unlinked nodes", show: "show", hide: "hide",
+      show: "show", hide: "hide",
       spread: "Spread",
       // 옵션 묶음 이름(2026-08-05). 여덟 개가 한 줄로 늘어서 있던 것을 세 갈래로
       // 나눈다 — "무엇에 대한 손잡이인가"가 먼저 읽혀야 고를 수 있다.
-      groupNodes: "Nodes", groupLines: "Lines", groupOther: "Other",
       // v2 — **값마다 한 줄 설명 한 벌**. 옛 per-row Help 키들(edgeShowHelp·layoutHelp
       // …)을 이 표로 모았다: 설명은 패널 바닥의 고정 줄이 받고,
       // 가리키거나 포커스가 닿은 값의 줄로 바뀐다(뜨는 툴팁 아님 — WCAG 1.4.13 을
       // 구조로 만족). `?` 를 켜면 행마다 상시로 펼쳐진다.
-      helpTip: "Show explanations",
       close: "Close",
-      helpHint: "Point at a value and its explanation lands here.",
       help: {
         links: "The better connected a mark, the bigger it is. Size is centrality.",
-        uniform: "Every mark the same size. Size then means nothing at all.",
-        hover: "Only the name you point at appears, so the View is never covered in type.",
         none: "No names drawn. Shape and place carry everything.",
-        arrowsOn: "Directed relations get an arrowhead.",
-        arrowsOff: "Lines without arrowheads. Less ink on a dense View.",
-        always: "Every line, always. The whole relation set at once, at the cost of density.",
         particles: "Particles flow instead of lines. Flow is direction, so arrowheads switch off.",
-        edgesNone: "Only the marks, no lines. A click outlines what belongs together, and the card lists the links.",
-        showU: "Unlinked marks are drawn, so you can see what is not tied in yet.",
-        hideU: "Unlinked marks are hidden. Only what connects remains.",
-        recorded: "Stood up by when you wrote it, so one import clusters in one place.",
-        content: "Stood up by when it happened, regardless of when it was written down.",
         spread: "Multiplies the coordinates you were given. It follows your hand as you drag.",
         nodeScale: "Keeps the size encoding and scales the whole View.",
-        edgeWidth: "A weight multiplier. Density still carries the relation's weight.",
         when: "Only what existed at that point. Concepts with no date of their own stay visible.",
       } as Record<string, string>,
-      nodeScale: "Node scale", edgeWidth: "Line weight",
+      nodeScale: "Node scale",
       // 이름은 "무엇이 보이게 되는가"로 짓는다. `cone`·`반각`은 구현의 말이라
       // 화면에 내지 않는다 — 사용자가 고르는 것은 가지가 얼마나 벌어지느냐다.
       when: "Time cursor",
-      whenAll: "All",
-      groupTime: "Time",
       // 주제 틴트 — 이름에 "색"이 아니라 "주제"가 먼저 오는 이유: 고르는 것은 색이
       // 아니라 "주제를 색으로 볼까"다.
       timeBasis: "Time",
-      replay: "Flow", replayPlay: "Play", replayStop: "Stop",
-      basisRecorded: "when recorded", basisContent: "when it happened",
-      fixedNote: "Shapes and the point color stay fixed. They carry meaning, so a shared pack reads the same everywhere.",
     },
     viewx: {
       shareCta: "Share",
       domain: (d: string) => `topic: ${d}`,
       gateway: " · gateway",
-      shareSlice: (n: number) => `Share as a pack (${n})`,
-      lassoHint: "⇧ Shift-drag to select an area, then share it",
       // 상세 레일 — 수치는 node-context 가 세고(연결·방향·부착), 관계 목록은 근거
       // 유무를 함께 싣는다. 어느 동선으로 열어도 같은 숫자가 나온다는 것을 밝힌다.
       // D72 — 내용 시점 입력(문서를 쓰는 자리에서 함께 적는다).
@@ -1009,9 +966,6 @@ const EN = {
       // 카드는 고른 깊이까지. 문구가 그 차이를 말해야 두 버튼이 둘인 이유가 선다.
       // 문구가 "링크"라고 하면 안 된다 — 복사되는 것은 지시 한 줄이 얹힌 프롬프트다.
       // 카드 줄 이름 — 디자인 정본 `Vinc Node Card.dc.html` (2a Final).
-      cardZoomIn: "Zoom in",
-      cardZoomOut: "Zoom out",
-      cardZoom: "Zoom",
       cardLinks: "Links",
       cardLinkMeta: (out: number, inn: number) => `→ ${out} · ← ${inn}`,
       cardDocs: (n: number) => n === 1 ? "1 document" : `${n} documents`,
@@ -1830,7 +1784,6 @@ const KO: Deck = {
     idleCta: "파일 추가하기",
     loading: (d) => d > 0 ? `주제 ${d}개를 배치하는 중…` : "View를 배치하는 중…",
     preview: "일부 개요 · 전체 View를 불러오는 중…",
-    layoutPending: "시간순 가지를 아직 그리는 중이에요. 다 될 때까지 중심에서 배치로 보여 드려요",
     layoutFailed: "이 그래프는 시간순 가지로 그리지 못해 중심에서 배치로 보여 드려요",
     error: "View를 불러오지 못했어요. 다시 시도해 보세요. 문서는 그대로 있어요",
     storeDown: "지금은 저장된 정보를 읽을 수 없어요. 읽기 문제라서 잃어버린 것은 없어요. Vinc를 다시 실행하고, 다른 Vinc가 이미 켜져 있지 않은지 확인해 주세요",
@@ -2036,9 +1989,7 @@ const KO: Deck = {
     },
     legend: {
       title: "범례",
-      lensTip: "보기 설정과 범례",
       summary: "모양=종류 · 선=관계 · 초점색 하나",
-      shapes: "모양 = 종류",
       concept: "개념",
       decision: "결정",
       record: "기록",
@@ -2048,13 +1999,10 @@ const KO: Deck = {
       area: "영역",
       gateway: "다른 주제에 있는 마디",
       lines: "선 = 관계",
-      linesToggle: "누르면 숨겨요",
       directed: "앞뒤가 있는 연결",
       related: "방향 없는 연결",
       cross: "다른 주제와의 연결",
-      bridgeLine: "다리로 이어진 연결",
       focus: "초점색은 한 번에 한 곳에만 써요",
-      drawnAs3d: "3D 지오메트리 그대로",
       markNote3d: {
         concept: "유리구 · 안에 빛 구름이 떠다녀요",
         decision: "유리구 · 안에 깎인 결정이 멈춰 있어요",
@@ -2065,26 +2013,15 @@ const KO: Deck = {
         area: "시간을 따라 길게 늘어난, 빛나는 유리 부피",
         gateway: "자기 종의 윤곽선 · 면이 없어서 뒤를 안 가려요",
       } as Record<string, string>,
-      tiersCap: "물러남 = 흐림",
-      tierFocus: "초점",
-      tierLine: (p) => `선 ${p}%`,
-      tierText: (p) => `이름 ${p}%`,
-      tiersHelp: "짚으면 초점과 이웃만 남고 나머지가 이 값으로 물러나요. 전 관점 공통이고, 모션을 줄여도 값은 그대로예요",
-      solo: "이것만",
       reset: "전체 보기",
       status: (shown, all, links) => `${all}개 갈래 중 ${shown}개 보임 · 연결 ${links}개`,
-      statusHover: (n, label) => `가리키는 동안 ${label} ${n}개만 밝아요. 누르면 숨겨요`,
     },
     coach: {
-      lensTitle: "오른쪽 위에서",
-      lensBody: "View 보는 방식을 바꾸고 범례를 볼 수 있어요",
-      menuTitle: "점을 오른쪽 클릭하면",
       // 메뉴에 실제로 있는 것만 적는다(EN 덱 같은 자리에 이유가 있다).
       // "거기서부터 따라가거나" 는 2026-08-17 에 사라진 제스처였다.
-      menuBody: "열거나 그 부분만 공유할 수 있어요",
       ok: "알겠어요",
     },
-    menu: { open: "열기", shareHere: "여기서부터 공유하기" },
+    menu: { open: "열기" },
     topbar: {
       home: "View",
       search: "Search",
@@ -2312,54 +2249,31 @@ const KO: Deck = {
     panel: {
       options: "옵션",
       allTopics: "모든 주제",
-      nodeSize: "크기", byConnections: "연결 수에 따라", uniform: "모두 같게",
-      labels: "이름", onHover: "가리킬 때만", off: "끔",
+      labels: "이름", off: "끔",
       arrows: "방향 화살표", on: "켬",
-      edgeShow: "연결",
       edgeShowName: {
-        none: "노드만", always: "항상", particles: "흐름",
+        none: "노드만", particles: "흐름",
       } as Record<string, string>,
-      unlinkedNodes: "연결 안 된 노드", show: "표시", hide: "숨김",
+      show: "표시", hide: "숨김",
       spread: "간격",
-      groupNodes: "노드", groupLines: "선", groupOther: "기타",
       // v2 — 값마다 한 줄 설명 한 벌(EN 쪽 주석 참조). 바닥 고정 줄이 받는다.
-      helpTip: "설명 펼치기",
       close: "닫기",
-      helpHint: "값을 가리키면 여기에 설명이 나와요",
       help: {
         links: "연결이 많은 마디가 큽니다. 크기가 곧 중심성이에요",
-        uniform: "모두 같은 크기입니다. 크기가 아무 뜻도 갖지 않아요",
-        hover: "가리킨 마디의 이름만 떠요. View가 글자로 덮이지 않아요",
         none: "이름을 그리지 않아요. 형태와 자리만 남아요",
-        arrowsOn: "앞뒤가 있는 연결에 화살촉을 붙여요",
-        arrowsOff: "화살촉 없이 선만 그려요. 촘촘한 View에서 잉크가 줄어요",
-        always: "모든 선을 늘 그려요. 관계 전체를 한눈에 보는 대신 촘촘해져요",
         particles: "선 대신 입자가 흘러요. 흐르는 방향이 곧 관계의 방향이라 화살촉은 꺼져요",
-        edgesNone: "선 없이 마디만 그려요. 누르면 함께 묶인 것에 테두리가 둘리고, 연결은 카드에서 볼 수 있어요",
-        showU: "연결 없는 마디도 그려요. 아직 이어지지 않은 것이 보여요",
-        hideU: "연결 없는 마디를 숨겨요. 이어진 것만 남아 View가 조용해져요",
-        recorded: "언제 적었는지로 세워요. 한 번에 적재한 것들이 같은 자리에 몰려요",
-        content: "언제 있었던 일인지로 세워요. 적은 날과 무관하게 퍼져요",
         spread: "받은 좌표를 그 배수로 벌려요. 끄는 동안 바로 따라와요",
         nodeScale: "크기 인코딩은 그대로 두고 전체를 키워요",
-        edgeWidth: "선 굵기 배율이에요. 가중치는 여전히 농도가 말해요",
         when: "그 시점에 있던 것만 보여요. 자기 날짜가 없는 개념은 계속 보여요",
       } as Record<string, string>,
-      nodeScale: "크기 배율", edgeWidth: "선 굵기",
+      nodeScale: "크기 배율",
       when: "시점",
-      whenAll: "전체",
-      groupTime: "시간",
       timeBasis: "기준",
-      replay: "흐름 보기", replayPlay: "재생", replayStop: "멈춤",
-      basisRecorded: "기록한 때", basisContent: "일어난 때",
-      fixedNote: "모양과 초점색은 바꿀 수 없어요. 뜻을 담고 있어서, 공유한 팩이 어디서 열어도 같게 보여요",
     },
     viewx: {
       shareCta: "공유하기",
       domain: (d) => `주제: ${d}`,
       gateway: " · 게이트웨이",
-      shareSlice: (n) => `팩으로 공유하기 (${n}개)`,
-      lassoHint: "Shift를 누른 채 끌어서 고른 부분만 공유할 수 있어요",
       edContentTimePh: "언제 (YYYY)",
       edContentTimeTip: "이 글이 다루는 시점이에요. 연도만 적어도 되고, 연-월이나 날짜까지 적어도 돼요",
       edFmLabel: "머리말",
@@ -2396,9 +2310,6 @@ const KO: Deck = {
       propsFail: "속성을 저장하지 못했어요.",
       copyLinkDone: "복사했습니다",
       copyLinkFail: "복사하지 못했습니다",
-      cardZoomIn: "가까이 보기",
-      cardZoomOut: "멀리 보기",
-      cardZoom: "확대",
       cardLinks: "연결",
       cardLinkMeta: (out, inn) => `→ ${out} · ← ${inn}`,
       cardDocs: (n) => `문서 ${n}개`,

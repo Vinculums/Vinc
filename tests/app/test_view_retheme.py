@@ -50,7 +50,8 @@ class WiringTests(unittest.TestCase):
             self.assertNotIn(bad, body, bad)
         # 표는 한 벌 — 새 모드로 다시 짓고 렌더러가 그것을 읽는다.
         self.assertIn("tintMap(curNodes.map((n) => n.domain), mode)", body)
-        self.assertIn("__retheme", body)
+        # 렌더러는 나침반 하나다 — 같은 자리에서 자기 색 표를 다시 짓는다
+        self.assertIn("compass?.retheme()", body)
         # 떠 있는 카드의 표식도 같은 표를 따른다.
         self.assertIn(".float-mark[data-domain]", body)
 

@@ -137,17 +137,13 @@ class HeaderEnd(unittest.TestCase):
     def test_empty_slots_take_no_room(self):
         self.assertIn("#tb-lens:empty, #tb-docopts:empty, #tb-docopts[hidden] { display: none; }", CSS)
 
-    def test_lens_renders_into_the_header_slot(self):
-        self.assertIn('lensSlot() ?? fallbackSlot("view-legend")', VIEW)
+    def test_the_graph_draws_no_lens_button(self):
+        # 그래프의 렌즈 단추와 패널은 3D 와 함께 걷었다. 머리의 슬롯은 남고(비면 자리를 차지하지 않는다) 그리는 이가 없다
+        self.assertNotIn("lensSlot", VIEW)
         self.assertIn('return $("tb-lens")', TOPBAR)
 
-    def test_the_lens_panel_keeps_its_own_width(self):
-        self.assertIn("width: var(--lens-panel-w)", CSS[CSS.index("#view-lens-panel, #doc-opts-panel {"):])
-
-    def test_panel_anchors_to_the_lens_button(self):
-        body = _block(VIEW, "function positionPanel()", "function openPanel(")
-        self.assertIn("const r = lensBtn?.getBoundingClientRect();", body)
-        self.assertIn("const left = Math.min(r.right - w, rightEdge - w - m);", body)
+    def test_the_options_panel_keeps_its_own_width(self):
+        self.assertIn("width: var(--lens-panel-w)", _rule("#doc-opts-panel"))
 
     def test_documents_get_their_own_options(self):
         self.assertIn("mountDocOptions();", TOPBAR)
