@@ -69,6 +69,22 @@ class TopicDescriptionTests(unittest.TestCase):
             self.assertNotIn("concept:doc." + other["doc_id"], {n["id"] for n in got["nodes"]})
             self.assertIn("concept:mine", {n["id"] for n in got["nodes"]})
 
+    def test_topic_counts_leave_the_description_out(self):
+        # 설명은 주제에 대한 글이지 그 주제의 노드가 아니다. vinc_domains 와 주제 상세가 같은 수를 말한다
+        self.seed(OWNER, "concept:deep", "project/sub")
+        first = self.save("Counts skip me")
+        sub = self.save("Sub topic description", node="domain:project/sub")
+        self.assertTrue(sub["executed"], sub)
+        rows = {r["domain"]: r for r in query.domains(owner=OWNER, store=self.store)["rows"]}
+        self.assertEqual((1, 1, 1), (rows["project"]["concepts"], rows["project"]["total"],
+                                     rows["project"]["topic_descriptions"]))
+        self.assertEqual(1, rows["project/sub"]["total"])
+        got = query.node_context(owner=OWNER, node="domain:project", store=self.store)["topic"]
+        self.assertEqual((1, 2, 1), (got["direct_nodes"], got["subtree_nodes"], got["descendant_nodes"]))
+        self.assertNotIn("concept:doc." + first["doc_id"], {r["id"] for r in got["structure"]["items"]})
+        self.assertNotIn("consistency", got)
+        self.assertEqual(first["text"], got["description"]["text"])
+
     def test_two_editors_conflict_without_mutation(self):
         original = self.save("First")
         winner = self.save("Winner", original["content_hash"])
