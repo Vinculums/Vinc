@@ -398,7 +398,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
       // 이름표가 실제로 차지하는 만큼만 잡는다: 가로로 쓰는 고리 주제는 옆으로 약 110px·위아래로 30px, 비스듬한 부채 이름은 이름 길이만큼
       if (o.role === 'hub') return o.k === 'topic' ? [[o.x - o.r - 30, o.y - o.r - 10], [o.x + o.r + 30, o.y + o.r + 40]] : [[o.x - o.r - 170, o.y - o.r - 20], [o.x + o.r + 20, o.y + o.r + 30]];
       const a = o.ang ?? 0, L = o.r + 12 + 6.6 * Math.min(24, o.label.length); return [[o.x - o.r, o.y - o.r], [o.x + o.r, o.y + o.r], [o.x + Math.cos(a) * L, o.y + Math.sin(a) * L]]; };
-  // 옮겨 가는 움직임(FLIP)의 프레임과 끝난 뒤 가지를 키우는 타이머. 새 render 와 destroy 가 지운다: 늦게 온 옛 타이머가 새 배치를 옛 가지로 덮지 않게
+  // 옮겨 가는 움직임(FLIP)의 프레임과 끝난 뒤 가지를 키우는 타이머. 새 render 와 destroy 가 지운다: 늦게 온 타이머가 새 배치를 지난 배치의 가지로 덮지 않게
   let flipRaf = 0, flipTo = 0;
   let render = function () {
     cancelAnimationFrame(flipRaf); clearTimeout(flipTo);
