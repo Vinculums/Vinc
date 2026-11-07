@@ -53,6 +53,22 @@ class TopicDescriptionTests(unittest.TestCase):
         self.assertEqual("", self.read()["text"])
         self.assertTrue(self.read()["exists"])
 
+    def test_graph_marks_the_description_mirror_and_nothing_else(self):
+        # 화면은 이 표시로 설명 미러를 지도·트리·수에서 뺀다. 다른 소유자의 같은 경로 설명은 표시하지 않는다
+        first = self.save("Shown in the topic detail, not as a node")
+        self.seed("user:other-description", "concept:mine", "project")
+        other = self.save("Other owner's description", owner="user:other-description")
+        for kwargs in ({}, {"seed": "concept:mine", "depth": 1}):
+            got = query.graph(owner=OWNER, store=self.store, **kwargs)
+            self.assertTrue(got["executed"], got)
+            marked = {n["id"] for n in got["nodes"] if n.get("topic_description")}
+            if kwargs:
+                self.assertEqual(set(), marked - {"concept:doc." + first["doc_id"]})
+                continue
+            self.assertEqual({"concept:doc." + first["doc_id"]}, marked)
+            self.assertNotIn("concept:doc." + other["doc_id"], {n["id"] for n in got["nodes"]})
+            self.assertIn("concept:mine", {n["id"] for n in got["nodes"]})
+
     def test_two_editors_conflict_without_mutation(self):
         original = self.save("First")
         winner = self.save("Winner", original["content_hash"])
