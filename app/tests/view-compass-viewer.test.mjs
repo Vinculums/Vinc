@@ -104,6 +104,20 @@ test('pressing a node opens it at once: no expand menu, no drag handles, no edge
   assert.deepEqual(h.snapshot().filt, [], 'no per-node branch filter is kept');
 });
 
+test('pressing the middle again asks the view to open its details, pressing another node only unfolds it', () => {
+  const opened = [];
+  const { h, host } = mount([node('concept:a', 'concept', 'root/a'), node('concept:b', 'concept', 'root/a')], [], { onOpen: (id) => opened.push(id) });
+  h.open('topic:root/a');
+  host.querySelector('.node[data-id="concept:a"]').click();
+  assert.equal(h.centre(), 'concept:a', 'the first press unfolds the node');
+  assert.deepEqual(opened, [], 'no details yet');
+  host.querySelector('.node.sel').click();
+  assert.deepEqual(opened, ['concept:a'], 'the second press on the middle opens its details');
+  assert.equal(h.centre(), 'concept:a', 'the compass stays where it is');
+  h.open('topic:root/a'); host.querySelector('.node.sel').click();
+  assert.deepEqual(opened, ['concept:a', 'topic:root/a'], 'a topic in the middle opens too');
+});
+
 test('an Escape the view already handled does not also send the compass back to the root', () => {
   winOn.length = 0;
   const { h } = mount([node('concept:a', 'concept', 'root/a')]);

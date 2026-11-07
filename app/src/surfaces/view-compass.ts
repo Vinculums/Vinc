@@ -593,7 +593,7 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   function act(g, e) { if (!g) return; const chain = (g.dataset.chain || '').split('|').filter(Boolean).map(byAny), n = byAny(g.dataset.id);
     const isFocus = g.classList.contains('sel');
     if (g.dataset.role === 'hub' && !isFocus) { setPath(chain.length ? chain : [n]); return; }   // 지나온 층의 허브: 그 층으로 접는다
-    if (isFocus) return;   // 지금 가운데는 이미 펼쳐져 있다
+    if (isFocus) { ctx.onOpen?.(String(g.dataset.id).split('@@')[0]); return; }   // 가운데를 다시 누르면 자세히(상세 레일)
     setPath([...chain, n]); }
   svg.addEventListener('click', (e) => { const mb = e.target.closest('[data-more]'); if (mb) { MORE.set(mb.dataset.more, (MORE.get(mb.dataset.more) || 0) + 20); MEASURED = false; prevPos = new Map(); render(); return; } const st = e.target.closest('.stub'); if (st) { setPath(st.dataset.chain.split('|').map(byAny)); return; } act(e.target.closest('.node'), e); });
   svg.addEventListener('keydown', (e) => { if (e.key !== 'Enter' && e.key !== ' ') return; const g = e.target.closest('.node'); if (!g) return; e.preventDefault(); const r = g.getBoundingClientRect(); act(g, { clientX: r.right, clientY: r.top }); });
@@ -601,7 +601,7 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   svg.addEventListener('pointerover', (e) => { const g = e.target.closest('.node'); svg.classList.toggle('hot', !!g);
     svg.querySelectorAll('.ray').forEach((r) => r.classList.toggle('near', !!g && (r.dataset.a === g?.dataset.id || r.dataset.b === g?.dataset.id)));
     if (g) { const n = byAny(g.dataset.id), o = LZ.items.find((q) => q.id === g.dataset.id); tip.style.display = 'block';
-      tip.innerHTML = `${esc(n.t || n.path)}<small>${KIND[n.k] || n.k}${o?.rel ? ' · ' + esc(o.rel) : ''}${n.d ? ' · ' + esc(n.d) : ''}${n.ts ? ' · ' + n.ts : ''}</small>`; } else tip.style.display = 'none'; });
+      tip.innerHTML = `${esc(n.t || n.path)}<small>${KIND[n.k] || n.k}${o?.rel ? ' · ' + esc(o.rel) : ''}${n.d ? ' · ' + esc(n.d) : ''}${n.ts ? ' · ' + n.ts : ''}</small>${g.classList.contains('sel') && ctx.onOpen ? `<small class="hint">${esc(C.detailHint)}</small>` : ''}`; } else tip.style.display = 'none'; });
   svg.addEventListener('pointermove', (e) => { tip.style.left = `${e.clientX + 14}px`; tip.style.top = `${e.clientY + 12}px`; });
   svg.addEventListener('pointerleave', () => { tip.style.display = 'none'; svg.classList.remove('hot'); });
   onWin('keydown', (e) => { if (e.defaultPrevented || e.target.closest?.('input,textarea,[contenteditable],dialog') || !root.isConnected || root.closest('[hidden]')) return; if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) e.preventDefault(); if (e.altKey && e.key === 'ArrowLeft') { if (hi > 0) { hi--; setPath(hist[hi].map(byAny).filter(Boolean), false); } } else if (e.altKey && e.key === 'ArrowRight') { if (hi < hist.length - 1) { hi++; setPath(hist[hi].map(byAny).filter(Boolean), false); } }

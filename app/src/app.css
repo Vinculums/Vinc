@@ -3622,7 +3622,7 @@ details.pe-group[open] > summary::before { transform: rotate(90deg); }
 .cmp-pinh { display: flex; align-items: center; gap: 5px; } .cmp-pinh .pin-ic { color: hsl(var(--point)); }
 .cmp svg.g .pinmark:not(.self) circle { fill: color-mix(in srgb, var(--c-point) 55%, var(--c-card)); }
 .cmp #cmp-tip { position: fixed; pointer-events: none; background: var(--c-card); border: 1px solid var(--c-line); border-radius: 8px; padding: 4px 8px; font-size: 12.5px; max-width: 460px; display: none; z-index: 3; box-shadow: var(--shadow-elev-2); }
-.cmp #cmp-tip small { color: var(--c-mute); display: block; }
+.cmp #cmp-tip small { color: var(--c-mute); display: block; } .cmp #cmp-tip small.hint { color: var(--c-point); margin-top: 2px; }
 
 /* LNB 의 나침반 칸(view-compass.ts 의 side). 셸의 LNB 폭과 글자를 따른다 */
 .cmp-side { --c-bg: hsl(var(--background)); --c-card: hsl(var(--card)); --c-ink: hsl(var(--foreground)); --c-soft: hsl(var(--muted-foreground));
