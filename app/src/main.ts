@@ -19,6 +19,7 @@ import { blocksSurfaceShortcuts } from "./keys";
 import { disposeEditorsIn, docEditorOpen } from "./doc-editor";
 import { mountAuthoringKeys, startNewDoc, startNewNode } from "./authoring";
 import { deepLinkTarget } from "./approvals";
+import { registerWebPush } from "./web-push-ui";
 
 // 표면 3종: Home(문서) / View(그래프) / Search(+Records). Packs(+Intake)는 표면이 아니라
 // Tools 모달로 갔다(P15) — 다섯 기능이 전부 거기 산다.
@@ -412,6 +413,8 @@ document.documentElement.lang = cfg.lang;
   // 데이터보다 먼저 읽어야 그 사이의 쓰기가 이미 본 것으로 묻히지 않는다.
   mountLiveRefresh();
   route();
+  // 웹에서만: 매니페스트와 서비스 워커(웹 푸시). 알림 권한은 설정의 버튼을 누를 때만 묻는다.
+  registerWebPush();
   // 승인함 메뉴의 숫자. 계정 그래프일 때만 묻는다. 그 뒤로는 변경 표식이 바뀔 때 다시 읽는다(live.ts).
   void import("./surfaces/approvals").then((m) => m.refreshApprovalsBadge());
   if (refusedSpace) {
