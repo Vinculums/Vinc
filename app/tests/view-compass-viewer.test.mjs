@@ -95,3 +95,21 @@ test('an Escape the view already handled does not also send the compass back to 
   winKey('Escape');
   assert.equal(h.centre(), 'topic:root');
 });
+
+test('cancelling the idle measure does not clear an unrelated timer with the same number', () => {
+  // requestIdleCallback 과 setTimeout 은 번호를 따로 센다. 유휴 측정의 번호를 clearTimeout 에 넘기면 같은 번호의 남의 타이머가 지워진다
+  const IDLE = 4242, cleared = [], cancelled = [];
+  const saved = [globalThis.requestIdleCallback, globalThis.cancelIdleCallback, globalThis.clearTimeout];
+  globalThis.requestIdleCallback = () => IDLE;
+  globalThis.cancelIdleCallback = (id) => cancelled.push(id);
+  globalThis.clearTimeout = (id) => { cleared.push(id); saved[2](id); };
+  try {
+    const nodes = []; for (const d of ['idle/a', 'idle/b', 'idle/c']) for (let i = 0; i < 2; i++) nodes.push(node(`concept:${d}-${i}`, 'concept', d));
+    const { h, host } = mount(nodes);
+    host.querySelector('[data-all]')?.click?.();
+    h.open('concept:idle/b-1');
+    h.destroy();
+    assert.ok(cancelled.includes(IDLE), 'the idle measure is cancelled through cancelIdleCallback');
+    assert.ok(!cleared.includes(IDLE), 'clearTimeout never receives the idle callback number');
+  } finally { [globalThis.requestIdleCallback, globalThis.cancelIdleCallback, globalThis.clearTimeout] = saved; }
+});
