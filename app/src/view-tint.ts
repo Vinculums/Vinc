@@ -78,3 +78,19 @@ export function tintPlan(domains: (string | undefined)[], mode: ThemeMode): {
   });
   return { topics, areas, areaOf };
 }
+
+/** 주제 표식: 속이 빈 점선 고리. 주제는 노드가 아니라 노드를 담는 것이라 꽉 찬 원(개념)과 다르게 그린다.
+ *  그래프 · 범례 · 고정 칩 · 사이드바가 모두 이 함수 하나로 그린다(한 가족으로 보이게).
+ *  점과 틈은 둘레에 비례한다: 한 칸 약 4.2 단위에 점 55 %, 틈 45 %. 끝은 각지게(butt) 그어 틈이 보이게 한다
+ *  (둥근 끝은 굵기만큼 점을 늘려 틈을 메우고, 크게 보면 구슬을 이은 고리가 된다). */
+export function topicRing(r: number, colour: string, width: number, cls = ""): string {
+  const n = Math.max(8, Math.round((2 * Math.PI * r) / 4.2)), per = (2 * Math.PI * r) / n, dash = per * 0.55;
+  return `<circle${cls ? ` class="${cls}"` : ""} cx="0" cy="0" r="${r}" fill="none" style="stroke:${colour}" stroke-width="${width}"`
+    + ` stroke-dasharray="${dash.toFixed(2)} ${(per - dash).toFixed(2)}" stroke-linecap="butt"/>`;
+}
+
+/** HTML 안에 놓는 작은 주제 표식(사이드바 줄). 가로 · 세로 `size` px, 색은 currentColor 를 따른다. */
+export function topicRingIcon(size = 11, width = 2): string {
+  const h = size / 2, r = h - width / 2;
+  return `<svg viewBox="${-h} ${-h} ${size} ${size}" width="${size}" height="${size}" aria-hidden="true" focusable="false">${topicRing(r, "currentColor", width)}</svg>`;
+}

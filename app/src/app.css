@@ -3677,7 +3677,9 @@ details.pe-group[open] > summary::before { transform: rotate(90deg); }
 .lnb-pdot { flex: 0 0 auto; width: 5px; height: 5px; transform: rotate(45deg); border-radius: 1px; background: var(--tint, hsl(var(--muted-foreground))); }   /* 정책(문서 줄의 점과 같은 자리 · 크기) */
 .lnb-pdot.lnb-pmark { width: 8px; height: 8px; margin: 0 1px; }   /* 정책 묶음 줄: Agent 줄의 원(10px)과 같은 무게 */
 .lnb-adot { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; background: var(--tint, hsl(var(--muted-foreground))); }   /* Agent(Maker · Checker) */
-.lnb-gring { flex: 0 0 auto; width: 11px; height: 11px; margin-right: 2px; border-radius: 50%; border: 2px dashed var(--tint, hsl(var(--caption-foreground))); }
+/* 사이드바의 주제 표식: 그래프 · 범례와 같은 점선 고리(view-tint.ts topicRingIcon)를 주제 색으로 */
+.lnb-gring { flex: 0 0 auto; display: inline-flex; width: 11px; height: 11px; margin-right: 2px; color: var(--tint, hsl(var(--caption-foreground))); }
+.lnb-gring svg { display: block; }
 .cmp-side .btn.on { border-color: var(--c-point); color: var(--c-point); }
 .cmp-side .cmp-tleg { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11.5px; color: var(--c-soft); } .cmp-side .cmp-tleg i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
 .cmp-side .cmp-bars { height: 80px; } .cmp-side .cmp-bars rect.sel { fill: none; stroke: var(--c-point); stroke-width: 1.2; } .cmp-side .cmp-bars text { font: 9px var(--font-ui); fill: var(--c-mute); }

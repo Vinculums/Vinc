@@ -5,7 +5,7 @@ import { docTitle } from "./doc-title";
 import { icon } from "./icons";
 import { applyDefaults, bridgeKey, foldsOwnRows, ownKey } from "./lnb-tree";
 import type { ThemeMode } from "./theme";
-import { tintPlan } from "./view-tint";
+import { tintPlan, topicRingIcon } from "./view-tint";
 import { esc } from "./components";
 import { loaderRows } from "./vinc-loaders.js";
 
@@ -598,7 +598,7 @@ function groupRows(n: DomNode, level = 1): string {
       ${on ? 'aria-selected="true" ' : ""}data-group="${esc(n.path)}"
       aria-expanded="${open}"${gsrc ? "" : ` data-tip="${esc(COPY.ui.home.count(docsHere))}"`}>
       <span class="lnb-caret${open ? " open" : ""}" aria-hidden="true">›</span>
-      <span class="lnb-gring" aria-hidden="true"></span><span class="lnb-gname">${esc(n.seg)}</span>
+      <span class="lnb-gring" aria-hidden="true">${topicRingIcon(11, 2)}</span><span class="lnb-gname">${esc(n.seg)}</span>
       <span class="lnb-gcount">${docsHere || "·"}</span>
     </button>
   </div>`;

@@ -124,7 +124,8 @@ function parse(s) {
       const el = new El(m[2], attrs);
       const parent = top();
       if (parent instanceof El) parent.append(el); else parent.append(el);
-      if (!VOID.has(m[2].toLowerCase())) stack.push(el);
+      // `<polygon …/>` 처럼 스스로 닫는 태그(SVG)는 자식을 받지 않는다. 열어 두면 뒤따르는 형제가 그 안으로 들어간다
+      if (!VOID.has(m[2].toLowerCase()) && !m[0].endsWith('/>')) stack.push(el);
     } else if (m[4] !== undefined && m[0] !== undefined && !m[0].startsWith('<!--')) {
       const t = new Text(m[0]);
       const parent = top();
