@@ -95,7 +95,7 @@ WRITE_ROUTES = (
           success=201),
     Route("POST", "/v1/runs/{run}/steps", "vinc_run_submit",
           body=("output", "answer", "abandon", "person_only_requests", "cited_ids", "usage",
-                "capabilities_used"),
+                "capabilities_used", "expires_in_s"),
           path_args=(("run", "run"),)),
     Route("POST", "/v1/community", "vinc_community_write", body=("action", "payload", "client_name")),
     Route("POST", "/v1/merge-rejections", "vinc_merge_reject",

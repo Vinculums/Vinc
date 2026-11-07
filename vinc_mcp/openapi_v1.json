@@ -2432,7 +2432,7 @@
       "get": {
         "operationId": "vinc_events_get__v1_events",
         "summary": "Read what changed for your Agent roles since a cursor: required reading changed, a cited claim retired, a lesson added. Pass back the returned cursor to continue.",
-        "description": "Read change events after a cursor: role.reading_changed, run.citation_superseded, role.lesson_added and run.answered. Returns {events, cursor, has_more, truncated, head}. Omit since to get only the current cursor, or pass since:'0' to start at the beginning; pass the returned cursor back while has_more. eventId is stable, so drop ids you have seen. Read-only.",
+        "description": "Read change events after a cursor: role.reading_changed, run.citation_superseded, role.lesson_added, run.waiting and run.answered. Returns {events, cursor, has_more, truncated, head}. Omit since to get only the current cursor, or pass since:'0' to start at the beginning; pass the returned cursor back while has_more. eventId is stable, so drop ids you have seen. Read-only.",
         "security": [
           {
             "MemberKey": []
@@ -2470,6 +2470,7 @@
                   "role.reading_changed",
                   "run.citation_superseded",
                   "role.lesson_added",
+                  "run.waiting",
                   "run.answered"
                 ]
               },
@@ -2723,8 +2724,8 @@
     "/v1/runs/{run}/steps": {
       "post": {
         "operationId": "vinc_run_submit_post__v1_runs_run_steps",
-        "summary": "Submit one step of a run. Vinc runs the role's gates on the output, stops at a person-only action with a question, resumes on an answer, and ends the run with its record.",
-        "description": "Submit one step of a run: exactly one of output, answer (approve or decline while waiting) or abandon. Output runs the role's gates: block returns failed_checks and the run stays open; a person-only request or an interrupting gate makes the run wait for a person; pass ends it as success. Name person_only_requests and capabilities held for approval before acting, never after. A claim that something ran is blocked. Only the output's hash and length are stored.",
+        "summary": "Submit one step of a run. Vinc runs the role's gates on the output, stops at a person-only action with a question, resumes on an answer, and ends the run with its record. A person-only question is answered by a person in the Vinc app, not by you.",
+        "description": "Submit one step of a run: exactly one of output, answer (approve or decline while waiting) or abandon. Output runs the role's gates: block returns failed_checks and the run stays open; a person-only request or an interrupting gate makes the run wait for a person; pass ends it as success. Name person_only_requests and capabilities held for approval before acting, never after. A waiting run's decision.kind says who answers: person_only only a signed-in person in the Vinc app (your answer is refused with person_answer_required), ask_first you as the person chose. A request expires after expires_in_s (default 3600, at most 43200) and the run ends blocked. A claim that something ran is blocked. Only the output's hash and length are stored.",
         "security": [
           {
             "MemberKey": []
@@ -2782,7 +2783,8 @@
                     "enum": [
                       "approve",
                       "decline"
-                    ]
+                    ],
+                    "description": "Only for an ask_first decision, as the person chose."
                   },
                   "abandon": {
                     "type": "boolean"
@@ -2841,6 +2843,12 @@
                       "type": "string"
                     },
                     "description": "Capability ids of the tools called in this step."
+                  },
+                  "expires_in_s": {
+                    "type": "integer",
+                    "minimum": 60,
+                    "maximum": 43200,
+                    "description": "Seconds a person has to answer if this step makes the run wait; default 3600."
                   }
                 },
                 "required": [],

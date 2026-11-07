@@ -151,3 +151,50 @@ def list_runs(store, *, owner: str, cited: str | None = None, role: str | None =
     if claim is not None:
         out["claim"] = claim
     return out
+
+
+#: 만료된 요청을 목록에 남겨 두는 시간(초). 사람이 "만료됨"을 볼 수 있을 만큼만 둔다.
+EXPIRED_SHOWN_S = 86400
+
+
+def waiting_runs(store, *, owner: str, limit: int = DEFAULT_LIMIT, now=None) -> dict:
+    """사람의 답을 기다리는 실행과 그 대기 하나씩, 만료가 가까운 것부터.
+
+    실행 기록 Episode 만 읽는다(따로 둔 저장소가 없다). 항목마다 사람이 보고 답할 것 전부를
+    싣는다: 질문, 행동마다 호스트가 적은 설명, 종류(person_only·ask_first), 물은 때와 만료.
+    만료된 대기는 `expired: true` 로 하루 더 보이고 그 뒤에는 빠진다. 계정의 세션 프록시가 이
+    목록을 사람에게 보여 준다(`vinc_mcp/http_server.py` 의 `runs-waiting`)."""
+    import datetime
+
+    from vinc_mcp import run_protocol as rp
+
+    base = {"kind": "runs.waiting", "executed": False}
+    if not owner:
+        return {**base, "error": "owner is required"}
+    try:
+        rows = _episodes(store, owner)
+    except events._StoreFailed as exc:
+        return {**base, "error": str(exc)}
+    moment = now or datetime.datetime.now(datetime.timezone.utc)
+    shown_after = moment - datetime.timedelta(seconds=EXPIRED_SHOWN_S)
+    items = []
+    for row in rows:
+        props = events._props(row.get("props"))
+        pending = props.get("pending")
+        if props.get("state") != "waiting" or not isinstance(pending, dict):
+            continue
+        view = rp.decision(pending)
+        if rp.expired(pending, shown_after):
+            continue
+        items.append({
+            "id": pkns.strip(row["id"]), "run_id": str(props.get("run_id") or ""),
+            "role": events.role_id(props.get("role")) or "", "space": owner,
+            "title": events._title(row.get("title")), "task": str(props.get("task") or ""),
+            "subject": str(props.get("subject") or ""), "host": str(props.get("host") or ""),
+            "step": int(props.get("step") or 0), "ask": int(props.get("asks") or 0),
+            "started_at": str(props.get("started_at") or ""),
+            "asked_at": view["asked_at"], "expires_at": view["expires_at"],
+            "expired": rp.expired(pending, moment), "decision": view})
+    items.sort(key=lambda r: (r["expired"], r["expires_at"], r["id"]))
+    return {"kind": "runs.waiting", "executed": True, "runs": items[:limit], "total": len(items),
+            "truncated": len(items) > limit}

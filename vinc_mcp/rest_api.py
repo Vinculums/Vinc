@@ -137,6 +137,13 @@ def _failure(name: str, result: dict, *, by_id: bool = False) -> tuple | None:
         # 고정한 역할이 바뀌었다. 계약은 싣지 않고 지금의 rev·hash 만 준다.
         return (409, "role_changed", "The role changed since it was pinned.",
                 {k: result[k] for k in ("id", "rev", "hash") if k in result})
+    if error in ("person_answer_required", "run_state_protected"):
+        # 에이전트 자격으로는 사람만 답하는 대기를 풀 수 없다. 사람의 길은 메시지에 있다.
+        return 403, error, note or error
+    if error == "request_expired":
+        return 410, error, note or error
+    if error == "invalid_expires_in":
+        return 400, "invalid_argument", note or error
     if error == "invalid_export_format":
         return 400, "invalid_argument", note or error
     if error == "role_contract_too_large":

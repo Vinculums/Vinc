@@ -14,7 +14,8 @@ decide now what to do when one arrives. Each event is about one role; pass the r
 | `role.reading_changed` | a document the role must read was edited, retired or deleted | read it with `vinc_doc_get` and say what changed for the role |
 | `run.citation_superseded` | a claim (a decision or a record) that one of the role's runs cited was retired | read the run with `vinc_runs` and say which output may now rest on a retired claim |
 | `role.lesson_added` | a record or decision was attached to the role | read it with `vinc_node` and summarise the new rule |
-| `run.answered` | a person approved or declined a run that was waiting | continue the run with the `vinc-roles` skill, using the run id in `data.run` |
+| `run.waiting` | one of the role's runs stopped for a person's decision | tell the person a decision waits; a `person_only` one is answered in the Vinc app (Approvals) |
+| `run.answered` | a run that was waiting for a person was approved, declined or replied to | continue the run with the `vinc-roles` skill, using the run id in `data.run` |
 
 "Watch this decision" means `run.citation_superseded` for the roles whose runs cite it. Vinc does
 not emit an event for a topic or for a decision by itself yet; say so when the person asks for

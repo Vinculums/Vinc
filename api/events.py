@@ -21,7 +21,7 @@ from . import query as q, role_contract
 
 #: 내는 이벤트. 순서가 `events/list` 의 순서다.
 KINDS = ("role.reading_changed", "run.citation_superseded", "role.lesson_added",
-         "run.answered")
+         "run.waiting", "run.answered")
 #: 이름만 잡아 둔 이벤트. 지금은 없다(`run.answered` 는 실행 프로토콜이 생기며 KINDS 로 올랐다).
 RESERVED: tuple[str, ...] = ()
 #: 구독 기록은 역할에 붙지만 교훈이 아니다. 세면 구독이 제 구독자를 깨운다.
@@ -36,7 +36,7 @@ TITLE_CAP = 200
 
 _CURSOR = re.compile(r"(\d{1,18})\.(\d{1,18})")
 _NEEDS = {"role.reading_changed": {"docs"}, "run.citation_superseded": {"nodes", "docs"},
-          "role.lesson_added": {"nodes"}, "run.answered": {"nodes"}}
+          "role.lesson_added": {"nodes"}, "run.waiting": {"nodes"}, "run.answered": {"nodes"}}
 #: Decision 에서 Concept 로 가는 관계 중 역할에 "붙었다"고 읽는 것. 스키마에서 파생한다.
 _DECISION_TO_ROLE = tuple(sorted(
     rel for rel, pairs in q.SYNC_EDGE_RELS.items()
@@ -244,9 +244,9 @@ def _scan(store, *, owner, since, limit, role, kinds) -> dict:
         return {**out, "cursor": format_cursor(top), "truncated": True}
     need = set().union(*(_NEEDS[k] for k in kinds))
     recs = decs = docs = tombs = runs = []
-    if "run.answered" in kinds:
+    if {"run.waiting", "run.answered"} & set(kinds):
         # 실행 기록 Episode 만 본다: 다른 Episode 가 페이지를 먹지 않게 접두를 질의에 건다.
-        runs = _changed(store, "Episode", "x.episode_id AS id, x.props AS props, "
+        runs = _changed(store, "Episode", "x.episode_id AS id, x.title AS title, x.props AS props, "
                         "x.updated_at AS ts", owner, since[0], limit,
                         " AND starts_with(x.episode_id, $run_prefix)",
                         {"run_prefix": pkns.key(owner, RUN_PREFIX)})
@@ -320,8 +320,10 @@ def _scan(store, *, owner, since, limit, role, kinds) -> dict:
                   "title": _title(by_id[lid].get("title"))}, by_id[lid], "n")
     if "run.citation_superseded" in kinds:
         _citations(store, owner, recs, decs, docs, emit)
+    if "run.waiting" in kinds:
+        _waiting(runs, owner, emit)
     if "run.answered" in kinds:
-        _answered(runs, emit)
+        _answered(runs, owner, emit)
     events = sorted(found.values(), key=lambda e: (e["timestamp"], e["_pos"][0], e["_pos"][1],
                                                    e["eventId"]))
     return {**out, "events": events, "cursor": format_cursor((n_end, d_end)),
@@ -367,20 +369,39 @@ def _citations(store, owner, recs, decs, docs, emit) -> None:
                   "valid_until": vu, "superseded_by": sb}, row, counter)
 
 
-def _answered(runs: list[dict], emit) -> None:
+def _waiting(runs: list[dict], owner: str, emit) -> None:
+    """실행이 사람 앞에서 대기에 들어선 순간. 알림(푸시)이 읽으므로 행동 설명·질문·작업은 싣지 않고
+    id·스페이스·제목·만료만 싣는다. id 는 (실행, 질문 번호, 물은 때)에 묶인다."""
+    for row in runs:
+        props = _props(row.get("props"))
+        pending = props.get("pending") if isinstance(props.get("pending"), dict) else {}
+        at, role = str(pending.get("asked_at") or ""), role_id(props.get("role"))
+        if props.get("state") != "waiting" or not at or not role:
+            continue
+        run_id, ask = pkns.strip(row["id"]), int(props.get("asks") or 0)
+        emit("run.waiting", (run_id, ask, at),
+             {"run": run_id, "role": role, "space": owner, "title": _title(row.get("title")),
+              "ask": ask, "asked_at": at, "expires_at": str(pending.get("expires_at") or "")},
+             {**row, "ts": at}, "n")
+
+
+def _answered(runs: list[dict], owner: str, emit) -> None:
     """사람이 대기 중인 실행에 답한 순간. 답은 실행 기록 props 의 `answer`·`answered_at` 에 남는다.
-    같은 실행의 이후 단계가 기록을 고쳐도 id 는 (실행, 답한 때, 답)에 묶여 그대로다."""
+    같은 실행의 이후 단계가 기록을 고쳐도 id 는 (실행, 답한 때, 답)에 묶여 그대로다.
+    `via` 는 답이 온 길이다(person 은 서명된 세션, agent 는 도구 호출). 글 답(reply)의 본문은 싣지
+    않는다."""
     for row in runs:
         props = _props(row.get("props"))
         answer, at = props.get("answer"), str(props.get("answered_at") or "")
         role = role_id(props.get("role"))
-        if answer not in ("approve", "decline") or not at or not role:
+        if answer not in ("approve", "decline", "reply") or not at or not role:
             continue
         run_id = pkns.strip(row["id"])
         actions = [a for a in props.get("answered_actions") or [] if isinstance(a, str)]
         emit("run.answered", (run_id, at, answer),
              {"run": run_id, "role": role, "answer": answer, "answered_at": at,
-              "actions": actions}, {**row, "ts": at}, "n")
+              "actions": actions, "via": str(props.get("answer_via") or "agent"),
+              "space": owner, "title": _title(row.get("title"))}, {**row, "ts": at}, "n")
 
 
 def public(result: dict) -> dict:

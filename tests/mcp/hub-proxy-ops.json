@@ -48,6 +48,8 @@
     "promote-candidates",
     "recall",
     "roles",
+    "run-answer",
+    "runs-waiting",
     "search",
     "share",
     "suggest-ties",

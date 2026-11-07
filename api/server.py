@@ -787,6 +787,15 @@ class VincApp:
                                                    role=p.get("role"), run=p.get("run") or None,
                                                    flagged=flagged, limit=limit))
 
+    def read_waiting_runs(self, p):
+        """사람의 답을 기다리는 실행 목록(조회 전용). 계약: `api/runs.py` `waiting_runs`."""
+        from . import runs
+        try:
+            limit = runs.clamp_limit(p.get("limit"))
+        except ValueError as exc:
+            return 400, {"kind": "runs.waiting", "executed": False, "error": str(exc)}
+        return self._read(lambda r: runs.waiting_runs(r, owner=_req(p, "owner"), limit=limit))
+
     def read_agent_writes(self, p):
         """최근 쓰기를 출처별로 묶은 검토 목록(조회 전용). 계약: `api/agent_writes.py`."""
         from . import agent_writes
@@ -3101,6 +3110,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/operation-status": app.read_operation_status,
             "/events": app.read_events,   # 변경 기록에서 계산한 이벤트 피드
             "/runs": app.read_runs,   # 실행 기록 목록, 인용한 주장으로 거른다
+            "/runs/waiting": app.read_waiting_runs,   # 사람의 답을 기다리는 실행
             "/agent-writes": app.read_agent_writes,   # 최근 쓰기를 출처별로 묶은 검토(A5)
             "/eval-cards": app.read_eval_cards,   # 역할에 붙은 평가 카드
             "/community-agent/import-result": app.read_community_agent_result,

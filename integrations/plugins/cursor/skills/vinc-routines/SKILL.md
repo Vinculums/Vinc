@@ -12,7 +12,8 @@ Vinc emits four events for each Agent role:
 | `role.reading_changed` | a document the role must read was edited, retired or deleted |
 | `run.citation_superseded` | a claim one of the role's runs cited was retired |
 | `role.lesson_added` | a record or decision was attached to the role |
-| `run.answered` | a person approved or declined a run that was waiting for them |
+| `run.waiting` | one of the role's runs stopped for a person's decision |
+| `run.answered` | a run that was waiting for a person was approved, declined or replied to |
 
 A routine's webhook trigger starts one run per POST, with the request body as the run's input.
 Vinc's own signed webhooks first ask the receiver to echo a challenge, which a routine webhook

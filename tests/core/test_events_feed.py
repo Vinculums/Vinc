@@ -219,7 +219,8 @@ def test_run_answered_follows_the_answer_and_ignores_other_episodes(store):
     assert [e["name"] for e in got["events"]] == ["run.answered"]
     ev = got["events"][0]
     assert ev["data"] == {"run": "episode:run-ask-1", "role": ROLE, "answer": "approve",
-                          "answered_at": "2026-10-26T02:00:00Z", "actions": ["merge"]}
+                          "answered_at": "2026-10-26T02:00:00Z", "actions": ["merge"],
+                          "via": "agent", "space": OWNER, "title": "Run ask-1"}
     assert ev["timestamp"] == "2026-10-26T02:00:00Z"
     after = events.parse_cursor(got["cursor"])
     # 이후 단계가 같은 기록을 고쳐도 같은 id 가 다시 나온다(받는 쪽이 id 로 거른다).
@@ -228,6 +229,40 @@ def test_run_answered_follows_the_answer_and_ignores_other_episodes(store):
     again = scan(store, after, kinds=("run.answered",))
     assert [e["eventId"] for e in again["events"]] == [ev["eventId"]]
     assert scan(store, after, kinds=("run.answered",), role="agent-someone-else")["events"] == []
+
+
+def test_run_waiting_carries_no_action_text_and_run_answered_says_who_answered(store):
+    with_role(store)
+    start = events.parse_cursor(scan(store, None)["cursor"])
+    run = {"id": "episode:run-wait-1", "type": "episode", "title": "Run wait-1 of agent-x: waiting",
+           "date": "2026-11-07", "domain": "vinc/agent/harness",
+           "props": {"run_id": "wait-1", "role": ROLE, "state": "waiting", "outcome": "waiting",
+                     "asks": 1, "task": "secret task text",
+                     "pending": {"actions": ["merge"], "question": "Merge PR 12?",
+                                 "kind": "person_only", "asked_at": "2026-11-07T01:00:00Z",
+                                 "expires_at": "2026-11-07T02:00:00Z",
+                                 "requests": [{"action": "merge", "reason": "gh pr merge 12",
+                                               "kind": "person_only"}]}}}
+    ingest(store, [run])
+    got = scan(store, start, kinds=("run.waiting",))
+    assert [e["name"] for e in got["events"]] == ["run.waiting"]
+    data = got["events"][0]["data"]
+    assert data == {"run": "episode:run-wait-1", "role": ROLE, "space": OWNER,
+                    "title": "Run wait-1 of agent-x: waiting", "ask": 1,
+                    "asked_at": "2026-11-07T01:00:00Z", "expires_at": "2026-11-07T02:00:00Z"}
+    for text in ("gh pr merge", "Merge PR", "secret task"):
+        assert text not in str(got["events"][0])
+    after = events.parse_cursor(got["cursor"])
+    run["props"] = {"run_id": "wait-1", "role": ROLE, "state": "working", "outcome": "waiting",
+                    "asks": 1, "answer": "reply", "answered_at": "2026-11-07T01:10:00Z",
+                    "answered_actions": ["merge"], "answer_via": "person",
+                    "answered_by": "user:p", "answer_text": "use the release branch"}
+    ingest(store, [run])
+    both = scan(store, after, kinds=("run.waiting", "run.answered"))
+    assert [e["name"] for e in both["events"]] == ["run.answered"]
+    answered = both["events"][0]["data"]
+    assert answered["answer"] == "reply" and answered["via"] == "person"
+    assert "release branch" not in str(answered)
 
 
 def test_public_shape_drops_positions_and_bad_input_is_refused(store):
