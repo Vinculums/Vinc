@@ -1729,7 +1729,9 @@ export async function renderView(el: HTMLElement, resume = false) {
     // 그대로 "못 불러왔다"다 — 상자를 통일하는 것이지 사정을 뭉개는 것이 아니다
     // (여기에 "파일을 추가하세요"를 대면 백엔드가 죽었을 때 거짓 조언이 된다).
     if (!res.executed) { setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`); return; }
-    const nodes: GraphNode[] = res.nodes || [];
+    // 주제 설명의 문서 미러는 그 주제의 노드가 아니다(주제가 글을 못 담아 문서로 둔 것). 지도·트리·수에서 빼고
+    // 설명은 주제 상세가 보여 준다. 표시는 서버가 단다(`api/query.py` `_mark_topic_descriptions`)
+    const nodes: GraphNode[] = (res.nodes || []).filter((n) => !n.topic_description);
     if (nodes.length === 0) {
       // 전체가 비었으면 가져오기까지 붙인다 — 빈 첫 화면이 막다른 골목이면 안 된다.
       // CTA 를 **항상** 붙인다 — Sankey 가 그렇게 한다. 스코프가 좁아 비었을 때

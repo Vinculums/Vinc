@@ -2350,6 +2350,7 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
         # 브릿지 소속은 파생값이다 — 배치보다 **먼저** 확정해야 hub·rank 가 같은
         # 도메인을 읽는다(_derive_bridge_domains 주석).
         _derive_bridge_domains(shaped)
+        _mark_topic_descriptions(shaped, owner, cfg, store)
         # 씨앗이 있는 화면(L2, 한 노드의 이웃)에는 주제 마크를 안 낸다. 거기서의
         # 주어는 그 노드이고 담는 관계는 지도 **전체**를 볼 때의 뼈대라, 초점 화면에
         # 끼우면 ego 이웃이 아닌 것이 이웃인 척한다(테스트 넷이 이걸 잡았다).
@@ -2383,6 +2384,7 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
             rows += ax.get("rows", [])
     shaped = shape_graph(rows)
     _derive_bridge_domains(shaped)
+    _mark_topic_descriptions(shaped, owner, cfg, store)
     shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout,
                                        topic_marks=True, cone=cone)
     used = _apply_basis(shaped, basis)
@@ -6512,6 +6514,27 @@ def _norm_title(title: str) -> tuple[str, frozenset]:
 # ⚠ 결정용 `dec-*` 접두 규칙을 되살리지 말 것 — 결정은 이제 별도 라벨이고 이 조회는
 # `MATCH (c:Concept)` 이라 애초에 안 긁어온다(타입이 생기면 관례는 물러난다).
 _DOC_CONCEPT_PREFIX = "concept:doc."
+
+
+def _mark_topic_descriptions(shaped: dict, owner: str, cfg=None, store=None) -> None:
+    """주제 설명 문서의 미러에 ``topic_description: true`` 를 단다. 설명은 주제(Domain)가 글을
+    못 담아 문서로 두고 그 미러의 domain 으로 주제에 속한다(`api/topic_description.py`). 그래서
+    미러가 그 주제의 노드처럼 실려 온다. 화면은 이 표시로 그것을 지도·트리·수에서 뺀다
+    (설명 자체는 주제 상세가 보여 준다). 표시만 달고 노드를 빼지 않는다: 문서 읽기와 다른
+    소비자는 그대로 받는다."""
+    if not shaped.get("nodes") or not owner:
+        return
+    from api import topic_description
+    res = execute(QueryPlan("topic_description_mirrors",
+        "MATCH (d:_DocMeta) WHERE d.origin = $origin AND d.owner_id = $owner "
+        "RETURN d.doc_id AS doc_id", {"origin": topic_description.ORIGIN, "owner": owner},
+        note="topic description mirrors"), cfg, store=store)
+    if not res.get("executed"):
+        return
+    ids = {_DOC_CONCEPT_PREFIX + str(r["doc_id"]) for r in res.get("rows", []) if r.get("doc_id")}
+    for n in shaped["nodes"]:
+        if n.get("id") in ids:
+            n["topic_description"] = True
 
 
 def _structural_role(cid: str) -> str:
