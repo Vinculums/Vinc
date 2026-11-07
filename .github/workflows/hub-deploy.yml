@@ -57,9 +57,8 @@ jobs:
   # 채로 있다. 실제로 2026-08-30 에 #117 머지분이 그 상태로 남았다.
   #
   # 옮겨도 잃는 것이 없다는 근거: 인증은 OIDC(federated credential)이고 그 subject 는
-  # **리포와 ref** 지 실행 기계가 아니다. 그리고 이미지는 `az acr build` 가 **Azure
-  # 안에서** 짓는다(아래 build 스텝) — 러너에 도커도 빌드 캐시도 필요 없다. 이 잡들이
-  # 하는 일은 `az` 를 부르는 것뿐이라 어느 리눅스에서든 같다.
+  # **리포와 ref** 지 실행 기계가 아니다. 이미지는 이 러너가 짓고 민다(아래 build 스텝).
+  # 호스티드 러너에는 도커가 있으므로 어느 호스티드 리눅스에서든 같다.
   #
   # 대가는 정직하게 적는다: 여기서부터 **GitHub 분을 쓴다.** 배포 경로에만 붙는 비용이고
   # (경로 필터가 이미 있어 아무 push 나 오지 않는다), 그 대가로 배포가 사람의 기계에서
@@ -172,10 +171,13 @@ jobs:
   build-and-deploy:
     needs: plan
     if: needs.plan.outputs.deploy == 'true'
+    outputs:
+      verify_failed: ${{ steps.vsum.outputs.failed }}
     # 러너는 plan 과 같은 이유(그 잡 위의 문단들이 근거다).
     runs-on: ubuntu-latest
     # 실측 3분 52초. plan 위의 timeout 문단이 값의 근거와 이 설정의 한계를 함께 적는다.
-    timeout-minutes: 30
+    # 캐시가 빈 굽기(가중치에서 내보내기까지)는 그보다 훨씬 길어서 여유를 둔다.
+    timeout-minutes: 45
     # 이 잡이 내보내는 커밋. `github.sha` 가 아니다(파일 머리말).
     env:
       DEPLOY_SHA: ${{ needs.plan.outputs.sha }}
@@ -257,50 +259,78 @@ jobs:
       # 수 없다 — 전용 에이전트 풀은 Premium 기능이다. 그래서 **메모리를 쓰는 호출
       # 하나만** 이 러너로 옮겼다(호스티드 러너는 약 16GB).
       #
-      # 아티팩트는 아래 `az acr build … .` 의 끝 점이 빌드 컨텍스트로 올린다. 저장소도
+      # 아티팩트는 아래 `docker build … .` 의 끝 점이 빌드 컨텍스트로 담는다. 저장소도
       # 자격증명도 새 워크플로도 필요 없다. 검증은 이미지 안에 남아 있다 —
       # `Dockerfile.hub` 의 `RUN` 이 **COPY 된 그 바이트**를 열어 폭을 대조한다.
       #
       # ⚠ 세 값을 여기 하드코딩하지 않는다. 그러면 이 스텝이 Dockerfile ENV 의 **네
       # 번째 독자**가 되고, 두 CI 테스트(Dockerfile↔EMBEDDING_DIM_BY_MODEL, basename
       # 정확 일치)가 초록인 채로 갈릴 수 있다. Dockerfile 에서 읽어 쓴다.
-      # ⚠ **굽기는 캐시가 비었을 때만 한다.** 이 스텝이 배포마다 fp32 2.27GB 를 받아
-      # `quantize_dynamic` 을 돌렸고, 그 피크가 이 러너(WSL 몫 7.7GB)를 넘겼다. 죽는
-      # 것은 스텝만이 아니다 — 2026-09-18 과 2026-09-19 에 **러너 서비스 자체가
-      # oom-kill** 됐고, 유닛에 재시작 정책이 없어 하루 넘게 꺼진 채였다. 그동안 CI 와
-      # 배포 전부가 반쪽 풀에서 돌았다. 즉 이 스텝의 메모리 피크는 한 번의 실패가
-      # 아니라 **용량의 영구 손실**로 나타난다.
-      #
-      # 고치는 방향이 "메모리를 더 준다"가 아닌 이유: 호스트가 15.9GB 이고 WSL 은
-      # 기본으로 그 절반을 받는데, 나머지 절반은 윈도우와 Docker 가 쓴다. 늘려 봐야
-      # 스왑이다. 그래서 **같은 것을 두 번 굽지 않는** 쪽으로 간다.
+      # ⚠ **굽기는 캐시가 비었을 때만 한다.** 호스티드 러너는 빈 디스크로 뜨므로 캐시는
+      # 러너 로컬이 아니라 `actions/cache` 에 둔다(키당 한 벌, 약 0.6GB). 키는 모델·폭·굽는
+      # 스크립트다. 셋 중 하나라도 바뀌면 다시 굽는다.
       #
       # 장치는 이미 `packaging/bake_embed_model.py` 안에 있다: 산출물이 둘 다 있으면
       # `skip-bake` 로 빠지고 **검증만** 한다. 그러니 캐시가 할 일은 산출물을 제자리에
       # 갖다 놓는 것뿐이고, 검증(`verify_embedding_width`)은 캐시된 바이트에도 그대로
       # 돈다 — 잘린 파일이 조용히 통과하지 않는다는 성질을 잃지 않는다.
       #
-      # 키는 모델·폭·굽는 스크립트다. 셋 중 하나라도 바뀌면 다시 굽는다. 캐시는 러너
-      # 로컬 디스크에 둔다(업로드 없음) — 리눅스 러너 둘이 같은 WSL 의 같은 `runner`
-      # 계정이라 한 벌을 나눠 쓴다.
-      - name: 모델을 굽는다 (캐시가 비었을 때만 — 러너 로컬)
+      # 리포에 ONNX 가 없는 모델은 굽기가 가중치에서 내보내기부터 한다(`export_fp32`).
+      # 그 스택(torch·transformers)과 스왑은 캐시가 빌 때만 깐다. 판은 평가한 아티팩트를
+      # 만든 판 그대로이고, onnxruntime 은 Dockerfile.hub 의 런타임 판을 뽑아 쓴다.
+      # 근거: [[record:models-that-publish-no-onnx-are-exported-from-their-weights-before-the-hub-bake]]
+      - name: 굽기 키 (모델 · 폭 · 굽는 스크립트)
+        id: bake-key
+        run: |
+          set -euo pipefail
+          export $(grep -E '^ENV VINC_EMBED_(MODEL|MODEL_PATH|DIM)=' Dockerfile.hub | sed 's/^ENV //')
+          key="$(printf '%s|%s|%s' "$VINC_EMBED_MODEL" "$VINC_EMBED_DIM" \
+                   "$(sha256sum packaging/bake_embed_model.py | cut -d' ' -f1)" \
+                 | sha256sum | cut -c1-32)"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "dir=${VINC_BAKE_CACHE:-$HOME/.cache/vinc-bake}/$key" >> "$GITHUB_OUTPUT"
+
+      - name: 구운 모델을 캐시에서 불러온다
+        id: bake-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.bake-key.outputs.dir }}
+          key: vinc-bake-${{ steps.bake-key.outputs.key }}
+
+      - name: 모델을 굽는다 (캐시가 비었을 때만)
+        env:
+          BAKE_CACHE_DIR: ${{ steps.bake-key.outputs.dir }}
         run: |
           set -euo pipefail
           export $(grep -E '^ENV VINC_EMBED_(MODEL|MODEL_PATH|DIM)=' Dockerfile.hub | sed 's/^ENV //')
           name="$(basename "$VINC_EMBED_MODEL_PATH")"
-          key="$(printf '%s|%s|%s' "$VINC_EMBED_MODEL" "$VINC_EMBED_DIM" \
-                   "$(sha256sum packaging/bake_embed_model.py | cut -d' ' -f1)" \
-                 | sha256sum | cut -c1-32)"
-          cache="${VINC_BAKE_CACHE:-$HOME/.cache/vinc-bake}/$key"
+          cache="$BAKE_CACHE_DIR"
+          ort_pin=$(grep -m1 -oE 'onnxruntime==[0-9][0-9.]*' Dockerfile.hub || true)
+          [ -n "$ort_pin" ] || { echo "::error::Dockerfile.hub 에서 onnxruntime 판을 못 찾았다"; exit 1; }
           mkdir -p models
           if [ -s "$cache/$name" ] && [ -s "$cache/tokenizer.json" ]; then
             echo "캐시 적중: $cache"
             cp "$cache/$name" "$cache/tokenizer.json" models/
+            python -m pip install --quiet --disable-pip-version-check \
+              "$ort_pin" tokenizers numpy huggingface_hub
           else
             echo "캐시 없음 → 굽는다: $VINC_EMBED_MODEL → $name (폭 $VINC_EMBED_DIM)"
+            # 내보내기와 양자화는 fp32 를 통째로 올린다. 스왑 파일이 가중치와 같은 루트
+            # 디스크를 쓰므로 미리 깔린 툴체인부터 비운다(뒤 스텝이 쓰는 az·docker 는 남는다).
+            sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+            sudo swapoff -a
+            sudo rm -f /mnt/swapfile /swapfile
+            sudo fallocate -l 10G /swapfile
+            sudo chmod 600 /swapfile
+            sudo mkswap /swapfile > /dev/null
+            sudo swapon /swapfile
+            df -h /
+            free -g
+            python -m pip install --quiet --disable-pip-version-check \
+              torch==2.12.0 --index-url https://download.pytorch.org/whl/cpu
+            python -m pip install --quiet --disable-pip-version-check \
+              transformers==5.10.2 onnx onnxscript huggingface_hub "$ort_pin" numpy
           fi
-          python -m pip install --quiet --disable-pip-version-check \
-            onnx onnxruntime tokenizers numpy huggingface_hub
           # 컨테이너 절대경로를 컨텍스트 상대경로로 옮긴다. basename 은 Dockerfile 이
           # 정한 그대로 쓴다 — 그래야 `artifact_name(모델)` 대조가 계속 성립한다.
           # 캐시가 적중했으면 이 호출은 굽지 않고 검증만 한다(skip-bake).
@@ -315,91 +345,113 @@ jobs:
             echo "캐시에 넣었다: $cache"
           fi
           ls -la models
+          sha256sum "models/$name" models/tokenizer.json
           # The same commit can be rebuilt with different cached model bytes.
           # Bind both deployed roles to the actual ONNX and tokenizer artifact.
           artifact_hash=$(sha256sum "models/$name" models/tokenizer.json | sha256sum | cut -d' ' -f1)
           echo "VINC_ENCODER_BUILD=$DEPLOY_SHA-$artifact_hash" >> "$GITHUB_ENV"
 
-      - name: Build & push image (ACR Tasks)
-        run: |
-          az acr build \
-            --registry vincacr \
-            --build-arg "VINC_ENCODER_BUILD=$VINC_ENCODER_BUILD" \
-            --image "vinc-hub:$DEPLOY_SHA" \
-            --image vinc-hub:latest \
-            -f Dockerfile.hub .
+      # 방금 구웠을 때만 남긴다. 위 스텝이 검증까지 통과한 뒤라 반쪽 파일은 여기 오지 않는다.
+      - name: 구운 모델을 캐시에 남긴다
+        if: steps.bake-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.bake-key.outputs.dir }}
+          key: vinc-bake-${{ steps.bake-key.outputs.key }}
 
-      # ⚠ **순서가 데이터 무결성이다 — 구 리비전을 먼저 내리고 새 이미지를 올린다.**
-      #
-      # 두 번 이유가 바뀌었다. 처음에는 파일 락이었다: 둘이 같은 Azure Files 볼륨의
-      # DB 를 물어 새 리비전이 스토어를 못 열었다(`"driver": null` → 헬스 타임아웃).
-      # `VINC_STORE_LOCAL=on` 이 작업본을 컨테이너 로컬로 옮겨 그 락은 사라졌지만,
-      # **같은 자리에 더 조용한 고장이 들어섰다**(2026-08-19 실측, 3회 재현):
-      #
-      #   새 리비전 "store restore: restored"  ← 구 리비전 "final snapshot ok" 보다
-      #   22 · 24 · 43초 **앞선다**. 구 리비전의 마지막 주기 스냅샷 이후 쓰기는 그
-      #   최종 스냅샷에만 있는데, 새 리비전은 그것을 영영 읽지 않고 자기 스냅샷으로
-      #   덮는다. 배포마다 최대 `VINC_STORE_SNAPSHOT_EVERY` 초어치가 **무음으로**
-      #   사라진다(문서 1건과 노드·엣지를 실제로 잃었다 — [[vinc.ops.deployment]]).
-      #
-      # 롤링으로는 못 고친다. 플랫폼이 새 리비전의 헬스를 본 뒤에야 구 리비전에
-      # SIGTERM 을 보내므로, 새 리비전이 구 리비전을 기다리면 서로 막힌다(교착).
-      # 그래서 **배포 층에서 직렬화한다**: 내리고 → 최종 스냅샷을 기다리고 → 올린다.
-      # 단일 writer 라 배포당 1분 안팎의 다운타임은 원래 불가피하다.
-      - name: Stop old revision first (final snapshot must land before restore)
+      # ColBERT 투영. 굽기 스크립트를 건드리면 굽기 캐시 키가 바뀌어 모델을 다시 굽게 되므로
+      # 따로 받는다. 판과 해시는 `vinc_rag/colbert.py` 가 정본이고, 이미지 빌드의
+      # `python -m vinc_rag.colbert --check` 가 실은 바이트를 그 해시로 다시 대조한다.
+      - name: ColBERT 투영을 받는다
         run: |
           set -euo pipefail
-          APP="--name vinc-hub -g vincsRG"
-          actives=$(az containerapp revision list $APP --query "[?properties.active].name" -o tsv)
-          if [ -z "$actives" ]; then
-            echo "활성 리비전 없음 — 내릴 것이 없다"
-            exit 0
-          fi
-          for rev in $actives; do
-            echo "deactivating: $rev"
-            # 실패하면 **떨어진다**. 조용히 옛 순서로 되돌아가면 그 배포가 무엇을
-            # 삼켰는지 아무도 모른다 — 이 단계가 존재하는 이유가 그것이다.
-            az containerapp revision deactivate $APP --revision "$rev" --output none
-          done
-          # 내린 것의 이름을 다음 단계로 넘긴다. 재실행이면 되살릴 대상이 바로 이것이다.
-          echo "STOPPED_REVS=$(echo $actives)" >> "$GITHUB_ENV"
-          # ⚠ **활성 여부로 재면 안 된다.** `properties.active` 는 deactivate 즉시
-          # 뒤집히고 컨테이너 종료를 기다리지 않는다. 우리가 기다리는 것은 종료 훅이
-          # 최종 스냅샷을 볼륨에 쓰는 것이므로, 재야 하는 값은 **살아 있는 레플리카**다
-          # (entrypoint: SIGTERM → close(2s) → "final snapshot ok").
-          gone=0
-          for i in $(seq 1 20); do
-            act=$(az containerapp revision list $APP \
-                  --query "[?properties.active] | length(@)" -o tsv)
-            # 비활성 리비전의 replicas 는 null 로 오기도 한다 — 숫자만 더한다.
-            reps=$(az containerapp revision list $APP \
-                   --query "[].properties.replicas" -o tsv 2>/dev/null \
-                   | awk 'BEGIN{s=0} /^[0-9]+$/{s+=$1} END{print s}')
-            echo "  active=$act replicas=$reps"
-            if [ "$act" = "0" ] && [ "$reps" = "0" ]; then gone=1; break; fi
-            sleep 10
-          done
-          if [ "$gone" != "1" ]; then
-            echo "::error::구 리비전의 레플리카가 사라지지 않았다 — 최종 스냅샷을 기다릴 수 없다. 수동 확인 필요." >&2
-            exit 1
-          fi
-          # 레플리카가 사라진 것을 실제로 봤으므로 이 여유는 **볼륨 쓰기가 API 관측보다
-          # 늦을 경우**만 덮는다(Azure Files 는 로컬 파일시스템이 아니다).
-          sleep 10
-          echo "레플리카 0 확인 — 최종 스냅샷이 볼륨에 있다"
+          # 굽기 캐시가 맞으면 굽는 스텝이 건너뛰어져 huggingface_hub 가 없다. 여기서 직접 깐다.
+          python -m pip install --quiet --disable-pip-version-check huggingface_hub
+          export $(grep -E '^ENV VINC_COLBERT_LINEAR=' Dockerfile.hub | sed 's/^ENV //')
+          python - "models/$(basename "$VINC_COLBERT_LINEAR")" <<'PY'
+          import hashlib, shutil, sys
+          sys.path.insert(0, ".")
+          import huggingface_hub as hf
+          from vinc_rag.colbert import LINEAR_REVISION, LINEAR_SHA256
+          src = hf.hf_hub_download("BAAI/bge-m3", "colbert_linear.pt", revision=LINEAR_REVISION)
+          got = hashlib.sha256(open(src, "rb").read()).hexdigest()
+          if got != LINEAR_SHA256:
+              sys.exit(f"colbert_linear sha256 {got} != {LINEAR_SHA256}")
+          shutil.copy(src, sys.argv[1])
+          print("colbert_linear", sys.argv[1], got)
+          PY
+
+      # 이미지는 이 러너에서 짓고 vincacr 로 민다. ACR Tasks 는 빌드 vCPU 초를 따로 청구하는데
+      # 이 잡은 그 원격 빌드를 기다리는 동안에도 러너 분을 쓴다. 구운 모델도 이미 이 디스크에
+      # 있다. 태그 둘과 빌드 인자를 바꾸면 아래 스텝들이 읽는 이미지 이름이 어긋난다.
+      - name: Build & push image (runner)
+        run: |
+          set -euo pipefail
+          az acr login --name vincacr
+          docker build \
+            --build-arg "VINC_ENCODER_BUILD=$VINC_ENCODER_BUILD" \
+            -t "vincacr.azurecr.io/vinc-hub:$DEPLOY_SHA" \
+            -t vincacr.azurecr.io/vinc-hub:latest \
+            -f Dockerfile.hub .
+          docker push "vincacr.azurecr.io/vinc-hub:$DEPLOY_SHA"
+          docker push vincacr.azurecr.io/vinc-hub:latest
+
+      # ── 리비전 전환: 구 리비전을 먼저 내리지 않는다 ──────────────────────────────
+      # 단일 writer 의 순서는 배포 층이 아니라 기동 순서가 지킨다. 새 리비전의 MCP 가 먼저
+      # 포트를 열고 요청을 붙잡는다 → 플랫폼이 트래픽을 넘기고 구 리비전에 SIGTERM →
+      # 구 리비전이 최종 스냅샷을 올리고 넘김 표식을 쓴다 → 새 리비전은 그 표식을 본 뒤에야
+      # 복원한다. 그래서 복원은 언제나 최종 스냅샷 뒤에 오고(인과), 그사이 요청은 실패하지
+      # 않고 기다린다. 아래 "writer 인계 확인" 스텝이 표식으로 그것을 대조한다.
+      # 근거: [[vinc.plan.hub-writer-handoff-2026-10-17]]
+      #
+      # 종료 유예는 60초로 둔다. 구 리비전이 사이드카를 닫고(최대 VINC_SIDECAR_STOP_WAIT_S)
+      # 최종 스냅샷을 올릴 시간이다. 유예는 리비전 단위 값이라 이번 배포의 새 리비전부터 걸린다.
+      # 장애 감시에 허브 배포 창을 연다. 창이 열린 동안 허브 실패는 장애 메일을 열지 않는다.
+      # 토큰이 없거나 호출이 실패해도 배포는 계속한다. 닫기는 인계 확인 바로 앞의 always 스텝.
+      # 규칙과 근거는 scripts/incident_window.sh 머리말에 있다.
+      - name: Incident window open (a planned deploy must not page)
+        env:
+          INCIDENT_MAINTENANCE_TOKEN: ${{ secrets.INCIDENT_MAINTENANCE_TOKEN }}
+        # 체크아웃이 이 스크립트보다 오래된 커밋일 수 있다(계획 잡이 고른 커밋). 파일이 없으면 건너뛴다.
+        continue-on-error: true
+        run: |
+          if [ -f scripts/incident_window.sh ]; then bash scripts/incident_window.sh open hub "hub-deploy-${{ github.run_id }}"; else echo "::notice::this checkout has no scripts/incident_window.sh, so no incident window"; fi
+
+      - name: Read probe through the switch (start)
+        env:
+          PROBE_TOKEN: ${{ secrets.VINC_MCP_TOKEN }}
+        run: |
+          set -euo pipefail
+          : > "$RUNNER_TEMP/read-probe.log"
+          nohup sh -c '
+            while [ ! -f "$RUNNER_TEMP/read-probe.stop" ]; do
+              code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 100 \
+                https://vinc-hub.grayplant-559d42e3.koreacentral.azurecontainerapps.io/mcp \
+                -X POST -H "Authorization: Bearer $PROBE_TOKEN" -H "Content-Type: application/json" \
+                -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}" || true)
+              echo "$(date +%s) $code" >> "$RUNNER_TEMP/read-probe.log"
+              sleep 2
+            done' > /dev/null 2>&1 &
+          echo "read probe started"
 
       - name: Deploy to Container Apps
         run: |
           set -euo pipefail
           APP="--name vinc-hub -g vincsRG"
           IMAGE="vincacr.azurecr.io/vinc-hub:$DEPLOY_SHA"
-          # ⚠ 여기서 실패하면 **허브가 내려간 채로 남는다** — 앞 단계가 구 리비전을
-          # 이미 내렸기 때문이다. `set -e` 로 그냥 죽으면 az 오류만 남고, 지금 서비스가
-          # 멈춰 있다는 사실도 되살리는 방법도 아무 데도 안 적힌다. 가장 위험한 창이라
-          # 라벨을 붙인다.
-          # 허브 env 는 **여기서만** 바꾼다. 앞 단계가 구 리비전을 내리고 레플리카 0 을
-          # 본 뒤라 새 리비전과 겹치지 않는다 — 콘솔이나 bare `az containerapp update
-          # --set-env-vars` 는 두 리비전을 겹쳐 돌려 09-04 유실과 같은 모양이 된다.
+          prev=$(az containerapp show $APP --query "properties.latestRevisionName" -o tsv)
+          echo "PREV_REV=$prev" >> "$GITHUB_ENV"
+          echo "serving revision: $prev"
+          # 인코더는 허브 컨테이너 안에서 돈다(2 CPU·4 GiB). 원격 인코더 env 가 아직 있으면 이번
+          # 갱신에서 뺀다 — 있을 때만 넘긴다(없는 이름을 지우라고 하지 않는다).
+          RMARGS=()
+          have=$(az containerapp show $APP --query "properties.template.containers[0].env[].name" -o tsv)
+          for n in VINC_EMBED_REMOTE VINC_EMBED_ENCODE_TOKEN; do
+            if printf '%s\n' "$have" | grep -qx "$n"; then RMARGS+=("$n"); fi
+          done
+          [ "${#RMARGS[@]}" = 0 ] || RMARGS=(--remove-env-vars "${RMARGS[@]}")
+          # 허브 env 는 **여기서만** 바꾼다. 콘솔이나 bare `az containerapp update
+          # --set-env-vars` 는 이 워크플로의 직렬화(concurrency hub-deploy)를 비켜 간다.
           # 리포 변수 VINC_QUOTA_EXEMPT_OWNERS 가 비어 있으면 env 는 건드리지 않는다.
           ENVVARS=()
           if [ -n "${{ vars.VINC_QUOTA_EXEMPT_OWNERS }}" ]; then
@@ -408,61 +460,59 @@ jobs:
           # 임베딩 적용 멈춤 스위치. 위와 달리 **매번 싣는다**: 변수를 비우면 off 가
           # 들어가 멈춤이 풀린다(건너뛰면 한 번 켠 on 이 env 에 영영 남는다).
           ENVVARS+=("VINC_EMBED_APPLY_PAUSED=${{ vars.VINC_EMBED_APPLY_PAUSED || 'off' }}")
+          # 스페이스당 분당 툴 호출 상한(모든 플랜 같음). 매번 싣고, 변수가 비면 60 이다.
+          ENVVARS+=("VINC_BURST_PER_MINUTE=${{ vars.VINC_BURST_PER_MINUTE || '60' }}")
           ENVVARS+=("VINC_TOPIC_CONVERSION=1")
+          # 이벤트 웹훅 전달 스위치. 매번 싣는다: 변수를 비우면 off 가 들어가 꺼진다. 켜면 허브가
+          # 구독자가 알린 주소로 서명한 요청을 내보낸다(바깥 연결). 켜는 것은 사람이 정한다.
+          # 근거: [[vinc.plan.mcp-events-and-webhooks]]
+          ENVVARS+=("VINC_EVENTS_WEBHOOK=${{ vars.VINC_EVENTS_WEBHOOK || 'off' }}")
+          # 임베딩 적용이 청크 벡터 색인을 버리지 않고 이어 넣는다(질의는 배타 가드 안). 매번 싣는다:
+          # 리포 변수를 off 로 두면 다음 배포부터 예전처럼 드롭한다(되돌리는 스위치).
+          # 근거: [[record:keep-index-mode-survived-104-trials-on-ladybug-0-21-2-at-two-cores-while-the-unguarded-control-crashed-1-of-20-2026-10-18]]
+          ENVVARS+=("VINC_KEEP_VECTOR_INDEX=${{ vars.VINC_KEEP_VECTOR_INDEX || 'on' }}")
+          # 노드 후보 ColBERT 재채점과 brief 학습 규칙. 매번 싣는다: 변수를 비우면 꺼진 값이 들어가
+          # 다음 배포부터 예전 순서·규칙으로 돌아간다(되돌리는 스위치). 둘은 따로 켠다.
+          # 근거: [[vinc.spec.retrieval-knobs-storage]] · [[vinc.spec.retrieval-knobs-brief]]
+          ENVVARS+=("VINC_NODE_COLBERT=${{ vars.VINC_NODE_COLBERT || 'off' }}")
+          ENVVARS+=("VINC_BRIEF_RULE=${{ vars.VINC_BRIEF_RULE || 'production' }}")
           if [ "${LAYOUT_PRESENT:-0}" = '1' ]; then
             ENVVARS+=("VINC_LAYOUT_REMOTE=$LAYOUT_REMOTE" "VINC_LAYOUT_TOKEN=secretref:layout-token")
           fi
           # Azure keeps only the last occurrence of this option. Pass all values once.
           ENVARGS=(--set-env-vars "${ENVVARS[@]}")
-          # ⚠ 이 update 가 앞 단계에서 내린 구 리비전을 **한 번 더 띄운다.** 단일 리비전
-          # 모드의 롤링 전환은 새 리비전이 준비될 때까지 구 리비전에 트래픽 100% 를
-          # 되돌리고, 그것은 /data 에서 복원해 1분쯤 살다가 두 번째 최종 스냅샷을 쓰려
-          # 한다. 그 쓰기는 스토어의 쓰기 울타리가 막는다(store/persistence.py claim_writer).
-          # 근거: [[record:aca-reboots-the-stopped-hub-revision-during-every-deploy-and-it-writes-a-late-final-snapshot-2026-09-25]]
-          if ! az containerapp update $APP --image "$IMAGE" "${ENVARGS[@]}" --output none; then
-            echo "::error::이미지 갱신 실패 — **허브는 지금 내려가 있다**(앞 단계가 구 리비전을 내렸다)." >&2
-            echo "데이터는 최종 스냅샷까지 안전하다. 서비스만 멈춰 있으므로 마지막 정상 리비전을 되살릴 것:" >&2
-            echo "  az containerapp revision activate --name vinc-hub -g vincsRG --revision ${STOPPED_REVS:-<이름>}" >&2
+          if ! az containerapp update $APP --image "$IMAGE" --termination-grace-period 60 --cpu 2 --memory 4Gi ${RMARGS[@]+"${RMARGS[@]}"} "${ENVARGS[@]}" --output none; then
+            echo "::error::이미지 갱신 실패 — 허브는 구 리비전($prev)으로 계속 서비스한다." >&2
             exit 1
           fi
           latest=$(az containerapp show $APP --query "properties.latestRevisionName" -o tsv)
           echo "latest revision: $latest"
+          echo "LATEST_REV=$latest" >> "$GITHUB_ENV"
 
-          # ⚠ **같은 SHA 로 다시 돌리면 새 리비전이 안 생긴다.** 이미지 태그가 커밋 SHA라
-          # 템플릿이 그대로여서 update 가 no-op 이고, 그러면 latest 는 위 단계가 방금
-          # 내린 바로 그 리비전이다. 아래 대기 루프는 영원히 Stopped 를 보다 8분 뒤 죽고,
-          # 그 사이 허브는 내려가 있다 — 2026-09-02 00:16 에 정확히 그렇게 죽었다
-          # (23:56 push 로 0000124 가 뜬 뒤, 같은 SHA 로 workflow_dispatch).
-          # 재실행이 자살 버튼이 되는 것은 "먼저 내린다"(#50)의 빠진 짝이었다.
-          # 그 경우 올바른 배포는 방금 내린 그것을 도로 올리는 것이다 — 이미지가 같으므로
-          # 이것은 롤백이 아니라 원래 하려던 배포 그 자체다.
-          case " ${STOPPED_REVS:-} " in
-            *" $latest "*)
-              echo "새 리비전이 생기지 않았다(이미지 동일) — 방금 내린 $latest 를 도로 올린다"
-              az containerapp revision activate $APP --revision "$latest" --output none
-              ;;
-          esac
+          # 같은 SHA 로 다시 돌리면 템플릿이 그대로라 새 리비전이 안 생긴다(no-op). 구
+          # 리비전이 그대로 서비스 중이므로 할 일이 없다 — 인계도 없다.
+          if [ "$latest" = "$prev" ]; then
+            echo "새 리비전이 생기지 않았다(이미지 동일) — $prev 가 계속 서비스한다"
+            echo "HANDOFF_EXPECTED=0" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          echo "HANDOFF_EXPECTED=1" >> "$GITHUB_ENV"
 
-          for i in $(seq 1 30); do
+          for i in $(seq 1 40); do
             st=$(az containerapp revision show $APP --revision "$latest" --query "properties.runningState" -o tsv 2>/dev/null || echo "?")
-            echo "  state: $st"
-            case "$st" in Running|RunningAtMaxScale) exit 0 ;; esac
+            old=$(az containerapp revision show $APP --revision "$prev" --query "properties.replicas" -o tsv 2>/dev/null || echo "?")
+            echo "  new=$st old_replicas=${old:-0}"
+            case "$st" in Running|RunningAtMaxScale)
+              case "${old:-0}" in 0|None) exit 0 ;; esac ;;
+            esac
             sleep 15
           done
-          # ⚠ 여기의 처방은 **틀려 있었다**: "옛 리비전을 activate" 는 이 앱에서 서비스를
-          # 되살리지 못한다. activeRevisionsMode 가 Single 이라 인그레스는 언제나 latest
-          # 로만 보낸다(traffic: latestRevision=true, weight=100) — 옛 것을 올려도 트래픽이
-          # 안 간다. 새 리비전을 만들어 latest 를 바꿔야 하므로 처방은 update 다.
-          # 자동으로 하지 않는 이유: 못 뜬 리비전은 부팅 중 스토어를 반쯤 만졌을 수 있고,
-          # 그 상태에서 구 이미지를 자동으로 올리면 구 코드가 신 포맷을 읽는다(이 파일
-          # 머리말의 포맷 변경 경고와 같은 창). 사람이 보고 판단할 자리다.
-          prev=$(echo "${STOPPED_REVS:-}" | awk '{print $NF}')
-          echo "::error::새 리비전이 기동하지 못했다 — 허브는 지금 내려가 있다." >&2
-          echo "데이터는 최종 스냅샷까지 안전하다. 되살리려면 **구 이미지로 새 리비전을 만든다**:" >&2
-          if [ -n "$prev" ]; then
-            echo "  img=\$(az containerapp revision show -n vinc-hub -g vincsRG --revision $prev --query 'properties.template.containers[0].image' -o tsv)" >&2
-            echo "  az containerapp update -n vinc-hub -g vincsRG --image \"\$img\"" >&2
-          fi
+          # 단일 리비전 모드는 새 리비전이 준비되기 전까지 트래픽을 구 리비전에 둔다. 새 것이
+          # 끝내 못 뜨면 구 것이 계속 서비스하므로 허브는 내려가 있지 않다. 다만 반쯤 뜬 새
+          # 리비전이 스토어를 만졌을 수 있으니 구 이미지로 되돌리는 것은 사람이 보고 정한다.
+          echo "::error::새 리비전 $latest 이 10분 안에 서지 않았다(구 리비전 $prev 상태를 확인할 것)." >&2
+          echo "  img=\$(az containerapp revision show -n vinc-hub -g vincsRG --revision $prev --query 'properties.template.containers[0].image' -o tsv)" >&2
+          echo "  az containerapp update -n vinc-hub -g vincsRG --image \"\$img\"" >&2
           exit 1
 
       # 인코더는 같은 이미지를 쓴다 — 접두·풀링·양자화 규약이 한 파일에 있고, 허브와
@@ -486,14 +536,12 @@ jobs:
             echo "ENCODE_PRESENT=0" >> "$GITHUB_ENV"
             exit 0
           fi
-          # --min-replicas 1: 콜드스타트 26.5초가 검색 아홉 건을 조용히 전문검색으로
-          # 강등시키던 것을 월 23.33달러(유휴 요율)로 없앤다. 배포마다 다시 단언하므로
-          # 포털에서 0으로 되돌려도 다음 배포가 되살린다. 기준선(app-config-baseline.json)은
-          # 같은 커밋에서 1로 옮겼다. 아래 드리프트 게이트가 이 스텝 뒤에 돈다.
-          # 근거: [[decision:vinc-encode-holds-one-replica]]
+          # --min-replicas 0: 허브가 인코더를 제 컨테이너 안에 들었으므로 vinc-encode 를 부르는 쪽이
+          # 없다. 같은 이미지를 유지한 채(되돌릴 때 그대로 쓰도록) 유휴 레플리카 0 으로 둔다.
+          # 기준선(app-config-baseline.json)도 같은 커밋에서 0 이다.
           python scripts/reconcile_encoder_update.py \
-            --image "vincacr.azurecr.io/vinc-hub:$DEPLOY_SHA"
-          echo "vinc-encode 갱신: $DEPLOY_SHA (minReplicas 1)"
+            --image "vincacr.azurecr.io/vinc-hub:$DEPLOY_SHA" --min-replicas 0
+          echo "vinc-encode 갱신: $DEPLOY_SHA (minReplicas 0)"
 
       - name: 두 앱이 같은 이미지인가 (인코더 공간 일치)
         # 위 스텝이 성공을 보고해도 갱신이 라이브에 반영됐는지는 별개다. 여기서 다시
@@ -512,27 +560,67 @@ jobs:
           }
           echo "인코더 공간 일치 확인"
 
+      # 리비전이 Running 이 되는 것은 MCP 가 붙잡기 모드로 포트를 연 순간이다 — 스토어는
+      # 그 뒤 writer 인계를 기다렸다가 복원된다. 그래서 첫 응답이 붙잡힌 끝의 503 일 수 있고,
+      # 앱이 설 때까지 되묻는다. 뒤의 검증 스텝들은 이 스텝이 통과한 뒤라 준비된 허브를 본다.
       - name: Verify health (MCP tools/list)
         run: |
           sleep 15
-          curl -sf https://vinc-hub.grayplant-559d42e3.koreacentral.azurecontainerapps.io/mcp \
-            -X POST -H "Authorization: Bearer ${{ secrets.VINC_MCP_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' \
-            | grep -q '"tools"'
+          deadline=$(( $(date +%s) + 360 ))
+          i=0
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            i=$((i + 1))
+            code=$(curl -s -o "$RUNNER_TEMP/tools.json" -w '%{http_code}' --max-time 100 \
+              https://vinc-hub.grayplant-559d42e3.koreacentral.azurecontainerapps.io/mcp \
+              -X POST -H "Authorization: Bearer ${{ secrets.VINC_MCP_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' || true)
+            if [ "$code" = "200" ] && grep -q '"tools"' "$RUNNER_TEMP/tools.json"; then
+              echo "tools/list 200 (시도 $i)"; exit 0
+            fi
+            echo "  tools/list $code — 아직 준비 중, 다시 묻는다"
+            sleep 15
+          done
+          echo "::error::허브가 tools/list 에 답하지 않는다" >&2
+          exit 1
+
+      - name: Read probe through the switch (result)
+        if: always()
+        run: |
+          touch "$RUNNER_TEMP/read-probe.stop"
+          sleep 3
+          log="$RUNNER_TEMP/read-probe.log"
+          [ -s "$log" ] || { echo "read probe: no samples"; exit 0; }
+          total=$(wc -l < "$log")
+          bad=$(awk '$2 != "200"' "$log" | wc -l)
+          span=$(awk '$2 != "200" { if (!s) s=$1; e=$1; next } { if (s) { d=e-s; if (d>m) m=d; s=0 } } END { if (s) { d=e-s; if (d>m) m=d } print m+0 }' "$log")
+          echo "read probe: $bad of $total requests were not 200 (longest run of failures: ${span}s)"
+          {
+            echo "### Read probe through the switch"
+            echo
+            echo "- requests: $total, not 200: $bad, longest failing run: ${span}s"
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "$bad" = "0" ] || echo "::warning::read probe saw $bad failed requests during the deploy"
 
       # ⚠ tools/list 200 은 **OAuth 가 살아있다는 증거가 아니다.** 정적 bearer 로 붙기
       # 때문에 OAuth 가 통째로 꺼져도 통과한다 — 2026-07-30 사고가 정확히 그 상태였다
       # (`/health` 200 · tools/list 200 · 그런데 커넥터는 전면 불가).
       # 그래서 커넥터가 실제로 밟는 discovery 경로를 공개 도메인으로 확인한다.
       # DEPLOYMENT.md §4.4.2 의 수기 점검을 CD 로 옮긴 것.
+      # VINC_GRAPH_SPACE(저장소 변수, 팀 uuid)가 있으면 검색 확인과 인용 대조가 그 팀을 읽는다.
+      # 비어 있으면 개인 그래프다. vinc 토픽이 팀으로 옮겨 가면 그 팀 id 를 넣는다.
       - name: Verify temporal search through the existing read only account key
+        id: v_search
+        continue-on-error: true
         env:
           VINC_GRAPH_READONLY_KEY: ${{ secrets.VINC_GRAPH_READONLY_KEY }}
           VINC_MCP_TOKEN: ${{ secrets.VINC_MCP_TOKEN }}
+          VINC_GRAPH_SPACE: ${{ vars.VINC_GRAPH_SPACE }}
         run: python scripts/verify_search_temporal_remote.py
 
       - name: Verify connector surface (OAuth discovery)
+        id: v_oauth
+        continue-on-error: true
         run: |
           set -euo pipefail
           code=$(curl -s -o /dev/null -w '%{http_code}' \
@@ -551,6 +639,27 @@ jobs:
             *'resource_metadata="https://'*) echo "  connector surface OK" ;;
             *) echo "::error::WWW-Authenticate 가 https 가 아니다: $hdr" >&2; exit 1 ;;
           esac
+
+      # 허브 내부 경로가 앱까지 닿는가. 서명 없는 POST 는 앱이 401 과 JSON `unauthorized` 로 답해야 한다.
+      # 앞문이 가로채면 본문이 JSON 이 아니고, 인증을 건너뛰는 회귀면 401 이 아니다. 이 불변식은 허브
+      # 배포에서만 바뀌므로 상시 가용성 테스트 대신 배포 직후 한 번 본다. 읽기 경로만 찌른다:
+      # purge-* 는 파괴적이라 인증이 빠진 회귀에서 이 검사 자신이 사고가 된다.
+      - name: Verify the hub internal path is answered by the app
+        id: v_internal
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          code=$(curl -s -m 30 -D /tmp/internal.h -o /tmp/internal.b -w '%{http_code}' -X POST \
+                 https://mcp.vincs.io/internal/graph-owner -H 'Content-Type: application/json' -d '{}')
+          ctype=$(tr -d '\r' < /tmp/internal.h | grep -i '^content-type:' | head -1 || true)
+          echo "  HTTP $code  $ctype"
+          [ "$code" = "401" ] || { echo "::error::/internal/graph-owner 가 $code 다. 서명 없는 호출은 401 이어야 한다" >&2; exit 1; }
+          case "$ctype" in
+            *application/json*) ;;
+            *) echo "::error::401 을 앱이 아니라 앞문이 냈다(본문이 JSON 이 아니다)" >&2; exit 1 ;;
+          esac
+          grep -q unauthorized /tmp/internal.b || { echo "::error::401 본문에 unauthorized 가 없다" >&2; exit 1; }
+          echo "  internal path answered by the app"
 
       # ── 레지스트리 정리 ─────────────────────────────────────────────────────
       # 왜 여기 생겼나. 배포마다 `:latest` 와 `:<sha>` 두 태그를 밀고 **아무것도 안
@@ -574,6 +683,8 @@ jobs:
       # 같은 커밋에 갱신한다. 08-30 사고(excludedPaths 소실, 경보도 배포도 초록)가
       # 이 게이트의 존재 이유다. 포털 수동 변경은 다음 배포의 이 스텝에서 걸린다.
       - name: 저장 배치가 계정 경로에서 ready이고 그래프 표식과 맞는가
+        id: v_layout
+        continue-on-error: true
         if: env.LAYOUT_PRESENT == '1'
         env:
           VINC_GRAPH_READONLY_KEY: ${{ secrets.VINC_GRAPH_READONLY_KEY }}
@@ -593,6 +704,8 @@ jobs:
           retention-days: 7
 
       - name: App config drift gate (구조 기준선 대조)
+        id: v_drift
+        continue-on-error: true
         run: python3 scripts/gate_app_config.py
 
       # 기동 중 미러 교체는 읽기에도 store_busy를 낸다. 완료 상태를 먼저 관측해
@@ -628,8 +741,11 @@ jobs:
       # W18 스코프 키 분리의 요지다. 시크릿 미설정이면 건너뛰되 조용하지 않게
       # 말한다(넣는 순간 저절로 작동한다).
       - name: Graph citation liveness (라이브 인용 대조)
+        id: v_cite
+        continue-on-error: true
         env:
           VINC_REMOTE_MCP_TOKEN: ${{ secrets.VINC_GRAPH_READONLY_KEY }}
+          VINC_GRAPH_SPACE: ${{ vars.VINC_GRAPH_SPACE }}
         run: |
           if [ -z "$VINC_REMOTE_MCP_TOKEN" ]; then
             echo "::notice::VINC_GRAPH_READONLY_KEY 시크릿 미설정 — 라이브 인용 대조를 건너뛴다. vinc_ro_* 키를 발급해 시크릿에 넣으면 이 스텝이 작동한다."
@@ -698,6 +814,53 @@ jobs:
           echo "  ⚠ 이 용량은 방금 삭제분을 아직 안 담는다 — ACR 레이어 회수가 지연된다."
           echo "  실제 감소는 다음 배포의 이 줄에서 보인다."
 
+      # 배포 창을 닫는다. 앞 스텝이 실패해도 닫아야 한다 — 배포가 허브를 망가뜨렸다면 감시가
+      # 그 장애를 바로 열어야 하기 때문이다. 인계 확인이 잡의 마지막이어야 해서 그 앞에 둔다.
+      - name: Incident window close
+        if: always()
+        env:
+          INCIDENT_MAINTENANCE_TOKEN: ${{ secrets.INCIDENT_MAINTENANCE_TOKEN }}
+        # 체크아웃이 이 스크립트보다 오래된 커밋일 수 있다(계획 잡이 고른 커밋). 파일이 없으면 건너뛴다.
+        continue-on-error: true
+        run: |
+          if [ -f scripts/incident_window.sh ]; then bash scripts/incident_window.sh close hub; else echo "::notice::this checkout has no scripts/incident_window.sh, so no incident window"; fi
+
+      # writer 인계 확인. 헬스가 통과했다는 것은 새 리비전이 복원을 마치고 자격을 가져갔다는
+      # 뜻이다. 남은 질문은 "구 리비전이 넘긴 **뒤에** 복원했는가"이고, 영속 공유의 표식이
+      # 그것을 적는다: `.writer` 가 새 리비전, `.released` 가 구 리비전이어야 한다.
+      # `.released` 가 다르면 새 리비전이 대기 상한에서 그대로 진행한 것이다 — 구 리비전의
+      # 마지막 주기 스냅샷 이후 쓰기가 빠졌을 수 있으므로 빨강으로 남겨 사람이 본다.
+      # 잡의 **맨 끝**에 두고 취소가 아니면 늘 돈다. 앞에 두면 이 빨강이 뒤의 검증(OAuth
+      # 표면·구조 기준선·인용 생존·레지스트리 정리)을 통째로 건너뛰게 한다 — 인계가 늦었을
+      # 뿐 서비스는 떠 있는데, 정작 서비스를 확인하는 스텝들이 안 돈다.
+      - name: Verify writer handoff (markers on the persistent share)
+        id: v_handoff
+        continue-on-error: true
+        if: ${{ !cancelled() && env.HANDOFF_EXPECTED == '1' }}
+        run: |
+          set -euo pipefail
+          p=$(az containerapp show -n vinc-hub -g vincsRG \
+                --query "properties.template.containers[0].env[?name=='VINC_STORE_SNAPSHOT'].value | [0]" -o tsv)
+          [ -n "$p" ] || p=$(az containerapp show -n vinc-hub -g vincsRG \
+                --query "properties.template.containers[0].env[?name=='VINC_DATA_DIR'].value | [0]" -o tsv)
+          case "$p" in /data/*) ;; *) echo "::error::스냅샷 경로가 /data 밖이다: $p" >&2; exit 1 ;; esac
+          rel=${p#/data/}
+          for m in writer released; do
+            az storage file download --account-name vinchubssd01 --share-name hub-data \
+              --path "$rel.$m" --dest "$RUNNER_TEMP/handoff.$m" --output none 2>/dev/null \
+              || : > "$RUNNER_TEMP/handoff.$m"
+          done
+          # 표식 값은 `<리비전>@<레플리카>` 다. 대조는 리비전만 본다.
+          w=$(tr -d '[:space:]' < "$RUNNER_TEMP/handoff.writer"); w=${w%%@*}
+          r=$(tr -d '[:space:]' < "$RUNNER_TEMP/handoff.released"); r=${r%%@*}
+          echo "writer=$w released=$r (expected writer=$LATEST_REV released=$PREV_REV)"
+          [ "$w" = "$LATEST_REV" ] || { echo "::error::writer 가 새 리비전이 아니다" >&2; exit 1; }
+          [ "$r" = "$PREV_REV" ] || {
+            echo "::error::구 리비전($PREV_REV)이 넘기지 못했다 — 새 리비전이 대기 상한에서 진행했다." >&2
+            echo "새 리비전 로그의 'vinc: handoff' 줄과 구 리비전의 'final snapshot' 줄을 볼 것." >&2
+            exit 1; }
+          echo "writer 인계 확인"
+
   # ── 배포 실패를 조용히 두지 않는다 ─────────────────────────────────────────
   # 🔴 2026-09-18 이 잡의 이유다. `8c7e363` 의 배포가 모델 굽기에서 exit 137 로
   # 죽었고(러너 메모리 부족), **허브가 만 하루 넘게 옛 이미지로 남았는데 아무도
@@ -723,6 +886,25 @@ jobs:
   # (런은 초록이다). 그대로 두면 2026-09-18 과 같은 모양으로 조용하다. 그래서
   # `withheld` 가 차 있으면 초록 런에서도 이슈를 연다. 제목 머리가 같으므로 CI 가 다시
   # 초록이 되어 그 커밋을 포함한 배포가 나가면 `close-report` 가 닫는다.
+      # 전환 뒤의 확인은 배포의 결과를 바꾸지 않는다. 리비전은 이미 서비스 중이고, 여기서 빨강은
+      # "확인하지 못했다" 다. 실패한 확인은 verify-report 가 따로 이슈로 올린다(report 는 전환 실패만).
+      - name: Verification summary
+        id: vsum
+        if: ${{ !cancelled() }}
+        env:
+          R: >-
+            v_search=${{ steps.v_search.outcome }}
+            v_oauth=${{ steps.v_oauth.outcome }}
+            v_internal=${{ steps.v_internal.outcome }}
+            v_layout=${{ steps.v_layout.outcome }}
+            v_drift=${{ steps.v_drift.outcome }}
+            v_cite=${{ steps.v_cite.outcome }}
+            v_handoff=${{ steps.v_handoff.outcome }}
+        run: |
+          failed=$(echo "$R" | tr ' ' '\n' | grep '=failure$' | cut -d= -f1 | paste -sd, -)
+          echo "failed=$failed" >> "$GITHUB_OUTPUT"
+          if [ -z "$failed" ]; then echo "every post-switch check passed"; else echo "::warning::post-switch checks failed: $failed (the new revision is serving)"; fi
+
   report:
     needs: [plan, build-and-deploy]
     if: failure() || needs.plan.outputs.withheld != ''
@@ -799,6 +981,33 @@ jobs:
   # 그대로 돌아온다. 제목에서 커밋을 못 읽으면(사람이 연 이슈 등) 열어 둔다.
   #
   # 러너·토큰·REST(curl) 는 `report` 와 같고 이유도 같다(그 잡의 주석이 근거다).
+  verify-report:
+    needs: [plan, build-and-deploy]
+    if: needs.build-and-deploy.result == 'success' && needs.build-and-deploy.outputs.verify_failed != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: 확인 실패를 이슈로 남긴다 (허브는 새 리비전으로 서비스 중)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ needs.plan.outputs.sha }}
+          FAILED: ${{ needs.build-and-deploy.outputs.verify_failed }}
+        run: |
+          set -uo pipefail
+          title="hub-deploy verification failed ($FAILED, ${SHA:0:7})"
+          body="허브 배포는 **끝났고 새 리비전이 서비스 중이다.** 전환 뒤 확인 단계가 실패했다: \`$FAILED\`.
+
+          - 실행: $RUN_URL
+          - 커밋: \`$SHA\`
+
+          v_layout 은 저장 배치가 앱의 재시도 창 안에 ready 가 되지 않은 것, v_handoff 는 writer 표식, v_drift 는 설정 기준선, v_cite 는 라이브 인용이다. 다시 배포하지 말고 그 확인만 다시 본다(Actions → hub-verify-current). 다음 배포에서 확인이 모두 통과하면 이 이슈는 닫힌다."
+          gh issue create -R "$REPO" --title "$title" --body "$body" >/dev/null && echo "opened: $title" || echo "::warning::could not open the verification issue"
+
   close-report:
     needs: [plan, build-and-deploy]
     # plan 이 "내보낼 것 없음"이면 build-and-deploy 가 skip 되고 이 잡도 따라 skip 된다.
@@ -825,6 +1034,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           WHY: ${{ github.event_name }}
           SHA: ${{ needs.plan.outputs.sha }}
+          VERIFY_FAILED: ${{ needs.build-and-deploy.outputs.verify_failed }}
         run: |
           set -uo pipefail
           # HTTP 는 `report` 처럼 curl 로, 판정은 python3 로 한다(러너의 jq 에 기대지 않는다).
@@ -834,6 +1044,8 @@ jobs:
           e = os.environ
           api, repo, sha = e["API"], e["REPO"], e["SHA"]
           PREFIX = "hub-deploy failed ("   # `report` 가 붙이는 제목 머리다. 둘은 같이 바꾼다
+          VPREFIX = "hub-deploy verification failed ("   # verify-report 의 제목 머리. 확인이 전부 통과한 배포만 닫는다
+          VERIFY_OK = not e.get("VERIFY_FAILED")
 
           def call(method, path, body=None):
               """curl 한 번. (HTTP 코드, JSON 본문 또는 None) 을 돌려준다."""
@@ -860,7 +1072,8 @@ jobs:
                       return
                   # /issues 는 PR 도 돌려준다. PR 은 건드리지 않는다.
                   stale += [i for i in items
-                            if "pull_request" not in i and i.get("title", "").startswith(PREFIX)]
+                            if "pull_request" not in i and (i.get("title", "").startswith(PREFIX)
+                                or (VERIFY_OK and i.get("title", "").startswith(VPREFIX)))]
                   if len(items) < 100:
                       break
               if not stale:

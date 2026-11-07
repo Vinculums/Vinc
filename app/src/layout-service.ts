@@ -57,7 +57,7 @@ export function createLayoutService(engine: LayoutEngine, router: CrossRouter,
     const started = clock(), next = new Map<string, BoxPlacement>(), reusedPlacement = !!state.placement;
     const nodes = request.nodes.map(n => ({ ...n, label: "", degree: 0 }) as GraphNode);
     const edges = request.edges.map(e => ({ ...e }) as GraphEdge);
-    const graph = await temporalLayout(nodes, edges, request.basis, countedEngine, countedRouter, "temporal", 1.6, {
+    const graph = await temporalLayout(nodes, edges, request.basis, countedEngine, countedRouter, 1.6, {
       pieces: counted(state, state.pieces), routes: counted(state, state.routes),
       placement: { previous: state.placement, next } });
     state.placement = next;

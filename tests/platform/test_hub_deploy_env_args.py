@@ -27,6 +27,11 @@ class HubDeployEnvironmentArgs(unittest.TestCase):
             with self.subTest(quota=quota, paused=paused, layout=layout):
                 shell = assembly.replace("${{ vars.VINC_QUOTA_EXEMPT_OWNERS }}", quota)
                 shell = shell.replace("${{ vars.VINC_EMBED_APPLY_PAUSED || 'off' }}", paused)
+                shell = shell.replace("${{ vars.VINC_BURST_PER_MINUTE || '60' }}", "60")
+                shell = shell.replace("${{ vars.VINC_EVENTS_WEBHOOK || 'off' }}", "off")
+                shell = shell.replace("${{ vars.VINC_KEEP_VECTOR_INDEX || 'on' }}", "on")
+                shell = shell.replace("${{ vars.VINC_NODE_COLBERT || 'off' }}", "off")
+                shell = shell.replace("${{ vars.VINC_BRIEF_RULE || 'production' }}", "production")
                 script = ('set -euo pipefail\n'
                           'az() { printf "%s\\n" "$@"; }\n'
                           'APP="--name vinc-hub -g vincsRG"\nIMAGE=test-image\n'
@@ -38,7 +43,10 @@ class HubDeployEnvironmentArgs(unittest.TestCase):
                 self.assertEqual(args.count("--set-env-vars"), 1,
                                  "Repeated Azure options silently discard earlier settings")
                 environment = args[args.index("--set-env-vars") + 1:args.index("--output")]
-                expected = [f"VINC_EMBED_APPLY_PAUSED={paused}", "VINC_TOPIC_CONVERSION=1"]
+                expected = [f"VINC_EMBED_APPLY_PAUSED={paused}", "VINC_BURST_PER_MINUTE=60",
+                            "VINC_TOPIC_CONVERSION=1", "VINC_EVENTS_WEBHOOK=off",
+                            "VINC_KEEP_VECTOR_INDEX=on", "VINC_NODE_COLBERT=off",
+                            "VINC_BRIEF_RULE=production"]
                 if quota:
                     expected.insert(0, f"VINC_QUOTA_EXEMPT_OWNERS={quota}")
                 if layout == "1":

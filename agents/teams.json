@@ -1,11 +1,11 @@
 {
-  "note": "사람 팀 → GitHub 핸들 → 소유 경로. scripts/agents_sync.py --gen 이 여기서 .github/CODEOWNERS 를 만들고 --check 가 대조한다. CODEOWNERS 는 생성물이라 손으로 고치지 않는다. 역할(roles.json)은 그래프에서 --pull 로 내려오는 스냅샷이라 사람 팀을 거기 실을 수 없어 이 파일이 따로 있다. 근거: Linear VIN-238, 계획서 vinc.plan.team-split.",
+  "note": "사람 팀 → GitHub 핸들 → 소유 경로. scripts/agents_sync.py --gen 이 여기서 .github/CODEOWNERS 를 만들고 --check 가 대조한다. CODEOWNERS 는 생성물이라 손으로 고치지 않는다. 역할(roles.json)은 그래프에서 --pull 로 내려오는 스냅샷이라 사람 팀을 거기 실을 수 없어 이 파일이 따로 있다. 근거: Linear VIN-238, 계획서 vinc.plan.team-split. read_only_roles 는 CODEOWNERS 경로를 갖지 않는 역할이다. 2026-11-04 부터 agent-maker 와 agent-checker 도 여기 있다: 두 에이전트는 절차 노드(concept:procedure-*)가 선언한 경로 안에서 일하고, 사람 팀의 소유 경로는 사람 팀 것이다(decision:maker-and-checker-replace-the-job-title-roster-2026-11-04). 2026-11-04 the owner retired the 23 job-title roles from the roster (decision:job-title-roles-retired-from-the-roster-2026-11-04): the human teams keep their GitHub handles and paths, their roles lists are empty, and the two agents are the whole roster.",
   "org": "Vinculums",
   "teams": {
     "core": {
       "github": "@Vinculums/core",
       "label": "Core (store, api, mcp, hub)",
-      "roles": ["agent-dev-core", "agent-dev-account", "agent-security"],
+      "roles": [],
       "paths": [
         "store/",
         "engines/",
@@ -24,7 +24,7 @@
     "rag": {
       "github": "@Vinculums/rag",
       "label": "RAG (retrieval, rerank, embed, eval)",
-      "roles": ["agent-research"],
+      "roles": [],
       "paths": [
         "scripts/eval_search.py",
         "rag_eval/",
@@ -38,7 +38,6 @@
         "scripts/seed_tooluse.py",
         "scripts/tooluse_shell.py",
         "scripts/summarize_encode_probe.py",
-        "engines/embed_pipeline.py",
         "engines/recall_ingest.py",
         "packaging/bake_embed_model.py",
         ".github/workflows/rerank-probe.yml",
@@ -51,7 +50,7 @@
     "app": {
       "github": "@Vinculums/app",
       "label": "Desktop app (Vite + Tauri)",
-      "roles": ["agent-dev-app"],
+      "roles": [],
       "paths": [
         "app/",
         ".github/workflows/web-app-deploy-trigger.yml",
@@ -60,36 +59,23 @@
     },
     "design-content": {
       "github": "@Vinculums/design-content",
-      "label": "Design and content (design hub, packs, copy, emails)",
-      "roles": [
-        "agent-design",
-        "agent-product-designer",
-        "agent-copy-owner",
-        "agent-copy-writer",
-        "agent-marketing",
-        "agent-tech-writer"
-      ],
+      "label": "Design and content (design tokens and tools, packs, copy, emails)",
+      "roles": [],
       "paths": [
-        "design-hub/",
+        "scripts/design/",
         "starter-packs/",
         "emails/",
         "tests/design/",
         "README.md",
-        "LICENSE"
+        "LICENSE",
+        "LICENSING.md",
+        "NOTICE"
       ]
     },
     "platform": {
       "github": "@Vinculums/platform",
       "label": "Platform (infra, packaging, CI, gates, release, roster)",
-      "roles": [
-        "agent-deploy",
-        "agent-infra",
-        "agent-ops",
-        "agent-release",
-        "agent-gate-runner",
-        "agent-qa",
-        "agent-steward"
-      ],
+      "roles": [],
       "paths": [
         "infra/",
         "packaging/",
@@ -102,6 +88,9 @@
         "CHANGELOG.md",
         "CLAUDE.md",
         "agents/",
+        "scripts/_root.py",
+        "scripts/_gitutil.py",
+        "scripts/_azutil.py",
         "scripts/agents_sync.py",
         "scripts/roster_probe.py",
         "scripts/worktree_hook.py",
@@ -115,9 +104,13 @@
         "scripts/gate_design_sync.py",
         "scripts/gate_contrast.py",
         "scripts/app-config-baseline.json",
+        "scripts/gate_comment_history.py",
+        "scripts/comment-history-baseline.json",
+        "scripts/gate_homepage_drift.py",
         "scripts/setup_runner.sh",
         "scripts/hub_deploy_pick.py",
         "scripts/integrations_publish_select.py",
+        "scripts/third_party_notices.py",
         "scripts/repair_hub_store.py",
         "scripts/rebuild_store_native.py",
         "scripts/rehearse_rebuild.py",
@@ -136,20 +129,42 @@
   "shared": {
     "note": "더 구체적인 줄이 이긴다(CODEOWNERS 규칙). 여기 적힌 경로는 두 팀이 같이 리뷰한다.",
     "paths": {
-      "api/auth.py": ["core", "platform"],
-      "api/fragment.py": ["core", "platform"],
-      "api/sync.py": ["core", "platform"],
-      "api/packfile.py": ["core", "platform"],
-      "vinc_mcp/oauth.py": ["core", "platform"],
-      "app/src/copy.ts": ["app", "design-content"],
-      "agents/roles.json": ["platform", "core"]
+      "api/auth.py": [
+        "core",
+        "platform"
+      ],
+      "api/fragment.py": [
+        "core",
+        "platform"
+      ],
+      "api/sync.py": [
+        "core",
+        "platform"
+      ],
+      "api/packfile.py": [
+        "core",
+        "platform"
+      ],
+      "vinc_mcp/oauth.py": [
+        "core",
+        "platform"
+      ],
+      "app/src/copy.ts": [
+        "app",
+        "design-content"
+      ],
+      "agents/roles.json": [
+        "platform",
+        "core"
+      ],
+      "api/contract/sidecar.json": [
+        "core",
+        "app"
+      ]
     }
   },
   "read_only_roles": [
-    "agent-metrics-analyst",
-    "agent-metrics-reviewer",
-    "agent-orchestrator",
-    "agent-product-owner",
-    "agent-reviewer-judgement"
+    "agent-checker",
+    "agent-maker"
   ]
 }

@@ -39,17 +39,47 @@ def test_citation_properties_preserved_exactly(props):
 
 
 @pytest.mark.parametrize("props,reason", [
-    ({"attachments": ["https://example.invalid/a.pdf"]}, "external_attachments"),
     ({"source": {"blob": "blob:private"}}, "external_attachments"),
-    ({"unknown_payload": "https://example.invalid/a.pdf"}, "external_resource"),
     ({"url": "blob:private"}, "external_resource"),
-    ({"url": "<img src='https://example.invalid/a.png'>"}, "external_attachments"),
-    ({"ref": "concept:outside"}, "external_reference"),
+    ({"unknown_payload": "az:private/container"}, "external_resource"),
+    ({"attachments": ["blob:private/a.pdf"]}, "external_attachments"),
+    ({"note": "<img src='blob:private'>"}, "external_attachments"),
+    ({"note": "![managed](blob:a.png) ![web](https://example.invalid/b.png)"}, "external_attachments"),
 ])
-def test_resources_and_internal_references_remain_guarded(props, reason):
+def test_managed_resources_remain_guarded(props, reason):
     data = seed()
     data["nodes"]["Record"][0]["props"] = json.dumps(props)
     assert_blocked(data, reason)
+
+
+# 근거: [[decision:topic-transfer-plain-references-and-external-images-2026-10-16]]
+@pytest.mark.parametrize("props,expected", [
+    ({"unknown_payload": "https://example.invalid/a.pdf"}, {}),
+    ({"pr": "https://github.invalid/org/repo/pull/1", "path": "/api/sync.py",
+      "local": "D:\\notes\\a.md", "notes_link": "file:notes"}, {}),
+    ({"attachments": ["https://example.invalid/a.pdf"]}, {"external_attachments": 1}),
+    ({"note": "<img src='https://example.invalid/a.png'>"}, {"external_attachments": 1}),
+    ({"note": "![web](https://example.invalid/b.png)"}, {"external_attachments": 1}),
+    # 근거: [[decision:topic-transfer-moves-unmanaged-attachments-as-text-2026-10-16]]
+    ({"attachments": ["C:\\private\\a.pdf"]}, {"external_attachments": 1}),
+    ({"files": ["store/topic_transfer.py", "api/sync.py"]}, {"external_attachments": 1}),
+    ({"files": 3}, {"external_attachments": 1}),
+    ({"filePath": "relative/synthetic.pdf"}, {"external_attachments": 1}),
+    ({"assets": ["file:synthetic.png"]}, {"external_attachments": 1}),
+    ({"note": "![local](./a.png) ![web](https://example.invalid/b.png)"}, {"external_attachments": 1}),
+    ({"note": "<img alt='no source'>"}, {"external_attachments": 1}),
+    ({"note": "![inline](data:image/png;base64,AAAA)"}, {"external_attachments": 1}),
+    ({"ref":"concept:outside", "see": "[[" + "decision:elsewhere" + "]]"}, {"external_references": 2}),
+])
+def test_plain_strings_external_images_and_outside_ids_are_preserved(props, expected):
+    from store.topic_transfer import preserved_reference_counts
+    data = seed()
+    data["nodes"]["Record"][0]["props"] = json.dumps(props, ensure_ascii=False)
+    chosen = plan(data)
+    assert chosen.ready, chosen.blockers
+    assert preserved_reference_counts(chosen) == {"external_references": 0, "external_attachments": 0, **expected}
+    after = transformed_snapshot(data, chosen, stamp=STAMP)
+    assert after["nodes"]["Record"][0]["props"] == data["nodes"]["Record"][0]["props"]
 
 
 def test_native_personal_history_exact_full_scoped_after_and_retry(tmp_path, monkeypatch):
@@ -121,3 +151,38 @@ def test_retained_relationship_deletion_filters_stale_wire_replay(tmp_path, monk
         assert sync._edges_after_deletions(store, TARGET, {"edges": [edge]}) == [edge]
     finally:
         store.close()
+
+
+# 근거: [[decision:topic-transfer-edge-history-and-foreign-rejection-endpoints-2026-10-16]]
+def edge_between_selected(data, ekey):
+    add_row(data, "_EdgeTombstone", ekey=ekey, owner_id=SOURCE, src="concept:a", dst="concept:b",
+            rel="DERIVES_FROM", deleted_at="2020-01-03", sync_seq=10, origin="original")
+
+
+def test_edge_deletion_between_selected_nodes_stays_personal(tmp_path):
+    data = seed()
+    edge_between_selected(data, SOURCE + "\x1fconcept:a|DERIVES_FROM|concept:b")
+    chosen = plan(data)
+    assert chosen.ready, chosen.blockers
+    assert retained_history_counts(data, chosen)["_EdgeTombstone"] == 1
+    after = transformed_snapshot(data, chosen, stamp=STAMP)
+    assert after["meta"]["_EdgeTombstone"] == data["meta"]["_EdgeTombstone"]
+    store = RawStore(tmp_path / "edge-between.db")
+    try:
+        for ddl in render_embedded_ddl(dim=4):
+            store.run(ddl)
+        insert(store, data)
+        before = read_snapshot(store)
+        scoped = read_scoped_inventory(store, source=SOURCE, target=TARGET, topic=TOPIC)
+        assert not scoped.blockers, scoped.blockers
+        assert _apply_rehearsal(store, plan(before), run_id="edge-between", stamp=STAMP) == "committed"
+        observed = read_snapshot(store)["meta"]["_EdgeTombstone"]
+        assert observed == before["meta"]["_EdgeTombstone"]
+    finally:
+        store.close()
+
+
+def test_legacy_edge_deletion_key_between_selected_nodes_stays_blocked():
+    data = seed()
+    edge_between_selected(data, "concept:a|DERIVES_FROM|concept:b")
+    assert_blocked(data, "existing_tombstone_history_not_supported:_EdgeTombstone")

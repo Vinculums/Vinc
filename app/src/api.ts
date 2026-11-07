@@ -1,7 +1,8 @@
 import { viewSessionCache } from "./view-session-cache";
 import type { LayoutAnswer } from "./view-layout-wire";
-/** Sidecar client — data plane is localhost HTTP + session token (control will
- *  be Tauri IPC when the shell lands, P4). Graph/query logic never lives here. */
+/** Sidecar client. Data plane is localhost HTTP + session token; in the shell the
+ *  control plane (port, token, sidecar lifecycle) goes over Tauri IPC (`shellInvoke`).
+ *  Graph/query logic never lives here. */
 import { chunkPack, type StageCounts } from "./packchunks";
 
 const BASE_KEY = "vinc.sidecar.base";
@@ -30,12 +31,13 @@ const DEFAULT_BASE = IN_SHELL ? "http://127.0.0.1:8787" : location.origin;
 export const WEB = !IN_SHELL
   && location.hostname !== "localhost" && location.hostname !== "127.0.0.1";
 
-// ── 데스크톱 데이터 모드(VIN-128) ──────────────────────────────────────────
+// ── 데스크톱 데이터 모드 ──────────────────────────────────────────────────
 // 셸은 두 모드 중 하나다. **계정 모드**면 화면이 읽고 쓰는 그래프가 계정 그래프이고
 // (웹과 같은 `/api/graph/*`), 사이드카는 그 호출을 계정으로 넘기는 통과로일 뿐이다
-// (`/space/proxy`, 키는 바디로만). **로컬 모드**면 종전대로 이 기기의 스토어다.
-// 계정 모드가 기본이지만, 로컬 스토어에 이미 데이터가 있는 설치는 이행 흐름(VIN-131)이
-// 생기기 전까지 로컬로 남는다: 빈 계정 화면이 기존 작업을 가리면 그게 곧 유실처럼 보인다.
+// (`/space/proxy`, 키는 바디로만). **로컬 모드**면 이 기기의 스토어다.
+// 계정 모드가 기본이다. 모드를 고른 적 없는 설치에 로컬 작업이 있으면 로컬로 계속 가며
+// 한 번 알리고, 옮기기는 설정에만 있다(`decideDataMode`): 빈 계정 화면이 기존 작업을
+// 가리면 그게 곧 유실처럼 보인다.
 // 근거: [[decision:the-desktop-signs-in-and-shows-the-account-graph-live-and-local-mode-is-a-setting]]
 const MODE_KEY = "vinc.mode";
 export type DataMode = "account" | "local";
@@ -95,9 +97,8 @@ export const cfg = {
   },
 };
 
-/** 연결 셋업 진단 문자열 — 실패 시 화면에 노출해 원인을 즉시 파악(v0.1.3).
- *  v0.1.7: 앱 버전 + 셸이 준 실제 포트(conn.port)를 박는다 — "base=8787 인데 어느
- *  버전인가/셸이 무슨 포트를 줬나"가 리포트만으로 판별되게(macOS 리포트 대응). */
+/** 연결 셋업 진단 문자열. 실패하면 화면에 노출해 원인을 바로 본다. 앱 버전과 셸이 준
+ *  실제 포트(conn.port)를 박아, 어느 빌드가 어느 포트를 받았는지 리포트만으로 판별된다. */
 declare const __APP_VERSION__: string;   // vite define 주입(빌드 상수)
 declare const __BUILD_SHA__: string;     // 〃 — 짧은 커밋 SHA(웹은 태그와 무관하게
                                          // 배포돼 버전만으로는 빌드를 특정 못 한다)
@@ -142,7 +143,7 @@ export async function connectSidecar(): Promise<void> {
     sidecarDiag = `v${buildId} conn.port=${c?.port ?? "?"} base=${cfg.base} `
       + `token=${c?.token ? c.token.length + "ch" : "MISSING"}`;
   } catch (e: any) {
-    sidecarDiag = `invoke sidecar_conn threw: ${e?.message || e}`;
+    sidecarDiag = `invoke sidecar_conn threw: ${messageOf(e)}`;
   }
   // 사이드카 기동 대기 ≤ ~12s — PyInstaller 단일파일은 첫 실행에 압축 해제가 있어
   // (특히 macOS 콜드 스타트) 5s 로는 정상 기동도 오판할 수 있다.
@@ -150,7 +151,7 @@ export async function connectSidecar(): Promise<void> {
   // 실패하면 "왜"를 반드시 싣는다 — 셸이 모아둔 사이드카 수명 이벤트(종료코드·
   // 시그널·stderr)를 붙여, health TIMEOUT 이 원인 불명으로 끝나지 않게 한다.
   let why = "";
-  try { why = await invoke("sidecar_status") as string; } catch (e: any) { why = `sidecar_status failed: ${e?.message || e}`; }
+  try { why = await invoke("sidecar_status") as string; } catch (e: any) { why = `sidecar_status failed: ${messageOf(e)}`; }
   sidecarDiag += ` · health TIMEOUT · sidecar[${why}]`;
 }
 
@@ -196,7 +197,7 @@ async function waitForSidecar(tries: number): Promise<boolean> {
       }
     } catch {}
     const remaining = deadline - performance.now();
-    if (remaining > 0) await new Promise((r) => setTimeout(r, Math.min(250, remaining)));
+    if (remaining > 0) await sleep(Math.min(250, remaining));
   }
   return false;
 }
@@ -350,10 +351,13 @@ async function accountCall(path: string, params: Record<string, string | number 
                            body: unknown, scope?: Scope, signal?: AbortSignal): Promise<any> {
   const team = scope ? scope.team || "" : cfg.team;
   const key = await memberKey(team).catch(error => {
+    if (error?.message === "personal_key_required") throw accountFailure("sign in required", "signIn", 401);
     if (team) throw accountFailure(String(error?.message || "team key required"), "teamKey", 401);
     throw error;
   });
   if (!key) throw accountFailure(team ? "team key required" : "sign in required", team ? "teamKey" : "signIn", 401);
+  // 팀을 묶인 팀 키로 여는가, 계정이 허락해 개인 키로 여는가. 거절됐을 때 다시 받을 키가 갈린다.
+  const bound = !!team && key !== await credentials.personal().catch(() => "");
   const q: Record<string, string> = {};
   for (const [k, v] of Object.entries(params || {}))
     if (v !== undefined && v !== "") q[k] = String(v);
@@ -365,9 +369,13 @@ async function accountCall(path: string, params: Record<string, string | number 
     // 호출자가 접었다. 엔진 문제가 아니므로 그대로 올려 보낸다.
     if (signal?.aborted) throw e;
     // 사이드카 자체에 못 닿았다. 계정 문제가 아니라 이 기기의 엔진 문제다.
-    throw new Error(`engine unreachable: ${e?.message || e}`);
+    throw new Error(`engine unreachable: ${messageOf(e)}`);
   }
-  if (res.ok) { accountSuccess++; return res.json(); }
+  if (res.ok) {
+    accountSuccess++;
+    if (method === "POST") announceWrite(path, body);
+    return res.json();
+  }
   const b: any = await res.json().catch(() => ({}));
   // 계정의 오류 봉투는 `{error:{code,message}}`, 사이드카와 통과로는 `{error:"..."}`.
   const code = typeof b?.error === "object" ? String(b.error?.code || "") : String(b?.error || "");
@@ -383,7 +391,9 @@ async function accountCall(path: string, params: Record<string, string | number 
   }
   if (res.status === 401 && code === "not_authenticated") {
     const reason = b?.error?.extra?.reason || b?.error?.reason;
-    if (team && (reason === "invalid_key" || reason === "key_graph_scope_mismatch")) {
+    // 팀 키가 거절됐거나, 계정이 개인 키로 팀을 여는 것을 막았다(엄격 모드): 팀 키를 받는다.
+    // 개인 키 자체가 거절된 것이면 아래에서 로그인을 다시 받을지 가린다.
+    if (team && (reason === "key_graph_scope_mismatch" || (bound && reason === "invalid_key"))) {
       forgetMemberKey();
       throw accountFailure(detail, "teamKey", 401, code);
     }
@@ -393,7 +403,7 @@ async function accountCall(path: string, params: Record<string, string | number 
     const probe = await viaProxy(key, "GET", "/spaces", {}, undefined, "").catch(() => null);
     if (probe && probe.status === 401) {
       forgetMemberKey();
-      throw accountFailure(detail, team ? "teamKey" : "signIn", 401, code);
+      throw accountFailure(detail, bound ? "teamKey" : "signIn", 401, code);
     }
     throw accountFailure(detail, "other", 401, code);
   }
@@ -499,11 +509,18 @@ async function localCall(path: string, params?: Record<string, string | number |
     } catch { /* JSON 오류 봉투가 아니면 상태만 남긴다. */ }
     throw err;
   }
-  // 자동 동기화 신호(§8) — 로컬 쓰기가 끝났다. 듣는 쪽이 없으면(웹·스케줄러 미마운트)
-  // 비용이 0이다. `/sync*`·`/connect/*` 는 뺀다 — 안 그러면 동기화가 자기를 다시 부른다.
-  if (isWrite && !WEB && !path.startsWith("/sync") && !path.startsWith("/connect/"))
-    dispatchEvent(new CustomEvent("vinc:write"));
+  if (isWrite) announceWrite(path, body);
   return res.json();
+}
+
+/** 쓰기가 끝났다는 신호(`vinc:write`). 듣는 쪽은 View 의 메모리 보관본이다
+ *  (`view-session-cache.ts`). 데이터 평면 셋(로컬 사이드카·셸 계정 모드·웹)이 같은 신호를
+ *  낸다: 여태 로컬 쓰기만 알려서 계정 모드의 쓰기 뒤에는 보관본이 남았다.
+ *  미리보기(`dry_run`)는 쓰기가 아니다. `/sync*`·`/connect/*` 는 기계 쪽 호출이라 뺀다. */
+function announceWrite(path: string, body: unknown): void {
+  if ((body as { dry_run?: unknown } | null)?.dry_run === true) return;
+  if (path.startsWith("/sync") || path.startsWith("/connect/")) return;
+  dispatchEvent(new CustomEvent("vinc:write"));
 }
 
 /** 로컬 모드가 **화면에 보여 줄** 데이터가 이 기기 스토어에 있는가. 모드를 정할 때 묻는다.
@@ -588,7 +605,7 @@ export const storage = {
                             data_path?: string | null; accept_risk?: boolean }): Promise<any> => {
     try { return await localCall("/config", undefined, body); }
     catch (e: any) {
-      const m = /^(400|409) (.*)$/s.exec(String(e?.message || ""));
+      const m = /^(400|409) (.*)$/s.exec(messageOf(e, ""));
       if (m) { try { return { status: Number(m[1]), ...JSON.parse(m[2]!) }; } catch {} }
       throw e;
     }
@@ -617,6 +634,17 @@ export function storeDownReason(e: unknown): string | null {
   return err?.storeDown ? (err.reason || "") : null;
 }
 
+/** 잡은 예외의 사람이 읽을 사유. `message` 가 비었으면 `fallback`, 그것도 안 주면
+ *  값 자체를 문자열로 바꾼다(문자열을 던진 자리도 사유가 남는다). */
+export function messageOf(e: unknown, fallback?: string): string {
+  const m = (e as { message?: unknown } | null | undefined)?.message;
+  if (m) return String(m);
+  return fallback ?? String(e);
+}
+
+/** `ms` 만큼 기다린다. */
+export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
 /** 이 `doc_get` 거절이 **쓰기 창·중간에 끊긴 쓰기**인가(P17, `api/docstore.py` get_doc).
  *  그 갈래만 응답에 청크 수를 단다 — 모르는 id·소유자 불일치·죽은 사이드카에는 없다.
  *  `error`·`hint` 는 영어 서버 문자열이라 화면에 쓰지 않고, 판별에만 쓰는 이 열을 본다.
@@ -634,6 +662,7 @@ export type TimeBasis = "recorded" | "content";
 export type GraphNode = {
   id: string; label: string; domain: string; degree: number;
   kind?: string;      // concept | decision | bridge | episode | record | entity (F2 — 부착 축)
+  topic_description?: boolean;   // 주제 설명 문서의 미러. 화면은 노드로 그리지 않는다
   domain2?: string;   // bridge 전용 — target_domain (노드 domain = source_domain)
   ts?: string;        // D43 — created/date 우선, 없으면 updated_at. 빈 문자열 가능
   // D72 — 내용 시점(그 노드가 말하는 일이 언제 있었나). 축을 `content` 로 요청하면
@@ -646,6 +675,10 @@ export type GraphNode = {
   // 원리적으로 생기지 않는다. 구 사이드카에는 이 키가 없다 → x/y 로 우아 강등.
   x?: number; y?: number; z?: number;
   x2?: number; y2?: number;
+  // 유효구간 — 기록은 열로(`valid_until`), 결정은 속성으로(`props.valid_until`·`superseded_by`)
+  // 실려 온다. 3D 몸통의 historical 상태가 읽는다(node-validity.ts).
+  valid_from?: string; valid_until?: string;
+  props?: Record<string, unknown> | null;
 };
 export type GraphEdge = {
   id?: string;        // Preserve an upstream relation identity when supplied.
@@ -658,11 +691,16 @@ export type GraphEdge = {
 };
 /** 상세 레일의 연결 요약 + 관계 목록(node-context ④). 세는 자리가 노드 자신이라
  *  어느 동선(그래프 클릭 · 드릴다운 · 기간 목록 · 검색 착지)으로 열어도 같은 값이다. */
-export type NodeLink = {
+type NodeLink = {
   id: string; title: string; domain: string; type: string;
   dir: "out" | "in" | "att";
   evidence: boolean;      // 근거 문장이 기록돼 있는가(문장 전문은 edge-context)
   confidence: number;
+  // `evidence=1` 로 읽으면 저장된 문장 자체(항목 페이지가 인용한다)와 상대의 유효구간.
+  evidence_text?: string;
+  valid_from?: string; valid_until?: string;
+  temporal?: { created_at?: string | null; valid_from?: string | null; valid_until?: string | null;
+               superseded_by?: string | null } | null;
 };
 export type NodeLinks = {
   degree: number; out: number; in: number; attached: number;
@@ -688,15 +726,29 @@ export type NodeContext = {
   found?: boolean; props?: Record<string, unknown>; node_kind?: string; rev?: number;
   excerpts?: { doc_id: string; doc_title: string; section: string; excerpt: string; method: string }[];
   links?: NodeLinks; topic?: TopicDetail;
+  /** 시간 메타(search_temporal) — 효력 시작·끝·후속. 결정은 속성에서, 기록은 열에서 온다. */
+  temporal?: { created_at?: string | null; valid_from?: string | null; valid_until?: string | null;
+               superseded_by?: string | null; validity?: string } | null;
 };
 /** D69 좌측 문서 트리. 문서는 주제 열을 갖지 않으므로 주제도 착지 노드도 언급
  *  (MENTIONS)에서 유도된다 — `모든 문서` 목록과 같은 원천이라 두 화면이 같은 문서를
  *  다른 주제에 걸지 않는다. `depth` 는 그 주제 안 개념 계층(선행·파생 BFS)이고,
  *  `node_id` 는 클릭 시 착지할 노드다. 언급 0 문서는 `unfiled`(착지 노드 없음). */
-export type NavDoc = {
+type NavDoc = {
   doc_id: string; title: string; updated_at: string;
   node_id: string; node_title: string; depth: number;
+  /** 유효기간이 닫힌 문서만 갖는다(YYYY[-MM[-DD]]). */
+  valid_until?: string;
 };
+/** 커뮤니티 스페이스의 트리에서 내린 페이지를 뺀다. 커뮤니티는 내린 페이지 문서에 유효기간 끝을 단다.
+ *  개인·팀 트리는 거르지 않는다: 닫은 문서도 그 사람이 찾아 열 수 있어야 한다. */
+export function withoutClosedDocs(res: NavTreeRes, today = new Date().toISOString().slice(0, 10)): NavTreeRes {
+  const open = (d: { valid_until?: string }) => !d.valid_until || d.valid_until > today;
+  const domains = res.domains?.map(g => ({ ...g, docs: g.docs.filter(open) }));
+  const unfiled = res.unfiled?.filter(open);
+  const docs = (domains ?? []).reduce((n, g) => n + g.docs.length, 0) + (unfiled?.length ?? 0);
+  return { ...res, domains, unfiled, ...(res.counts ? { counts: { ...res.counts, docs } } : {}) };
+}
 /** 좌측 트리의 노드 갈래 한 줄. `concepts` 가 세는 것과 **같은 집합**이다
  *  (Concept + Decision) — 머리가 말하는 수와 줄 수가 갈리면 안 된다. */
 export type NavNode = { id: string; title: string; kind: string; depth: number };
@@ -710,7 +762,7 @@ export type NavGroup = { domain: string; concepts: number; count?: number;
 export type NavTreeRes = {
   executed: boolean; note?: string;
   domains?: NavGroup[];
-  unfiled?: { doc_id: string; title: string; updated_at: string }[];
+  unfiled?: { doc_id: string; title: string; updated_at: string; valid_until?: string }[];
   //: `kinds` 는 종별 수 - 레일이 읽는 유일한 집계. `kind` 는 이 응답이 어느 종으로
   //: 좁혀졌는지(안 좁혔으면 없다).
   counts?: { domains: number; docs: number; unfiled: number;
@@ -776,7 +828,7 @@ export function viewScope() {
 /** 웹 재사용은 현재 계정 identity와 현재 Space 권한을 매번 다시 확인한다. */
 export async function viewAccess(scope: ReturnType<typeof viewScope>, signal?: AbortSignal) {
   const [me, changes] = await Promise.all([
-    fetch(new URL("/api/me", location.origin), { credentials: "include", cache: "no-store", signal }),
+    api.me({ cache: "no-store", signal }),
     localCall("/changes", { owner: scope.owner }, undefined, { team: scope.team || null }, signal),
   ]);
   if (!me.ok) { viewSessionCache.purge(); throw new Error("View access unavailable"); }
@@ -787,15 +839,64 @@ export async function viewAccess(scope: ReturnType<typeof viewScope>, signal?: A
   return { session: JSON.stringify([scope.key, identity]), revision: marker };
 }
 
-export type GraphRootsAnswer = {
+type GraphRootsAnswer = {
   executed: boolean;
   state: "off" | "pending" | "stale" | "ready" | "failed";
   marker?: string;
   nodes?: number;
+  /** 답을 만든 배치 코드의 판(`api.layout_remote`). 옛 허브는 싣지 않는다. */
+  version?: string;
+  /** 답 본문의 해시. 요청에 같은 값을 `have` 로 실으면 허브가 본문을 뺀다. */
+  digest?: string;
   answer?: LayoutAnswer;
 };
 
+/** 되돌릴 수 없는 삭제의 확인 묶음(0.9.8). `preview_digest` 는 확인 창이 열릴 때 본
+ *  상태의 지문이고, `operation_id` 는 같은 삭제를 다시 보내도 한 번만 일어나게 하는 열쇠다. */
+export type DeleteGuard = { operation_id: string; preview_digest?: string };
+
+/** 미리보기(`dry_run`)를 받아 묶음을 만든다. 미리보기를 못 받으면(큰 노드라 미리보기가
+ *  불완전함·종류 미지원·연결 실패) digest 없이 묶는다: 적용은 지금까지처럼 조건 없이 간다. */
+async function previewDelete(path: string, body: Record<string, unknown>,
+                             scope?: Scope): Promise<DeleteGuard> {
+  const guard: DeleteGuard = { operation_id: crypto.randomUUID() };
+  try {
+    const p = await call(path, undefined, { ...body, dry_run: true }, scope);
+    if (p?.executed && p.preview_complete && typeof p.preview_digest === "string")
+      guard.preview_digest = p.preview_digest;
+  } catch { /* 미리보기는 거들 뿐이다. 실패해도 삭제 자체는 막지 않는다. */ }
+  return guard;
+}
+
+/** 묶음을 실어 적용한다. 응답을 잃은 실패(연결 끊김·502·504)만 같은 묶음으로 한 번 더
+ *  보낸다: 같은 operation_id 라 서버가 첫 결과를 돌려줄 뿐 두 번 지우지 않는다. */
+async function applyDelete(path: string, body: Record<string, unknown>,
+                           guard?: DeleteGuard, scope?: Scope): Promise<any> {
+  const send = () => call(path, undefined, { ...body, ...(guard || {}) }, scope);
+  try { return await send(); }
+  catch (failure: any) {
+    const status = Number(failure?.status) || 0;
+    if (guard && (status === 0 || status === 502 || status === 504)) return send();
+    throw failure;
+  }
+}
+
+/** 조건부 쓰기가 상태 불일치로 멈췄나(0.9.8 `MutationConflict`·미리보기 불일치).
+ *  사이드카와 계정 통과로는 200 에 `status:"conflict"` 를 싣고, v1 꼴 오류면 409 로 온다. */
+export function isWriteConflict(r: any): boolean {
+  const code = r?.error ?? r?.code;
+  return r?.status === "conflict" || r?.status === 409
+    || code === "write_conflict" || code === "preview_conflict";
+}
+
 export const api = {
+  /** 웹 계정 세션(`/api/me`). 쿠키 세션이라 웹·같은 출처에서만 뜻이 있다.
+   *  응답을 그대로 돌려준다 — 상태 확인과 본문 해석은 부르는 쪽 몫이다. */
+  me: (init: { cache?: RequestCache; signal?: AbortSignal } = {}): Promise<Response> =>
+    fetch(new URL("/api/me", location.origin), { credentials: "include", ...init }),
+  /** 커뮤니티 공유 행선지(웹 전용 같은 출처). 응답을 그대로 돌려준다. */
+  communityDestinations: (signal?: AbortSignal): Promise<Response> =>
+    fetch("/api/community/agents/destinations", { credentials: "include", cache: "no-store", signal }),
   roleRoster: async (owner: string) => {
     const scope = { team: cfg.team || null };
     const nodes = new Map<string, any>();
@@ -814,6 +915,13 @@ export const api = {
     }
     return { nodes: [...nodes.values()], edges };
   },
+  /** 역할 하나의 계약과 그 절차·정책(`procedures` [{id, policies}], `policies` [{id, title, rule}]).
+   *  로스터는 계약 전문 없이 오므로 지도와 편집 면은 이것으로 읽는다. 근거: [[vinc.canon.terminology §3.2]] */
+  role: (owner: string, role: string, detail = false): Promise<any> =>
+    call("/roles", { owner, role, ...(detail ? { detail: "procedures" } : {}) }, undefined, { team: cfg.team || null }),
+  /** 역할에 붙은 평가 카드(조회 전용, 최신순). `role` 은 짧은 이름도 받는다. */
+  evalCards: (owner: string, role: string, limit = 20) =>
+    call("/eval-cards", { owner, role, limit }, undefined, { team: cfg.team || null }),
   health: () => call("/health"),
   /** 변경 표식(VIN-129). 값은 비교만 한다: 같으면 그대로, 다르면 다시 읽는다(`live.ts`). */
   changes: (owner: string): Promise<{ marker?: string }> => call("/changes", { owner }),
@@ -846,10 +954,10 @@ export const api = {
       : localCall("/graph", params, undefined, scope, live);
   },
   graphRoots: (owner: string, basis: "recorded" | "content", signal: AbortSignal,
-      scope: Scope = { team: cfg.team || null }): Promise<GraphRootsAnswer> =>
+      scope: Scope = { team: cfg.team || null }, have?: string): Promise<GraphRootsAnswer> =>
     accountMode() && !sidecarOnly("/graph/roots")
-      ? accountCall("/graph/roots", { owner, basis }, undefined, scope, signal)
-      : localCall("/graph/roots", { owner, basis }, undefined, scope, signal),
+      ? accountCall("/graph/roots", { owner, basis, ...(have ? { have } : {}) }, undefined, scope, signal)
+      : localCall("/graph/roots", { owner, basis, ...(have ? { have } : {}) }, undefined, scope, signal),
   recall: (owner: string, limit = 50) => call("/recall", { owner, limit, rank: "preference" }),
   search: (query: string, top_k = 20, options: SearchOptions = {}) => searchCall(query, top_k, options),
   // 정확한 제목은 저장된 메타에서 찾는다. 본문 색인·그래프 노드 유무와 무관하다.
@@ -888,8 +996,9 @@ export const api = {
   // 전량 빈 값이고 사람이 쓴 요약은 실제로 props 에 들어 있다 — 호출부는
   // one_liner → props 순으로 본문을 고른다. 구 사이드카엔 키가 없다(undefined).
   nodeContext: (owner: string, node: string, limit = 4, scope?: Scope,
-                linksOffset = 0): Promise<NodeContext> =>
-    call("/node-context", { owner, node, limit, links_offset: linksOffset }, undefined, scope),
+                linksOffset = 0, evidence = false): Promise<NodeContext> =>
+    call("/node-context", { owner, node, limit, links_offset: linksOffset,
+      ...(evidence ? { evidence: 1 } : {}) }, undefined, scope),
   topicDescription: (owner: string, node: string, text: string, expected_content_hash: string,
                      scope?: Scope): Promise<TopicDescription> =>
     call("/topic-description", undefined, { owner, node, text, expected_content_hash }, scope),
@@ -924,7 +1033,8 @@ export const api = {
   // 미러가 생겨 트리와 지도에 곧바로 선다(`docstore.put_doc`). 빈 값은 싣지 않는다 —
   // 서버는 빈 주제를 "지운다"가 아니라 "안 건드린다"로 읽는다.
   docPut: (owner: string, text: string, id?: string, title?: string,
-           contentTime?: string, origin?: string, topic?: string): Promise<{
+           contentTime?: string, origin?: string, topic?: string,
+           expectedContentHash?: string): Promise<{
     executed: boolean; skipped?: boolean; doc_id?: string; content_hash?: string;
     chunks?: number; needs_embed?: boolean; content_time?: string; error?: string;
     created?: boolean; topic?: string;
@@ -932,7 +1042,9 @@ export const api = {
                                       ...(title === undefined ? {} : { title: title.trim() }),
                                       ...(contentTime === undefined ? {} : { content_time: contentTime }),
                                       ...(origin ? { origin } : {}),
-                                      ...(topic ? { topic } : {}) }),
+                                      ...(topic ? { topic } : {}),
+                                      // 읽은 판의 해시. 다르면 서버가 쓰지 않고 `write_conflict` 를 준다.
+                                      ...(expectedContentHash ? { expected_content_hash: expectedContentHash } : {}) }),
   // 파일 바이트 입구(D45) — 텍스트로 못 읽는 것(PDF)과 브라우저 UTF-8 디코드가
   // 망친 것(cp949 등)을 원본 바이트로 넘겨 서버 추출기에 맡긴다. multipart 가
   // 아니라 base64-in-JSON 인 이유는 계정 프록시가 JSON 만 통과시키기 때문.
@@ -976,8 +1088,14 @@ export const api = {
     executed: boolean; count?: number;
     docs?: { doc_id: string; title: string; origin: string; chunks: number;
              updated_at: string; topic?: string; topics?: string[];
-             primary_concept_id?: string; primary_concept_title?: string }[];
-  }> => call("/docs", { owner }),
+             primary_concept_id?: string; primary_concept_title?: string; valid_until?: string }[];
+  }> => bootRead(`docs|${owner}`, () => call("/docs", { owner })).then(res => {
+    // 커뮤니티 스페이스에서는 내린 페이지를 목록에서 뺀다(`withoutClosedDocs` 와 같은 규칙).
+    if (!isCommunitySpace(cfg.team) || !res.docs) return res;
+    const today = new Date().toISOString().slice(0, 10);
+    const docs = res.docs.filter((d: { valid_until?: string }) => !d.valid_until || d.valid_until > today);
+    return { ...res, docs, count: docs.length };
+  }),
   // D69 — 좌측 문서 트리: 주제 → 그 주제의 문서(개념 계층 깊이순) + 미분류.
   //: `kind` 는 모집단을 그 종 **하나**로 좁힌다(종 레일). 목록을 종별로 가져가는
   //: 것이 계약이다 - 전부를 한 번에 싣는 값은 없고, 레일의 개수는 응답의
@@ -987,11 +1105,14 @@ export const api = {
   navTree: (owner: string, opts?: { nodes?: boolean; kind?: string; domain?: string;
                                      domains?: string[] },
            ): Promise<NavTreeRes> =>
-    call("/nav-tree", { owner, ...(opts?.nodes ? { nodes: 1 } : {}),
+    // 옵션 없는 기본 트리만 부팅 때 미리 읽어 둔 것을 꺼내 쓴다(`bootRead`).
+    (opts ? (run: () => Promise<any>) => run() : (run: () => Promise<any>) => bootRead(`nav|${owner}`, run))(
+    () => call("/nav-tree", { owner, ...(opts?.nodes ? { nodes: 1 } : {}),
                         ...(opts?.kind ? { kind: opts.kind } : {}),
                         ...(opts?.domain ? { domain: opts.domain } : {}),
                         // 하위 트리 여럿의 합(Agent 레일: 역할 주제 둘). `/graph` 와 같은 쉼표 꼴.
-                        ...(opts?.domains?.length ? { domains: opts.domains.join(",") } : {}) }),
+                        ...(opts?.domains?.length ? { domains: opts.domains.join(",") } : {}) }))
+      .then((res: NavTreeRes) => isCommunitySpace(cfg.team) ? withoutClosedDocs(res) : res),
   // D45-V2 4단계 — 타임라인 기간(월-밴드) 클릭: [start, end) 의 날짜 있는 항목.
   // ⚠ basis 는 차트가 그리는 축과 **글자 그대로 같아야** 한다(D72) — 밴드를 눌러
   // 여는 목록이 다른 시간 열로 세면 화면이 스스로를 반박한다.
@@ -1006,6 +1127,9 @@ export const api = {
     executed: boolean; total?: number;
     items?: { concept_id: string; title: string; one_liner: string }[];
   }> => call("/ledger-drilldown", { owner, domain, mark, ...(seed ? { seed } : {}) }),
+  // 에이전트 쓰기 검토(A5) — 최근 쓰기를 출처별로 묶고 사람이 볼 검사를 단다(조회 전용).
+  agentWrites: (owner: string, days = 14): Promise<import("./agent-writes").AgentWrites> =>
+    call("/agent-writes", { owner, days }),
   // D45-V 1단계 — 흐름 선 클릭: 관계의 evidence·confidence + 양끝 노드 메타/발췌.
   edgeContext: (owner: string, src: string, dst: string, type: string): Promise<{
     executed: boolean; evidence?: string; confidence?: number;
@@ -1031,18 +1155,38 @@ export const api = {
   // ── 삭제(S1) — 앱 UI 배선. 여태 백엔드·MCP 에만 있고 UI 가 없어 "추가는 원클릭,
   // 제거는 불가"였다. owner 는 웹모드에선 허브가 세션 sub 로 강제(바디 owner 무시),
   // 로컬 셸에선 여기서 넘긴 값이 스코프가 된다. 되돌릴 수 없으므로 호출부가 확인을 받는다.
-  deleteNode: (owner: string, node: string): Promise<{
+  //
+  // 0.9.8 계약: 확인 창을 열 때 `preview*` 로 미리보기를 받아 두고(digest 와 operation_id),
+  // 확인하면 그 묶음을 실어 적용한다. 그 사이 대상이 바뀌었으면 서버가 지우지 않고
+  // `preview_conflict` 로 답한다(`isWriteConflict`).
+  previewDeleteNode: (owner: string, node: string): Promise<DeleteGuard> =>
+    previewDelete("/delete", { owner, node }),
+  deleteNode: (owner: string, node: string, guard?: DeleteGuard): Promise<{
     executed: boolean; found?: boolean;
-    deleted?: { node: number; edges: number }; note?: string; error?: string;
-  }> => call("/delete", undefined, { owner, node }),
+    deleted?: { node: number; edges: number }; note?: string; error?: string; status?: string;
+  }> => applyDelete("/delete", { owner, node }, guard),
   // `deleted` 는 수가 아니라 `{edges: n}` 이다(`query.delete_edge`). 지울 수 없는 관계
   // 종류(부착 등)는 executed:true 에 `note` 만 싣고 `deleted` 가 없다.
-  deleteEdge: (owner: string, from: string, to: string, type: string): Promise<{
+  previewDeleteEdge: (owner: string, from: string, to: string, type: string): Promise<DeleteGuard> =>
+    previewDelete("/delete-edge", { owner, from, to, type }),
+  deleteEdge: (owner: string, from: string, to: string, type: string, guard?: DeleteGuard): Promise<{
     executed: boolean; found?: boolean; deleted?: { edges: number }; note?: string; error?: string;
-  }> => call("/delete-edge", undefined, { owner, from, to, type }),
-  docDelete: (owner: string, id: string, scope?: Scope): Promise<{
-    executed: boolean; deleted_meta?: number; deleted_chunks?: number; error?: string;
-  }> => call("/doc/delete", undefined, { owner, id }, scope),
+    status?: string;
+  }> => applyDelete("/delete-edge", { owner, from, to, type }, guard),
+  previewDocDelete: (owner: string, id: string, scope?: Scope): Promise<DeleteGuard> =>
+    previewDelete("/doc/delete", { owner, id }, scope),
+  docDelete: (owner: string, id: string, scope?: Scope, guard?: DeleteGuard): Promise<{
+    executed: boolean; deleted_meta?: number; deleted_chunks?: number; error?: string; status?: string;
+  }> => applyDelete("/doc/delete", { owner, id }, guard, scope),
+
+  // 0.9.8 조건부 노드 쓰기. 서버가 지금 판(rev)을 `rev` 와 대조하고 다르면 쓰지 않고
+  // `status:"conflict"` 로 답한다(`api/mutation_contract.py`). props 일부만 바꿀 때는
+  // `props_patch`(JSON Merge Patch)를 실어 서버가 저장된 props 에 합치게 한다.
+  // owner 를 싣는 이유: 판 확인은 owner 스코프로 읽는다. 빼면 로컬 기본 owner 로 읽어
+  // 견본 스페이스의 노드가 "없음"으로 거절된다. 계정·웹은 허브가 세션 owner 로 바꾼다.
+  // 근거 기록은 tests/app/test_node_props_edit.py 머리말이 가리킨다.
+  editNode: (node: { id: string; type: string } & Record<string, unknown>, rev: number) =>
+    call("/ingest/fragment", undefined, { owner: cfg.owner, nodes: [{ ...node, expected_rev: rev }] }),
 
   // 계정 연결(디바이스 플로우) — start 로 state 발급, 브라우저 승인 후 status 폴링으로
   // 키를 1회 수령한다(사이드카 메일박스). 셸 전용 UI(settings)에서만 쓴다.
@@ -1051,38 +1195,21 @@ export const api = {
   jobStatus: (jobId: string) => call(`/jobs/${jobId}`),
 };
 
-// ── 커뮤니티 공유(웹 전용) ─────────────────────────────────────────────────
-// 그래프 프록시(/api/graph)와 별개인 계정 라우트(/api/community). 세션 쿠키 +
-// 쓰기 CSRF. 셸/브라우저 dev 에는 세션이 없어 사실상 웹모드 전용(버튼도 WEB 가드).
-/** 계정 API 오류 — `code` 를 실어 호출부가 문자열 매칭 없이 분기하게 한다.
- *  (계정 백엔드의 오류 봉투는 `{error:{code,message,request_id}}` 고정.) */
-export class AccountError extends Error {
-  constructor(readonly status: number, readonly code: string, message: string) {
-    super(message);
-    this.name = "AccountError";
+/** 지금 스페이스에서 편집 단추를 보일지. 화면 힌트일 뿐이고 최종 판정은 서버다(팀 역할 검사).
+ *  개인 그래프는 쓸 수 있고, 커뮤니티는 읽기 전용이며, 팀은 editor·admin 만 쓴다. 팀 목록을 못
+ *  읽으면 숨기지 않는다(서버가 거절하면 그 자리에서 말한다). 스페이스마다 한 번만 묻는다. */
+const writableCache = new Map<string, Promise<boolean>>();
+export function canWriteHere(team: string = cfg.team): Promise<boolean> {
+  if (!team) return Promise.resolve(true);
+  if (isCommunitySpace(team)) return Promise.resolve(false);
+  let p = writableCache.get(team);
+  if (!p) {
+    p = teamsApi.list({ throwOnError: true })
+      .then((rows) => rows.some((t) => t.id === team && ["editor", "admin"].includes(t.role)))
+      .catch(() => { writableCache.delete(team); return true; });
+    writableCache.set(team, p);
   }
-}
-
-async function communityPost(path: string, body: unknown): Promise<any> {
-  const res = await fetch(new URL(path, location.origin), {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    if (res.status === 401) { location.assign("/login"); throw new Error("session expired"); }
-    // 오류 봉투를 파싱해 code 를 살린다 — 예전엔 상태코드+본문을 통째로 message 에
-    // 밀어넣어, 호출부가 "왜 실패했는지"로 분기하려면 문자열을 뒤져야 했다.
-    const raw = await res.text();
-    let code = "", message = raw;
-    try {
-      const e = JSON.parse(raw)?.error;
-      if (e?.code) { code = String(e.code); message = String(e.message ?? raw); }
-    } catch { /* 본문이 JSON 이 아니면 원문 그대로 */ }
-    throw new AccountError(res.status, code, message);
-  }
-  return res.json();
+  return p;
 }
 
 /** 팀 목록 — 그래프 프록시가 아니라 계정 라우트(/api/teams). 세션 쿠키만 필요하다.
@@ -1110,25 +1237,46 @@ export const teamsApi = {
   },
 };
 
+/** 가입한 커뮤니티(`/api/graph/spaces` 의 `communities`). id 는 `community:<uuid>` 이고 그대로 스페이스로 쓴다.
+ *  커뮤니티 스페이스는 읽기 전용이다: 계정이 읽기만 공개 커뮤니티 그래프로 넘기고 쓰기는 거절한다(VIN-458). */
+export const communitiesApi = {
+  list: async (): Promise<Array<{ id: string; name: string; role: string }>> => {
+    // 로컬 모드에는 계정이 없다. 웹과 셸 계정 모드는 같은 계정 평면(`/api/graph/spaces`)을 읽는다.
+    if (!WEB && !accountMode()) return [];
+    try {
+      const data = await call("/spaces", undefined, undefined, { team: null }) as { communities?: unknown };
+      return Array.isArray(data.communities) ? data.communities : [];
+    } catch { return []; }
+  },
+};
+export const isCommunitySpace = (team: string | null | undefined): boolean => Boolean(team && team.startsWith("community:"));
+
+export type ConventionsPolicy = "retain" | "move_original";
 export type ConversionCheck = { ready: boolean; topic: string; fingerprint?: string;
+  conventions?: { policy: ConventionsPolicy; documents: number; personal_defaults_after_move: boolean };
+  retained_personal_history?: Record<string, number>;
+  preserved_references?: { external_references?: number; external_attachments?: number };
   document_ownership?: Record<string, number>;
   document_missing_evidence?: Record<string, number>;
   inventory_state?: "pending" | "done" | "failed" | "stale" | "unknown" | "busy";
   inventory_ticket?: string;
   counts_known?: boolean; counts: Record<string, number> | null; documents: number | null; blockers: string[] };
 export type ConversionRun = { id: string; topic: string; name: string; team: string;
+  conventionsPolicy?: ConventionsPolicy;
+  progress?: { status: string; phase?: string; batches?: number; durable_generation?: number;
+    retained_personal_history?: Record<string, number> };
   state: "prepared" | "committing" | "graph_committed" | "active" | "cancelled" };
 /** Account-owned control plane, shared by web sessions and desktop member keys. */
 export const conversionApi = {
-  capabilities: (): Promise<{ enabled: boolean; subject: string; pending?: { id: string; name: string; topic: string; fingerprint: string } | null }> =>
+  capabilities: (): Promise<{ enabled: boolean; subject: string; pending?: { id: string; name: string; topic: string; fingerprint: string; conventionsPolicy?: ConventionsPolicy } | null }> =>
     call("/conversion/capabilities", undefined, undefined, { team: null }),
-  preflight: async (topic: string): Promise<ConversionCheck> => {
+  preflight: async (topic: string, conventions_policy: ConventionsPolicy = "retain"): Promise<ConversionCheck> => {
     const { waitForInventory } = await import("./conversion-inventory");
     return waitForInventory(topic,
-      () => call("/conversion/preflight", undefined, { topic }, { team: null }),
+      () => call("/conversion/preflight", undefined, { topic, conventions_policy }, { team: null }),
       ticket => call(`/conversion/inventory/${encodeURIComponent(ticket)}`, undefined, undefined, { team: null }));
   },
-  reserve: (body: { id: string; name: string; topic: string; fingerprint: string }): Promise<ConversionRun> =>
+  reserve: (body: { id: string; name: string; topic: string; fingerprint: string; conventions_policy?: ConventionsPolicy }): Promise<ConversionRun> =>
     call("/conversion/runs", undefined, body, { team: null }),
   status: (id: string): Promise<ConversionRun> => call(`/conversion/runs/${encodeURIComponent(id)}`, undefined, undefined, { team: null }),
   resume: (id: string): Promise<ConversionRun> => call(`/conversion/runs/${encodeURIComponent(id)}/resume`, undefined, {}, { team: null }),
@@ -1177,7 +1325,11 @@ export async function adoptSpaceFromAddress(): Promise<"" | "member" | "local"> 
   if (raw && raw !== mark && remote() && raw !== spaceName().toLowerCase()) {
     if (raw === "personal") cfg.team = "";
     else if (raw === "local") refused = "local";
-    else {
+    else if (isCommunitySpace(raw)) {
+      const hit = (await communitiesApi.list()).find((x) => x.id.toLowerCase() === raw);
+      if (hit) cfg.team = hit.id;
+      else refused = "member";
+    } else {
       const rows = await teamsApi.list();
       const hit = rows.find((t) => t.status === "active" && t.id.toLowerCase() === raw);
       if (hit) cfg.team = hit.id;
@@ -1188,11 +1340,31 @@ export async function adoptSpaceFromAddress(): Promise<"" | "member" | "local"> 
   return refused;
 }
 
-export const community = {
-  /** 지식 팩을 공개 갤러리에 게시. 반환 {publicId}. 데이터가 공개된다(호출부가 동의 확인). */
-  publish: (title: string, description: string, pack: unknown): Promise<{ publicId: string }> =>
-    communityPost("/api/community/publish", { title, description, pack }),
-};
+// 웹 첫 화면의 두 읽기(사이드바 트리·문서 목록)를 세션 확인과 **나란히** 띄운다. 차례로
+// 기다리면 /api/me 왕복 뒤에야 첫 데이터 요청이 나가서 빈 화면이 그만큼 길어진다.
+// 한 번만 쓰이고 몇 초 뒤에는 버린다: 늦게 꺼내 쓰면 그 사이의 쓰기가 안 보인다.
+// 스페이스는 키에 들어간다. 주소가 다른 스페이스를 들고 오면 아예 미리 읽지 않는다.
+const BOOT_READ_MS = 10_000;
+const bootReads = new Map<string, { at: number; p: Promise<any> }>();
+function bootRead<T>(key: string, run: () => Promise<T>): Promise<T> {
+  const k = `${key}|${cfg.team}`;
+  const hit = bootReads.get(k);
+  if (!hit) return run();
+  bootReads.delete(k);
+  if (Date.now() - hit.at > BOOT_READ_MS) return run();
+  return hit.p.catch(() => run());
+}
+function primeBootReads(): void {
+  if (new URLSearchParams(location.search).get("space")) return;
+  const owner = cfg.owner;
+  const at = Date.now();
+  const docs = api.docList(owner);
+  const nav = api.navTree(owner);
+  // 아무도 안 꺼내 가도 거절이 처리되지 않은 채 남지 않게 한다.
+  docs.catch(() => {}); nav.catch(() => {});
+  bootReads.set(`docs|${owner}|${cfg.team}`, { at, p: docs });
+  bootReads.set(`nav|${owner}|${cfg.team}`, { at, p: nav });
+}
 
 /** 웹모드 부팅 인증 게이트 — /api/me 로 세션을 **먼저** 확인한다. 미인증이면 서피스를
  *  렌더하기 전에 /login 으로 보내고 false 를 돌려준다(main.ts 가 렌더를 중단). 이게 없으면
@@ -1207,8 +1379,9 @@ export async function ensureWebAuth(): Promise<boolean> {
     location.assign("/login");
     return false;
   }
+  primeBootReads();
   try {
-    const res = await fetch(new URL("/api/me", location.origin), { credentials: "include" });
+    const res = await api.me();
     if (res.ok) return true;
   } catch { /* 네트워크 실패 → 아래 로그인으로(안전측) */ }
   viewSessionCache.purge();
@@ -1227,6 +1400,6 @@ export async function pollJob(jobId: string, onTick?: (s: any) => void,
     if (s.status === "done") return s;
     if (s.status === "error") throw new Error(s.error || "sync job failed");
     if (Date.now() - t0 > timeoutMs) throw new Error("sync timed out");
-    await new Promise((r) => setTimeout(r, intervalMs));
+    await sleep(intervalMs);
   }
 }

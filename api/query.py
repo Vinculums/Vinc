@@ -8,23 +8,22 @@ callers — and tests — get a deterministic result without a live database.
 """
 from __future__ import annotations
 
-import base64
 import datetime as _dt
-import hashlib
 import itertools
 import json
 import math
 import os
 import re
-from dataclasses import dataclass, field
 
 from store.config import StoreConfig, load_config
 from store.backend import open_store
 from store import pkns
-from store.embedded_backend import vector_generation
+from store.embedded_schema import wiki_pairs_open
+from store.envflag import truthy
 from engines import domain_hierarchy
 
 from . import graphmd
+from vinc_rag import excerpt as _excerpt
 from vinc_rag import retrieval as _retrieval
 
 # 바닥 보조 함수는 store 로, 검색 코어는 vinc_rag 로 옮겼다(VIN-243). 같은 이름을 여기서
@@ -46,7 +45,7 @@ from store.querybase import (  # noqa: E402,F401  (재수출)
     _validity_cols,
     domain_counts_plan,
     domain_subtree_where,
-    domains,
+    domains as _domain_rows,
     execute,
     holds_during,
     normalize_query_tokens,
@@ -101,6 +100,49 @@ from vinc_rag.retrieval import (  # noqa: E402,F401  (재수출)
 )
 
 
+def _drop_unstarted_episodes(result: dict, query: str, *, as_of, mode, historical) -> None:
+    """as_of 기간 뒤에 일어난 사건을 node_hits 에서 뺀다(감사 F14).
+
+    사건의 날짜는 그 시작이고 끝나지 않는다 — `api.temporal_read` 가 neighbors·graph·
+    recall 을 그렇게 거른다. 검색 코어는 사건을 구간 없음으로 읽어 늘 남겼고, 그래서 같은
+    as_of 요청에서 검색만 그 사건을 냈다. 날짜는 검색이 이미 단 시간 메타(content_time)에
+    있어 스토어를 다시 읽지 않는다. 날짜가 없으면 감추지 않는다.
+    감춘 행은 다른 구간 필터와 같은 자리에 센다(validity_filtered·validity_best_dropped)
+    — brief 의 동점 가드가 같은 규칙으로 본다."""
+    if mode == "current" or not (as_of or "").strip() or str(result.get("error") or "").startswith(
+            ("invalid_", "stale_cursor")):
+        return
+    try:
+        from store.search_temporal import mode_scope
+        _, scope, info = mode_scope(mode, historical, as_of, query)
+    except ValueError:
+        return
+    if scope is None:
+        return
+    kept, best = [], tuple(result.get("validity_best_dropped") or (0, 0))
+    hidden = 0
+    for hit in result.get("node_hits") or []:
+        date = str((hit.get("temporal") or {}).get("content_time") or "")
+        if (hit.get("kind") == "episode" or str(hit.get("id") or "").startswith("episode:")) \
+                and date and not holds_during(date, "", scope):
+            hidden += 1
+            # 축별 최댓값으로 모은다(검색 코어의 제목 팔과 같은 규칙, 동점 가드가 읽는다).
+            best = (max(best[0], int(hit.get("hit_tokens") or 0)),
+                    max(best[1], int(hit.get("title_tokens") or 0)))
+            continue
+        kept.append(hit)
+    if not hidden:
+        return
+    result["node_hits"] = kept
+    result["validity_filtered"] = int(result.get("validity_filtered") or 0) + hidden
+    result["validity_best_dropped"] = list(best)
+    result.setdefault("validity_note",
+                      f"hid nodes whose claim did not hold during {info['as_of']}; "
+                      "drop as_of for today's view")
+    if isinstance(result.get("node_window"), dict):
+        result["node_window"]["returned"] = len(kept)
+
+
 def _doc_cite_ids(store, owner: str | None, doc_ids) -> dict[str, str]:
     """문서 키와 인용할 노드 id는 다르다. 읽을 수 있는 미러만 인용한다."""
     ids = {f"concept:doc.{doc_id}" for doc_id in doc_ids if doc_id}
@@ -130,14 +172,21 @@ def search(query: str, *, query_embedding: list[float] | None = None,
            cursor: str | None = None, detail: str = "summary",
            historical: bool = False, as_of: str | None = None,
            mode: str | None = None, known_at: str | None = None,
-           query_runtime: str | None = None, cfg=None, store=None) -> dict:
-    """검색 순위와 페이지는 그대로 두고 공개 응답에 정확한 인용 id를 붙인다."""
+           query_runtime: str | None = None, query_model: str | None = None,
+           query_colbert: str | None = None,
+           cfg=None, store=None) -> dict:
+    """검색 순위와 페이지는 그대로 두고 공개 응답에 정확한 인용 id를 붙인다.
+
+    as_of 기간이 있으면 그 기간이 끝난 뒤에 시작한 사건(Episode)을 node_hits 에서 뺀다
+    (:func:`_drop_unstarted_episodes`). 다른 종류의 구간 검사는 검색 코어가 이미 한다."""
     result = _retrieval.search(
         query, query_embedding=query_embedding, top_k=top_k, filters=filters,
         owner=owner, cursor=cursor, detail=detail, historical=historical,
-        as_of=as_of, mode=mode, known_at=known_at, query_runtime=query_runtime, cfg=cfg, store=store)
+        as_of=as_of, mode=mode, known_at=known_at, query_runtime=query_runtime,
+        query_model=query_model, query_colbert=query_colbert, cfg=cfg, store=store)
     result["node_hits"] = [{**hit, "cite_id": hit.get("id") or None}
                            for hit in result.get("node_hits") or []]
+    _drop_unstarted_episodes(result, query, as_of=as_of, mode=mode, historical=historical)
     rows = result.get("rows") or []
     if not rows:
         return result
@@ -301,10 +350,11 @@ def normalize_domains(domain: str | None = None,
     return out
 
 
-#: 추적열 투영 한 자리(W3) — 읽기 표면이 `rev`·`updated_at` 을 함께 낸다. 쓰기가
-#: 버전을 손에 쥐려면 읽기가 먼저 그것을 줘야 하는데, 여태 어느 읽기 경로도 주지
-#: 않았다. **투영만이고 강제는 아니다**(expected_rev 는 첫 실측 충돌이 방아쇠).
-#: 근거: [[vinc.plan.mcp-agent-surface §6]] · 세 열의 의미는 [[vinc.spec.dataplane §6.1]].
+#: 추적열 투영 한 자리(W3): 읽기 표면이 `rev`·`updated_at` 을 함께 낸다. 쓰기가 버전을
+#: 손에 쥐려면 읽기가 먼저 그것을 줘야 한다. 쓰기 쪽 대조는 **선택**이다: `expected_rev` 를
+#: 실은 쓰기만 이 값과 맞춰 보고 어긋나면 바꾸지 않고 거절한다(`api/mutation_contract.py`).
+#: 근거: [[vinc.plan.mcp-agent-surface §6]] · 쓰기 쪽 조건은
+#: [[vinc.design.mutation-lifecycle-mcp-api-cli-2026-10-13]] · 세 열의 의미는 [[vinc.spec.dataplane §6.1]].
 #:
 #: ⚠ 이 두 열은 `store/embedded_schema.py` 의 `_TRACK_COLS` 가 붙는 라벨에만 있다
 #: (Concept·Episode·Record·Bridge·Entity·Decision). **Domain 에는 없다** — 도메인
@@ -423,8 +473,8 @@ def shape_graph(rows: list[dict]) -> dict:
                           # 열은 **Concept 에만** 있으므로 나머지 종류에서는 빈
                           # 문자열이고, 그건 결손이 아니라 사실이다.
                           "one_liner": one_liner or "",
-                          # W3 — 낙관적 동시성의 읽기 절반. 쓰기 쪽은 아직 이 값을
-                          # 요구하지 않는다(D4: 투영만).
+                          # W3: 낙관적 동시성의 읽기 절반. 쓰기는 이 값을
+                          # `expected_rev` 로 실을 때만 대조한다(선택).
                           "rev": rev or 0, "updated_at": updated_at or "",
                           # W13 — Record 만 값을 갖는다(축 플랜 중 record 팔 전용 열).
                           # 다른 종류의 빈 문자열은 결손이 아니라 사실이다(R2 동형).
@@ -478,7 +528,11 @@ def shape_graph(rows: list[dict]) -> dict:
                   r.get("target_props"), r.get("target_tags"), r.get("target_kind"),
                   ts=r.get("target_ts"), content_ts=r.get("target_content_ts"),
                   one_liner=r.get("target_one_liner"), rev=r.get("target_rev"),
-                  updated_at=r.get("target_updated_at"))
+                  updated_at=r.get("target_updated_at"),
+                  # 기록끼리의 SUPERSEDES 는 도착점도 Record 다. 대체된 기록의 구간이
+                  # 빠지면 은퇴한 기록이 그래프에서 유효한 것처럼 보인다.
+                  valid_from=r.get("target_valid_from"),
+                  valid_until=r.get("target_valid_until"))
             src_dom, tgt_dom = r.get("domain"), r.get("target_domain")
             # cross_domain: 끝점 차이 규칙 유지 — 브릿지는 domain=source_domain 이라
             # 원측(source) 팔은 in-cluster, 반대측 팔만 cross(기하 정합, 특례 불요).
@@ -617,8 +671,9 @@ def ppr_scores(nodes: list[dict], edges: list[dict], seeds: list[str], *,
 # 나이는 오늘이 아니라 **이 노드 집합에서 가장 새 `ts`** 부터 잰다. 그래서 값은 그래프만의
 # 순수 함수다(그래프가 그대로면 날이 바뀌어도 그대로다).
 # ⚠ "최근"의 뜻이 종류마다 다르다(`ts` 투영이 다르다): Concept·Record·Decision 은 생성
-# 시각(없으면 갱신), Episode 는 사건 날짜, Entity 는 갱신 시각, Bridge 는 생성 시각을 읽지만
-# 그 열은 쓰이지 않아 사실상 갱신 시각이다([[record:bridge-created-is-read-but-never-written]]).
+# 시각(없으면 갱신), Episode 는 사건 날짜, Entity 는 갱신 시각, Bridge 는 생성 시각(없으면
+# 갱신)을 읽는다. 쓰기 경로가 Bridge 의 생성 시각을 찍기 시작하기 전에 만든 Bridge 는 그
+# 열이 비어 갱신 시각으로 떨어진다.
 # 근거: [[vinc.research.graphrag-agent-memory-literature-2026-09-28]] §4 Generative Agents 행
 PPR_RECENCY_HALF_LIFE_DAYS = 90.0
 #: 최근성이 섞이는 몫. 0 이면 `ppr_recent == ppr`, 1 이면 최근성만큼 줄어든다.
@@ -966,7 +1021,10 @@ def bridge_rows_plan(*, owner: str, domain: str | None = None, domains: list[str
     """Bridge 노드 + CONNECTS 팔(F2). 노드 domain = source_domain(단일 결정값),
     target_domain 은 domain2 로 병기(상세 레일용). L1 소속은 선언 필드(source/
     target_domain)를 신뢰 — 실 CONNECTS 끝점과 어긋난 브릿지는 렌즈에서 빠질 수
-    있다(L2 에선 보임, v1 수용). owner: Bridge 과도기 술어 + Concept 엄격."""
+    있다(L2 에선 보임, v1 수용). owner: Bridge 과도기 술어 + 도착점 엄격.
+
+    도착점은 의미층 라벨마다 한 팔이다(개념·결정). 개념만 보면 결정에 걸린 다리가
+    vinc_neighbors 에는 보이고 그래프에는 안 보인다(감사 F2)."""
     doms = normalize_domains(domain, domains)
     assert not (doms and ids), "domain and ids are mutually exclusive"
     where = [_bridge_owner_pred("b"), "c.owner_id = $owner"]
@@ -975,25 +1033,34 @@ def bridge_rows_plan(*, owner: str, domain: str | None = None, domains: list[str
         where.append(domain_subtree_where(
             ["b.source_domain", "b.target_domain"], doms, params))
     if ids:
-        where.append("(c.concept_id IN $ids OR b.bridge_id IN $ids)")
         params["ids"] = pkns.keys(owner, ids)
-    cypher = (
-        "MATCH (b:Bridge)-[r:CONNECTS]->(c:Concept) "
-        f"WHERE {' AND '.join(where)} "
-        "RETURN b.bridge_id AS id, b.title AS label, b.source_domain AS domain, "
-        "b.target_domain AS domain2, b.props AS props, 'bridge' AS kind, "
-        "coalesce(b.created, b.updated_at, '') AS ts, "
-        "'CONNECTS' AS rel, r.role AS role, "
-        "c.concept_id AS target, c.domain AS target_domain, c.title AS target_label, "
-        "c.props AS target_props, c.tags AS target_tags, 'concept' AS target_kind, "
-        "coalesce(c.created, c.updated_at, '') AS target_ts, "
-        # R2 — 개념 팔이라 이 열이 있다(Bridge 쪽에는 없다).
-        "coalesce(c.one_liner, '') AS target_one_liner, "
-        # W3 — 매개자(b)도 vinc_graph 의 노드로 나가므로 함께 싣는다.
-        # one_liner 와 달리 이 두 열은 추적 라벨 전부에 있어 리터럴 맞춤이 필요 없다.
-        + _track_cols("b") + ", " + _track_cols("c", "target_")
-    )
-    return QueryPlan("graph_axis_bridge", cypher, params, note="bridge axis rows (F2)")
+    arms = []
+    for t_label, t_pk in _SEMANTIC_PK.items():
+        arm_where = list(where)
+        if ids:
+            arm_where.append(f"(c.{t_pk} IN $ids OR b.bridge_id IN $ids)")
+        # one_liner·content_time 은 Concept 에만 있는 열이라 다른 라벨은 리터럴로 맞춘다.
+        concept = t_label == "Concept"
+        arms.append(
+            f"MATCH (b:Bridge)-[r:CONNECTS]->(c:{t_label}) "
+            f"WHERE {' AND '.join(arm_where)} "
+            "RETURN b.bridge_id AS id, b.title AS label, b.source_domain AS domain, "
+            "b.target_domain AS domain2, b.props AS props, 'bridge' AS kind, "
+            "coalesce(b.created, b.updated_at, '') AS ts, "
+            "'CONNECTS' AS rel, r.role AS role, "
+            f"c.{t_pk} AS target, c.domain AS target_domain, c.title AS target_label, "
+            f"c.props AS target_props, c.tags AS target_tags, '{t_label.lower()}' AS target_kind, "
+            "coalesce(c.created, c.updated_at, '') AS target_ts, "
+            # F10 — 개념의 내용 시점을 이 축에서도 싣는다. 빠지면 다리로만 닿은 개념이
+            # 내용 시점 없이 굳는다.
+            + ("coalesce(c.content_time, '') AS target_content_ts, "
+               "coalesce(c.one_liner, '') AS target_one_liner, " if concept else
+               "'' AS target_content_ts, '' AS target_one_liner, ")
+            # W3 — 매개자(b)도 vinc_graph 의 노드로 나가므로 함께 싣는다.
+            # one_liner 와 달리 이 두 열은 추적 라벨 전부에 있어 리터럴 맞춤이 필요 없다.
+            + _track_cols("b") + ", " + _track_cols("c", "target_"))
+    return QueryPlan("graph_axis_bridge", " UNION ALL ".join(arms), params,
+                     note="bridge axis rows (F2)")
 
 
 def episode_rows_plan(*, owner: str, domain: str | None = None, domains: list[str] | None = None,
@@ -1024,6 +1091,8 @@ def episode_rows_plan(*, owner: str, domain: str | None = None, domains: list[st
         # (episode:/record:/bridge: 시드 L2)이 영구 무날짜가 되던 결함(Timeline 이
         # 전량을 '날짜 없음'으로 강등)의 절반. 나머지 절반은 shape_graph 의 ts 승격.
         "coalesce(c.created, c.updated_at, '') AS target_ts, "
+        # F10 — 내용 시점도 같은 이유로 싣는다(도착점이 개념이라 열이 있다).
+        "coalesce(c.content_time, '') AS target_content_ts, "
         # R2 — 같은 이유로 개념 팔의 one_liner 도 싣는다(Episode 쪽에는 열이 없다).
         "coalesce(c.one_liner, '') AS target_one_liner, "
         # W3 — 매개자(e)도 vinc_graph 의 노드로 나가므로 함께 싣는다.
@@ -1036,7 +1105,10 @@ def episode_rows_plan(*, owner: str, domain: str | None = None, domains: list[st
 def record_rows_plan(*, owner: str, domain: str | None = None, domains: list[str] | None = None,
                      ids: list[str] | None = None) -> QueryPlan:
     """Record 노드 + ATTACHES_TO 팔(F2). 엣지 질화자 r.type 은 role 슬롯으로 투영
-    (CONNECTS.role 과 단일 선택 열 공유 — shape_graph 계약)."""
+    (CONNECTS.role 과 단일 선택 열 공유 — shape_graph 계약).
+
+    도착점은 의미층 라벨마다 한 팔이다(개념·결정). 근거·신뢰도(v16 실열)도 싣는다 —
+    빠지면 vinc_graph 와 그것을 쓰는 내보내기가 부착의 근거를 잃는다(감사 F2·F2b)."""
     doms = normalize_domains(domain, domains)
     assert not (doms and ids), "domain and ids are mutually exclusive"
     where = ["rc.owner_id = $owner", "c.owner_id = $owner"]
@@ -1044,34 +1116,41 @@ def record_rows_plan(*, owner: str, domain: str | None = None, domains: list[str
     if doms:
         where.append(domain_subtree_where(["rc.domain", "c.domain"], doms, params))
     if ids:
-        where.append("(c.concept_id IN $ids OR rc.record_id IN $ids)")
         params["ids"] = pkns.keys(owner, ids)
-    cypher = (
-        "MATCH (rc:Record)-[r:ATTACHES_TO]->(c:Concept) "
-        f"WHERE {' AND '.join(where)} "
-        "RETURN rc.record_id AS id, rc.title AS label, rc.domain AS domain, "
-        "rc.props AS props, coalesce(rc.tags, []) AS tags, 'record' AS kind, "
-        "coalesce(rc.created, rc.updated_at, '') AS ts, "
-        # v7(D72) — Record 도 content_time 을 얻었다(Concept 과 같은 축). 여기 두 끝은
-        # Record·Concept 이라 둘 다 열이 있다. Bridge·Entity 축 플랜에는 열이 없으므로
-        # 절대 옮겨 붙이지 않는다 — 붙이면 모든 레벨의 /graph 가 Binder 로 죽는다.
-        "coalesce(rc.content_time, '') AS content_ts, "
-        "'ATTACHES_TO' AS rel, r.type AS role, "
-        "c.concept_id AS target, c.domain AS target_domain, c.title AS target_label, "
-        "c.props AS target_props, c.tags AS target_tags, 'concept' AS target_kind, "
-        "coalesce(c.created, c.updated_at, '') AS target_ts, "
-        "coalesce(c.content_time, '') AS target_content_ts, "
-        # R2 — 개념 팔에서만 뽑는다. 매개자(Bridge·Episode·Record·Decision)에는
-        # 이 열이 없어 shape_graph 가 빈 문자열로 둔다(결손이 아니라 사실).
-        "coalesce(c.one_liner, '') AS target_one_liner, "
-        # W3 — 매개자(rc)도 vinc_graph 의 노드로 나가므로 함께 싣는다.
-        # one_liner 와 달리 이 두 열은 추적 라벨 전부에 있어 리터럴 맞춤이 필요 없다.
-        + _track_cols("rc") + ", " + _track_cols("c", "target_") + ", "
-        # W13 — 유효구간은 **Record 팔에서만** 뽑는다(도착점 Concept 에는 열이 없다).
-        # 이 플랜만 싣는 이유: 축 5종 중 Record 가 매개자인 곳이 여기뿐이다.
-        + _validity_cols("rc")
-    )
-    return QueryPlan("graph_axis_record", cypher, params, note="record axis rows (F2)")
+    arms = []
+    for t_label, t_pk in _SEMANTIC_PK.items():
+        arm_where = list(where)
+        if ids:
+            arm_where.append(f"(c.{t_pk} IN $ids OR rc.record_id IN $ids)")
+        # one_liner·content_time 은 Concept 에만 있는 열이라 다른 라벨은 리터럴로 맞춘다.
+        concept = t_label == "Concept"
+        arms.append(
+            f"MATCH (rc:Record)-[r:ATTACHES_TO]->(c:{t_label}) "
+            f"WHERE {' AND '.join(arm_where)} "
+            "RETURN rc.record_id AS id, rc.title AS label, rc.domain AS domain, "
+            "rc.props AS props, coalesce(rc.tags, []) AS tags, 'record' AS kind, "
+            "coalesce(rc.created, rc.updated_at, '') AS ts, "
+            # v7(D72) — Record 도 content_time 을 얻었다(Concept 과 같은 축). Bridge·Entity
+            # 축 플랜에는 열이 없으므로 절대 옮겨 붙이지 않는다 — 붙이면 모든 레벨의
+            # /graph 가 Binder 로 죽는다.
+            "coalesce(rc.content_time, '') AS content_ts, "
+            "'ATTACHES_TO' AS rel, r.type AS role, "
+            "r.evidence AS evidence, r.confidence AS confidence, "
+            f"c.{t_pk} AS target, c.domain AS target_domain, c.title AS target_label, "
+            f"c.props AS target_props, c.tags AS target_tags, '{t_label.lower()}' AS target_kind, "
+            "coalesce(c.created, c.updated_at, '') AS target_ts, "
+            # R2 — 개념 팔에서만 뽑는다. 매개자(Bridge·Episode·Record·Decision)에는
+            # 이 열이 없어 shape_graph 가 빈 문자열로 둔다(결손이 아니라 사실).
+            + ("coalesce(c.content_time, '') AS target_content_ts, "
+               "coalesce(c.one_liner, '') AS target_one_liner, " if concept else
+               "'' AS target_content_ts, '' AS target_one_liner, ")
+            # W3 — 매개자(rc)도 vinc_graph 의 노드로 나가므로 함께 싣는다.
+            # one_liner 와 달리 이 두 열은 추적 라벨 전부에 있어 리터럴 맞춤이 필요 없다.
+            + _track_cols("rc") + ", " + _track_cols("c", "target_") + ", "
+            # W13 — 유효구간은 **Record 팔에서만** 뽑는다(도착점에는 열이 없다).
+            + _validity_cols("rc"))
+    return QueryPlan("graph_axis_record", " UNION ALL ".join(arms), params,
+                     note="record axis rows (F2)")
 
 
 def decision_rows_plan(*, owner: str, domain: str | None = None, domains: list[str] | None = None,
@@ -1118,23 +1197,32 @@ def decision_rows_plan(*, owner: str, domain: str | None = None, domains: list[s
 def decision_relation_rows_plan(*, owner: str, domain: str | None = None,
                                 domains: list[str] | None = None,
                                 ids: list[str] | None = None) -> QueryPlan:
-    """기존 축이 읽지 않는 Decision 관계를 전체/주제/시드 그래프에 보충한다.
+    """기존 축이 읽지 않는 관계를 전체/주제/시드 그래프에 보충한다.
 
-    끝점 조합은 스키마 파생 계약을 사용한다. 기존 ABOUT→Concept 축과 겹치지
-    않으며, 렌즈 소속은 기존 부착 축처럼 어느 한 끝점의 domain으로 판정한다.
-    ids 모드는 어느 한 끝점이 기존 도달 집합에 속한 관계만 한 번 합류한다.
-    이웃을 다시 순회하지 않으므로 Concept 도달 집합과 예산은 그대로다.
+    이름과 달리 Decision 관계만이 아니다. 개념끼리(graph_plan)와 ABOUT→Concept
+    (사건·결정 축)를 뺀 공통 읽기 계약의 나머지 전부다 — 결정의 의미 관계, 사건→결정
+    ABOUT, 그리고 기록끼리의 SUPERSEDES(감사 F2). 이름을 그대로 둔 것은
+    호출부와 테스트가 이 이름으로 부르기 때문이다.
+
+    끝점 조합은 스키마 파생 계약을 사용한다. 렌즈 소속은 기존 부착 축처럼 어느 한
+    끝점의 domain으로 가린다. ids 모드는 어느 한 끝점이 기존 도달 집합에 속한
+    관계만 한 번 합류한다. 이웃을 다시 순회하지 않으므로 Concept 도달 집합과 예산은
+    그대로다.
     """
     doms = normalize_domains(domain, domains)
     params: dict = {"owner": owner}
     pairs: dict[tuple, list[str]] = {}
     for pair, rels in _GRAPH_READ_PAIRS.items():
         sl, _sp, dl, _dp = pair
-        if "Decision" not in (sl, dl):
+        if (sl, dl) == ("Concept", "Concept"):
             continue
         selected = [rel for rel in rels if not (rel == "ABOUT" and dl == "Concept")]
         if selected:
             pairs[pair] = selected
+    if wiki_pairs_open(owner):
+        # 공개 위키는 사건·기록 쪽끼리도 잇는다(v23). 개인·팀 조회는 갈래가 늘지 않는다.
+        for pair, rels in _WIKI_READ_PAIRS.items():
+            pairs.setdefault(pair, []).extend(rels)
     if ids is not None:
         params["ids"] = pkns.keys(owner, ids)
 
@@ -1142,13 +1230,18 @@ def decision_relation_rows_plan(*, owner: str, domain: str | None = None,
         nid = "target" if prefix else "id"
         time_col = "date" if label == "Episode" else "created"
         ol = f"coalesce({alias}.one_liner, '')" if label == "Concept" else "''"
-        ct = f"coalesce({alias}.content_time, '')" if label == "Concept" else "''"
+        ct = (f"coalesce({alias}.content_time, '')" if label in ("Concept", "Record")
+              else "''")
+        # 유효구간은 Record 열이다. 다른 라벨은 리터럴로 맞춘다(UNION 모양).
+        vf, vu = ((f"coalesce({alias}.valid_from, '')", f"coalesce({alias}.valid_until, '')")
+                  if label == "Record" else ("''", "''"))
         return (
             f"{alias}.{pk} AS {nid}, {alias}.title AS {prefix}label, "
             f"{alias}.domain AS {prefix}domain, {alias}.props AS {prefix}props, "
             f"coalesce({alias}.tags, []) AS {prefix}tags, '{label.lower()}' AS {prefix}kind, "
             f"coalesce({alias}.{time_col}, {alias}.updated_at, '') AS {prefix}ts, "
             f"{ct} AS {prefix}content_ts, {ol} AS {prefix}one_liner, "
+            f"{vf} AS {prefix}valid_from, {vu} AS {prefix}valid_until, "
             + _track_cols(alias, prefix)
         )
 
@@ -1411,7 +1504,7 @@ _DIRECTED_RELS = ("PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM")
 # ⚠ 이 표를 고치면 **기존 지도의 뜻이 바뀐다**(상속을 가진 그래프의 x 축 순서).
 # 그래서 앱의 인과 원뿔(`app/src/spotlight.ts` `UPSTREAM_REVERSED`)과 **같은 값**을
 # 유지해야 한다 — 한쪽만 옮기면 하이라이트가 배치를 반박한다.
-# 근거: [[record:inherits-from-is-absent-from-the-reversed-relation-table]]
+# 근거: [[record:inherits-from-now-reverses-with-derives-from]]
 _REVERSED_RELS = ("DERIVES_FROM", "INHERITS_FROM")
 
 
@@ -2257,6 +2350,7 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
         # 브릿지 소속은 파생값이다 — 배치보다 **먼저** 확정해야 hub·rank 가 같은
         # 도메인을 읽는다(_derive_bridge_domains 주석).
         _derive_bridge_domains(shaped)
+        _mark_topic_descriptions(shaped, owner, cfg, store)
         # 씨앗이 있는 화면(L2, 한 노드의 이웃)에는 주제 마크를 안 낸다. 거기서의
         # 주어는 그 노드이고 담는 관계는 지도 **전체**를 볼 때의 뼈대라, 초점 화면에
         # 끼우면 ego 이웃이 아닌 것이 이웃인 척한다(테스트 넷이 이걸 잡았다).
@@ -2290,6 +2384,7 @@ def graph(*, owner: str, domain: str | None = None, seed: str | None = None,
             rows += ax.get("rows", [])
     shaped = shape_graph(rows)
     _derive_bridge_domains(shaped)
+    _mark_topic_descriptions(shaped, owner, cfg, store)
     shaped["nodes"] = layout_positions(shaped["nodes"], shaped["edges"], layout,
                                        topic_marks=True, cone=cone)
     used = _apply_basis(shaped, basis)
@@ -2602,7 +2697,9 @@ def _ledger_ego_ids(seed: str, *, owner: str, depth: int = 2,
         ax = execute(plan_fn(owner=owner, ids=[seed]), cfg, store=store)
         if not ax.get("executed"):
             continue
-        members.update(r["target"] for r in ax.get("rows", []) if r.get("target"))
+        # 부착 축은 결정에도 닿는다(F2). 원장 모집단은 개념이라 개념 끝점만 모은다.
+        members.update(r["target"] for r in ax.get("rows", [])
+                       if r.get("target") and r.get("target_kind", "concept") == "concept")
     return {"executed": True, "ids": sorted(members)}
 
 
@@ -2634,7 +2731,15 @@ def node_context(**kwargs) -> dict:
                 for row in excerpts:
                     temporal.stamp(row, docs.get(row.get("doc_id"), {}))
                 temporal.finish_docs(store, excerpts, owner=owner)
-                temporal.finish_nodes(store, (res.get("links") or {}).get("items") or [], owner=owner)
+                items = (res.get("links") or {}).get("items") or []
+                temporal.finish_nodes(store, items, owner=owner)
+                for item in items:
+                    # F14 — 결정의 구간은 props 에 있어 관계 행의 두 칸이 비어 나갔다.
+                    # 시간 메타가 이미 읽은 값으로 채운다(Record 는 열에서 이미 채웠다).
+                    if str(item.get("id") or "").startswith("decision:"):
+                        t = item.get("temporal") or {}
+                        item["valid_from"] = str(t.get("valid_from") or "")
+                        item["valid_until"] = str(t.get("valid_until") or "")
             except Exception as exc:
                 temporal.stamp(res, res)
                 res["partial"] = True
@@ -2692,10 +2797,18 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
            ``valid_from``/``valid_until`` 도 같은 신분(W13) — Record 부착만 값을
            갖고, 값이 있으면 그 기록의 유효구간이다(반개구간·YYYY[-MM[-DD]]).
 
-    ``props`` 는 개념의 자유 속성(dict). Episode 는 이 열이 없어 항상 {} 다.
+    ``props`` 는 노드의 자유 속성(dict)이다. Episode 도 이 열을 갖고 여기서 읽는다
+    (감사 F11). Entity 는 열이 없어 {} 다.
 
-    ``rev``/``updated_at`` 은 그 노드의 현재 버전이다(W3, 투영만) — 고쳐 쓰기 전에
-    무엇을 읽었는지 붙들어 두라고 낸다. 쓰기 경로는 아직 이 값을 요구하지 않는다.
+    ``concept:doc.*`` 미러의 유효구간은 Concept 열이 아니라 그 문서(`_DocMeta`)의
+    것이다(감사 F13). Concept 에는 구간 열이 없어서, 은퇴한 문서의 미러가 current 로
+    읽혔다. :func:`node_plan` 이 같은 자리를 이미 그렇게 읽는다.
+
+    Entity(개방 타입)는 제목·태그와 TYPED 관계만 낸다(감사 F12, node_kind="entity").
+    발췌 FTS 폴백이 실패하면 ``excerpt_error`` 에 사유를 싣는다(조용히 삼키지 않는다).
+
+    ``rev``/``updated_at`` 은 그 노드의 현재 버전이다(W3). 고쳐 쓰기 전에 무엇을 읽었는지
+    붙들어 두라고 낸다. 쓰기가 이 값을 ``expected_rev`` 로 실으면 어긋날 때 거절된다(선택).
     근거: [[vinc.plan.mcp-agent-surface §6]]."""
     cfg = cfg or load_config()
     base: dict = {"kind": "node-context", "executed": False, "node": node,
@@ -2719,6 +2832,9 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
         lim = max(1, min(int(limit), 12))
         if node.startswith(domain_hierarchy.ID_PREFIX):
             return _domain_context(store, node, owner=owner, offset=links_offset, cfg=cfg)
+        if _seed_table(node)[0] == "Entity":
+            return _entity_context(store, node, base, owner=owner,
+                                   with_evidence=with_evidence, offset=links_offset)
         if _seed_table(node)[0] not in (*_SEMANTIC_LABELS, "Record", "Episode"):
             exact = execute(node_plan(node, owner=owner), cfg, store=store)
             if not exact.get("executed"):
@@ -2762,10 +2878,26 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
             # 구간이 없고, 미기재는 current 다.
             _p = base["props"] if meta_label == "Decision" else {}
             _stamp_validity(base, _p.get("valid_from"), _p.get("valid_until"))
+            if meta_label == "Concept" and node.startswith("concept:doc."):
+                # 문서 미러의 구간은 문서의 것이다(F13). 문서가 없으면 개념 규칙 그대로다.
+                # 구간 열이 없는 v22 이전 스토어에서는 이 조회만 실패하고 개념 규칙으로
+                # 남는다 — 발췌·관계까지 함께 잃으면 안 된다. 사유는 싣는다.
+                try:
+                    dm = store.run(
+                        "MATCH (d:_DocMeta) WHERE d.doc_id = $doc AND d.owner_id = $owner "
+                        "RETURN d.valid_from AS vf, d.valid_until AS vu, d.superseded_by AS sb",
+                        {"doc": node[len("concept:doc."):], "owner": owner}) or []
+                except Exception as exc:
+                    dm = []
+                    base["doc_validity_error"] = f"{type(exc).__name__}: {exc}"
+                if dm:
+                    _stamp_validity(base, dm[0].get("vf"), dm[0].get("vu"))
+                    base["superseded_by"] = str(dm[0].get("sb") or "")
         else:
             ep = store.run(
                 "MATCH (e:Episode) WHERE e.episode_id = $id AND e.owner_id = $owner "
                 "RETURN e.title AS title, e.summary AS s, e.domain AS domain, "
+                "e.props AS props, "
                 + _track_cols("e"),
                 {"id": pkns.key(owner, node), "owner": owner})
             if not ep:
@@ -2813,7 +2945,9 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
                         domain=ep[0].get("domain") or "",
                         one_liner=ep[0].get("s") or "",
                         rev=ep[0].get("rev") or 0,
-                        updated_at=ep[0].get("updated_at") or "")
+                        updated_at=ep[0].get("updated_at") or "",
+                        # F11 — 사건도 props 열이 있다. 안 고르면 저장된 값이 안 보인다.
+                        props=_props_to_obj(ep[0].get("props")))
             _stamp_validity(base, "", "")   # 사건은 구간이 없다 — 꼴만 맞춘다
             # Episode 는 MENTIONS 대상이 아니다(발췌 없음 — 요약이 곧 설명). 그렇다고
             # **관계까지 없는 것은 아니다**: ABOUT 이 사건을 개념·결정에 잇는다. 여기서
@@ -2842,21 +2976,24 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
             f"ch.doc_id, ch.chunk_index LIMIT {lim}",
             {"id": pkns.key(owner, node), "owner": owner}) or []
         arm = "mentions" if ment else "none"
-        # ③ FTS 폴백 — 링크 없는 개념도 제목으로 관련 정본을 찾는다(증강, 실패 무해).
+        # ③ FTS 폴백 — 링크 없는 개념도 제목으로 관련 정본을 찾는다(증강).
+        # B7 — 전문 검색을 **소유자로 좁혀** 묻는다. 전역 상위 몇 개를 받아 남의 행을
+        # 버리면 공유 허브에서 남의 청크가 창을 채우고 내 발췌가 빈다.
         if not ment and base["title"]:
-            try:
-                hits = store.fulltext_search(base["title"], lim) or []
-                ids = [h.get("id") for h in hits if h.get("id")]
-                if ids:
-                    ment = store.run(
-                        "MATCH (ch:Chunk) WHERE ch.chunk_id IN $ids "
-                        "AND (ch.owner_id = $owner OR ch.owner_id = '') "
-                        "RETURN ch.chunk_id AS cid, ch.doc_id AS doc_id, "
-                        "ch.section_title AS section, ch.text AS text, "
-                        "'fts' AS method", {"ids": ids, "owner": owner}) or []
-                    arm = "fts" if ment else "none"
-            except Exception:
-                pass   # 인덱스/확장 부재 — 발췌 없이 반환(arm='none')
+            ids, fts_error = _owner_fts_ids(store, base["title"], lim, owner=owner)
+            if fts_error:
+                base["excerpt_error"] = fts_error
+            if ids:
+                ment = store.run(
+                    "MATCH (ch:Chunk) WHERE ch.chunk_id IN $ids "
+                    "AND (ch.owner_id = $owner OR ch.owner_id = '') "
+                    "RETURN ch.chunk_id AS cid, ch.doc_id AS doc_id, "
+                    "ch.section_title AS section, ch.text AS text, "
+                    "'fts' AS method", {"ids": ids, "owner": owner}) or []
+                # `IN $ids` 는 BM25 순위를 지키지 않는다 — 되돌리지 않으면 같은 노드의 발췌
+                # 순서가 호출마다(REST 와 MCP 사이에서도) 달라진다.
+                ment = _excerpt.by_rank(ment, ids)
+                arm = "fts" if ment else "none"
         # ④-0 이 노드에 딸린 **문서 전부**. 발췌와 다른 계약이다: 발췌는 청크를
         # `lim` 개로 자르므로 그 넷이 한 문서에서 나오면 **문서도 하나로 보인다** —
         # 노드가 열 개 문서에 언급돼 있어도 그렇다. 소스 선택기가 그것을 전체 목록으로
@@ -2896,7 +3033,9 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
             "doc_id": r.get("doc_id") or "",
             "doc_title": titles.get(r.get("doc_id") or "", "") or (r.get("doc_id") or ""),
             "section": r.get("section") or "",
-            "excerpt": " ".join((r.get("text") or "").split())[:240],
+            # 노드 토큰이 모인 자리의 240자(`VINC_EXCERPT_WINDOW=head` 면 맨 앞 240자).
+            "excerpt": _excerpt.excerpt(r.get("text") or "", base["title"],
+                                        base.get("one_liner") or ""),
             "method": r.get("method") or "",
         } for r in ment]
         try:
@@ -2941,13 +3080,18 @@ def _domain_context(store, node_id: str, *, owner: str, offset: int, cfg=None) -
     ring = _domain_neighbors(node_id, owner=owner, limit=None, cfg=cfg, store=store)
     if not ring.get("executed") or ring.get("error"):
         return {**base, "status": "query_failed", "error": ring.get("error") or ring.get("note")}
-    rows = ring["neighbors"]
+    # 주제 설명의 미러는 그 주제의 노드가 아니다(설명은 아래 `description` 이 따로 싣는다).
+    # 목록과 수에서 같이 빼야 열과 엣지의 대조(membership_drift)가 어긋나지 않는다
+    mirrors = _topic_description_mirrors_by_domain(owner, cfg, store) or {}
+    rows = [r for r in ring["neighbors"] if not (r["rel"] == "IN_DOMAIN" and r["id"] in mirrors)]
     children = [r for r in rows if r["rel"] == "PARENT_OF"]
     members = [r for r in rows if r["rel"] == "IN_DOMAIN"]
     counts = store.run(domain_hierarchy.scoped_counts_cypher(),
                        {"owner": owner, "domain": domain, "prefix": domain + "/"}) or []
-    direct = sum(int(r.get("total") or 0) for r in counts if r.get("domain") == domain)
-    subtree = sum(int(r.get("total") or 0) for r in counts)
+    direct = sum(int(r.get("total") or 0) for r in counts if r.get("domain") == domain) \
+        - sum(1 for d in mirrors.values() if d == domain)
+    subtree = sum(int(r.get("total") or 0) for r in counts) \
+        - sum(1 for d in mirrors.values() if d == domain or d.startswith(domain + "/"))
     expected_children = {domain + "/" + r["domain"][len(domain) + 1:].split("/")[0]
                          for r in counts if r.get("domain", "").startswith(domain + "/")}
     parent_path = domain.rpartition("/")[0]
@@ -2989,43 +3133,151 @@ def _window(items: list[dict], offset: int, cap: int = _NODE_LINKS_CAP) -> dict:
     return out
 
 
-def _record_links(store, node: str, *, owner: str,
-                  with_evidence: bool = False, offset: int = 0) -> dict:
-    """Record 시드의 관계 목록 — 그 기록이 **붙어 있는** 개념·결정(ATTACHES_TO).
+def _owner_fts_ids(store, text: str, limit: int, *, owner: str | None
+                   ) -> tuple[list[str], str]:
+    """발췌 폴백의 전문 검색 — 소유자로 좁힌 청크 id 와 실패 사유(없으면 "").
 
-    :func:`_node_links` 의 거울상이다. 저쪽은 "무엇이 이 노드에 붙어 있나"를 묻고
-    여기서는 "이 노드가 무엇에 붙어 있나"를 묻는다. 방향이 반대라 같은 쿼리를 재사용할
-    수 없다. `dir` 은 'out' 으로 낸다 — 엣지가 Record 에서 나가기 때문이고, 화면의
-    "나감" 줄과 뜻이 같다.
+    검색의 청크 팔과 같은 규칙이다: 소유자를 걸 수 없는 스토어에는 묻지 않고(fail-closed),
+    색인이 없으면 청크가 있을 때 한 번 세우고 다시 묻는다. 그 밖의 실패는 사유를 돌려준다
+    — 조용히 삼키면 "발췌 없음"과 "못 읽음"이 같아 보인다."""
+    filters = {"owner_id": owner} if owner else None
+    if owner and not getattr(store, "scoped_chunk_search", False):
+        return [], ("owner_scope_unsupported: this store cannot filter full-text "
+                    "search by owner")
+    try:
+        hits = store.fulltext_search(text, limit, filters) or []
+    except Exception as exc:
+        kind = _classify_chunk_error(exc)
+        if kind != "index_missing":
+            return [], f"{kind}: {type(exc).__name__}: {exc}"
+        if getattr(store, "fts_index_remnant", False):
+            return [], f"fts_index_remnant: {_FTS_REMNANT}"
+        builder = getattr(store, "ensure_search_indexes", None)
+        if builder is None:
+            return [], f"index_missing: {type(exc).__name__}: {exc}"
+        if _chunk_count(store) == 0:
+            return [], ""          # 청크가 없으면 찾을 발췌도 없다. 실패가 아니다
+        try:
+            builder(dim=None)
+            hits = store.fulltext_search(text, limit, filters) or []
+        except Exception as exc2:
+            return [], f"index_build_failed: {type(exc2).__name__}: {exc2}"
+    return [h.get("id") for h in hits if h.get("id")], ""
 
-    evidence/confidence 는 v16 부터 ATTACHES_TO 실열이다 — 그전에는 열이 없어
-    항상 False 로 냈고 그것이 결측이 아니라 사실이었다
-    ([[record:graph-md-requires-evidence-that-ingest-refuses-to-store]]).
-    실패는 :func:`_node_links` 와 같은 태도로 빈 요약 강등."""
+
+def _entity_links(store, node: str, *, owner: str, with_evidence: bool = False,
+                  offset: int = 0) -> dict:
+    """Entity 시드의 TYPED 관계(양방향). `subtype` 이 저작된 타입이다. TYPED 에는
+    근거·신뢰도 열이 없어 evidence 는 False, confidence 는 None 이다."""
     empty = {"degree": 0, "out": 0, "in": 0, "attached": 0, "total": 0, "items": [],
              "truncated": False, "executed": False}
     try:
-        rows = store.run(" UNION ALL ".join(
-            f"MATCH (rc:Record)-[r:ATTACHES_TO]->(o:{ol}) "
-            "WHERE rc.record_id = $id AND rc.owner_id = $owner "
-            "AND o.owner_id = $owner "
-            f"RETURN o.{opk} AS id, o.title AS title, o.domain AS domain, "
-            "r.evidence AS ev, r.confidence AS conf "
-            for ol, opk in _SEMANTIC_PK.items()),
-            {"id": pkns.key(owner, node), "owner": owner}) or []
+        rows = store.run(_typed_neighbors_cypher(owner), {"node": pkns.key(owner, node),
+                                                          "owner": owner}) or []
     except Exception:
         return empty
+    order = {"out": 0, "in": 1}
     items = [{
         "id": r.get("id") or "", "title": r.get("title") or (r.get("id") or ""),
-        "domain": r.get("domain") or "", "type": "ATTACHES_TO", "dir": "out",
-        "evidence": bool((r.get("ev") or "").strip()),
-        "confidence": float(r.get("conf") or 0.0), "note": "",
+        "domain": "", "type": "TYPED", "subtype": r.get("subtype") or "",
+        "dir": r.get("dir") or "", "evidence": False, "confidence": None, "note": "",
         "valid_from": "", "valid_until": "",
-        **({"evidence_text": (r.get("ev") or "").strip()} if with_evidence else {}),
-    } for r in sorted(rows, key=lambda r: (str(r.get("title") or ""),
+        **({"evidence_text": ""} if with_evidence else {}),
+    } for r in sorted(rows, key=lambda r: (order.get(r.get("dir") or "", 9),
+                                           str(r.get("subtype") or ""),
+                                           str(r.get("title") or ""),
                                            str(r.get("id") or "")))]
-    return {"degree": len(items), "out": len(items), "in": 0, "attached": 0,
+    out_n = sum(1 for i in items if i["dir"] == "out")
+    return {"degree": len(items), "out": out_n, "in": len(items) - out_n, "attached": 0,
             "total": len(items), "executed": True, **_window(items, offset)}
+
+
+def _entity_context(store, node: str, base: dict, *, owner: str,
+                    with_evidence: bool = False, offset: int = 0) -> dict:
+    """Entity(개방 타입) 노드의 상세. 열이 제목·타입·태그뿐이라 그것과 TYPED 관계만 낸다.
+    이것이 없을 때 brief 는 Entity 를 열지 못했다(감사 F12)."""
+    rows = store.run(
+        "MATCH (n:Entity) WHERE n.entity_id = $id AND n.owner_id = $owner "
+        "RETURN n.title AS title, n.type AS type, coalesce(n.tags, []) AS tags, "
+        + _track_cols("n"), {"id": pkns.key(owner, node), "owner": owner}) or []
+    if not rows:
+        return {**base, "status": "unavailable", "found": False,
+                "note": f"unknown node: {node}"}
+    out = {**base, "executed": True, "node_kind": "entity",
+           "title": rows[0].get("title") or node, "entity_type": rows[0].get("type") or "",
+           "tags": list(rows[0].get("tags") or []),
+           "rev": rows[0].get("rev") or 0, "updated_at": rows[0].get("updated_at") or ""}
+    _stamp_validity(out, "", "")   # 개방 타입은 구간이 없다 — 꼴만 맞춘다
+    out["links"] = _entity_links(store, node, owner=owner, with_evidence=with_evidence,
+                                 offset=offset)
+    return out
+
+
+def _conf(value) -> float | None:
+    """관계 신뢰도. 저장되지 않은 값은 None 으로 둔다 — 0.0 은 저작된 값이다(감사 F8)."""
+    return None if value is None else float(value)
+
+
+def _record_links(store, node: str, *, owner: str,
+                  with_evidence: bool = False, offset: int = 0) -> dict:
+    """Record 시드의 관계 목록 — 그 기록이 **붙어 있는** 개념·결정(ATTACHES_TO)과
+    기록끼리의 대체(SUPERSEDES, 양방향).
+
+    :func:`_node_links` 의 거울상이다. 저쪽은 "무엇이 이 노드에 붙어 있나"를 묻고
+    여기서는 "이 노드가 무엇에 붙어 있나"를 묻는다. 방향이 반대라 같은 쿼리를 재사용할
+    수 없다. 부착의 `dir` 은 'out' 으로 낸다 — 엣지가 Record 에서 나가기 때문이고, 화면의
+    "나감" 줄과 뜻이 같다. SUPERSEDES 는 저장된 방향 그대로 out(이 기록이 대체한다)·
+    in(이 기록이 대체됐다)이다. 빠지면 total 이 vinc_neighbors 의 count 보다 작다(감사 F2).
+
+    evidence/confidence 는 v16 부터 ATTACHES_TO 실열이다 — 그전에는 열이 없어
+    항상 False 로 냈고 그것이 결측이 아니라 사실이었다
+    ([[record:attaches-to-carries-evidence-since-v16]]).
+    실패는 :func:`_node_links` 와 같은 태도로 빈 요약 강등."""
+    empty = {"degree": 0, "out": 0, "in": 0, "attached": 0, "total": 0, "items": [],
+             "truncated": False, "executed": False}
+    seed = "rc.record_id = $id AND rc.owner_id = $owner AND o.owner_id = $owner "
+    params = {"id": pkns.key(owner, node), "owner": owner}
+    try:
+        rows = store.run(" UNION ALL ".join(
+            f"MATCH (rc:Record)-[r:ATTACHES_TO]->(o:{ol}) WHERE {seed}"
+            f"RETURN o.{opk} AS id, o.title AS title, o.domain AS domain, "
+            "'ATTACHES_TO' AS type, 'out' AS dir, "
+            "r.evidence AS ev, r.confidence AS conf, " + _VALIDITY_EMPTY
+            for ol, opk in _SEMANTIC_PK.items()), params) or []
+    except Exception:
+        return empty
+    # 대체 상대도 Record 라 그 구간을 함께 싣는다(W13 과 같은 신분). 따로 묻는 이유:
+    # SUPERSEDES 표가 없는 이전 판 스토어에서 이 팔이 Binder 로 죽어도 부착은 남아야 한다
+    # (neighbors 의 record_supersedes_plan 도 따로 돈다). 못 읽었으면 표식을 단다.
+    sup_failed = False
+    try:
+        rows += store.run(" UNION ALL ".join(
+            f"MATCH {pat} WHERE {seed}"
+            "RETURN o.record_id AS id, o.title AS title, o.domain AS domain, "
+            f"'SUPERSEDES' AS type, '{d}' AS dir, "
+            "r.evidence AS ev, r.confidence AS conf, " + _validity_cols("o")
+            for pat, d in (("(rc:Record)-[r:SUPERSEDES]->(o:Record)", "out"),
+                           ("(o:Record)-[r:SUPERSEDES]->(rc:Record)", "in"))), params) or []
+    except Exception:
+        sup_failed = True
+    order = {"out": 0, "in": 1}
+    items = [{
+        "id": r.get("id") or "", "title": r.get("title") or (r.get("id") or ""),
+        "domain": r.get("domain") or "", "type": r.get("type") or "",
+        "dir": r.get("dir") or "",
+        "evidence": bool((r.get("ev") or "").strip()),
+        "confidence": _conf(r.get("conf")), "note": "",
+        "valid_from": r.get("valid_from") or "", "valid_until": r.get("valid_until") or "",
+        **({"evidence_text": (r.get("ev") or "").strip()} if with_evidence else {}),
+    } for r in sorted(rows, key=lambda r: (order.get(r.get("dir") or "", 9),
+                                           str(r.get("type") or ""),
+                                           str(r.get("title") or ""),
+                                           str(r.get("id") or "")))]
+    out_n = sum(1 for i in items if i["dir"] == "out")
+    return {"degree": len(items), "out": out_n, "in": len(items) - out_n, "attached": 0,
+            "total": len(items), "executed": True,
+            **({"supersession_unavailable": True} if sup_failed else {}),
+            **_window(items, offset)}
 
 
 def _episode_links(store, node: str, *, owner: str,
@@ -3059,7 +3311,7 @@ def _episode_links(store, node: str, *, owner: str,
         "id": r.get("id") or "", "title": r.get("title") or (r.get("id") or ""),
         "domain": r.get("domain") or "", "type": "ABOUT", "dir": "out",
         "evidence": bool((r.get("ev") or "").strip()),
-        "confidence": float(r.get("conf") or 0.0), "note": "",
+        "confidence": _conf(r.get("conf")), "note": "",
         "valid_from": "", "valid_until": "",
         **({"evidence_text": (r.get("ev") or "").strip()} if with_evidence else {}),
     } for r in sorted(rows, key=lambda r: (str(r.get("title") or ""),
@@ -3134,8 +3386,10 @@ def _node_links(store, node: str, *, owner: str,
             # 리터럴 자리 맞춤 — 한 팔이라도 빠지면 UNION 전체가 Binder 로 죽는다.
             f"MATCH (b:Bridge)-[:CONNECTS]->(c:{_sl}) "
             f"WHERE c.{_spk} = $id AND c.owner_id = $owner AND {_bridge_owner_pred('b')} "
+            # CONNECTS 에는 신뢰도 열이 없다. 0.0 리터럴은 저작된 값으로 읽히므로 NULL 이다.
             "RETURN b.bridge_id AS id, b.title AS title, b.source_domain AS domain, "
-            "'CONNECTS' AS type, 'att' AS dir, '' AS ev, 0.0 AS conf, '' AS raw_props, "
+            "'CONNECTS' AS type, 'att' AS dir, '' AS ev, CAST(NULL AS DOUBLE) AS conf, "
+            "'' AS raw_props, "
             + _VALIDITY_EMPTY + " "
             "UNION ALL "
             f"MATCH (e:Episode)-[r:ABOUT]->(c:{_sl}) "
@@ -3169,7 +3423,8 @@ def _node_links(store, node: str, *, owner: str,
             "dir": r.get("dir") or "",
             # 근거는 **있는지 없는지**가 화면의 관심사다(문장 전문은 edge-context 가 준다).
             "evidence": bool((r.get("ev") or "").strip()),
-            "confidence": float(r.get("conf") or 0.0),
+            # 저장되지 않은 신뢰도는 None 이다(감사 F8). 정렬은 brief 가 맨 뒤로 보낸다.
+            "confidence": _conf(r.get("conf")),
             "note": props.get("note") or props.get("one_liner") or "",
             # W13 — Record 카드만 값을 갖는다(note 와 같은 신분). 무효화된 기록이
             # 카드에서 유효한 것과 똑같이 보이면 이 열은 없는 것과 같다.
@@ -3188,7 +3443,7 @@ def _node_links(store, node: str, *, owner: str,
     # degree 9 · attached 50 으로 답하는 동안 vinc_neighbors 는 count 59 를 냈고(85%
     # 과소), 그 수를 합산한 연결성 결론이 나갔다가 철회됐다. 그래서 총수를 **직접
     # 싣는다** — 받는 쪽이 더해서 복원할 것을 남겨 두지 않는다.
-    # 근거: [[record:brief-links-degree-counts-only-the-core-layer-and-understates-a-59-relation-node-as-9-2026-09-14]]
+    # 근거: [[episode:2026-09-14-brief-carries-the-connectivity-instead-of-leaving-it-to-be-summed]]
     return {"degree": len(rows), "out": out_n, "in": in_n, "attached": len(attached),
             "total": len(rows) + len(attached), "executed": True,
             **_window(items, offset)}
@@ -3201,7 +3456,41 @@ def _node_links(store, node: str, *, owner: str,
 # 임계값을 두지 않는 것이 요점이다 — 1위가 2위를 **엄격히** 이길 때만 확정하고,
 # 비기면 후보를 돌려주며 되묻는다. 근거: [[vinc.plan.mcp-agent-surface §4]]
 
-_BRIEF_TOP_K = 5              # search 에 요구할 청크 수(node_hits 는 별도 팔이다)
+#: brief 가 내부 search 에 넘기는 top_k. 청크 페이지만이 아니라 **node_hits 도 이 수로
+#: 잘린다**(노드 팔의 top_k 가 같은 값이다). 이 풀은 되묻기 목록에만 쓴다. 확정은 그 앞
+#: `_BRIEF_RESOLVE_N` 개(융합 순서)로 해서, 풀을 넓혀도 어느 노드로 확정하는지는 5 일 때의
+#: 규칙 그대로다. 풀을 넓히고 확정까지 넓은 풀로 하면 맞는 확정과 보이는 정답이 함께 줄었다.
+#: 근거: [[vinc.spec.retrieval-knobs]] §2
+_BRIEF_TOP_K = 10
+_BRIEF_RESOLVE_N = 5
+
+#: 학습 해소 규칙 — ColBERT 1위를 확정할지 정하는 로지스틱 모형. 상수는 v2 가 개발 풀
+#: 3,140행으로 맞춰 고정한 그대로다(`frozen_v2.json`, sha256 bb417ece…). 특징 순서·정의를 바꾸면
+#: 상수가 뜻을 잃는다(:func:`_brief_learned_features`). 문턱 아래는 되묻는다.
+#: 근거: [[decision:vin-845-ships-the-brief-rule-v2-constants-over-its-failed-pre-registered-criteria-2026-10-31]]
+_LEARNED_MU = [0.4828262648622321, 0.023761766309001644, 0.26719745222929936, 4.985350318471338, 0.21818054291780406,
+               0.7420382165605095, 0.39713375796178346, 0.038502569108280225, 0.49879280364817113, 0.3436305732484076]
+_LEARNED_SD = [0.056948800738280285, 0.02434501544247338, 0.4424962990087704, 4.9540347754103236, 0.304360684759962,
+               1.303480270826195, 2.7100763980136233, 0.05477666510201067, 0.15564735806801316, 0.47491957564119053]
+_LEARNED_W = [0.653670720249066, 1.0327584901774332, -0.18126837306254473, -0.3745033858099314, 0.3405076195044011,
+              -0.6251645103744707, 0.10649465847294845, 0.8194124383935194, -0.6231877383599321, 0.10145310307050287,
+              -0.42554129869112434]
+_LEARNED_T = 0.4855
+#: v3 학습 규칙 — v2 의 열 특징에 유효구간 필터가 감춘 행에서 나온 넷을 더한 열넷. brief 경로 전체
+#: (사전 순서 기권 → ColBERT 순서 위의 규칙, 토큰 동점 가드 없음)에서 맞춰 고정한 그대로다
+#: (`frozen_v3.json`, sha256 c9a3fb2b…). 특징 순서·정의를 바꾸면 상수가 뜻을 잃는다
+#: (:func:`_brief_v3_features`). 문턱 아래는 되묻는다.
+#: 근거: [[decision:ship-brief-rule-v3-on-the-owners-reading-of-the-wrong-picks-2026-11-03]]
+_V3_MU = [0.4890195805011388, 0.02600471254428717, 0.2799710249909453, 4.690329590727997, 0.22764569427916043,
+          0.7576964867801521, 0.4469395146685983, 0.04225958312205718, 0.4878007591914889, 0.32560666425208257,
+          1.932633103947845, 1.4154291923216227, 0.3487029348902844, 0.9974646867077146]
+_V3_SD = [0.05659572299459152, 0.02600220280012217, 0.44898468910915157, 4.776808934344869, 0.30744768971516356,
+          1.2894831272731022, 2.7083567306240948, 0.05636093631911328, 0.15418905886504955, 0.468601072751569,
+          2.5222996592202773, 1.6853656409255495, 0.4304271895055913, 0.050288026202780646]
+_V3_W = [0.4862374491844391, 1.062161570947516, -0.12316389848275623, -0.37911250114801065, 0.25814693177986686,
+         -0.38898580913481623, 0.027189152410250123, 0.8091480763571104, -0.5459152296028742, 0.2354164923841601,
+         -0.1228823968080043, 0.35268237679848913, 0.09248826361012848, 0.1539361828003368, -0.02308750100000047]
+_V3_T = 0.5397
 #: 되묻을 때 실을 후보 수. 3 에서 5 로 늘렸다 — 같은 풀의 앞자리를 더 보여 줄 뿐이라
 #: 보이던 정답이 가려지지 않고, 풀 안의 정답이 전부 보인다(G0 43 → 47/60). 앱의 ask.ts 는
 #: brief 를 부르지 않고 따로 3 개를 보여 준다. `VINC_BRIEF_EXPOSE` 로 프로세스마다 바꾼다.
@@ -3225,6 +3514,13 @@ _BRIEF_ID_RE = re.compile(
 #: 안 열리면 이 접두를 열고, 그 대체는 `fell_through` 로 밝힌다.
 _BRIEF_ID_ASCII_RE = re.compile(
     r"(?:concept|record|decision|episode):[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?")
+#: 개방 타입(Entity) id 후보 — 접두가 사용자 저작 타입이라 열거할 수 없다(`theory:x`).
+#: 문법만으로는 `note:foo` 같은 문장 조각과 못 가르므로 **스토어에 실재할 때만** 연다
+#: (:func:`_brief_entity_ids`). 없으면 무시하고 랭킹으로 간다 — 위 네 접두와 달리
+#: "없다"고 답하지 않는다. 근거: 감사 F12.
+_BRIEF_OPEN_ID_RE = re.compile(r"(?<![\w/.:-])([A-Za-z][\w-]*):[^\W_](?:[\w.-]*[^\W_])?")
+_BRIEF_NOT_OPEN = frozenset(("concept", "record", "decision", "episode", "domain",
+                             "bridge", "http", "https", "ftp", "mailto", "file", "urn"))
 
 
 def _brief_query_ids(query: str, cap: int = _BRIEF_FALLTHROUGH) -> list[str]:
@@ -3251,10 +3547,34 @@ def _brief_query_ids(query: str, cap: int = _BRIEF_FALLTHROUGH) -> list[str]:
     return out
 
 
+def _brief_entity_ids(store, query: str, *, owner: str,
+                      cap: int = _BRIEF_FALLTHROUGH) -> list[str]:
+    """질문 속 개방 타입 id 중 이 소유자의 Entity 로 실재하는 것만, 등장 순서로."""
+    cands = []
+    for m in _BRIEF_OPEN_ID_RE.finditer(query or ""):
+        if m.group(1).lower() not in _BRIEF_NOT_OPEN and m.group(0) not in cands:
+            cands.append(m.group(0))
+        if len(cands) >= cap:
+            break
+    if not cands:
+        return []
+    try:
+        rows = store.run("MATCH (n:Entity) WHERE n.entity_id IN $ids AND n.owner_id = $owner "
+                         "RETURN n.entity_id AS id",
+                         {"ids": pkns.keys(owner, cands), "owner": owner}) or []
+    except Exception:
+        return []      # Entity 표가 없는 스토어 — 직참조 후보가 없을 뿐 랭킹은 그대로 돈다
+    found = {pkns.strip(str(r.get("id") or "")) for r in rows}
+    return [c for c in cands if c in found]
+
+
 def brief_reads_by_id(query: str) -> bool:
     """brief 가 이 질문을 id 직참조로만 답하는가 — 그렇다면 검색을 돌지 않는다.
     `/brief` 는 이것을 보고 질의 임베딩을 건너뛴다. 직참조 갈래가 검색으로 넘어가게
-    바뀌면 여기도 함께 바꿀 것 — 안 그러면 그 검색이 의미 팔 없이 돈다."""
+    바뀌면 여기도 함께 바꿀 것 — 안 그러면 그 검색이 의미 팔 없이 돈다.
+
+    개방 타입(Entity) id 는 여기서 참이 되지 않는다. 실재를 스토어로 가려야 하는데 이
+    검사는 스토어 없이 돈다. 그 질문은 임베딩을 한 번 더 구할 뿐 답은 같다."""
     return bool(_brief_query_ids(query))
 
 
@@ -3282,10 +3602,15 @@ def _brief_material(base: dict, cand: dict, ctx: dict) -> dict:
     for key in ("created_at", "updated_at", "content_time", "temporal_error"):
         if key in ctx:
             base["node"][key] = ctx[key]
-    if base["node"]["validity"] != "current":
-        _sb = base["node"]["superseded_by"]
+    # 알림은 증거 유효성(claim_validity)에서 낸다(감사 F13). 기존 validity 필드는 구간이
+    # 없는 노드를 current 로 읽어서, 은퇴한 문서의 미러가 알림 없이 나갔다. unknown 은
+    # "날짜를 모른다"이지 "현재가 아니다"가 아니므로 알리지 않는다.
+    claim = base["node"]["claim_validity"]
+    if claim in ("historical", "future"):
+        _sb = base["node"]["superseded_by"] or str(
+            (base["node"].get("temporal") or {}).get("superseded_by") or "")
         base.setdefault("validity_note",
-                        f"this claim is {base['node']['validity']}, not current"
+                        f"this claim is {claim}, not current"
                         + (f"; superseded by {_sb}" if _sb else ""))
     body = _brief_body(ctx)
     base["one_liner"] = body["text"]
@@ -3297,7 +3622,9 @@ def _brief_material(base: dict, cand: dict, ctx: dict) -> dict:
     items = [{**item, "cite_id": item.get("id") or None} for item in items]
     # 근거로서 강한 것부터: 신뢰도 → 근거 문장 보유 → node_context 의 결정론 순서
     # (안정 정렬이라 동점이면 그 순서가 그대로 남는다). ask.ts answerFor 와 같다.
-    items.sort(key=lambda it: (-float(it.get("confidence") or 0.0),
+    # 저장되지 않은 신뢰도(None)는 0.0 보다도 뒤다 — 0.0 은 저작된 값이다(감사 F8).
+    items.sort(key=lambda it: (it.get("confidence") is None,
+                               -float(it.get("confidence") or 0.0),
                                0 if it.get("evidence") else 1))
     base["links"] = {**links, "items": items}
     base["grounds"] = _brief_grounds(nid, base["excerpts"], items)
@@ -3312,6 +3639,8 @@ def _brief_material(base: dict, cand: dict, ctx: dict) -> dict:
     if ctx.get("error"):
         why.append(f"reading around the node failed: {ctx['error']}; "
                    "excerpts and links may be missing")
+    if ctx.get("excerpt_error"):
+        why.append(f"excerpts could not be searched: {ctx['excerpt_error']}")
     if links.get("executed") is False:
         why.append("links could not be read, so an empty list does not mean "
                    "the node has no relations")
@@ -3345,7 +3674,7 @@ def _brief_strict_on() -> bool:
     이고 노출 R@1 이 0.1667 에서 0.2833 으로 오른다 — 두 변경은 **따로 재면 둘 다 안
     오르고 함께여야 오른다**(팔은 후보 1위를 9건에서 17건으로 올려 놓는데, 옛 판정이
     그 위에 확신 오답을 얹고 목록을 감췄다).
-    근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]"""
+    근거: [[record:the-confidence-bar-was-one-token-and-that-was-the-defect-2026-09-10]]"""
     return str(os.environ.get("VINC_BRIEF_STRICT", "")).strip().lower() not in (
         "0", "off", "false", "no")
 
@@ -3356,17 +3685,115 @@ _STRICT_MARGIN = 2
 
 
 def _brief_sem_promote_on() -> bool:
-    """되묻기 1위를 의미 우위로 확정할 것인가. **기본은 꺼짐**(`VINC_BRIEF_SEM_PROMOTE`).
-    켜는 것은 규칙과 시험지의 저자가 다른 골드(VIN-57)가 같은 이득을 낼 때 결정으로 한다."""
-    return str(os.environ.get("VINC_BRIEF_SEM_PROMOTE", "")).strip().lower() in (
-        "1", "on", "true", "yes")
+    """되묻기 1위를 의미 우위로 확정할 것인가. **기본은 켜짐**이고
+    `VINC_BRIEF_SEM_PROMOTE=off` 가 토큰 규칙만 쓰던 동작으로 되돌린다(측정용 비상구).
+    끄면 brief 의 맞는 확정이 절반 아래로 줄고, 틀린 노드 확정은 줄지 않는다.
+    근거: [[vinc.spec.retrieval-knobs]] §2"""
+    return str(os.environ.get("VINC_BRIEF_SEM_PROMOTE", "")).strip().lower() not in (
+        "0", "off", "false", "no")
 
 
 #: 승격에 필요한 의미 우위: 의미 팔 원시 목록에서 1위가 나머지보다 가까운 거리(`sem_lead`,
-#: search 가 단다). `_SEM_GAP`(0.010, 순서만 바꾼다)과 다른 값이다. 그 값을 확신 문턱으로
-#: 쓰면 답 불가를 대부분 확정한다. 옮기려면 다시 잴 것.
-#: 근거: [[decision:gate-d-reopens-on-the-semantic-arms-own-lead-behind-a-flag-left-off-2026-09-29]]
-_SEM_PROMOTE = 0.049
+#: search 가 단다). 유효구간 동점 가드가 지운 행과 견줄 때도 같은 값을 쓴다. `_SEM_GAP`
+#: (0.010, 순서만 바꾼다)과 다른 값이다. 내리면 틀린 노드 확정이 늘어난다. 옮기려면 다시 잴 것.
+#: 0.12 에서 0.10 으로 옮긴 것은 봉인 셋 7을 운영 search 출력 재현으로 채점한 결과다(2026-10-24).
+#: 근거: [[vinc.spec.retrieval-knobs]] §2
+_SEM_PROMOTE = 0.10
+
+#: 한글 없는 질문(어느 노드든), 또는 한글 있는 질문 + 한글 없는 노드의 승격 문턱. 언어를 건너면 거리가
+#: 넓어져(정답 거리 중앙값 en2ko 0.419, ko 0.328) 같은 1위인데도 우위가 `_SEM_PROMOTE` 밑에 머문다.
+#: 영어 질문은 영어 노드에도 이 문턱을 쓴다: 1위가 정답인데 우위가 0.06~0.10 에 머문 행이 많았다.
+#: 한글 질문 + 한국어 노드는 `_SEM_PROMOTE` 그대로다. 0.06 으로 내리면 맞는 확정은 늘지만 그래프에 없는
+#: 사실을 묻는 질문의 확정이 등록 한도보다 늘어 채택하지 않았다.
+#: 근거: [[vinc.plan.brief-korean-on-korean-bar-sealed13-2026-10-26]]
+#: `_brief_xlang_lead` 가 쓰는 조건에서만 `_SEM_PROMOTE` 자리에 들어가고, 유효구간 동점 가드의 거리는
+#: 그대로 `_SEM_PROMOTE` 다. 내리면 틀린 노드 확정이 는다. 옮기려면 다시 잴 것.
+#: 근거: [[vinc.spec.retrieval-knobs-brief]]
+_SEM_PROMOTE_XLANG = 0.06
+
+_HANGUL = re.compile("[가-힣]")
+
+
+def retrieval_overrides() -> list[str]:
+    """측정상 크게 나빠지는 비상구 가운데 지금 열린 것(환경변수 이름). 없으면 빈 목록.
+
+    `VINC_BRIEF_STRICT`·`VINC_NODE_SEM_RANK`·`VINC_NODE_SEMANTIC_ARM` 은 둘 다 켜야 오르는
+    한 쌍이 셋으로 묶인 것이라, 하나라도 끄면 1위 정답과 오답 확정이 함께 무너진다.
+    `VINC_BRIEF_SEM_PROMOTE` 를 끄면 brief 의 맞는 확정이 절반 아래로 준다.
+    `/health` 가 이 목록을 실어 꺼진 채 배포된 것이 밖에서 보이게 한다.
+    근거: [[vinc.spec.retrieval-knobs]] §2"""
+    out = []
+    if not _brief_strict_on():
+        out.append("VINC_BRIEF_STRICT")
+    if not _brief_sem_promote_on():
+        out.append("VINC_BRIEF_SEM_PROMOTE")
+    if not _retrieval._node_sem_rank_on():
+        out.append("VINC_NODE_SEM_RANK")
+    if not _retrieval._node_semantic_arm_on():
+        out.append("VINC_NODE_SEMANTIC_ARM")
+    return out
+
+
+def retrieval_switches() -> dict:
+    """노드 재채점과 brief 규칙의 **실제** 값. `/health` 가 늘 싣는다 — 운영 값은 저장소 변수에만
+    있어서 밖에서 확인할 길이 없었다. ColBERT 는 설정이 on 이어도 numpy 가 없으면 꺼지므로
+    환경변수가 아니라 :func:`vinc_rag.colbert.rescore_on` 을 읽는다.
+    근거: [[vinc.canon.rag-production-state]]"""
+    from vinc_rag import colbert as _colbert
+    return {"VINC_NODE_COLBERT": "on" if _colbert.rescore_on() else "off",
+            "VINC_BRIEF_RULE": _brief_rule()}
+
+
+def _brief_token_decisive(top: dict, second: dict) -> bool:
+    """1위가 2위를 토큰으로 갈랐는가 — 엄격 규칙이면 `_STRICT_MARGIN`, 아니면 1."""
+    margin = _STRICT_MARGIN if _brief_strict_on() else 1   # 1 이면 현행과 글자 그대로 같다
+    return _brief_int(top.get("hit_tokens")) > 0 and (
+        _brief_int(top.get("hit_tokens")) - _brief_int(second.get("hit_tokens")) >= margin
+        or _brief_int(top.get("title_tokens"))
+        - _brief_int(second.get("title_tokens")) >= margin)
+
+
+def _brief_hidden_ties(query: str, top: dict, hidden) -> bool:
+    """유효구간 필터가 감춘 행이 남았다면 1위의 토큰 확정이 서지 않았는가.
+
+    비교는 **확정에 쓴 규칙 그대로**다. `hidden` 은 감춘 행들의 축별 최댓값
+    `(hit_tokens, title_tokens)` 이라, 거기에 이기면 감춘 모든 행에 이긴다.
+    - 이름을 댄 확정(제목이 질문과 같음)은 같은 제목이 둘이면 되묻는다. 감춘 행이 두 축
+      모두 1위 이상이면 같은 제목일 수 있으므로 비긴 것으로 본다.
+    - 그 밖의 확정은 `_brief_token_decisive` 다. 튜플 하나로 사전순 비교하면 hit 가 하나 높은
+      행이 제목으로 크게 앞선 확정을 되돌리고, 제목이 높은 행은 놓친다.
+    근거: [[vinc.spec.retrieval-knobs]] §2"""
+    h_hit = _brief_int(hidden[0]) if len(hidden) > 0 else 0
+    h_title = _brief_int(hidden[1]) if len(hidden) > 1 else 0
+    if _brief_norm(top.get("title")) == _brief_norm(query):
+        return (h_hit >= _brief_int(top.get("hit_tokens"))
+                and h_title >= _brief_int(top.get("title_tokens")))
+    return not _brief_token_decisive(top, {"hit_tokens": h_hit, "title_tokens": h_title})
+
+
+def _brief_semantic_tie_clear(picked: list[dict], res: dict) -> bool:
+    """의미 우위 승격으로 확정된 1위가 유효구간 동점 가드를 통과하는가.
+
+    가드는 지운 행과 1위를 **확정에 쓴 잣대로** 견준다. 토큰으로 가른 확정은 토큰 점수로
+    견주고(이 함수는 False), 승격(토큰으로는 못 가르고 의미 우위로 확정)은 의미 거리로
+    견준다: 의미 팔이 지운 행 중 가장 가까운 것이 1위보다 `_SEM_PROMOTE` 안쪽이면, 그 행이
+    남았을 때 우위가 없었으므로 확정하지 않는다. 의미 팔이 아무것도 지우지 않았으면 우위는
+    필터가 만든 것이 아니다. 엄격 규칙이 꺼져 있으면 순서가 토큰으로 정해지므로 토큰 비교를 쓴다.
+    근거: [[vinc.spec.retrieval-knobs]] §2"""
+    if len(picked) < 2 or not _brief_strict_on() or _brief_token_decisive(picked[0], picked[1]):
+        return False
+    top = picked[0]
+    try:
+        top_d = float(top.get("distance"))
+    except (TypeError, ValueError):
+        return False
+    dropped = res.get("validity_best_dropped_distance")
+    if dropped is None:
+        return True
+    try:
+        return float(dropped) - top_d >= _SEM_PROMOTE
+    except (TypeError, ValueError):
+        return False
 
 
 def _brief_rank(rows: list[dict]) -> list[dict]:
@@ -3384,7 +3811,151 @@ def _brief_rank(rows: list[dict]) -> list[dict]:
         -_brief_int(h.get("title_tokens"))))
 
 
-def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
+def _brief_rule() -> str:
+    """`VINC_BRIEF_RULE` 의 값. `learned`(v2)·`v3` 만 학습 규칙이고, 그 밖의 값과 빈 값은 production 이다."""
+    v = (os.environ.get("VINC_BRIEF_RULE") or "production").strip().lower()
+    return v if v in ("learned", "v3") else "production"
+
+
+def _brief_rule_learned() -> bool:
+    """`VINC_BRIEF_RULE=learned` — ColBERT 순서 위의 v2 학습 규칙. 기본은 production(기존 규칙)."""
+    return _brief_rule() == "learned"
+
+
+def _brief_rule_v3() -> bool:
+    """`VINC_BRIEF_RULE=v3` — brief 경로 전체로 다시 맞춘 v3 학습 규칙(:func:`_brief_resolve_v3`)."""
+    return _brief_rule() == "v3"
+
+
+def _brief_rule_colbert() -> bool:
+    """학습 규칙(v2·v3)이면 ColBERT 로 다시 선 후보 위에서 해소한다. 기존 규칙은 그 순서를 안 본다."""
+    return _brief_rule() != "production"
+
+
+_HANGUL = re.compile(r"[가-힣]")
+
+
+def _brief_learned_features(query: str, hits: list[dict]) -> list[float] | None:
+    """연구 `stage3.py` `feats` 와 같은 열 개. hits 는 ColBERT 순서이고 행마다 `colbert`·`prod_rank` 가 있다."""
+    if not hits or "colbert" not in hits[0]:
+        return None
+    num = lambda v: float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else 0.0  # noqa: E731
+    h1, h2 = hits[0], (hits[1] if len(hits) > 1 else {})
+    s1, s2 = num(h1.get("colbert")), (num(h2.get("colbert")) if h2 else 0.0)
+    rank = int(h1.get("prod_rank") or 21)
+    return [s1, s1 - s2, float(rank == 1), float(rank),
+            num(h1.get("hit_tokens")) / max(num(h1.get("token_total")), 1.0),
+            num(h1.get("title_tokens")), num(h1.get("hit_tokens")) - num(h2.get("hit_tokens")),
+            num(h1.get("sem_lead")), num(h1.get("distance")) if h1.get("distance") is not None else 1.0,
+            float(bool(_HANGUL.search(query or "")))]
+
+
+def _brief_learned_p(x: list[float]) -> float:
+    z = sum(((xi - m) / sd) * w for xi, m, sd, w in zip(x, _LEARNED_MU, _LEARNED_SD, _LEARNED_W)) + _LEARNED_W[-1]
+    return 1.0 / (1.0 + math.exp(-z))
+
+
+def _brief_resolve_learned(query: str, hits: list[dict]) -> tuple[str, list[dict], float | None]:
+    """학습 규칙으로 해소한다. 제목이 질문과 글자 그대로 같은 후보가 **하나**면 그것으로 확정하고(이름을
+    댄 경우), 아니면 ColBERT 1위의 확률이 문턱 이상일 때만 확정한다. 나머지는 되묻는다.
+    연구의 `decide` 와 같다(기존 규칙의 다른 갈래는 여기 없다 — 그 뒤의 가드는 brief 가 그대로 돈다)."""
+    norm = lambda t: re.sub(r"\s+", " ", (t or "").strip().lower())  # noqa: E731
+    named = [h for h in hits if norm(h.get("title")) == norm(query)]
+    if len(named) == 1:
+        return "resolved", named, None
+    x = _brief_learned_features(query, hits)
+    if x is None:
+        return "choose", list(hits), None
+    p = _brief_learned_p(x)
+    return ("resolved", [hits[0]], p) if p >= _LEARNED_T else ("choose", list(hits), p)
+
+
+def _brief_v3_prod_head(hits: list[dict]) -> list[dict]:
+    """재채점 **전** 순서(`prod_rank`)의 앞 `_BRIEF_RESOLVE_N` 개. v3 의 의미만 기권은 이 목록으로 본다.
+    `prod_rank` 가 없는 행은 뒤로 간다(안정 정렬)."""
+    return sorted(hits, key=lambda h: h.get("prod_rank") or 99)[:_BRIEF_RESOLVE_N]
+
+
+def _brief_v3_features(query: str, hits: list[dict], res: dict) -> list[float] | None:
+    """v3 특징 열넷. 앞 열은 :func:`_brief_learned_features` 그대로(ColBERT 순서의 앞 다섯), 뒤 넷은
+    유효구간 필터가 감춘 행과 ColBERT 1위의 차이다:
+    감춘 행 최대 hit 토큰 − 1위 hit 토큰 · 감춘 행 최대 제목 토큰 − 1위 제목 토큰 ·
+    감춘 행 최소 의미 거리 − 1위 거리(어느 쪽이든 없으면 1.0) · 감춘 행이 있었는가."""
+    a = _brief_learned_features(query, hits)
+    if a is None:
+        return None
+    num = lambda v: float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None  # noqa: E731
+    pick = hits[0]
+    hb = res.get("validity_best_dropped") or [0, 0]
+    d, hd = num(pick.get("distance")), num(res.get("validity_best_dropped_distance"))
+    return a + [_brief_int(hb[0] if hb else 0) - _brief_int(pick.get("hit_tokens")),
+                _brief_int(hb[1] if len(hb) > 1 else 0) - _brief_int(pick.get("title_tokens")),
+                (hd - d) if (d is not None and hd is not None) else 1.0,
+                float(bool(res.get("validity_filtered")))]
+
+
+def _brief_v3_p(x: list[float]) -> float:
+    z = sum(((xi - m) / sd) * w for xi, m, sd, w in zip(x, _V3_MU, _V3_SD, _V3_W)) + _V3_W[-1]
+    return 1.0 / (1.0 + math.exp(-z))
+
+
+def _brief_resolve_v3(query: str, hits: list[dict], res: dict) -> tuple[str, list[dict], float | None]:
+    """v3 규칙으로 해소한다. `hits` 는 ColBERT 순서의 앞 `_BRIEF_RESOLVE_N` 개, `res` 는 search 응답이다.
+    의미만 기권(:func:`_brief_v3_prod_head`)은 brief 가 이 앞에서 끝냈다. 특징을 못 만들면 되묻는다.
+    제목이 질문과 같은 후보가 **하나**면 그것으로, 아니면 ColBERT 1위의 확률이 문턱 이상일 때만 확정한다.
+    토큰 동점 가드는 이 확정에 돌지 않는다 — 그 정보는 뒤 네 특징에 들어 있다."""
+    x = _brief_v3_features(query, hits, res)
+    if x is None:
+        return "choose", list(hits), None
+    norm = lambda t: " ".join((t or "").strip().lower().split())  # noqa: E731
+    named = [h for h in hits if norm(h.get("title")) == norm(query)]
+    p = _brief_v3_p(x)
+    if len(named) == 1:
+        return "resolved", named, p
+    return ("resolved", [hits[0]], p) if p >= _V3_T else ("choose", list(hits), p)
+
+
+def _brief_list_rank(rows: list[dict]) -> list[dict]:
+    """되묻기 목록의 순서. 의미 팔이 단호했던 노드가 먼저고, 그다음은 의미 거리가 가까운 순이며,
+    거리가 없는 후보(제목·그래프 팔만)는 뒤에 융합 순서대로 둔다. 확정에는 쓰지 않는다.
+    근거: [[vinc.spec.retrieval-knobs]] §2"""
+    strict = _brief_strict_on()
+
+    def dist(h):
+        d = h.get("distance")
+        return d if isinstance(d, (int, float)) and not isinstance(d, bool) else float("inf")
+
+    return sorted(rows, key=lambda h: (-1 if (strict and h.get("sem_decisive")) else 0, dist(h)))
+
+
+def _brief_mirror_text(store, owner, hit: dict) -> str | None:
+    """후보 한 노드의 검색 미러 텍스트(`NodeVec.text`). 행이 없으면 None."""
+    from . import node_mirror
+    rows = store.run("MATCH (n:NodeVec) WHERE n.vec_id = $v RETURN n.text AS t LIMIT 1",
+                     {"v": node_mirror.vec_id(owner or "", str(hit.get("id") or ""))}) or []
+    return (rows[0].get("t") or None) if rows else None
+
+
+def _brief_xlang_lead(query: str, top: dict, mirror_text=None) -> bool:
+    """`_SEM_PROMOTE_XLANG` 을 쓸 자리인가: 한글 없는 질문이거나(노드 언어와 상관없이),
+    한글 있는 질문인데 승격될 1위의 미러 텍스트에 한글이 없다.
+
+    `mirror_text(h)` 는 노드의 미러 텍스트(제목 + 부가 본문 앞 300자, 에피소드는 600자)를 주거나 None 이다. 없거나
+    읽기가 실패하면 제목으로 갈음한다(미러 행이 없는 후보도 같은 길이다). 한글 없는 질문은 미러를 읽지 않는다."""
+    asked_korean = bool(_HANGUL.search(query or ""))
+    if not asked_korean:
+        return True
+    text = None
+    if mirror_text is not None:
+        try:
+            text = mirror_text(top)
+        except Exception:
+            text = None
+    return asked_korean != bool(_HANGUL.search(text or str(top.get("title") or "")))
+
+
+def _brief_resolve(query: str, hits: list[dict],
+                   mirror_text=None) -> tuple[str, list[dict]]:
     """node_hits → (상태, 고른 것). resolved 면 1건, choose 면 후보 여럿.
 
     ⚠ 그래프·의미 팔만 올라온 경우(hit_tokens 가 전부 0)는 확정하지 않는다 — 후보가
@@ -3396,11 +3967,13 @@ def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
     같은 제목이 둘 이상이면 어느 쪽을 물었는지 모르므로 되묻는다(doc 미러 제목 충돌).
     근거: [[vinc.plan.rag-code-review-fixes-2026-09-29 §7]]
 
-    **의미 우위 승격**(`VINC_BRIEF_SEM_PROMOTE`, 기본 꺼짐)은 위 ⚠ 의 유일한 예외다.
+    **의미 우위 승격**(`VINC_BRIEF_SEM_PROMOTE`, 기본 켜짐)은 위 ⚠ 의 유일한 예외다.
     랭킹 갈래에서 choose 가 될 1위가 의미 팔 원시 목록의 나머지보다 `_SEM_PROMOTE` 이상
     가까우면 토큰이 0 이어도 확정한다. 이름 댄 갈래(같은 제목 둘 포함)와 단독 후보 갈래는
     그 앞에서 돌아오므로 승격되지 않는다. 단독 후보에는 앞설 나머지가 없어 `sem_lead` 도
     안 붙는다. 유효구간 동점 가드와 답변 가능성 게이트는 brief 에서 이 뒤에 그대로 돈다.
+    한글 없는 질문이거나 질문과 1위 노드의 언어가 다르면(한글 있는 질문 + 미러 텍스트에 한글 없음) 문턱은
+    `_SEM_PROMOTE_XLANG` 이다.
 
     **엄격 판정**(`VINC_BRIEF_STRICT`, 기본 켜짐)은 순서에 `arms` 를 먼저 넣고 문턱을
     `_STRICT_MARGIN` 으로 올린다. 여러 팔이 같은 노드를 올렸다는 것은 어휘와 의미가
@@ -3408,7 +3981,7 @@ def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
     ⚠ **융합 점수(RRF)로 정렬하는 안은 기각됐다.** 팔을 켜면 좋아 보이지만 끄면 나빠진다
     (오답확정 37 → 44) — 팔이 둘뿐일 때 RRF 순위는 토큰 순서보다 못하다. 판정은 팔의
     기본값과 무관하게 모두에게 적용되므로 팔에 의존하는 규칙은 쓸 수 없다.
-    근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]"""
+    근거: [[record:the-confidence-bar-was-one-token-and-that-was-the-defect-2026-09-10]]"""
     rows = [h for h in hits if isinstance(h, dict) and h.get("id")]
     if not rows:
         return "none", []
@@ -3424,16 +3997,18 @@ def _brief_resolve(query: str, hits: list[dict]) -> tuple[str, list[dict]]:
                 else "choose"), rows
     ranked = _brief_rank(rows)
     top, second = ranked[0], ranked[1]
-    margin = _STRICT_MARGIN if _brief_strict_on() else 1   # 1 이면 현행과 글자 그대로 같다
-    decisive = _brief_int(top.get("hit_tokens")) > 0 and (
-        _brief_int(top.get("hit_tokens")) - _brief_int(second.get("hit_tokens")) >= margin
-        or _brief_int(top.get("title_tokens"))
-        - _brief_int(second.get("title_tokens")) >= margin)
+    decisive = _brief_token_decisive(top, second)
     # 의미 우위 승격(플래그 뒤): 되묻기가 될 자리에서만 돈다. 1위가 의미 팔의 1위가
     # 아니면 `sem_lead` 가 없다(그 노드보다 가까운 것이 있으니 우위가 음수다).
     lead = top.get("sem_lead")
     promoted = (not decisive and _brief_sem_promote_on()
                 and isinstance(lead, (int, float)) and lead >= _SEM_PROMOTE)
+    # 질문과 1위 노드의 언어가 다르면 더 낮은 문턱을 쓴다. 미러 텍스트는 이 문턱에 걸릴
+    # 때만 읽는다(`mirror_text` 는 호출부가 스토어를 쥐고 있을 때만 주는 지연 조회다).
+    if (not decisive and not promoted and _brief_sem_promote_on()
+            and isinstance(lead, (int, float)) and lead >= _SEM_PROMOTE_XLANG
+            and _brief_xlang_lead(query, top, mirror_text)):
+        promoted = True
     # 확정이어도 **순위 전체**를 돌려준다. 1위가 상세에서 안 열릴 때 호출부가 다음
     # 후보로 넘어갈 수 있어야 하기 때문이고, 그 폴스루는 밝혀서 한다(brief 참조).
     return (("resolved", ranked) if decisive or promoted
@@ -3488,16 +4063,155 @@ def _brief_answerability_on() -> bool:
     끄고 켤 수 있어야 하는 이유: 이 문턱은 정답 81문항 중 **확정 18건** 위에서 골랐고,
     답 불가 21문항 중 15문항을 이 세션에 내가 썼다. 즉 시험지 절반이 이 신호를 편들
     수 있다. 기본값을 바꾸기 전에 남이 쓴 문항이 늘어나야 한다."""
-    return str(os.environ.get("VINC_BRIEF_ANSWERABILITY", "")).strip().lower() in (
-        "1", "on", "true", "yes")
+    return truthy(os.environ.get("VINC_BRIEF_ANSWERABILITY"))
 
 
-def _brief_choose_material_on() -> bool:
-    """choose 에서 첫 후보 둘레로 답변 재료를 모을 것인가. **기본은 꺼짐**
-    (`VINC_BRIEF_CHOOSE_MATERIAL`). 꺼져 있으면 응답은 이 플래그가 없던 때와 같다.
-    근거: [[decision:option-c-assembly-is-built-behind-a-flag-left-off-2026-09-13]]"""
-    return str(os.environ.get("VINC_BRIEF_CHOOSE_MATERIAL", "")).strip().lower() in (
-        "1", "on", "true", "yes")
+def _brief_section_on() -> bool:
+    """질문으로 문서 미러에 닿은 brief 에 `section` 을 실을 것인가(`VINC_BRIEF_SECTION`).
+    기본은 켜짐이고 ``off``·``0``·``false``·``no`` 가 끈다(끄면 이 키가 없던 때와 같다).
+    근거: [[vinc.research.answer-material-section-ai-corpus-2026-10-17]]"""
+    v = str(os.environ.get("VINC_BRIEF_SECTION", "")).strip().lower()
+    return v not in ("off", "0", "false", "no")
+
+
+def _brief_pick_chunk(store, chunks: list[dict], *, query: str, query_embedding,
+                      top_id: str = "") -> tuple[int, str]:
+    """한 문서(또는 한 노드)의 청크 가운데 질문이 가리키는 것의 자리와 근거.
+
+    질문 벡터에 가장 가까운 조각을 가진 청크(`vector`), 벡터가 없으면 검색 1위 청크(`rank`),
+    그것도 아니면 질문 토큰이 가장 여러 가지 든 청크(`lexical`)다. `chunks` 는 {cid, text} 를
+    순서대로 준 것이고 비어 있으면 안 된다."""
+    ids = [str(c["cid"]) for c in chunks]
+    if query_embedding is not None:
+        got = store.run(
+            "MATCH (p:Chunk) WHERE p.chunk_id IN $ids "
+            "MATCH (v:ChunkVec) WHERE v.chunk_id = p.chunk_id "
+            "RETURN p.chunk_id AS cid, min(1 - array_cosine_similarity(v.embedding, $emb)) AS d",
+            {"ids": ids, "emb": list(query_embedding)}) or []
+        dist = {str(r["cid"]): float(r["d"]) for r in got if r.get("d") is not None}
+        if dist:
+            return (min((i for i, cid in enumerate(ids) if cid in dist),
+                        key=lambda i: (dist[ids[i]], i)), "vector")
+    if top_id and top_id in ids:
+        return ids.index(top_id), "rank"
+    from store.lexical import find_tokens, lex_tokens
+    toks = lex_tokens(query)
+    return (max(range(len(chunks)), key=lambda i: (
+        len({t for _, t in find_tokens(str(chunks[i].get("text") or ""), toks)}), -i)), "lexical")
+
+
+def _brief_section(store, *, owner: str, query: str, rows: list[dict],
+                   query_embedding, nodes: list[str]) -> dict | None:
+    """질문 검색 1위 문서에서 **질문이 가리키는 절**. 그 문서의 미러가 ``nodes``(확정 노드나
+    노출 후보)에 있을 때만 낸다 — 아니면 답과 무관한 문서의 본문이 실린다.
+
+    노드 발췌는 노드를 뒷받침하는 창이라 문서 미러에서는 문서 제목이 나오는 자리를 보여 준다.
+    이 절은 질문에 답하는 자리다. 가리키는 청크는 그 문서 청크 가운데 질문 벡터와 가장 가까운
+    조각을 가진 것이고(`basis: vector`), 벡터가 없으면 검색 1위 청크(`rank`), 그것도 그 문서가
+    아니면 질문 토큰이 가장 여러 가지 든 청크다(`lexical`). 절의 범위는 `section_span`.
+    읽기 실패는 None 이다 — 이 키는 증강이라 답을 막지 않는다."""
+    top = next((r for r in rows if isinstance(r, dict) and r.get("doc_id")), None)
+    if top is None:
+        return None
+    doc_id = str(top["doc_id"])
+    mirror = _DOC_CONCEPT_PREFIX + doc_id
+    if mirror not in nodes:
+        return None
+    try:
+        chunks = store.run(
+            "MATCH (c:Chunk) WHERE c.doc_id = $d AND (c.owner_id = $o OR c.owner_id = '') "
+            "RETURN c.chunk_id AS cid, c.section_title AS sec, c.text AS text "
+            "ORDER BY c.chunk_index", {"d": doc_id, "o": owner}) or []
+        if not chunks:
+            return None
+        ids = [str(c["cid"]) for c in chunks]
+        at, basis = _brief_pick_chunk(store, chunks, query=query, query_embedding=query_embedding,
+                                      top_id=str(top.get("id") or ""))
+        lo, hi, text, cut = _excerpt.section_span(chunks, at)
+    except Exception:
+        return None
+    return {"node_id": mirror, "cite_id": mirror, "doc_id": doc_id,
+            "section": str(chunks[at].get("sec") or ""), "chunk_ids": ids[lo:hi + 1],
+            "text": text, "truncated": cut, "basis": basis}
+
+
+def _brief_attach_section(base: dict, store, *, owner: str, query: str, res: dict,
+                          query_embedding, nodes: list[str]) -> None:
+    """`section` 을 싣고 그 미러를 `grounds` 에 더한다(플래그가 꺼져 있으면 아무것도 안 한다)."""
+    if not _brief_section_on():
+        return
+    sec = _brief_section(store, owner=owner, query=query, rows=res.get("rows") or [],
+                         query_embedding=query_embedding, nodes=nodes)
+    if sec is None:
+        return
+    base["section"] = sec
+    for key in ("grounds", "cite_grounds"):
+        if key in base and sec["node_id"] not in base[key]:
+            base[key] = sorted(set(base[key]) | {sec["node_id"]})
+
+
+def _brief_quotes_on() -> bool:
+    """후보와 확정 노드에 `quotes`(글자 그대로의 인용 단위)를 실을 것인가(`VINC_BRIEF_QUOTES`).
+    기본은 켜짐이고 ``off``·``0``·``false``·``no`` 가 끈다(끄면 이 키가 없던 때와 같다).
+    근거: [[vinc.manual.rag]]"""
+    v = str(os.environ.get("VINC_BRIEF_QUOTES", "")).strip().lower()
+    return v not in ("off", "0", "false", "no")
+
+
+#: 노드마다 싣는 인용 단위 수와, 개념의 MENTIONS 청크에서 고를 후보 수.
+_BRIEF_QUOTES_N = 2
+_BRIEF_QUOTE_POOL = 6
+
+
+def _brief_node_quotes(store, *, owner: str, node_id: str, query: str,
+                       query_embedding) -> list[dict]:
+    """노드를 받치는 정본 문서에서 질문이 가리키는 인용 단위. 문서 미러는 그 문서의 청크에서,
+    개념은 MENTIONS 로 닿는 청크(링크 방법이 강한 순)에서 질문 벡터에 가장 가까운 청크 하나를
+    골라 그 안에서 단위를 낸다(`vinc_rag.excerpt.quote_units`).
+
+    단위마다 `doc_id`·`source`(문서 제목)·`section`(절 제목)을 함께 싣는다 — 인용문이 어느
+    문서의 어느 절에서 왔는지를 주장이 인용문 밖에서 끌어오지 않게 하려는 것이다. 다른 종류의
+    노드나 읽기 실패는 빈 목록이다. 이 키는 증강이라 답을 막지 않는다."""
+    try:
+        if node_id.startswith(_DOC_CONCEPT_PREFIX):
+            chunks = store.run(
+                "MATCH (c:Chunk) WHERE c.doc_id = $d AND (c.owner_id = $o OR c.owner_id = '') "
+                "RETURN c.chunk_id AS cid, c.doc_id AS doc_id, c.section_title AS sec, "
+                "c.text AS text ORDER BY c.chunk_index",
+                {"d": node_id[len(_DOC_CONCEPT_PREFIX):], "o": owner}) or []
+        elif node_id.startswith("concept:"):
+            label, pk = _seed_table(node_id)
+            if label != "Concept":
+                return []
+            chunks = store.run(
+                f"MATCH (ch:Chunk)-[m:MENTIONS]->(c:{label}) "
+                f"WHERE c.{pk} = $id AND c.owner_id = $o "
+                "AND (ch.owner_id = $o OR ch.owner_id = '') "
+                "RETURN ch.chunk_id AS cid, ch.doc_id AS doc_id, ch.section_title AS sec, "
+                "ch.text AS text "
+                "ORDER BY CASE m.method WHEN 'title' THEN 0 WHEN 'stem' THEN 1 ELSE 2 END, "
+                f"ch.doc_id, ch.chunk_index LIMIT {_BRIEF_QUOTE_POOL}",
+                {"id": pkns.key(owner, node_id), "o": owner}) or []
+        else:
+            return []
+        if not chunks:
+            return []
+        at, _ = _brief_pick_chunk(store, chunks, query=query, query_embedding=query_embedding)
+        pick = chunks[at]
+        units = _excerpt.quote_units(str(pick.get("text") or ""), query, n=_BRIEF_QUOTES_N)
+        if not units:
+            return []
+        doc_id = str(pick.get("doc_id") or "")
+        title = ""
+        for r in store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $d "
+                           "AND (d.owner_id = $o OR d.owner_id = '') RETURN d.title AS t",
+                           {"d": doc_id, "o": owner}) or []:
+            title = str(r.get("t") or "")
+            break
+        return [{"doc_id": doc_id, "source": title or doc_id,
+                 "section": str(pick.get("sec") or ""), **u} for u in units]
+    except Exception:
+        return []
 
 
 def _brief_expose_n() -> int:
@@ -3518,8 +4232,7 @@ def _brief_list_resolved_on() -> bool:
     (`VINC_BRIEF_LIST_RESOLVED`). 확정이 틀렸을 때 그 뒤에 가려진 정답을 부르는 쪽이
     볼 수 있게 한다(X1). status 와 node 는 그대로다 — 목록이 답을 바꾸지 않는다.
     근거: [[vinc.plan.rag-eval-v2-0-9-6]]"""
-    return str(os.environ.get("VINC_BRIEF_LIST_RESOLVED", "")).strip().lower() in (
-        "1", "on", "true", "yes")
+    return truthy(os.environ.get("VINC_BRIEF_LIST_RESOLVED"))
 
 
 def _brief_candidate_rows(picked: list[dict]) -> list[dict]:
@@ -3535,34 +4248,6 @@ def _brief_candidate_rows(picked: list[dict]) -> list[dict]:
         **{k: h[k] for k in ("temporal", "created_at", "updated_at", "content_time",
                              "valid_from", "valid_until", "validity", "superseded_by") if k in h},
     } for h in picked]
-
-
-#: 후보 재료로 옮겨 싣는 키 — 확정 답의 재료 꼴(:func:`_brief_material`)과 같다.
-_BRIEF_MATERIAL_KEYS = ("node", "one_liner", "body_src", "body_cite", "excerpts",
-                        "links", "grounds", "cite_grounds", "citation_error",
-                        "validity_note", "partial", "partial_note")
-
-
-def _brief_candidate_material(cand: dict, **kw) -> dict:
-    """choose 의 첫 후보 둘레 재료. 그 후보의 **정확한 제목으로 다시 묻는다** — 계약이
-    호출부에 시키는 되묻기 그대로다. 다시 물은 답이 **그 후보로** 확정될 때만 재료를
-    싣고(landed), 아니면 못 실었다고 밝힌다. 다른 노드의 재료를 이 후보의 것으로 내면
-    안 된다.
-
-    ⚠ 제목 임베딩은 넘기지 않는다 — 이 층에는 인코더가 없다. 제목 완전일치는 팔과
-    무관하게 확정하므로(:func:`_brief_resolve`) 갈릴 수 있는 곳은 같은 제목이 둘인
-    경우이고, 그것은 landed=False 로 드러난다."""
-    cid = str(cand.get("id") or "")
-    again = brief(str(cand.get("title") or cid), _reask=True, **kw)
-    out: dict = {"candidate": cid}
-    if again.get("status") == "resolved" and (again.get("node") or {}).get("id") == cid:
-        out["landed"] = True
-        out.update({k: again[k] for k in _BRIEF_MATERIAL_KEYS if k in again})
-    else:
-        out["landed"] = False
-        out["status"] = again.get("status") or "none"
-        out["note"] = "asking again by this candidate's exact title did not resolve to it"
-    return out
 
 
 #: 제목이 안 먹은 부분 중 **검색이 가져온 어디에도 없는** 토큰의 비율이 이 값을 넘으면
@@ -3647,11 +4332,155 @@ def _brief_semantic_none(res: dict) -> bool:
     return min(distances) > _BRIEF_SEMANTIC_NONE_DISTANCE
 
 
+def _brief_current_uncertain(store, *, owner: str, answer: dict, hits: list[dict]) -> bool:
+    """current 모드에서 기권할 것인가 — 답(1위)과, 답과 **주장 키가 같은** 후보만 본다(B5).
+
+    주장 키(entity·predicate·scope)가 다른 후보는 다른 주장이라 그 날짜가 이 답의 현재
+    상태를 흔들지 않는다. 키를 못 읽으면 기권한다(모르면 고르지 않는다)."""
+    from store import search_temporal as temporal
+
+    def shaky(h: dict) -> bool:
+        t = h.get("temporal") or {}
+        return (t.get("validity") == "unknown"
+                or t.get("claim_status") in ("conflict", "cycle", "unknown"))
+
+    if shaky(answer):
+        return True
+    rest = [h for h in hits if isinstance(h, dict) and h.get("id")
+            and h.get("id") != answer.get("id")]
+    if not rest:
+        return False
+    try:
+        sources = temporal.node_sources(store, [answer.get("id")] + [h["id"] for h in rest],
+                                        owner=owner)
+    except Exception:
+        return True
+    key = temporal.claim_key(sources.get(answer.get("id"), {}))
+    if key is None:
+        return False
+    return any(shaky(h) for h in rest
+               if temporal.claim_key(sources.get(h["id"], {})) == key)
+
+
+def _brief_holds(ctx: dict, scope) -> bool:
+    """직참조 노드가 as_of 기간에 성립했나. 사건은 날짜가 시작이고 끝나지 않는다 —
+    `api.temporal_read` 와 검색이 같은 규칙을 쓴다(감사 F14)."""
+    from store.search_temporal import overlaps_scope
+    t = ctx.get("temporal") or ctx
+    if (ctx.get("node_kind") or ctx.get("kind")) == "episode":
+        return holds_during(t.get("content_time") or "", "", scope)
+    return overlaps_scope(t.get("valid_from"), t.get("valid_until"), scope)
+
+
+def _brief_known(row: dict, known_scope) -> bool | None:
+    """known_at 기간이 끝나기 전에 저장됐나. 저장 시각을 모르면 None(감추지 않는다)."""
+    from store.search_temporal import instant
+    created = instant((row.get("temporal") or row).get("created_at"))
+    if created is None:
+        return None
+    return created < instant(known_scope[1])
+
+
+def _brief_excerpt_kept(row: dict, *, mode, historical: bool, as_of_scope) -> bool:
+    """발췌 한 줄을 그 문서의 유효구간으로 가린다. 검색이 청크를 거르는 규칙과 같다
+    (`vinc_rag.retrieval._drop_retired_doc_rows`, current 는 계보까지)."""
+    from store.search_temporal import overlaps_scope
+    t = row.get("temporal") or {}
+    vf, vu = t.get("valid_from") or "", t.get("valid_until") or ""
+    if mode == "current":
+        return (t.get("validity") not in ("historical", "future")
+                and t.get("claim_status") != "superseded")
+    if as_of_scope is not None:
+        return overlaps_scope(vf, vu, as_of_scope)
+    if historical:
+        return True
+    return validity_state(vf, vu) != "historical"
+
+
+def _brief_scope_material(ctx: dict, store, base: dict, *, owner: str, mode,
+                          historical: bool, as_of_scope, known_scope) -> tuple[dict, str]:
+    """확정 재료(발췌·관계)를 요청의 시간 규칙으로 거른다. 걸러진 ctx 사본과, 감춘 것이
+    있으면 알림 문장을 돌려준다(알림은 노드 자신의 알림 뒤에 단다).
+
+    - 발췌(B2): 문서 유효구간 — 기본은 은퇴한 문서, as_of 는 그 기간, current 는 현재·계보.
+      known_at 은 문서가 처음 저장된 시각. 검색이 감추는 청크를 brief 가 인용하면 안 된다.
+    - 관계(F14·B1): as_of 와 known_at 을 `api.temporal_read.Gate` 로 거른다 —
+      vinc_neighbors 가 같은 요청에서 감추는 노드를 여기서도 감춘다. 수(out·in·attached·
+      total)도 감춘 만큼 줄인다. 잘린 창 뒤(next_offset)의 관계는 여기서 거르지 않는다.
+    감춘 수는 validity_filtered(구간)와 known_at_filtered(저장 시각)에 더한다."""
+    ctx = dict(ctx)
+    hidden_validity = hidden_known = 0
+    unknown: set[str] = set()
+    kept = []
+    for row in ctx.get("excerpts") or []:
+        if not _brief_excerpt_kept(row, mode=mode, historical=historical,
+                                   as_of_scope=as_of_scope):
+            hidden_validity += 1
+            continue
+        if known_scope is not None:
+            known = _brief_known(row, known_scope)
+            if known is None:
+                unknown.add("doc:" + str(row.get("doc_id") or ""))
+            elif not known:
+                hidden_known += 1
+                continue
+        kept.append(row)
+    ctx["excerpts"] = kept
+    links = ctx.get("links")
+    if (isinstance(links, dict) and links.get("items")
+            and (as_of_scope is not None or known_scope is not None)):
+        from . import temporal_read
+        gate = temporal_read.Gate(store, [i.get("id") for i in links["items"]], owner=owner,
+                                  as_of_scope=as_of_scope, known_scope=known_scope)
+        links = dict(links)
+        items = []
+        for item in links["items"]:
+            if gate.keep(item.get("id")):
+                items.append(item)
+                continue
+            d = item.get("dir")
+            if d == "att":
+                links["attached"] = int(links.get("attached") or 0) - 1
+            elif d in ("out", "in"):
+                links[d] = int(links.get(d) or 0) - 1
+                links["degree"] = int(links.get("degree") or 0) - 1
+            links["total"] = int(links.get("total") or 0) - 1
+        links["items"] = items
+        ctx["links"] = links
+        hidden_validity += gate.hidden_validity
+        hidden_known += gate.hidden_known
+        unknown |= gate.unknown_known
+    note = ""
+    if hidden_validity:
+        base["validity_filtered"] = int(base.get("validity_filtered") or 0) + hidden_validity
+        note = ("hid excerpts or relations outside the requested time scope"
+                if as_of_scope is not None or mode == "current" else
+                "hid excerpts of documents whose validity ended; "
+                "pass historical=true to include them")
+    if known_scope is not None:
+        base["known_at_filtered"] = int(base.get("known_at_filtered") or 0) + hidden_known
+        base["known_at_unknown"] = int(base.get("known_at_unknown") or 0) + len(unknown)
+    return ctx, note
+
+
+def _brief_answer(base: dict, cand: dict, ctx: dict, store, *, owner: str, mode,
+                  historical: bool, as_of_scope, known_scope) -> dict:
+    """시간 규칙으로 거른 재료로 답을 채운다. 직참조와 랭킹 경로가 같은 꼬리를 쓴다."""
+    ctx, note = _brief_scope_material(ctx, store, base, owner=owner, mode=mode,
+                                      historical=historical, as_of_scope=as_of_scope,
+                                      known_scope=known_scope)
+    out = _brief_material(base, cand, ctx)
+    if note:
+        out.setdefault("validity_note", note)
+    return out
+
+
 def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
           max_excerpts: int = 3, historical: bool = False, as_of: str | None = None,
-          mode: str | None = None,
+          mode: str | None = None, known_at: str | None = None,
           cfg=None, store=None, _reask: bool = False,
-          query_runtime: str | None = None) -> dict:
+          query_runtime: str | None = None, query_model: str | None = None,
+          query_colbert: str | None = None) -> dict:
     """질문 하나 → 답변 재료 한 벌(조인 읽기, 조회 전용).
 
     질문에 노드 id 가 그대로 들어 있으면 그 노드를 **직참조**한다(검색·랭킹 생략,
@@ -3667,8 +4496,13 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
            resolved_via("id" — 직참조로 확정된 경우에만),
            fell_through/unreadable(안 열린 후보·질문 속 id 의 공개),
            search_error(청크 팔이 실패한 사유 — 해소는 노드 팔로 계속한다),
-           partial/partial_note(노드는 읽었는데 발췌·관계를 못 읽었을 때),
-           candidate_material(`VINC_BRIEF_CHOOSE_MATERIAL` 을 켠 choose 에서만)}.
+           partial/partial_note(노드는 읽었는데 발췌·관계를 못 읽었을 때)}.
+    확정 노드와 되묻기 후보는 `quotes`(글자 그대로의 인용 단위)를 달고 올 수 있다.
+
+    시간 인자(`as_of`·`mode`·`historical`·`known_at`)는 여기서 전부 적용한다 —
+    해소(검색), 직참조 노드, 발췌, 관계 모두에. 사이드카가 뒤에서 다시 거르지 않는다
+    (감사 B1·B2·F14). `known_at` 은 저장 시각 컷오프이고 과거 본문을
+    복원하지 않는다(검색과 같다).
     근거: [[vinc.plan.mcp-agent-surface §4]]"""
     cfg = cfg or load_config()
     base: dict = {"kind": "brief", "executed": False, "query": query,
@@ -3676,13 +4510,24 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
     # Direct-ID reads bypass search by design, but an explicit time request must
     # still be validated and applied before the early return.
     try:
-        from store.search_temporal import mode_scope, overlaps_scope as temporal_overlap
+        from store.search_temporal import mode_scope
         historical, direct_scope, direct_scope_info = mode_scope(mode, historical, as_of, query)
     except ValueError as exc:
         base["note"] = base["error"] = f"invalid_temporal_mode: {exc}" if mode else f"invalid_as_of: {exc}"
         return base
+    known_scope = time_scope(known_at) if (known_at or "").strip() else None
+    if (known_at or "").strip() and known_scope is None:
+        base["note"] = base["error"] = f"invalid_time_scope: invalid known_at {known_at!r}"
+        return base
     if direct_scope_info is not None:
         base["time_scope"] = direct_scope_info
+    if known_scope is not None:
+        base["time_scope"] = {**(base.get("time_scope") or {}), "known_at": {
+            "value": known_at.strip(), "from": known_scope[0], "until": known_scope[1]}}
+    # 재료(발췌·관계)를 거를 as_of 기간. current 는 기간이 아니라 상태로 가린다.
+    as_of_scope = direct_scope if mode != "current" else None
+    rule = {"owner": owner, "mode": mode, "historical": historical,
+            "as_of_scope": as_of_scope, "known_scope": known_scope}
     owns = store is None
     if owns:
         store = open_store(cfg)
@@ -3699,18 +4544,29 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         # [[record:title-language-gap-survives-the-vector-arm-2026-08-30]]
         unread_ids: list[dict] = []
         out_of_scope_ids: list[str] = []
-        for qid in _brief_query_ids(query):
+        known_out: list[str] = []
+        # 개방 타입 id 는 네 접두 id 가 없을 때만, 실재하는 것만 연다(F12).
+        qids = _brief_query_ids(query) or _brief_entity_ids(store, query, owner=owner)
+        for qid in qids:
             got = node_context(owner=owner, node=qid, limit=max_excerpts,
                                with_evidence=True, store=store)
             if got.get("executed"):
                 if mode == "current" and got.get("temporal", {}).get("validity") in ("future", "historical"):
                     out_of_scope_ids.append(qid)
                     continue
-                if mode != "current" and direct_scope is not None and not temporal_overlap(
-                        got.get("temporal", got).get("valid_from"),
-                        got.get("temporal", got).get("valid_until"), direct_scope):
+                if mode != "current" and direct_scope is not None and not _brief_holds(
+                        got, direct_scope):
                     out_of_scope_ids.append(qid)
                     continue
+                if known_scope is not None:
+                    # B1 — 컷오프 뒤에 저장된 노드는 그 시점의 그래프에 없었다. 저장 시각을
+                    # 모르면 감추지 않고 센다(검색과 같다).
+                    known = _brief_known(got, known_scope)
+                    if known is False:
+                        known_out.append(qid)
+                        continue
+                    if known is None:
+                        base["known_at_unknown"] = int(base.get("known_at_unknown") or 0) + 1
                 base["executed"] = True
                 base["status"] = "resolved"
                 if mode == "current" and (got.get("temporal", {}).get("validity") == "unknown" or got.get("temporal", {}).get("claim_status") in ("conflict", "cycle", "superseded", "unknown")):
@@ -3723,7 +4579,9 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                 # 밝힌다 — 잘린 접두는 우연히 실재하는 다른 노드일 수 있다.
                 if unread_ids:
                     base["fell_through"] = list(unread_ids)
-                return _brief_material(base, {"id": qid}, got)
+                if known_scope is not None:
+                    base.setdefault("known_at_filtered", 0)
+                return _brief_answer(base, {"id": qid}, got, store, **rule)
             unread_ids.append({"id": qid,
                                "note": got.get("note") or ("node not found: " + qid)})
         # 질문이 준 id 가 하나도 안 열리면 **없다고 답한다**(status="none" + unreadable).
@@ -3736,15 +4594,25 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             base["unreadable"] = list(unread_ids)
             base["note"] = unread_ids[0]["note"]
             return base
-        if out_of_scope_ids:
+        if out_of_scope_ids or known_out:
             base["executed"] = True
-            base["validity_filtered"] = len(out_of_scope_ids)
-            base["validity_note"] = (
-                f"the referenced node did not hold during {direct_scope_info['as_of']}")
+            if out_of_scope_ids:
+                base["validity_filtered"] = len(out_of_scope_ids)
+                base["validity_note"] = (
+                    "the referenced node is not current" if mode == "current" else
+                    f"the referenced node did not hold during {direct_scope_info['as_of']}")
+            if known_out:
+                base["known_at_filtered"] = len(known_out)
+                base["known_at_node_note"] = (
+                    f"the referenced node was recorded after {known_at.strip()}; "
+                    "the graph did not hold it then")
             return base
         res = search(query, query_embedding=query_embedding, top_k=_BRIEF_TOP_K,
                      owner=owner, store=store, historical=historical,
-                     as_of=as_of, mode=mode, query_runtime=query_runtime)
+                     as_of=as_of, mode=mode, known_at=known_at,
+                     query_runtime=query_runtime, query_model=query_model,
+                     # 기존 규칙은 ColBERT 순서 위에서 잰 적이 없다 — 학습 규칙일 때만 재채점된 후보로 해소한다.
+                     query_colbert=query_colbert if _brief_rule_colbert() else None)
         # executed 는 노드 팔 기준이다 — 청크 팔만 죽어도 노드 팔은 owner 스코프 결과를 낸다.
         base["executed"] = bool(res.get("executed") or res.get("node_hits"))
         # 벡터 팔의 상태도 함께 나른다. 두 표면이 같은 임베딩 창구를 쓰는데 `/search`
@@ -3759,6 +4627,18 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                   "temporal_error", "partial", "mode", "claim_assessment_scope"):
             if res.get(k):
                 base[k] = res[k]
+        # 노드 의미 팔이 모델 불일치로 꺼졌으면 해소가 그 팔 없이 돌았다. 그 사실도 나른다.
+        if (res.get("node_semantic") or {}).get("state") == "model_mismatch":
+            base["node_semantic"] = res["node_semantic"]
+        if known_scope is not None:
+            # B1 — 검색이 known_at 으로 감춘 수를 그대로 잇는다(0 도 값이다: 거르기가 돌았다).
+            base["known_at_filtered"] = int(res.get("known_at_filtered") or 0)
+            base["known_at_unknown"] = int(res.get("known_at_unknown") or 0)
+        if mode == "current" and base.get("validity_note"):
+            # D15 — current 는 as_of 를 받지 않는다. 검색의 알림이 기간 문장("drop as_of")을
+            # 달고 와도 여기서는 상태로 말한다.
+            base["validity_note"] = ("hid claims that are not current; "
+                                     "use mode=historical to include them")
         # 검색의 `error` 는 청크 팔 실패다(FTS 잔해·확장 미가용·색인 부재 …). 같은 검색의
         # 노드 팔 결과로 해소를 계속하고 사유는 `search_error` 로 싣는다 — 최상위 `error` 는
         # REST v1 이 HTTP 500 으로 바꾸므로 해소된 답에 쓸 수 없다. 노드 팔도 빈손일 때만
@@ -3767,13 +4647,50 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             base["search_error"] = res["error"]
             if not res.get("node_hits"):
                 return base
-        if _brief_semantic_none(res):
+        # 넓은 풀은 되묻기 목록용으로 따로 두고, 확정·기권·가드는 앞 `_BRIEF_RESOLVE_N` 개로 본다.
+        pool = [h for h in res.get("node_hits") or [] if isinstance(h, dict) and h.get("id")]
+        full = res.get("node_hits") or []
+        res = {**res, "node_hits": full[:_BRIEF_RESOLVE_N]}
+        rescored = (res.get("node_rescore") or {}).get("state") == "applied"
+        # v3 는 의미만 기권을 재채점 **전** 순서의 앞 다섯으로 본다(재채점이 기권 대상을 바꾸지 않게).
+        # 재채점이 안 된 질의는 기존 규칙 그대로 간다.
+        v3 = _brief_rule_v3() and rescored and bool(full)
+        learned = _brief_rule_learned() and rescored
+        configured = _brief_rule()
+        if configured != "production" and not (v3 or learned):
+            # 학습 규칙이 설정돼 있어도 재채점이 안 된 질의는 기존 규칙이 답한다. 그 사실을 답에 싣는다:
+            # 없으면 평가도 사람도 어느 규칙의 답인지 가를 수 없다(토큰이 빠진 노드 하나로도 재채점이 빠진다).
+            # 근거: [[vinc.canon.rag-production-state]]
+            _rs = res.get("node_rescore") or {}
+            base["resolution"] = {"rule": "production", "configured": configured,
+                                  "rescore": _rs.get("state") or "missing"}
+            if _rs.get("reason"):
+                base["resolution"]["reason"] = _rs["reason"]
+        if _brief_semantic_none({**res, "node_hits": _brief_v3_prod_head(full)} if v3 else res):
             base["note"] = "no sufficiently close semantic candidate"
             return base
-        status, picked = _brief_resolve(query, res.get("node_hits") or [])
-        if mode == "current" and any(h.get("temporal", {}).get("validity") == "unknown" or h.get("temporal", {}).get("claim_status") in ("conflict", "cycle", "unknown") for h in picked):
+        if v3:
+            status, picked, _p = _brief_resolve_v3(query, res.get("node_hits") or [], res)
+            base["resolution"] = {"rule": "v3", "p": None if _p is None else round(_p, 4)}
+        elif learned:
+            # ColBERT 로 다시 선 후보 위의 학습 규칙. 재채점이 안 된 질의는 기존 규칙으로 간다.
+            status, picked, _p = _brief_resolve_learned(query, res.get("node_hits") or [])
+            base["resolution"] = {"rule": "learned", "p": None if _p is None else round(_p, 4)}
+        else:
+            status, picked = _brief_resolve(
+                query, res.get("node_hits") or [],
+                mirror_text=lambda h: _brief_mirror_text(store, owner, h))
+        # B5 — current 의 기권은 답(1위)과 그 주장 키를 공유하는 후보만 본다. 후보 아무나
+        # 보면 구간이 없어 늘 unknown 인 개념 후보 하나가 다른 주장의 답을 막는다.
+        if mode == "current" and picked and _brief_current_uncertain(
+                store, owner=owner, answer=picked[0], hits=res.get("node_hits") or []):
             status = "choose"
             base["validity_note"] = "current claim evidence is conflicting or unknown; no current state was chosen"
+        # D11 — current 에서 동점이던 노드가 은퇴했으면 남은 노드로 확정한다. 의도된 뜻이다:
+        # current 는 "지금 성립하는 것"을 묻고, 은퇴한 노드는 그 질문의 경쟁자가 아니다.
+        # 아래 동점 가드는 일반 모드에서 감춘 행의 점수(validity_best_dropped)를 보는데,
+        # current 에서는 finish_nodes 가 은퇴한 노드를 감추며 그 점수를 남기지 않으므로
+        # 가드가 서지 않는다. 그 차이가 이 뜻을 구현한다(감사 D11).
         # 🔴 **유효구간 필터가 동점을 깨서 확신을 만들면 안 된다.** 지운 행이 남은 1위와
         # 같은 점수였다면, 원래 이 질문은 "모르겠다"(choose)였다. 그 자리에서 확정을
         # 주면 필터가 **보이는 것**이 아니라 **답**을 바꾼 것이고, 그건 §4.2 가 의도한
@@ -3781,21 +4698,28 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         # 확정됐다(정직성 0.0 → 0.1667). 동점이던 Record 둘 중 하나가 걸러지면서 남은
         # 하나가 단독 승자가 된 모양이었다.
         # 근거: [[record:the-validity-filter-broke-a-tie-and-manufactured-confidence-2026-09-09]]
-        if status == "resolved" and picked and base.get("validity_filtered"):
+        # v3 확정에는 돌지 않는다: 감춘 행의 점수는 v3 특징(:func:`_brief_v3_features`)에 이미 있다.
+        if status == "resolved" and picked and base.get("validity_filtered") and not v3:
             _bd = tuple(base.get("validity_best_dropped") or (0, 0))
-            _w = (_brief_int(picked[0].get("hit_tokens")),
-                  _brief_int(picked[0].get("title_tokens")))
-            if _bd >= _w:
+            if (_brief_hidden_ties(query, picked[0], _bd)
+                    and not _brief_semantic_tie_clear(picked, res)):
                 status = "choose"
                 # 시점 읽기(as_of)에서도 같은 가드다 — 그 기간 밖이라 감춘 것이 동점이었으면
-                # 확정하지 않는다(계획의 "tie guard applies unchanged").
-                base["validity_note"] = (
-                    "a claim that did not hold during {} tied with the leading candidate, "
-                    "so this was not resolved; drop as_of to see it".format(
-                        base["time_scope"]["as_of"])
-                    if (base.get("time_scope") or {}).get("from") else
-                    "a claim that is no longer current tied with the leading candidate, "
-                    "so this was not resolved; pass historical=true to see it")
+                # 확정하지 않는다(계획의 "tie guard applies unchanged"). 알림은 경우마다
+                # 다르다(D15): current 는 as_of 를 받지 않으므로 "drop as_of" 라고 말하지 않는다.
+                _ts = base.get("time_scope") or {}
+                if mode == "current":
+                    base["validity_note"] = (
+                        "a claim that is not current tied with the leading candidate, "
+                        "so this was not resolved; use mode=historical to see it")
+                elif _ts.get("from"):
+                    base["validity_note"] = (
+                        "a claim that did not hold during {} tied with the leading candidate, "
+                        "so this was not resolved; drop as_of to see it".format(_ts["as_of"]))
+                else:
+                    base["validity_note"] = (
+                        "a claim that is no longer current tied with the leading candidate, "
+                        "so this was not resolved; pass historical=true to see it")
         # 🔴 **주제를 찾은 것과 질문에 답하는 것은 다르다.** 질문이 노드 제목을 그대로
         # 인용하고 그 **속성**을 물으면(“…는 문장은 누가 썼나”) 제목이 통째로 맞아
         # 토큰 여유가 넘치고, 확신 문턱은 그것을 못 거른다 — 랭킹 문제가 아니기 때문이다.
@@ -3813,23 +4737,22 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                     "does not hold, so this was not resolved")
         base["status"] = status
         if status == "choose":
-            # 되묻기 목록은 고른 것을 앞에 두고 나머지 풀을 순위대로 채워 노출 수에서
-            # **한 번** 자른다. 강등(유효구간 동점·답변 가능성)은 확정용 목록을 그대로
-            # 넘기므로 여기서 안 자르면 노출보다 길고, 제목 완전일치가 강등되면 한 줄뿐이다.
-            _seen = {h.get("id") for h in picked}
-            picked = picked + [h for h in _brief_rank(
-                [h for h in res.get("node_hits") or [] if isinstance(h, dict) and h.get("id")])
-                if h.get("id") not in _seen]
+            # 되묻기 목록은 넓은 풀 전체를 의미 순서(`_brief_list_rank`)로 세워 노출 수에서
+            # **한 번** 자른다. 확정용 순위(팔 개수 → 토큰)는 의미 팔에만 걸린 후보를 맨 뒤로
+            # 미는데, 넓은 풀에 새로 들어오는 정답은 대부분 그런 후보다.
+            # 학습 규칙은 ColBERT 순서를 그대로 보인다 — 의미 순서로 다시 세우면 재채점을 되돌린다.
+            picked = list(pool) if (learned or v3) else _brief_list_rank(pool)
             base["candidates"] = _brief_candidate_rows(picked[:_brief_expose_n()])
-            # 플래그가 켜져 있으면 첫 후보의 재료를 **따로 한 키에** 싣는다. status 는
-            # choose, candidates 는 그대로다 — 후보의 재료가 확정 답으로 읽히면 안 된다.
-            # `_reask` 는 되묻기 자신이 다시 되묻지 않게 막는다(같은 제목이 또 choose 면
-            # 끝이 없다). 축소기는 이 키 안의 발췌·관계를 확정 답과 같은 순서로 던다.
-            # 근거: [[decision:option-c-assembly-is-built-behind-a-flag-left-off-2026-09-13]]
-            if base["candidates"] and not _reask and _brief_choose_material_on():
-                base["candidate_material"] = _brief_candidate_material(
-                    base["candidates"][0], owner=owner, max_excerpts=max_excerpts,
-                    historical=historical, mode=mode, as_of=as_of, cfg=cfg, store=store)
+            if not _reask and _brief_quotes_on():
+                for _c in base["candidates"]:
+                    _q = _brief_node_quotes(store, owner=owner, node_id=str(_c.get("id") or ""),
+                                            query=query, query_embedding=query_embedding)
+                    if _q:
+                        _c["quotes"] = _q
+            if not _reask:
+                _brief_attach_section(base, store, owner=owner, query=query, res=res,
+                                      query_embedding=query_embedding,
+                                      nodes=[str(c.get("id") or "") for c in base["candidates"]])
             return base
         if status == "none":
             return base
@@ -3863,7 +4786,16 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             return base
         if unread:
             base["fell_through"] = unread
-        out = _brief_material(base, hit, ctx)
+        out = _brief_answer(base, hit, ctx, store, **rule)
+        if not _reask and _brief_quotes_on():
+            _q = _brief_node_quotes(store, owner=owner, node_id=str(hit.get("id") or ""),
+                                    query=query, query_embedding=query_embedding)
+            if _q:
+                out["quotes"] = _q
+        if not _reask:
+            _brief_attach_section(out, store, owner=owner, query=query, res=res,
+                                  query_embedding=query_embedding,
+                                  nodes=[str(hit.get("id") or "")])
         if _brief_list_resolved_on():
             # 확정은 그대로 두고 순위 목록을 곁에 싣는다. 첫 자리는 순위 1위다.
             out["candidates"] = _brief_candidate_rows(picked[:_brief_expose_n()])
@@ -3930,7 +4862,7 @@ def edge_context(*, owner: str, src: str, dst: str, etype: str,
             base["note"] = "unknown edge (또는 소유 스코프 밖)"
             return base
         r = rows[0]
-        def _mention_excerpt(cid: str, label: str) -> dict | None:
+        def _mention_excerpt(cid: str, label: str, title: str, detail: str) -> dict | None:
             if label not in _SEMANTIC_PK:
                 return None
             m = store.run(
@@ -3944,15 +4876,17 @@ def edge_context(*, owner: str, src: str, dst: str, etype: str,
             if not m:
                 return None
             return {"doc_id": m[0].get("doc_id") or "",
-                    "excerpt": " ".join((m[0].get("text") or "").split())[:240]}
+                    "excerpt": _excerpt.excerpt(m[0].get("text") or "", title, detail)}
         base.update(
             executed=True,
             evidence=r.get("ev") or "",
             confidence=float(r.get("cf") or 0.0),
             src={"id": src, "title": r.get("at") or src, "one_liner": r.get("ad") or "",
-                 "excerpt": _mention_excerpt(src, r["src_label"])},
+                 "excerpt": _mention_excerpt(src, r["src_label"], r.get("at") or "",
+                                             r.get("ad") or "")},
             dst={"id": dst, "title": r.get("bt") or dst, "one_liner": r.get("bd") or "",
-                 "excerpt": _mention_excerpt(dst, r["dst_label"])})
+                 "excerpt": _mention_excerpt(dst, r["dst_label"], r.get("bt") or "",
+                                             r.get("bd") or "")})
         return base
     except Exception as exc:
         base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
@@ -4156,6 +5090,10 @@ def nav_tree(*, owner: str, nodes: bool = False, kind: str | None = None,
             node = d.get("primary_concept_id") or ""
             row = {"doc_id": d.get("doc_id") or "", "title": d.get("title") or "",
                    "updated_at": d.get("updated_at") or ""}
+            # 유효기간이 닫힌 문서는 행에 그 날을 싣는다(없으면 키도 없다). 트리는 거르지 않는다:
+            # 숨길지는 화면이 정한다(커뮤니티 스페이스는 내린 페이지를 숨긴다).
+            if d.get("valid_until"):
+                row["valid_until"] = d["valid_until"]
             if not topic or not node:
                 # 스코프가 걸렸으면 주제 없는 문서는 그 스코프에 들지 않는다.
                 if not scope:
@@ -4619,7 +5557,21 @@ def suggest_ties(*, owner: str, node: str, limit: int = 5, cfg=None, store=None)
     rows = meta.get("rows", [])
     me = next((r for r in rows if r.get("id") == node), None)
     if me is None:
-        cands = near_nodes(store, node, owner=owner)
+        # 비-개념 끝점은 연결 부재가 아니라 층 부재다(path 의 개념 전용 거절과 같은
+        # 태도). suggest_ties 는 개념 메타로만 점수를 매기므로 결정·기록·사건은 여기서
+        # 후보를 받을 수 없다 — "unknown concept" 로 답하면 id 만 고치면 될 것처럼
+        # 읽힌다. 근거: [[vinc.manual.core]]
+        if node.lower().startswith(_NON_CONCEPT_PREFIXES):
+            return {"kind": "suggest_ties", "executed": True, "found": False,
+                    "node": node, "suggestions": [], "total": 0, "truncated": False,
+                    "formula": TIE_SCORE_FORMULA,
+                    "error": f"suggest_ties walks the concept layer only: {node} is not a concept id",
+                    "hint": ("Tie scores are computed between `concept:` nodes (tag overlap, "
+                             "domain, shared neighbours). A record, decision or episode attaches "
+                             "to concepts rather than being tied to them, so it is never a tie "
+                             "endpoint here. Use vinc_neighbors on that id to see its attachments.")}
+        # 후보에서 질문한 노드 자신은 뺀다 — 자기 자신을 잇자고 제안하지 않는다.
+        cands = [c for c in near_nodes(store, node, owner=owner) if c.get("id") != node]
         # F4 봉투 통일 — total·truncated·formula 를 **결과가 있을 때만** 싣던 것을
         # 고친다. 계약에 적힌 필드가 상황에 따라 사라지면 호스트는 그것을 옵셔널로
         # 취급할 수밖에 없고, 그러면 truncated 같은 안전 표식이 무의미해진다.
@@ -4717,15 +5669,43 @@ def neighbors_plan(node: str, *, owner: str | None = None) -> QueryPlan:
     # 가져야 하므로 Decision 팔은 리터럴로 채운다: 열이 없는 라벨에 `m.one_liner` 를
     # 쓰면 Binder 가 죽고, 그러면 이웃 조회 전체가 죽는다(이 파일이 pinned·
     # content_time 에서 이미 두 번 겪은 자리).
+    # F15 — 방향을 싣는다. 저장 방향마다 한 팔이고(out: 시드가 출발, in: 시드가 도착),
+    # 같은 상대·같은 관계가 양쪽에 다 있으면 neighbors() 가 "both" 로 합친다.
     cypher = " UNION ALL ".join(
-        f"MATCH (n:{s_label})-[r]-(m:{m_label}) WHERE {n_where}{m_where} "
-        f"RETURN label(r) AS rel, m.{m_pk} AS id, m.title AS title, m.domain AS domain, "
+        f"MATCH {pat} WHERE {n_where}{m_where} "
+        f"RETURN label(r) AS rel, '{d}' AS dir, m.{m_pk} AS id, m.title AS title, "
+        "m.domain AS domain, "
         + (f"coalesce(m.one_liner, '') AS one_liner"
            if m_label == "Concept" else "'' AS one_liner")
         # W3 — 의미층 둘 다 추적 라벨이라 리터럴 맞춤 없이 그대로 뽑는다.
         + ", " + _track_cols("m")
-        for m_label, m_pk in _SEMANTIC_PK.items())
+        for m_label, m_pk in _SEMANTIC_PK.items()
+        for pat, d in ((f"(n:{s_label})-[r]->(m:{m_label})", "out"),
+                       (f"(n:{s_label})<-[r]-(m:{m_label})", "in")))
     return QueryPlan("neighbors", cypher, params, note="single-hop observation (SoG)")
+
+
+def _typed_neighbors_cypher(owner: str | None) -> str:
+    """Entity 시드의 TYPED 이웃(양방향). 저작 타입은 `subtype` 으로 낸다. Entity 에는
+    도메인·한줄 설명 열이 없어 리터럴로 맞춘다. 근거: 감사 F12."""
+    n_scope = " AND n.owner_id = $owner" if owner else ""
+    m_scope = " AND m.owner_id = $owner" if owner else ""
+    return " UNION ALL ".join(
+        f"MATCH {pat} WHERE n.entity_id = $node{n_scope}{m_scope} "
+        f"RETURN 'TYPED' AS rel, r.type AS subtype, '{d}' AS dir, m.entity_id AS id, "
+        "m.title AS title, '' AS domain, '' AS one_liner, " + _track_cols("m")
+        for pat, d in (("(n:Entity)-[r:TYPED]->(m:Entity)", "out"),
+                       ("(n:Entity)<-[r:TYPED]-(m:Entity)", "in")))
+
+
+def entity_neighbors_plan(node: str, *, owner: str | None = None) -> QueryPlan:
+    """Entity 시드의 1-hop(TYPED, 양방향). :func:`neighbors_plan` 은 시드를 개념으로
+    접어 Entity 를 못 본다 — 이것이 없을 때 개방 타입 노드는 관계가 있어도 이웃 0개였다."""
+    params: dict = {"node": pkns.key(owner, node)}
+    if owner:
+        params["owner"] = owner
+    return QueryPlan("entity_neighbors", _typed_neighbors_cypher(owner), params,
+                     note="entity TYPED neighbours (F12)")
 
 
 #: 부착 축의 라벨 → (PK 열, 엣지 이름, `domain` 자리에 쓸 열).
@@ -4778,9 +5758,10 @@ def node_attachments_plan(node: str, *, owner: str | None = None) -> QueryPlan:
         if owner:
             a_scope = (f" AND {_bridge_owner_pred('a')}" if label == "Bridge"
                        else " AND a.owner_id = $owner")
+        # F15 — 부착 엣지는 부착 노드에서 시드로 온다. 시드 쪽에서 보면 in 이다.
         parts.append(f"MATCH (a:{label})-[:{rel}]->(c:{c_label}) "
                      f"WHERE c.{c_pk} = $node{c_scope}{a_scope} "
-                     f"RETURN '{rel}' AS rel, a.{pk} AS id, a.title AS title, "
+                     f"RETURN '{rel}' AS rel, 'in' AS dir, a.{pk} AS id, a.title AS title, "
                      f"a.{dom} AS domain, " + _track_cols("a") + ", "
                      # W13 — 유효구간은 Record 팔만 실열, 나머지는 자리 맞춤.
                      + (_validity_cols("a") if label == "Record" else _VALIDITY_EMPTY))
@@ -4796,11 +5777,11 @@ def record_supersedes_plan(node: str, *, owner: str | None = None) -> QueryPlan:
         params["owner"] = owner
         scope = " AND a.owner_id = $owner AND m.owner_id = $owner"
     arms = [f"MATCH {pat} WHERE a.record_id = $node{scope} "
-            "RETURN 'SUPERSEDES' AS rel, m.record_id AS id, m.title AS title, "
+            f"RETURN 'SUPERSEDES' AS rel, '{d}' AS dir, m.record_id AS id, m.title AS title, "
             "m.domain AS domain, '' AS one_liner, " + _track_cols("m") + ", "
             + _validity_cols("m")
-            for pat in ("(a:Record)-[:SUPERSEDES]->(m:Record)",
-                        "(m:Record)-[:SUPERSEDES]->(a:Record)")]
+            for pat, d in (("(a:Record)-[:SUPERSEDES]->(m:Record)", "out"),
+                           ("(m:Record)-[:SUPERSEDES]->(a:Record)", "in"))]
     return QueryPlan("record_supersedes", " UNION ALL ".join(arms), params,
                      note="record supersession axis")
 
@@ -4818,7 +5799,8 @@ def _attach_reverse_cypher(s_label: str, owner: str | None) -> str:
     return " UNION ALL ".join(
         f"MATCH (a:{s_label})-[:{rel}]->(m:{m_label}) "
         f"WHERE a.{s_pk} = $node{s_scope}{m_scope} "
-        f"RETURN '{rel}' AS rel, m.{m_pk} AS id, m.title AS title, m.domain AS domain, "
+        f"RETURN '{rel}' AS rel, 'out' AS dir, m.{m_pk} AS id, m.title AS title, "
+        "m.domain AS domain, "
         + ("coalesce(m.one_liner, '') AS one_liner"
            if m_label == "Concept" else "'' AS one_liner")
         + ", " + _track_cols("m")            # W3
@@ -4856,10 +5838,11 @@ def _domain_neighbors(node: str, *, owner: str | None, limit: int | None,
         # (`_TRACK_COLS` 밖), 멤버 행은 `engines/domain_hierarchy.py` 의 질의에서
         # 오므로 이 패키지의 투영 범위(api/query.py) 밖이다. 없는 것은 결손이지
         # 사실이 아니므로 0 으로 채우지 않는다 — 지어낸 버전이 제일 나쁘다.
-        rows = [{"rel": "PARENT_OF", "id": domain_hierarchy.make_id(c),
+        # F15 — 방향: 자식 주제는 이 좌표에서 나가고(PARENT_OF), 멤버는 들어온다(IN_DOMAIN).
+        rows = [{"rel": "PARENT_OF", "dir": "out", "id": domain_hierarchy.make_id(c),
                  "title": c, "domain": domain}
                 for c in sorted({r["child"] for r in kids if r.get("child")})]
-        rows += [{"rel": "IN_DOMAIN", "id": r.get("id"),
+        rows += [{"rel": "IN_DOMAIN", "dir": "in", "id": r.get("id"),
                   "title": r.get("title") or r.get("id"),
                   "domain": r.get("domain") or ""}
                  for r in members if r.get("id")]
@@ -4883,52 +5866,71 @@ def _domain_neighbors(node: str, *, owner: str | None, limit: int | None,
 def neighbors(node: str, *, owner: str | None = None, limit: int = 50,
               cfg=None, store=None) -> dict:
     """E-G5 — 개념의 1-hop 관계망 요약(조회 전용). 반환 {executed, node,
-    neighbors:[{rel,id,title,domain,one_liner,rev,updated_at,valid_from,valid_until}],
+    neighbors:[{rel,dir,id,title,domain,one_liner,rev,updated_at,valid_from,valid_until}],
     by_rel:{rel:count}, count}. 결정론 순서
     (rel, id). 상류 SoG 항해의 관측 표면.
+
+    ``dir`` 은 저장된 방향이다: out(시드가 출발), in(시드가 도착), both(같은 관계가
+    양쪽에 다 있다 — 한 줄로 센다). Entity(개방 타입) 시드는 TYPED 관계를 내고,
+    그 행의 ``subtype`` 이 저작된 타입이다(감사 F12·F15).
 
     ``node`` 가 ``domain:`` 접두면 **도메인 좌표**를 잡는다(E-1) — 자식 도메인
     (`PARENT_OF`)과 거기 직접 속한 노드(`IN_DOMAIN`)를 같은 모양으로 낸다. 그래서
     `domain:vinc` 에서 시작해 한 홉씩 아래로 걸어 내려갈 수 있다."""
     if domain_hierarchy.parse_id(node):
         return _domain_neighbors(node, owner=owner, limit=limit, cfg=cfg, store=store)
-    res = execute(neighbors_plan(node, owner=owner), cfg, store=store)
+    entity_seed = _seed_table(node)[0] == "Entity"
+    # F12 — Entity 시드는 TYPED 만 갖는다. 아래 두 플랜은 시드를 개념으로 접어 0행을 낸다.
+    res = execute(entity_neighbors_plan(node, owner=owner) if entity_seed
+                  else neighbors_plan(node, owner=owner), cfg, store=store)
     if not res.get("executed"):
         return {"kind": "neighbors", "executed": False, "node": node,
                 "neighbors": [], "by_rel": {}, "count": 0, "note": res.get("note", "")}
-    # F14 — 부착 축(Record·Episode·Bridge)을 합류시킨다. 이게 없을 때 이 도구는
-    # 개념끼리의 RELATED_TO 만 보여 줬고, 사실이 사는 Record 는 통째로 안 보였다.
-    # 부착 축이 못 뜨더라도(구 스토어·확장 부재) 개념 축 결과는 그대로 낸다.
-    att = execute(node_attachments_plan(node, owner=owner), cfg, store=store)
-    rows = list(res.get("rows", [])) + (list(att.get("rows", [])) if att.get("executed") else [])
+    rows = list(res.get("rows", []))
+    if not entity_seed:
+        # F14 — 부착 축(Record·Episode·Bridge)을 합류시킨다. 이게 없을 때 이 도구는
+        # 개념끼리의 RELATED_TO 만 보여 줬고, 사실이 사는 Record 는 통째로 안 보였다.
+        # 부착 축이 못 뜨더라도(구 스토어·확장 부재) 개념 축 결과는 그대로 낸다.
+        att = execute(node_attachments_plan(node, owner=owner), cfg, store=store)
+        rows += list(att.get("rows", [])) if att.get("executed") else []
     if node.startswith("record:"):
         # 대체 축 — Record 끼리의 SUPERSEDES. 위 두 플랜은 양 끝 중 하나가 의미층이라
         # Record→Record 를 모양에서 놓친다. 이게 없으면 옛 기록에서 후속을 못 걷는다.
         sup = execute(record_supersedes_plan(node, owner=owner), cfg, store=store)
         if sup.get("executed"):
             rows += list(sup.get("rows", []))
-    seen: set = set()
+    seen: dict = {}
     out: list[dict] = []
     by_rel: dict[str, int] = {}
-    for r in sorted(rows, key=lambda r: (str(r.get("rel")), str(r.get("id")))):
-        key = (r.get("rel"), r.get("id"))
-        if not r.get("id") or key in seen:
+    for r in sorted(rows, key=lambda r: (str(r.get("rel")), str(r.get("id")),
+                                         str(r.get("subtype") or ""), str(r.get("dir") or ""))):
+        # 같은 관계·같은 상대는 한 줄이다(count 의 뜻은 그대로). 양쪽 방향이 다 있으면
+        # 그 줄의 dir 이 both 가 된다. TYPED 는 저작 타입이 다르면 다른 관계다.
+        key = (r.get("rel"), r.get("id"), r.get("subtype") or "")
+        if not r.get("id"):
             continue
-        seen.add(key)
-        out.append({"rel": r.get("rel"), "id": r.get("id"),
-                    "title": r.get("title") or r.get("id"), "domain": r.get("domain") or "",
-                    # R2 — Concept 만 이 열을 갖는다. 부착 축(Record·Episode·Bridge)은
-                    # 키 자체가 없고, 그때 빈 문자열은 결손이 아니라 사실이다.
-                    "one_liner": r.get("one_liner") or "",
-                    # W3 — 걸어가다 만난 노드의 버전. `domain:` 좌표 응답만 이 키가
-                    # 없다(도메인은 추적 라벨이 아니다 — 위 _domain_neighbors).
-                    "rev": r.get("rev") or 0,
-                    "updated_at": r.get("updated_at") or "",
-                    # W13 — Record 부착만 값을 갖는다(열이 Record 전용 — 부착 축
-                    # 정방향 팔만 싣고, 의미층·역방향 행은 키가 없어 '' 로 남는다.
-                    # 그 빈 문자열은 결손이 아니라 사실이다).
-                    "valid_from": r.get("valid_from") or "",
-                    "valid_until": r.get("valid_until") or ""})
+        if key in seen:
+            row = seen[key]
+            if r.get("dir") and row.get("dir") != r.get("dir"):
+                row["dir"] = "both"
+            continue
+        row = {"rel": r.get("rel"), "dir": r.get("dir") or "", "id": r.get("id"),
+               "title": r.get("title") or r.get("id"), "domain": r.get("domain") or "",
+               # R2 — Concept 만 이 열을 갖는다. 부착 축(Record·Episode·Bridge)은
+               # 키 자체가 없고, 그때 빈 문자열은 결손이 아니라 사실이다.
+               "one_liner": r.get("one_liner") or "",
+               # W3 — 걸어가다 만난 노드의 버전. `domain:` 좌표 응답만 이 키가
+               # 없다(도메인은 추적 라벨이 아니다 — 위 _domain_neighbors).
+               "rev": r.get("rev") or 0,
+               "updated_at": r.get("updated_at") or "",
+               # W13 — Record 부착만 값을 갖는다(열이 Record 전용 — 부착 축
+               # 정방향 팔만 싣고, 의미층·역방향 행은 키가 없어 '' 로 남는다.
+               # 그 빈 문자열은 결손이 아니라 사실이다).
+               "valid_from": r.get("valid_from") or "",
+               "valid_until": r.get("valid_until") or "",
+               **({"subtype": r["subtype"]} if r.get("subtype") else {})}
+        seen[key] = row
+        out.append(row)
         by_rel[r.get("rel")] = by_rel.get(r.get("rel"), 0) + 1
     if not out:
         # F7 — 여태 여기가 `{executed: true, count: 0}` 뿐이었다. **없는 노드**와
@@ -4997,6 +5999,15 @@ def node_edges(node: str | None = None, *, nodes: list[str] | None = None,
         return {**base, "error": "invalid argument: provide owner, either node or 1..100 nodes, "
                 "dir out/in/both, and limit 1..5000"}
     ids = list(dict.fromkeys(ids))
+    # `type` 은 물리 rel 라벨(대문자, `PREREQUISITE_OF`)과 같아야 라벨 필터로 걸린다.
+    # 사용자는 문서화된 소문자 이름(`prerequisite_of`)을 넣으므로 그대로는 어느 라벨과도
+    # 같지 않아 0건이 된다(`relates_to` 는 `.upper()` 로도 `RELATED_TO` 가 안 되므로
+    # delete_edge 와 같은 맵으로 정규화한다). 맵에 없는 이름은 대문자가 폴백이라
+    # `connects`·`attaches_to`·`typed` 도 라벨로 맞는다. 저작 서브타입(ATTACHES_TO.type·
+    # TYPED.type)은 아래 `r.type = $type` 가 원문 그대로 거르므로 이 정규화는 라벨
+    # 비교에만 쓴다. 근거: [[vinc.manual.core]]
+    rel_name = (_FRAGMENT_EDGE_TO_REL.get(type.strip().lower(), type.strip().upper())
+                if type else None)
     specs, rels = node_table_specs(), rel_table_specs()
     grouped: dict[str, list[str]] = {}
     for nid in ids:
@@ -5046,7 +6057,7 @@ def node_edges(node: str | None = None, *, nodes: list[str] | None = None,
         for rel in rels:
             src, dst, label = rel["from"], rel["to"], rel["label"]
             # type은 물리 관계 표, subtype은 TYPED·ATTACHES_TO에 저장된 저작 타입이다.
-            if type and type != label and "type" not in rel["props"]:
+            if type and rel_name != label and "type" not in rel["props"]:
                 continue
             incident = []
             if dir in ("out", "both") and src in grouped:
@@ -5061,17 +6072,21 @@ def node_edges(node: str | None = None, *, nodes: list[str] | None = None,
                     guards.append(f"{alias}.owner_id = $owner")
                 elif endpoint == "Domain" and src == dst == "Domain":
                     guards.append(f"{alias}.name IN $visible")
-            if type and type != label:
+            if type and rel_name != label:
                 guards.append("r.type = $type")
                 params["type"] = type
             evidence = "r.evidence" if "evidence" in rel["props"] else "CAST(NULL AS STRING)"
             confidence = "r.confidence" if "confidence" in rel["props"] else "CAST(NULL AS DOUBLE)"
             subtype = "r.type" if "type" in rel["props"] else "CAST(NULL AS STRING)"
+            # F15 — 엣지 출생 시각과 CONNECTS 의 역할. 어느 읽기 도구도 내지 않던 값이다.
+            created = "r.created" if "created" in rel["props"] else "CAST(NULL AS STRING)"
+            role = "r.role" if "role" in rel["props"] else "CAST(NULL AS STRING)"
             arms.append(f"MATCH (a:{src})-[r:{label}]->(b:{dst}) WHERE "
                         + " AND ".join(guards)
                         + f" RETURN a.{specs[src]['pk']} AS source, b.{specs[dst]['pk']} AS target, "
                         f"'{src}' AS source_label, '{dst}' AS target_label, '{label}' AS type, "
-                        f"{evidence} AS evidence, {confidence} AS confidence, {subtype} AS subtype")
+                        f"{evidence} AS evidence, {confidence} AS confidence, {subtype} AS subtype, "
+                        f"{created} AS created, {role} AS role")
         res = read(" UNION ALL ".join(arms), params) if arms else {"executed": True, "rows": []}
         if not res["executed"]:
             return {**base, "error": res.get("error"), "note": res.get("note", "")}
@@ -5081,6 +6096,10 @@ def node_edges(node: str | None = None, *, nodes: list[str] | None = None,
                   else pkns.strip(r["target"]), "type": r["type"],
                   "evidence": r["evidence"], "confidence": r["confidence"],
                   **({"subtype": r["subtype"]} if r["subtype"] else {}),
+                  **({"role": r["role"]} if r["role"] else {}),
+                  # 출생 시각은 저장된 엣지에만 있다. 파생 엣지(IN_DOMAIN 등)는 열이 없어
+                  # 키를 달지 않는다(subtype·role 과 같은 규칙).
+                  **({"created": r["created"]} if r["created"] else {}),
                   "derived": r["type"] in ("IN_DOMAIN", "PARENT_OF", "MENTIONS")}
                  for r in res["rows"]]
         edges.sort(key=lambda e: (e["from"], e["to"], e["type"],
@@ -5399,7 +6418,16 @@ def shortest_path(a_id: str, b_id: str, *, max_depth: int = 6,
         return base
     seqs = []
     for r in res.get("rows", []):
-        seq = _node_seq(r.get("ns"))
+        ns = r.get("ns") or []
+        # 엔진 패턴은 모든 rel 테이블을 걷는다 — 경로가 Chunk(MENTIONS)나 다른 비-개념
+        # 노드를 지날 수 있고, _node_seq 가 그 노드를 말없이 떨궈 길이가 줄면 직접
+        # 엣지처럼 읽힌다(두 노드가 같은 청크에만 함께 언급돼도 length:1 로 나왔다).
+        # 전원 개념인 경로만 남긴다 — 모든 노드가 개념이면 모든 홉이 개념↔개념 저작
+        # 엣지다(MENTIONS·IN_DOMAIN 은 개념 둘을 잇지 못한다). 더 긴 저작 경로는 가중
+        # 팔(confidence)이 개념 엣지 집합에서 완전 탐색한다. 근거: [[vinc.manual.core]]
+        if not ns or any(not (isinstance(n, dict) and n.get("concept_id")) for n in ns):
+            continue
+        seq = _node_seq(ns)
         if len(seq) >= 2:
             seqs.append({"ids": [s["id"] for s in seq],
                          "titles": [s["title"] for s in seq],
@@ -5491,6 +6519,69 @@ def _norm_title(title: str) -> tuple[str, frozenset]:
 # ⚠ 결정용 `dec-*` 접두 규칙을 되살리지 말 것 — 결정은 이제 별도 라벨이고 이 조회는
 # `MATCH (c:Concept)` 이라 애초에 안 긁어온다(타입이 생기면 관례는 물러난다).
 _DOC_CONCEPT_PREFIX = "concept:doc."
+
+
+def _topic_description_mirrors_by_domain(owner: str | None, cfg=None, store=None) -> dict[str, str] | None:
+    """주제 설명 문서 미러의 논리 id → 그 미러가 선 주제. 설명은 주제(Domain)가 글을 못 담아 문서로 두고
+    그 미러의 domain 으로 주제에 속한다(`api/topic_description.py`). 그래서 미러가 그 주제의 노드처럼
+    읽힌다. 지도 표시·주제 수·주제 상세가 이 한 벌로 그것을 가른다. 읽기에 실패하면 None 이고, 부르는
+    쪽은 수를 고치지 않고 그대로 둔다(빼다 만 수보다 낫다)."""
+    if not owner:
+        return {}
+    from api import topic_description
+    res = execute(QueryPlan("topic_description_mirrors",
+        "MATCH (d:_DocMeta) WHERE d.origin = $origin AND d.owner_id = $owner "
+        "RETURN d.doc_id AS doc_id", {"origin": topic_description.ORIGIN, "owner": owner},
+        note="topic description mirrors"), cfg, store=store)
+    if not res.get("executed"):
+        return None
+    ids = [_DOC_CONCEPT_PREFIX + str(r["doc_id"]) for r in res.get("rows", []) if r.get("doc_id")]
+    if not ids:
+        return {}
+    got = execute(QueryPlan("topic_description_mirror_domains",
+        "MATCH (c:Concept) WHERE c.owner_id = $owner AND c.concept_id IN $ids "
+        "RETURN c.concept_id AS id, c.domain AS domain",
+        {"owner": owner, "ids": pkns.keys(owner, ids)}, note="topic description mirror topics"),
+        cfg, store=store)
+    if not got.get("executed"):
+        return None
+    return {pkns.strip(str(r["id"])): str(r.get("domain") or "") for r in got.get("rows", []) if r.get("id")}
+
+
+def _mark_topic_descriptions(shaped: dict, owner: str, cfg=None, store=None) -> None:
+    """주제 설명 미러에 ``topic_description: true`` 를 단다. 화면은 이 표시로 그것을 지도·트리·수에서
+    뺀다(설명 자체는 주제 상세가 보여 준다). 표시만 달고 노드를 빼지 않는다: 문서 읽기와 다른
+    소비자는 그대로 받는다."""
+    if not shaped.get("nodes") or not owner:
+        return
+    ids = _topic_description_mirrors_by_domain(owner, cfg, store)
+    if not ids:
+        return
+    for n in shaped["nodes"]:
+        if n.get("id") in ids:
+            n["topic_description"] = True
+
+
+def domains(*, owner: str | None = None, cfg=None, store=None, debug: bool = False) -> dict:
+    """주제별 노드 수(:func:`store.querybase.domains`)에서 주제 설명 미러를 뺀다. 설명은 그 주제의
+    노드가 아니라 주제에 대한 글이다. 뺀 수는 숨기지 않고 행의 ``topic_descriptions`` 로 밝힌다.
+    설명만 남은 주제도 행은 남긴다(total 0): 주제는 있고, 그 설명에 닿는 길이 여기다."""
+    res = _domain_rows(owner=owner, cfg=cfg, store=store, debug=debug)
+    if not res.get("executed") or not owner:
+        return res
+    mirrors = _topic_description_mirrors_by_domain(owner, cfg, store)
+    if not mirrors:
+        return res
+    per: dict[str, int] = {}
+    for d in mirrors.values():
+        per[d or "(none)"] = per.get(d or "(none)", 0) + 1
+    rows = []
+    for r in res.get("rows", []):
+        n = min(per.get(r["domain"], 0), r["concepts"])
+        rows.append({**r, "concepts": r["concepts"] - n, "total": r["total"] - n,
+                     "topic_descriptions": n} if n else r)
+    rows.sort(key=lambda r: (-r["total"], r["domain"]))
+    return {**res, "rows": rows}
 
 
 def _structural_role(cid: str) -> str:
@@ -5756,6 +6847,23 @@ def _owner_concept_ids(store, owner: str | None) -> set[str] | None:
     return ids | {r["id"] for r in drows if r.get("id")}
 
 
+def _topic_description_mirrors(store, owner: str | None) -> set[str]:
+    """토픽 설명 문서의 미러 id(논리 id). 설명은 일부러 잇지 않고 미러의 domain 으로
+    토픽에 속하므로(`api/topic_description.py`) 성분 진단은 이것을 고아로 세지 않는다.
+
+    `_DocMeta.doc_id` 에는 소유자 접두가 없고 진단 행의 id 도 논리 id 라서, 접두 없이
+    `concept:doc.` 만 붙여 맞춘다. 네임스페이싱을 켜도 꺼도 같은 집합이 나온다."""
+    from api import topic_description
+    params: dict = {"origin": topic_description.ORIGIN}
+    where = ""
+    if owner:
+        where = "AND d.owner_id = $owner "
+        params["owner"] = owner
+    rows = store.run("MATCH (d:_DocMeta) WHERE d.origin = $origin " + where
+                     + "RETURN d.doc_id AS doc_id", params) or []
+    return {_DOC_CONCEPT_PREFIX + str(r["doc_id"]) for r in rows if r.get("doc_id")}
+
+
 #: 알고리즘 결과가 **두 스페이스의 노드를 같은 id 로** 물고 온 것들.
 #:
 #: 🔴 owner 스코프를 논리 id 문자열 집합과의 교차로 걸기 때문에 생긴다
@@ -5783,9 +6891,11 @@ def _ambiguous_algo_ids(rows, scope: set[str] | None) -> list[str]:
 #: 빼면 결정·사건·기록이 거짓 고아로 나온다(2026-08-09, 결정 67건 중 43건).
 ALGO_REL_TABLES = ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM",
                    "INHERITS_FROM", "ABOUT", "ATTACHES_TO")
+from store.embedded_schema import _LOUVAIN_PROJECTED_LABELS as _LOUVAIN_LABELS  # noqa: E402
 
 
-def _algo_graph(store, owner: str | None, rel_tables: tuple) -> tuple[list[str], list[tuple]]:
+def _algo_graph(store, owner: str | None, rel_tables: tuple,
+                labels: tuple | None = None) -> tuple[list[str], list[tuple]]:
     """진단용 투영 — 관계 표의 끝점 라벨에 속한 노드 전부와 그 관계들. 소유자가 있으면
     **양 끝이 모두 그 소유자**인 것만 담는다. 라벨·PK·끝점 쌍은 스키마에서 파생한다
     (손으로 적은 목록이 낡아 진단을 통째로 죽인 일이 있다 — `_algo_projection` 주석).
@@ -5794,8 +6904,11 @@ def _algo_graph(store, owner: str | None, rel_tables: tuple) -> tuple[list[str],
     from store import embedded_schema as _es
     pks = {lbl: spec["pk"] for lbl, spec in _es.node_table_specs().items()}
     want = set(rel_tables)
+    # ``labels`` 를 주면 양 끝이 그 표인 쌍만 읽는다. 군집은 v23 에 넓어진 RELATED_TO 중
+    # 개념끼리만 본다(`_LOUVAIN_PROJECTED_LABELS`).
     pairs = [(sp["label"], sp["from"], sp["to"]) for sp in _es.rel_table_specs()
-             if sp["label"] in want and sp["from"] in pks and sp["to"] in pks]
+             if sp["label"] in want and sp["from"] in pks and sp["to"] in pks
+             and (labels is None or (sp["from"] in labels and sp["to"] in labels))]
     labels: list[str] = []
     for _rel, a, b in pairs:
         for lbl in (a, b):
@@ -5819,7 +6932,8 @@ def _algo_graph(store, owner: str | None, rel_tables: tuple) -> tuple[list[str],
 
 
 def _run_algo(store, algo: str, *, rel_tables: tuple | None = None,
-              owner: str | None = None, graph_out: dict | None = None):
+              owner: str | None = None, graph_out: dict | None = None,
+              labels: tuple | None = None):
     """진단 알고리즘을 돌린다 — (rows, None) 또는 (None, note). rows 는 엔진 시절과 같은
     `[{id, value}]` 모양이라 소비자 셋이 그대로 읽는다.
 
@@ -5834,7 +6948,7 @@ def _run_algo(store, algo: str, *, rel_tables: tuple | None = None,
     if fn is None:
         return None, f"algo_unsupported: {algo!r} (지원: {sorted(fns)})"
     try:
-        nodes, edges = _algo_graph(store, owner, tuple(rel_tables or ALGO_REL_TABLES))
+        nodes, edges = _algo_graph(store, owner, tuple(rel_tables or ALGO_REL_TABLES), labels)
         assign = fn(nodes, edges)
         if graph_out is not None:
             # 품질 지표가 같은 투영을 다시 읽지 않게 넘겨준다.
@@ -5914,11 +7028,15 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
     "연결 안 된 섬 n개"(상태 화면)와 suggest_ties 후보 소스의 근거. 조회 전용.
 
     반환 {executed, components:[{group, size, members, members_truncated}],
-    orphans:[id…], component_count, orphan_count, ambiguous, ambiguous_count}.
-    스토어를 못 읽으면 executed=False + note.
+    orphans:[id…], component_count, orphan_count, ambiguous, ambiguous_count,
+    topic_descriptions_excluded}. 스토어를 못 읽으면 executed=False + note.
 
     ``ambiguous`` — **두 스페이스에 같은 슬러그로 존재해 어느 쪽이 내 것인지 못 가리는
     id**. 컴포넌트에도 고아에도 안 넣는다. 왜 생기는지는 아래 계산 자리의 주석에 있다.
+
+    ``topic_descriptions_excluded`` — 컴포넌트와 고아에서 뺀 토픽 설명 미러의 수. 설명
+    문서는 일부러 잇지 않고 미러의 domain 으로 토픽에 속하므로 이을 대상이 아니다. 그래서
+    고아 목록에는 실제로 이어야 할 것만 남는다(`_topic_description_mirrors`).
 
     ``member_limit`` — 컴포넌트당 실을 구성원 수(기본 50, 상한 1000). 여태 50 으로
     **말없이** 잘라서, `size:173` 인 컴포넌트도 50개만 보이고 그게 전부인 줄 알기
@@ -5943,10 +7061,24 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
         # 그 수가 그 슬러그를 가진 스페이스 수와 맞았다. 사유는 `_ambiguous_algo_ids`.
         ambiguous = _ambiguous_algo_ids(rows, scope)
         drop = set(ambiguous)
+        mirrors = _topic_description_mirrors(store, owner)
+        excluded: set[str] = set()
         groups: dict = {}
+        # 성분의 실제 노드 수를 종류 불문으로 센다. 개념만 세면 레코드·사건·결정에만
+        # (ATTACHES_TO·ABOUT 으로) 붙은 개념이 저 혼자인 것처럼 보여 거짓 고아가 된다 —
+        # 그 개념을 고아로 지우면 쓰이고 있는 노드를 지운다. 미러는 일부러 안 잇는 토픽
+        # 설명 노드라 크기에서 뺀다. 근거: [[vinc.manual.core]]
+        full_size: dict = {}
         for r in rows:
             cid, grp = r.get("id"), r.get("value")
-            if not cid or cid in drop or (scope is not None and cid not in scope):
+            if not cid or cid in drop or grp is None:
+                continue
+            if cid not in mirrors:
+                full_size[grp] = full_size.get(grp, 0) + 1   # 개념·레코드·사건·결정 전부
+            if scope is not None and cid not in scope:
+                continue                   # 비-개념은 크기엔 세고 개념 목록엔 안 넣는다
+            if cid in mirrors:
+                excluded.add(cid)          # 토픽 설명은 빼고 수만 밝힌다
                 continue
             groups.setdefault(grp, []).append(cid)
         mlim = _clamp_limit(member_limit, MEMBER_LIMIT_DEFAULT, MEMBER_LIMIT_MAX)
@@ -5954,10 +7086,14 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
                   "members_truncated": len(m) > mlim}
                  for g, m in groups.items()]
         comps.sort(key=lambda c: (-c["size"], str(c["group"])))   # 큰 컴포넌트 우선
-        orphans = sorted(m[0] for m in groups.values() if len(m) == 1)
+        # 고아 = 성분에 저 혼자뿐인 개념. 개념 목록상 홀로여도(len==1) 성분에 레코드·
+        # 사건·결정이 함께 있으면(full_size>1) 고아가 아니다 — 들어오는 엣지도 연결이다.
+        orphans = sorted(m[0] for g, m in groups.items()
+                         if len(m) == 1 and full_size.get(g, 1) == 1)
         base.update(executed=True, components=comps, orphans=orphans,
                     component_count=len(comps), orphan_count=len(orphans),
-                    ambiguous=ambiguous, ambiguous_count=len(ambiguous))
+                    ambiguous=ambiguous, ambiguous_count=len(ambiguous),
+                    topic_descriptions_excluded=len(excluded))
         if ambiguous:
             base["ambiguous_note"] = (
                 "these ids exist in more than one space, so this diagnosis cannot tell "
@@ -6005,7 +7141,7 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
 
     반환 {executed, conflicts:[{subject_path, newer:{…}, older:{…}}], conflict_count,
     unanchored:[{id,title,path_hint}], unanchored_count, unanchored_truncated,
-    anchored_count, scanned}.
+    anchored_count, results_excluded, scanned}.
 
     **어느 쪽이 옳은지 판정하지 않는다.** 두 측정이 다른 날짜에 나왔다는 사실만
     내놓는다. 판정은 경로를 열어 보는 사람의 몫이고, 그 열어 보기가 이 도구가
@@ -6013,6 +7149,15 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
 
     짝짓기는 **가장 최근 것 대 나머지**다(n² 가 아니다). 물어야 할 질문이 "이 옛
     주장이 아직 서 있나"이지 "옛 주장 둘이 서로 맞나"가 아니기 때문이다.
+
+    짝과 닻 없는 목록은 **현재 기록**만 본다. `valid_until` 이 오늘이거나 그 전인 기록은
+    은퇴했거나 대체된 것이라 다시 잴 일도 닻을 달 일도 없다(`_retired_claim`, `stale` 과
+    같은 기준). `anchored_count` 와 `scanned` 는 은퇴한 기록도 센다.
+
+    `props.claim_kind` 가 ``"result"`` 인 기록은 한 시점의 실행 결과다. 같은 파일의 새
+    측정과 다투지 않으므로 짝에서 통째로 빠진다(최신 쪽으로도 나머지 쪽으로도). 그렇게
+    뺀 현재 기록의 수는 `results_excluded` 로 밝히고, `anchored_count` 와 `scanned` 는
+    그대로 센다. 다른 값은 모르는 값으로 보고 보통 주장처럼 다룬다.
 
     기존 세 kind 가 그래프 **구조**(연결성·군집)를 읽는 데 반해 이것은 props **내용**을
     읽는다. 같은 문이지만 이웃한 코드가 아니라서 `component_diagnosis` 를 넓히지 않고
@@ -6024,7 +7169,8 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
     base = {"kind": "claim_diagnosis", "executed": False, "conflicts": [],
             "stale": [], "stale_count": 0,
             "conflict_count": 0, "unanchored": [], "unanchored_count": 0,
-            "unanchored_truncated": False, "anchored_count": 0, "scanned": 0}
+            "unanchored_truncated": False, "anchored_count": 0,
+            "results_excluded": 0, "scanned": 0}
     if store is None:
         base["note"] = "no reachable store"
         return base
@@ -6037,19 +7183,31 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
             {"owner": owner} if owner else {})
         lim = _clamp_limit(limit, MEMBER_LIMIT_DEFAULT, MEMBER_LIMIT_MAX)
         stale = _stale_claims(store, rows, owner=owner)
+        today = _dt.date.today().isoformat()
         by_path: dict[str, list[dict]] = {}
         unanchored: list[dict] = []
+        anchored = 0
+        results = 0
         for r in rows:
             props = _props_to_obj(r.get("props"))
             rid = pkns.strip(r.get("id") or "")
             title = r.get("title") or rid
+            retired = _retired_claim(r, today)
             sp = str(props.get("subject_path") or "").strip()
             if sp:
+                anchored += 1
+                if retired:
+                    continue               # 은퇴한 주장은 짝을 짓지 않는다
+                if props.get("claim_kind") == "result":
+                    results += 1           # 시점 결과는 새 측정과 짝을 짓지 않는다
+                    continue
                 by_path.setdefault(sp, []).append({
                     "id": rid, "title": title,
                     "measured_at": str(props.get("measured_at") or ""),
                     "measured_ref": str(props.get("measured_ref") or "")})
                 continue
+            if retired:
+                continue                   # 은퇴한 주장에는 닻을 달 일이 없다
             hint = _path_hint(props, title)
             if hint:
                 unanchored.append({"id": rid, "title": title, "path_hint": hint})
@@ -6072,7 +7230,7 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
                     conflicts=conflicts[:lim], conflict_count=len(conflicts),
                     unanchored=unanchored[:lim], unanchored_count=len(unanchored),
                     unanchored_truncated=len(unanchored) > lim,
-                    anchored_count=sum(len(v) for v in by_path.values()),
+                    anchored_count=anchored, results_excluded=results,
                     stale=stale[:lim], stale_count=len(stale),
                     stale_truncated=len(stale) > lim,
                     scanned=len(rows))
@@ -6090,14 +7248,30 @@ def _path_covers(subject: str, changed: str) -> bool:
     return changed == subject or changed.startswith(subject.rstrip("/") + "/")
 
 
+def _retired_claim(row: dict, today: str) -> bool:
+    """유효구간이 오늘이나 그 전에 끝난 기록(은퇴한 주장). 대체된 주장도 대체당한
+    기록의 `valid_until` 로 여기 온다. 대체 엣지는 그 값이 없으면 경고하고
+    (`fragment._warn_supersede_interval`), 값이 없는 기록은 현재로 남는다.
+    주장 진단의 목록들이 이 기준 하나를 쓴다."""
+    until = str(row.get("valid_until") or "")
+    return bool(until) and until <= today
+
+
 def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[dict]:
     """측정 뒤에 경로가 바뀐 **현재** 주장. 변경 근거는 `props.files` 를 가진 Episode 다.
 
     판정하지 않는다. "이 주장을 잰 뒤에 그 파일이 바뀌었다"는 사실만 낸다. 같은 커밋
     (`measured_ref` 와 `head_sha` 가 접두로 겹침)에서 잰 것은 낡지 않았다. 측정과 같은 날의 변경은 `same_day` 로 표시해 낸다. 날짜가 없는 쪽은 비교하지
     않는다(없는 시간을 지어내지 않는다). 주장마다 가장 최근 변경 하나만 붙인다.
+
+    `props.reviewed_at` 은 누군가 이 날짜까지의 변경을 살펴보고 주장이 아직 선다고 확인한
+    날이다. 어떤 기록이든 `measured_at` 과 이 날짜 중 늦은 쪽 뒤의 변경만 센다. 확인일 당일의
+    변경은 살펴본 것으로 친다. 날짜 검사는 `measured_at`·Episode `date` 와 같은
+    `docstore._norm_content_time` 이고, 그 검사를 못 지난 값은 없는 것으로 본다. 확인일이
+    `measured_at` 없는 기록을 대상으로 끌어들이지는 않는다.
     근거: [[vinc.plan.temporal-edges-point-in-time-document-validity-2026-09-28]] 를 잇는
     그래프 문서 vinc.plan.spec-drift-graphiti-0-9-8-2026-10-11 §3."""
+    from .docstore import _norm_content_time
     from .fragment import _norm_subject_path
     where = "WHERE e.owner_id = $owner " if owner else ""
     changes = []
@@ -6117,8 +7291,7 @@ def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[
     today = _dt.date.today().isoformat()
     out = []
     for r in record_rows:
-        until = str(r.get("valid_until") or "")
-        if until and until <= today:
+        if _retired_claim(r, today):
             continue                       # 은퇴한 주장은 낡을 수 없다
         props = _props_to_obj(r.get("props"))
         sp = str(props.get("subject_path") or "").strip()
@@ -6126,6 +7299,7 @@ def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[
         ref = str(props.get("measured_ref") or "")
         if not sp or not at:
             continue
+        reviewed = _norm_content_time(props.get("reviewed_at"))
         # 같은 커밋인지는 접두로 본다 — 측정 기록은 짧은 sha 를, 변경 기록은 긴 sha 를
         # 흔히 싣는다. 날짜가 같으면 하루 안의 순서를 알 수 없으므로 감추지 않고
         # `same_day` 로 표시해 낸다(조용히 빠지면 같은 날 머지가 주장을 영영 못 건드린다).
@@ -6137,20 +7311,246 @@ def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[
             if _SHA.fullmatch(ref) and _SHA.fullmatch(sha):
                 return sha.startswith(ref) or ref.startswith(sha)
             return sha == ref
+        # 확인일까지의 변경은 이미 살펴본 것이라 세지 않는다(당일 포함).
         hits = [c for c in changes
-                if c["date"] >= at and not same_commit(c["head_sha"])
+                if c["date"] >= at and not (reviewed and c["date"] <= reviewed)
+                and not same_commit(c["head_sha"])
                 and any(_path_covers(sp, f) for f in c["files"])]
         if not hits:
             continue
         latest = max(hits, key=lambda c: (c["date"], c["id"]))
         rid = pkns.strip(r.get("id") or "")
-        out.append({"claim": {"id": rid, "title": r.get("title") or rid, "subject_path": sp,
-                              "measured_at": at, "measured_ref": ref},
+        claim = {"id": rid, "title": r.get("title") or rid, "subject_path": sp,
+                 "measured_at": at, "measured_ref": ref}
+        if reviewed:
+            claim["reviewed_at"] = reviewed
+        out.append({"claim": claim,
                     "change": {k: latest[k] for k in ("id", "title", "date", "head_sha")},
                     "changes_since": len(hits),
                     "same_day": latest["date"] == at})
     out.sort(key=lambda x: (x["change"]["date"], x["claim"]["id"]), reverse=True)
     return out
+
+
+#: 결정 문이 한 번에 받는 경로 수. 경로 목록은 사이드카 GET 질의 문자열에 JSON 으로
+#: 실리므로 요청 줄 상한(64KB) 안에 머물 만큼만 받는다. 더 큰 diff 는 부르는 쪽이 나눠 보낸다
+#: (`vinc gate check` 가 그렇게 한다).
+DECIDE_PATHS_MAX = 200
+#: 같은 경로를 덮는 항목의 순서. 직접 닻이 먼저, 그 닻에서 한 홉 닿은 결정이 나중이다.
+_GATE_MATCH_ORDER = {"exact": 0, "directory": 1, "related": 2}
+
+
+def _gate_subjects(props: dict) -> list[str]:
+    """노드가 가리키는 경로들(정규화). Record 는 쓰기 시점에 이미 접혀 있지만, Decision 은
+    쓰기 경로가 접지 않으므로(`fragment._claim_props`) 여기서 같은 함수로 접는다. 결정은
+    여러 경로를 다스릴 수 있어 목록도 받는다."""
+    from .fragment import _norm_subject_path
+    raw = props.get("subject_path")
+    values = raw if isinstance(raw, list) else [raw]
+    return [s for s in dict.fromkeys(_norm_subject_path(v) for v in values
+                                     if isinstance(v, str)) if s]
+
+
+def _gate_validity(valid_from: str, today: str) -> str:
+    return "not_yet" if valid_from and valid_from[:10] > today else "current"
+
+
+def decide_paths(paths, *, owner: str | None = None, cfg=None, store=None,
+                 limit: int | None = None) -> dict:
+    """결정 문(decision gate): 바뀐 경로마다 그 경로를 다스리는 **현재** 기록과 결정.
+
+    모델 없이 결정론으로 돈다. 가부를 가리지 않는다: "이 경로에는 이 주장이 걸려 있다"만 내고,
+    diff 가 그것을 어기는지는 읽는 사람이 연다(`claim_diagnosis` 와 같은 태도).
+    근거: [[vinc.plan.agent-harness-work-order-2026-10-25 §2]] · [[vinc.ops.graph-claim-decay]] §7.3.
+
+    맞춤은 `claim_diagnosis`·`_stale_claims` 와 같은 부품을 쓴다. 두 번째 맞춤기를 두지 않는다:
+    - 경로는 `fragment._norm_subject_path` 로 접고(`repo:path`), 덮음은 `_path_covers` 다.
+      같은 경로면 ``exact``, 노드의 경로가 바뀐 경로의 상위 디렉터리면 ``directory``.
+    - 은퇴는 `_retired_claim` 이다. Record 는 열, Decision 은 `props.valid_until` 로 본다.
+    - `props.claim_kind == "result"` 인 기록은 한 시점의 실행 결과라 다스리지 않는다(센다).
+
+    직접 닿은 기록·결정에서 **한 홉** 닿은 현재 결정도 싣는다(``related``, `via` 는 그 닻).
+    길은 Record→Decision `ATTACHES_TO` 와 결정↔결정 관계(`_GRAPH_READ_PAIRS`)다. 개념을
+    건너는 두 홉은 따르지 않는다: 한 개념에 걸린 결정이 모두 딸려 와 목록이 소음이 된다.
+
+    리포가 없는 경로는 리포가 있는 주장과 맞지 않는다(동명 파일 충돌을 막는 R4 의 이유 그대로).
+    그런 입력은 `unqualified_paths` 로 밝힌다.
+
+    반환 {executed, verdict: flag|pass, paths:[{path, governed_by:[...], count, truncated}],
+    path_count, flagged_paths, governing_count, retired_excluded, results_excluded,
+    unqualified_paths, scanned:{records, decisions}}."""
+    from .fragment import _norm_subject_path, _split_subject
+    base = {"kind": "decide_paths", "executed": False, "verdict": "pass", "paths": [],
+            "path_count": 0, "flagged_paths": 0, "governing_count": 0,
+            "retired_excluded": 0, "results_excluded": 0, "unqualified_paths": []}
+    if (not isinstance(paths, list) or not paths
+            or any(not isinstance(p, str) or not p.strip() for p in paths)):
+        base["error"] = "invalid paths: send a nonempty list of repo:path strings"
+        return base
+    touched = list(dict.fromkeys(_norm_subject_path(p) for p in paths))
+    if len(touched) > DECIDE_PATHS_MAX:
+        base["error"] = (f"invalid paths: at most {DECIDE_PATHS_MAX} paths per call; "
+                         "split the list")
+        return base
+    cfg = cfg or load_config()
+    owns = store is None
+    if owns:
+        store = open_store(cfg)
+    if store is None:
+        base["note"] = "no reachable store"
+        return base
+    try:
+        today = _dt.date.today().isoformat()
+        params = {"owner": owner} if owner else {}
+        anchors: list[dict] = []
+        retired = results = 0
+        record_rows = store.run(
+            "MATCH (r:Record) " + ("WHERE r.owner_id = $owner " if owner else "") +
+            "RETURN r.record_id AS id, r.title AS title, r.props AS props, "
+            "r.valid_from AS valid_from, r.valid_until AS valid_until", params) or []
+        for r in record_rows:
+            props = _props_to_obj(r.get("props"))
+            subjects = _gate_subjects(props)
+            if not subjects:
+                continue
+            if _retired_claim(r, today):
+                retired += 1
+                continue
+            if props.get("claim_kind") == "result":
+                results += 1
+                continue
+            rid = pkns.strip(r.get("id") or "")
+            anchors.append({"id": rid, "kind": "record", "title": r.get("title") or rid,
+                            "subjects": subjects,
+                            "valid_from": str(r.get("valid_from") or ""),
+                            "valid_until": str(r.get("valid_until") or ""),
+                            "measured_at": str(props.get("measured_at") or ""),
+                            "measured_ref": str(props.get("measured_ref") or "")})
+        decision_rows = store.run(
+            "MATCH (d:Decision) " + ("WHERE d.owner_id = $owner " if owner else "") +
+            "RETURN d.decision_id AS id, d.title AS title, d.props AS props", params) or []
+        for d in decision_rows:
+            props = _props_to_obj(d.get("props"))
+            subjects = _gate_subjects(props)
+            if not subjects:
+                continue
+            if _retired_claim({"valid_until": props.get("valid_until")}, today):
+                retired += 1
+                continue
+            did = pkns.strip(d.get("id") or "")
+            anchors.append({"id": did, "kind": "decision", "title": d.get("title") or did,
+                            "subjects": subjects,
+                            "valid_from": str(props.get("valid_from") or ""),
+                            "valid_until": str(props.get("valid_until") or "")})
+
+        def item(node: dict, match: str, **extra) -> dict:
+            out = {"id": node["id"], "kind": node["kind"], "title": node["title"],
+                   "match": match, **extra,
+                   "valid_from": node["valid_from"], "valid_until": node["valid_until"],
+                   "validity": _gate_validity(node["valid_from"], today)}
+            for k in ("measured_at", "measured_ref"):
+                if node.get(k):
+                    out[k] = node[k]
+            return out
+
+        hits: dict[str, dict[str, dict]] = {p: {} for p in touched}
+        for p in touched:
+            for a in anchors:
+                subject = next((s for s in a["subjects"] if _path_covers(s, p)), None)
+                if subject is not None:
+                    hits[p][a["id"]] = item(a, "exact" if subject == p else "directory",
+                                            subject_path=subject)
+        related, related_note = _gate_related_decisions(
+            store, sorted({i for h in hits.values() for i in h}), owner=owner, today=today)
+        for p in touched:
+            # 직접 닻을 가까운 순(exact → directory, 같으면 id)으로 훑어 via 를 정한다.
+            # 목록을 먼저 굳히므로 여기서 더한 related 는 다시 닻이 되지 않는다(한 홉).
+            for via in sorted(hits[p], key=lambda i: (_GATE_MATCH_ORDER[hits[p][i]["match"]], i)):
+                for dec in related.get(via, []):
+                    if dec["id"] not in hits[p]:
+                        hits[p][dec["id"]] = item(dec, "related", via=via,
+                                                  relation=dec["relation"])
+        lim = _clamp_limit(limit, MEMBER_LIMIT_DEFAULT, MEMBER_LIMIT_MAX)
+        out_paths, governing = [], set()
+        for p in touched:
+            # 순서: 맞춤의 가까움 → 결정 먼저 → 최근 측정 먼저 → id. 정렬 세 번(안정 정렬).
+            rows = sorted(hits[p].values(), key=lambda x: x["id"])
+            rows.sort(key=lambda x: x.get("measured_at", ""), reverse=True)
+            rows.sort(key=lambda x: (_GATE_MATCH_ORDER[x["match"]], x["kind"] != "decision"))
+            governing.update(x["id"] for x in rows)
+            out_paths.append({"path": p, "governed_by": rows[:lim], "count": len(rows),
+                              "truncated": len(rows) > lim})
+        flagged = sum(1 for x in out_paths if x["count"])
+        base.update(executed=True, verdict="flag" if flagged else "pass", paths=out_paths,
+                    path_count=len(touched), flagged_paths=flagged,
+                    governing_count=len(governing), retired_excluded=retired,
+                    results_excluded=results,
+                    unqualified_paths=[p for p in touched if not _split_subject(p)[0]],
+                    scanned={"records": len(record_rows), "decisions": len(decision_rows)})
+        if related_note:
+            base["related_note"] = related_note
+        if base["unqualified_paths"]:
+            base["unqualified_note"] = ("these paths name no repository, so they only match "
+                                        "claims that name none either; send repo:path")
+    finally:
+        if owns:
+            store.close()
+    return base
+
+
+def _gate_related_decisions(store, ids: list[str], *, owner: str | None,
+                            today: str) -> tuple[dict[str, list[dict]], str]:
+    """닻 id → 한 홉 닿은 현재 결정들. 결과는 (표, 실패 문장). 한 팔이 실패해도 직접 닻은
+    그대로 낸다: 이웃 결정은 증강이고, 잃은 것은 문장으로 말한다."""
+    out: dict[str, list[dict]] = {}
+    if not ids:
+        return out, ""
+    rels = "|".join(_GRAPH_READ_PAIRS.get(
+        ("Decision", "decision_id", "Decision", "decision_id"), ()))
+    own = " AND s.owner_id = $owner AND d.owner_id = $owner" if owner else ""
+    ret = ("RETURN s.{spk} AS via, d.decision_id AS id, d.title AS title, d.props AS props, "
+           "{rel} AS relation")
+    arms = [("MATCH (s:Record)-[e:ATTACHES_TO]->(d:Decision) "
+             f"WHERE s.record_id IN $ids{own} "
+             + ret.format(spk="record_id", rel="e.type"))]
+    if rels:
+        arms.append(f"MATCH (s:Decision)-[e:{rels}]->(d:Decision) "
+                    f"WHERE s.decision_id IN $ids{own} "
+                    + ret.format(spk="decision_id", rel="label(e)"))
+        arms.append(f"MATCH (d:Decision)-[e:{rels}]->(s:Decision) "
+                    f"WHERE s.decision_id IN $ids{own} "
+                    + ret.format(spk="decision_id", rel="label(e)"))
+    params: dict = {"ids": pkns.keys(owner, ids)}
+    if owner:
+        params["owner"] = owner
+    failed = 0
+    for cypher in arms:
+        try:
+            rows = store.run(cypher, params) or []
+        except Exception:      # noqa: BLE001 — 증강 팔 하나의 실패가 문 전체를 죽이지 않는다
+            failed += 1
+            continue
+        for row in rows:
+            props = _props_to_obj(row.get("props"))
+            if _retired_claim({"valid_until": props.get("valid_until")}, today):
+                continue
+            did = pkns.strip(row.get("id") or "")
+            via = pkns.strip(row.get("via") or "")
+            if not did or did == via:
+                continue
+            out.setdefault(via, []).append({
+                "id": did, "kind": "decision", "title": row.get("title") or did,
+                "relation": str(row.get("relation") or "").lower(),
+                "valid_from": str(props.get("valid_from") or ""),
+                "valid_until": str(props.get("valid_until") or "")})
+    for via, decs in out.items():
+        seen: dict[str, dict] = {}
+        for dec in sorted(decs, key=lambda x: (x["id"], x["relation"])):
+            seen.setdefault(dec["id"], dec)
+        out[via] = list(seen.values())
+    note = (f"{failed} of {len(arms)} relation lookups failed; decisions one hop from the "
+            "matched claims may be missing" if failed else "")
+    return out, note
 
 
 def communities(*, owner: str | None = None, cfg=None, store=None,
@@ -6178,6 +7578,7 @@ def communities(*, owner: str | None = None, cfg=None, store=None,
         # 관계를 섞지 않는 '실측 군집'이라는 뜻이 있어 계산을 옮긴 뒤에도 잇는다.
         _g: dict = {}
         rows, note = _run_algo(store, "leiden", rel_tables=("RELATED_TO",), owner=owner,
+                               labels=_LOUVAIN_LABELS,
                                graph_out=_g)
         if rows is None:
             base["note"] = note
@@ -6273,6 +7674,7 @@ def community_context(*, owner: str | None = None, node: str, cfg=None, store=No
     try:
         _g: dict = {}
         rows, note = _run_algo(store, "leiden", rel_tables=("RELATED_TO",), owner=owner,
+                               labels=_LOUVAIN_LABELS,
                                graph_out=_g)
         if rows is None:
             base["note"] = note
@@ -6366,12 +7768,14 @@ def near_nodes(store, needle: str, *, owner: str | None = None,
 
     새 색인을 만들지 않는다. `_node_fallback_search` 가 제목·요약·props 를 토큰 OR 로
     훑고 점수로 좁히는 일을 이미 한다. 접두사(`concept:`)는 떼고 넣는다 — 사용자가
-    `concept:없는것` 을 줬을 때 접두사까지 검색어에 남으면 전부 똑같이 걸린다."""
+    `concept:없는것` 을 줬을 때 접두사까지 검색어에 남으면 전부 똑같이 걸린다.
+    은퇴한 문서의 미러는 검색과 같은 규칙(`doc_intervals`)으로 힌트에서도 뺀다."""
     probe = needle.split(":", 1)[1] if ":" in needle else needle
     if not probe.strip():
         return []
     try:
-        rows = _node_fallback_search(store, probe, limit=max(1, limit), owner=owner)
+        rows = _node_fallback_search(store, probe, limit=max(1, limit), owner=owner,
+                                     doc_intervals=True)
     except Exception:                                             # noqa: BLE001
         return []                      # 힌트를 만들다 본 응답을 죽이지 않는다
     return [{"id": r.get("id"), "title": r.get("title") or "",
@@ -6469,6 +7873,7 @@ def decide(topic: str, *, depth: int = 2, owner: str | None = None,
     ids = sorted({seed, *(r["id"] for r in ids_res.get("rows", []) if r.get("id"))})
     rows_res = execute(graph_rows_for_ids_plan(ids, owner=owner), cfg, store=store)
     rows = list(rows_res.get("rows", []))
+    keep = set(ids)   # ego 경계(depth+1 유출 제거) — graph() 와 동일 정책
     if seed_label == "Decision":
         # graph_rows 는 Concept 전용이라 결정 시드는 제 행이 없다. 존재 조회로 노드를
         # 먼저 세우고(엣지 없는 결정도 nodes 에 선다) 시드의 ABOUT·의미층 엣지를 싣는다.
@@ -6481,8 +7886,26 @@ def decide(topic: str, *, depth: int = 2, owner: str | None = None,
                          rels="ABOUT|PREREQUISITE_OF|DERIVES_FROM|INHERITS_FROM"),
                      decision_seed_rows_plan(seed, owner=owner, outgoing=False)):
             rows += execute(plan, cfg, store=store).get("rows", [])
+    elif owner:
+        # 개념 시드도 부착 축을 합류시킨다. graph() 의 접착제 후조회와 같은 플랜·같은
+        # ids 모드다. 없으면 graph_rows 의 개념↔개념 엣지만 나와, 개념에 ATTACHES_TO 로
+        # 붙은 레코드와 ABOUT 으로 걸린 결정이 nodes·edges 에서 통째로 빠진다(결정은
+        # conflicts 로만 비치고, decide 의 "무엇이 걸려 있나"가 빈 답이 된다). 축 플랜은
+        # owner 필수라(소유자 격리) owner 가 있을 때만 돈다 — 무소유 로컬 모드는 개념
+        # 축만 싣는다. 같은 물리 엣지는 한 플랜에서만 오므로(graph_rows=개념↔개념, 축
+        # 플랜=ABOUT·ATTACHES_TO·CONNECTS·나머지) 이중 계상이 없다.
+        # 근거: [[vinc.manual.core]]
+        for plan_fn in _GRAPH_READ_PLANS:
+            ax = execute(plan_fn(owner=owner, ids=ids), cfg, store=store)
+            if not ax.get("executed"):
+                continue
+            for r in ax.get("rows", []):
+                rows.append(r)
+                if r.get("id"):
+                    keep.add(r["id"])
+                if r.get("target"):
+                    keep.add(r["target"])
     shaped = shape_graph(rows)
-    keep = set(ids)   # ego 경계(depth+1 유출 제거) — graph() 와 동일 정책
     shaped["edges"] = [e for e in shaped["edges"] if e["source"] in keep and e["target"] in keep]
     shaped["nodes"] = [n for n in shaped["nodes"] if n["id"] in keep]
     attach_ppr(shaped, [seed])   # E-G2 — 토픽(시드) 관점 개인화 랭킹
@@ -6705,7 +8128,7 @@ _CC_RELS = ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM", "R
 # 되고, 표가 낡으면 엣지 삭제가 **오류 없이 0건 매치**로 끝난다(툼스톤은 남고 엣지는
 # 그대로 = 기기마다 다른 그래프). 스키마에서 파생한다
 # ([[record:rel-tables-take-multiple-endpoint-pairs]]).
-def _derive_sync_edge_rels() -> dict[str, tuple[tuple[str, str, str, str], ...]]:
+def _derive_sync_edge_rels(*, wiki: bool = False) -> dict[str, tuple[tuple[str, str, str, str], ...]]:
     from store import embedded_schema as _es
     pks = {lbl: spec["pk"] for lbl, spec in _es.node_table_specs().items()}
     out: dict[str, list[tuple[str, str, str, str]]] = {}
@@ -6713,12 +8136,17 @@ def _derive_sync_edge_rels() -> dict[str, tuple[tuple[str, str, str, str], ...]]
         rel, src, dst = spec["label"], spec["from"], spec["to"]
         if rel not in _SYNCED_EDGE_RELS or src not in pks or dst not in pks:
             continue
+        # v23 의 위키 쌍은 커뮤니티 그래프에만 선다. 동기화와 개인·팀 조회는 그 쌍을 훑지 않는다.
+        if not wiki and _es.wiki_only_pair(rel, src, dst):
+            continue
         out.setdefault(rel, []).append((src, pks[src], dst, pks[dst]))
     return {k: tuple(v) for k, v in out.items()}
 
 
 _SYNCED_EDGE_RELS = _CC_RELS + ("ABOUT", "ATTACHES_TO", "SUPERSEDES")
 SYNC_EDGE_RELS: dict[str, tuple[tuple[str, str, str, str], ...]] = _derive_sync_edge_rels()
+#: 커뮤니티 그래프가 읽고 지우는 쌍 — 위 표에 v23 위키 쌍을 더한 것.
+WIKI_EDGE_RELS: dict[str, tuple[tuple[str, str, str, str], ...]] = _derive_sync_edge_rels(wiki=True)
 
 
 def _graph_read_pairs() -> dict[tuple[str, str, str, str], tuple[str, ...]]:
@@ -6730,12 +8158,30 @@ def _graph_read_pairs() -> dict[tuple[str, str, str, str], tuple[str, ...]]:
     groups: dict[tuple[str, str, str, str], list[str]] = {}
     for rel in _CC_RELS + ("ABOUT", "SUPERSEDES"):
         for pair in SYNC_EDGE_RELS[rel]:
-            if (pair[0] in _SEMANTIC_LABELS and pair[2] in _SEMANTIC_LABELS) or rel == "ABOUT":
+            # 기록끼리의 SUPERSEDES 도 읽는다. 쓰기는 같은 종끼리만 받으므로(fragment)
+            # 의미층 밖에서는 이 한 쌍만 실재한다. 빠지면 vinc_graph·vinc_brief 가
+            # vinc_neighbors 보다 관계를 적게 센다(감사 F2).
+            if ((pair[0] in _SEMANTIC_LABELS and pair[2] in _SEMANTIC_LABELS)
+                    or rel == "ABOUT"
+                    or (rel == "SUPERSEDES" and pair[0] == pair[2] == "Record")):
                 groups.setdefault(pair, []).append(rel)
     return {pair: tuple(rels) for pair, rels in groups.items()}
 
 
 _GRAPH_READ_PAIRS = _graph_read_pairs()
+
+
+def _wiki_read_pairs() -> dict[tuple[str, str, str, str], tuple[str, ...]]:
+    """커뮤니티 그래프만 더 읽는 v23 쌍 — 위키 관계 네 종과 ABOUT 중 위 계약 밖의 것."""
+    groups: dict[tuple[str, str, str, str], list[str]] = {}
+    for rel in ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM", "ABOUT"):
+        for pair in WIKI_EDGE_RELS[rel]:
+            if pair not in SYNC_EDGE_RELS[rel]:
+                groups.setdefault(pair, []).append(rel)
+    return {pair: tuple(rels) for pair, rels in groups.items()}
+
+
+_WIKI_READ_PAIRS = _wiki_read_pairs()
 _CONCEPT_READ_PATTERN = "|".join(_GRAPH_READ_PAIRS[("Concept", "concept_id", "Concept", "concept_id")])
 _FRAGMENT_EDGE_TO_REL = {   # fragment 엣지 타입명 → rel (api/fragment 와 동형)
     "relates_to": "RELATED_TO", "prerequisite_of": "PREREQUISITE_OF",
@@ -6800,7 +8246,9 @@ def delete_edge(src: str, edge_type: str, dst: str, *, owner: str | None = None,
     rel = _FRAGMENT_EDGE_TO_REL.get((edge_type or "").strip().lower(),
                                     (edge_type or "").strip().upper())
     subtype = None
-    if src.startswith("record:") and (edge_type or "").strip().lower() in {
+    wiki = wiki_pairs_open(owner)
+    # 커뮤니티 위키는 기록 출발 관계도 rel 표에 쓴다(fragment `_merge_edge`).
+    if not wiki and src.startswith("record:") and (edge_type or "").strip().lower() in {
             "relates_to", "prerequisite_of", "derives_from", "inherits_from"}:
         subtype, rel = edge_type.strip().lower(), "ATTACHES_TO"
     base = {"kind": "delete_edge", "executed": False, "found": False,
@@ -6827,7 +8275,7 @@ def delete_edge(src: str, edge_type: str, dst: str, *, owner: str | None = None,
             pairs.append((dst, src))
         deleted = 0
         # 끝점 라벨 조합 전수 — 안 맞는 조합은 MATCH 가 비어 no-op 이다.
-        for sl, sp, dl, dp in SYNC_EDGE_RELS[rel]:
+        for sl, sp, dl, dp in (WIKI_EDGE_RELS if wiki else SYNC_EDGE_RELS)[rel]:
             for s_, d_ in pairs:
                 p = {**params, "s": pkns.key(owner, s_), "d": pkns.key(owner, d_)}
                 cnt = store.run(
@@ -6908,7 +8356,7 @@ def _delete_preview_edges(store, node_id: str, label: str, pk: str,
 
 
 def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None,
-                dry_run: bool = False) -> dict:
+                dry_run: bool = False, stray_type: str | None = None) -> dict:
     """노드 1개를 부착 엣지와 함께 **비가역** 삭제(T3c). id 접두사로 테이블을 판별
     (:data:`_SEED_TABLES` 재사용) — 미지 접두사(Entity 등)는 표를 특정할 수 없어
     ``found:False`` 로 안전 거부한다. 존재 확인 → 부착 엣지 수(양방향) 카운트 →
@@ -6916,7 +8364,11 @@ def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None,
     라벨(Concept/Episode/Record)에 한해 소유 일치 시에만 삭제(스코프 1차 §1 가드).
 
     반환: 삭제 시 ``{executed:True, found:True, deleted:{node:1, edges:n}}``,
-    미존재·미지 접두사 시 ``{executed:True, found:False}``."""
+    미존재·미지 접두사 시 ``{executed:True, found:False}``.
+
+    ``stray_type`` 은 접두사와 **다른** 타입의 테이블에 같은 id 로 들어간 사본 행만
+    지운다. 접두사 테이블의 행은 살아 있는 노드라 이 경로로는 못 지운다. 묘비·벡터·
+    동기화 base 는 키가 id 하나라 살아 있는 행의 것이므로 쓰지도 지우지도 않는다."""
     cfg = cfg or load_config()
     owns = store is None
     if owns:
@@ -6947,6 +8399,17 @@ def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None,
         return base
     prefix = node_id.split(":", 1)[0] if ":" in node_id else ""
     label_pk = _SEED_TABLES.get(prefix)
+    stray = None
+    if stray_type is not None:
+        stray = _SEED_TABLES.get(stray_type) if isinstance(stray_type, str) else None
+        if stray is None or label_pk is None or stray == label_pk:
+            base["executed"] = True
+            base["note"] = (f"refused: stray_type must name a type other than the id prefix "
+                            f"({node_id}). Without it the prefix picks the table.")
+            if owns:
+                store.close()
+            return base
+        label_pk = stray
     try:
         if label_pk is None:
             base["executed"] = True
@@ -6989,9 +8452,13 @@ def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None,
             base["preview"] = {"node": 1, "edges": preview, "edge_count": edges,
                                "complete": True}
             return base
-        _write_tombstone(store, node_id, label, owner)   # 삭제 전파용 표식(S4)
+        if stray is None:
+            _write_tombstone(store, node_id, label, owner)   # 삭제 전파용 표식(S4)
         store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id{scope} DETACH DELETE n", params)
-        _drop_node_shadows(store, node_id, owner, params["id"])
+        if stray is None:
+            _drop_node_shadows(store, node_id, owner, params["id"])
+        else:
+            base["stray_type"] = stray_type
         base["deleted"] = {"node": 1, "edges": edges}
     except Exception as exc:
         base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
@@ -7124,6 +8591,9 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
 
         # ATTACHES_TO incoming: (rec:Record)-[a]->(drop) → (rec)-[a]->(keep), type 보존.
         # SEC-3: Record·drop·keep 모두 owner 스코프 — 남의 Record 를 내 keep 으로 못 옮긴다.
+        # 한 기록이 한 대상에 타입별로 따로 붙는다(쓰기 경로가 type 을 MERGE 패턴에 넣는다).
+        # 그래서 중복 검사와 MERGE 모두 (기록, type) 쌍으로 한다. type 을 빼면 keep 에 다른
+        # 타입 부착이 하나라도 있을 때 drop 의 부착이 버려지거나 그 엣지 위에 덮어써진다.
         for row in store.run(
                 "MATCH (r:Record)-[a:ATTACHES_TO]->(d:Concept) "
                 f"WHERE d.concept_id = $id{oscope('d')}{oscope('r')} "
@@ -7132,25 +8602,30 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
             other = row.get("other")
             if not other:
                 continue
+            etype = row.get("type")
+            same = "e.type = $t" if etype is not None else "e.type IS NULL"
+            tp = {"t": etype} if etype is not None else {}
             ex = store.run(
-                "MATCH (r:Record)-[:ATTACHES_TO]->(k:Concept) "
-                f"WHERE r.record_id = $r AND k.concept_id = $k{oscope('r')}{oscope('k')} "
-                "RETURN count(*) AS c",
-                {"r": _k(other), "k": _k(keep_id), **op})
+                "MATCH (r:Record)-[e:ATTACHES_TO]->(k:Concept) "
+                f"WHERE r.record_id = $r AND k.concept_id = $k AND {same}"
+                f"{oscope('r')}{oscope('k')} RETURN count(*) AS c",
+                {"r": _k(other), "k": _k(keep_id), **tp, **op})
             if ex and ex[0].get("c"):
                 skipped += 1
                 continue
-            if row.get("type") is not None:
+            if etype is not None:
                 store.run(
                     "MATCH (r:Record),(k:Concept) "
                     f"WHERE r.record_id = $r AND k.concept_id = $k{oscope('r')}{oscope('k')} "
-                    "MERGE (r)-[e:ATTACHES_TO]->(k) SET e.type = $t",
-                    {"r": _k(other), "k": _k(keep_id), "t": row["type"], **op})
+                    "MERGE (r)-[e:ATTACHES_TO {type: $t}]->(k)",
+                    {"r": _k(other), "k": _k(keep_id), "t": etype, **op})
             else:
+                # 타입 없는 부착은 MERGE 하면 같은 쌍의 타입 있는 부착에 맞물려 사라진다.
+                # 위 검사가 타입 없는 것이 keep 에 없음을 확인했으므로 새로 만든다.
                 store.run(
                     "MATCH (r:Record),(k:Concept) "
                     f"WHERE r.record_id = $r AND k.concept_id = $k{oscope('r')}{oscope('k')} "
-                    "MERGE (r)-[e:ATTACHES_TO]->(k)",
+                    "CREATE (r)-[e:ATTACHES_TO]->(k)",
                     {"r": _k(other), "k": _k(keep_id), **op})
             repointed += 1
 

@@ -1,0 +1,45 @@
+{
+  "id": "vinc",
+  "name": "Vinc",
+  "description": "Vinc account graph as OpenClaw memory: recall from the memory slot and a corpus supplement, both read only.",
+  "kind": "memory",
+  "contracts": {
+    "tools": ["memory_search", "memory_get"]
+  },
+  "configContracts": {
+    "secretInputs": {
+      "paths": [{ "path": "apiKey", "expected": "string" }]
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "apiKey": {
+        "type": "string",
+        "description": "A read-only Vinc key (vinc_ro_) from the vincs.io account page."
+      },
+      "url": {
+        "type": "string",
+        "description": "The Vinc MCP endpoint.",
+        "default": "https://mcp.vincs.io/mcp"
+      },
+      "maxResults": {
+        "type": "number",
+        "description": "Most results a recall returns.",
+        "default": 8
+      },
+      "agents": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Agent ids that get the memory_search and memory_get tools. List only agents that serve you alone; empty gives the tools to no agent.",
+        "default": []
+      },
+      "timeoutMs": {
+        "type": "number",
+        "description": "HTTP timeout for one hub call, in milliseconds.",
+        "default": 10000
+      }
+    }
+  }
+}

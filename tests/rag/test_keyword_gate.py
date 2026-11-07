@@ -58,6 +58,7 @@ class GateTests(unittest.TestCase):
                                                "그 판화가는 왜 평생 이름을 바꿨나", None, 200, None)
         self.assertFalse(gated)
         self.assertEqual(ran, ["keyword"])
+
         self.assertTrue(rows)
 
     def test_의미_팔이_비었으면_빼지_않는다(self):
@@ -94,6 +95,30 @@ class _StoreFull(_Store):
 
     def reader_view(self):
         return self
+
+class GateBarTests(unittest.TestCase):
+    """문턱 0.5 와 창 20행을 값으로 못 박는다. 위 테스트는 덮음 0 과 1 만 써서 문턱이 0.3 이든
+    0.9 든 통과한다. 두 값은 잰 자리라 바꾸려면 다시 재야 한다."""
+    _Q = "alpha beta gamma delta"
+    _SEM = [{"id": "s#00000", "text": "x", "distance": 0.3}]
+
+    @staticmethod
+    def _kw(*lexes):
+        return [{"id": f"k#{i:05d}", "text": t, "lex": t} for i, t in enumerate(lexes)]
+
+    def test_문턱은_절반이고_창은_스무_행이다(self):
+        self.assertEqual((r.KEYWORD_GATE, r.GATE_TOP), (0.5, 20))
+
+    def test_정확히_절반을_덮으면_남고_그_아래면_빠진다(self):
+        self.assertFalse(r._keyword_gate(self._Q, [self._kw("alpha beta"), self._SEM]))
+        self.assertTrue(r._keyword_gate(self._Q, [self._kw("alpha"), self._SEM]))
+
+    def test_스무_행_안의_덮는_행만_본다(self):
+        noise = ["zeta"] * 20
+        inside = noise[:19] + [self._Q] + noise[19:]
+        outside = noise + [self._Q]
+        self.assertFalse(r._keyword_gate(self._Q, [self._kw(*inside), self._SEM]))
+        self.assertTrue(r._keyword_gate(self._Q, [self._kw(*outside), self._SEM]))
 
 
 if __name__ == "__main__":

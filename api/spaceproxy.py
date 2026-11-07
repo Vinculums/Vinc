@@ -27,7 +27,7 @@
 계정의 `GET_OPS`/`POST_OPS` 가 이미 REST 경로 → 허브 op 매핑을 들고 있다. 여기서
 op 를 다시 해석하면 **네 번째 목록**이 생긴다. 사이드카 · 허브 `_PROXY_OPS` · 계정
 두 표가 어긋나면 그 기능만 조용히 죽는다는 것은 이 리포의 실제 사고 이력이다
-([[vinc-web-parity-proxy-allowlist]] 가 적어 둔 합계 뷰 사고). 그래서 이 모듈은
+([[concept:proxy-allowlist]] 가 적어 둔 합계 뷰 사고). 그래서 이 모듈은
 **해석하지 않는다** — 경로를 그대로 얹고, 무엇이 허용되는지는 계정이 판정한다.
 
 ⚠ 그래도 **아무 데나 못 가게** 한다: 접두를 여기서 붙이고 `..` 를 거절한다. 안 하면
@@ -43,9 +43,9 @@ from __future__ import annotations
 import json
 import logging
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
+
+from vinc_mcp import hubhttp
 
 #: 계정 기본 주소. 웹 평면이 같은 오리진으로 쓰는 그 경로를 셸에서 절대주소로 쓴다.
 DEFAULT_BASE = "https://vincs.io"
@@ -120,13 +120,8 @@ def call(*, token: str, team: str, method: str, path: str,
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(q)
 
     data = None
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
     if method.upper() == "POST":
         data = json.dumps(body if body is not None else {}).encode("utf-8")
-        headers["Content-Type"] = "application/json"
-
-    req = urllib.request.Request(url, data=data, headers=headers,
-                                 method=method.upper())
     started = time.monotonic()
 
     def log_failure(status: int, failure: str) -> None:
@@ -137,11 +132,15 @@ def call(*, token: str, team: str, method: str, path: str,
                 status, PREFIX + safe, (time.monotonic() - started) * 1000, failure)
 
     try:
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-            return resp.status, json.loads(resp.read().decode("utf-8") or "{}")
-    except urllib.error.HTTPError as e:
-        log_failure(e.code, "upstream")
-        raw = e.read().decode("utf-8", "replace")
+        resp = hubhttp.request(url, method=method.upper(), token=token, data=data,
+                               timeout=_TIMEOUT)
+        return resp.status, json.loads(resp.text or "{}")
+    except hubhttp.HubHTTPError as e:
+        if e.status is None:                # 네트워크·타임아웃·DNS
+            log_failure(502, "transport")
+            return 502, {"error": "account_unreachable", "detail": f"{type(e.cause).__name__}"}
+        log_failure(e.status, "upstream")
+        raw = e.body
         # 계정이 아니라 **앞문**이 답한 경우가 여기다(빈 본문 401 + WWW-Authenticate).
         # 그 둘을 뭉개면 "키가 나쁘다"와 "인그레스에 막혔다"가 같은 말이 된다 —
         # 2026-08-31 에 정확히 그 구분이 없어서 하루를 썼다.
@@ -149,11 +148,11 @@ def call(*, token: str, team: str, method: str, path: str,
         # ⚠ **빈 본문을 먼저 가른다.** `json.loads(raw or "{}")` 로 쓰면 빈 본문이
         # `{}` 로 **성공해서** 계정의 거절과 구분이 안 된다(검사가 이걸 잡았다).
         if not raw.strip():
-            return e.code, {"error": "account_unreachable", "detail": "empty body"}
+            return e.status, {"error": "account_unreachable", "detail": "empty body"}
         try:
-            return e.code, json.loads(raw)
+            return e.status, json.loads(raw)
         except ValueError:
-            return e.code, {"error": "account_unreachable", "detail": raw[:200]}
-    except Exception as e:                 # 네트워크·타임아웃·DNS
+            return e.status, {"error": "account_unreachable", "detail": raw[:200]}
+    except Exception as e:                 # 깨진 응답 본문
         log_failure(502, "response" if isinstance(e, ValueError) else "transport")
         return 502, {"error": "account_unreachable", "detail": f"{type(e).__name__}"}

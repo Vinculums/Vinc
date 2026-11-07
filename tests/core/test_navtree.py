@@ -251,7 +251,7 @@ class NavTreeE2E(unittest.TestCase):
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
 class NavTreeDomainScope(NavTreeE2E):
-    """`domain=` — 주제 **하위 트리**로 모집단을 좁힌다(VIN-89).
+    """`domain=`: 주제 **하위 트리**로 모집단을 좁힌다.
 
     이 인자가 없던 동안 좌측 레일의 Agent 갈래는 주제를 선언만 하고 실어 보낼 자리가
     없어 **모든 개념**을 세웠다(실측 2026-09-20).
@@ -302,6 +302,16 @@ class NavTreeDomainScope(NavTreeE2E):
         res = self._tree(nodes=True, kind="concept")
         self.assertEqual(len(self._ids(res)), 5)
         self.assertNotIn("scope", res["counts"])
+
+    def test_a_closed_document_carries_its_end_date_and_stays_in_the_tree(self):
+        # 트리는 닫힌 문서를 거르지 않는다. 화면이 숨길 수 있게 그 날만 싣는다.
+        self._concept("concept:energy", "phys")
+        ds.put_doc(self.store, owner=self.OWNER, text="energy 를 다룬 옛 글.", title="Old",
+                   valid_until="2026-10-01")
+        ds.put_doc(self.store, owner=self.OWNER, text="energy 를 다룬 글.", title="Now")
+        docs = {d["title"]: d for d in self._group(self._tree(), "phys")["docs"]}
+        self.assertEqual(docs["Old"]["valid_until"], "2026-10-01")
+        self.assertNotIn("valid_until", docs["Now"])
 
 
 if __name__ == "__main__":

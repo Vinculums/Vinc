@@ -46,7 +46,7 @@ class ShareSheetSpecTests(unittest.TestCase):
         # 헬퍼가 **있는 것**과 **불리는 것**은 다르다 — 위 둘은 헬퍼 본문만 보므로
         # 호출부를 지워도 그대로 통과한다(변이로 실측). 그러면 문서 줄을 포함한 사양 표
         # 전체가 공유 시트에서 사라져도 가드는 초록이다 — 막으려던 바로 그것이다.
-        share = _body(src, "export async function openShareSheet")
+        share = _body(src, "export async function renderSharePreview")
         self.assertIn("specRows(c, scopeLabel)", share, "공유 시트가 사양 표를 안 그린다")
 
     def test_제외한_미러의_원문은_팩에_안_실린다(self):
@@ -62,7 +62,7 @@ class ShareSheetSpecTests(unittest.TestCase):
         JS 러너가 없으므로(`app/package.json` 에 `test` 없음) 소스에서 잠근다. 여기
         잠그는 것은 **나가는 객체 그 자체**다 — 렌더 간접이 없어 `out` 이 곧 팩이고,
         세 줄 중 어느 하나를 지워도 이 테스트가 빨개진다."""
-        share = _body(_src(), "export async function openShareSheet")
+        share = _body(_src(), "export async function renderSharePreview")
         self.assertIn("const docs = keptDocs(pack.documents, excluded, pack.doc_refs, keepIds, standalone)",
                       share, "제외 집합과 남은 노드를 원문에 적용하지 않는다")
         self.assertIn("{ documents: docs }", share,
@@ -104,7 +104,7 @@ class ShareSheetSpecTests(unittest.TestCase):
         helper = _body(_docs_src(), "export function keptDocs")
         self.assertIn("refs[d?.doc_id]", helper, "원문을 끌어온 노드를 안 본다")
         self.assertIn("kept.has(id)", helper, "남은 노드와 대조하지 않는다")
-        share = _body(_src(), "export async function openShareSheet")
+        share = _body(_src(), "export async function renderSharePreview")
         self.assertIn("pack.doc_refs, keepIds", share)
         self.assertIn("delete (out as any).doc_refs", share,
                       "시트용 대응표가 팩 파일·전송에 그대로 실린다")
@@ -141,7 +141,7 @@ class ShareSheetSpecTests(unittest.TestCase):
         self.assertIn("c.records", spec)
         self.assertIn("c.decisions", spec)
         self.assertIn("?? 0", spec, "구버전 매니페스트에 decisions 가 없으면 조용히 터진다")
-        share = _body(src, "export async function openShareSheet")
+        share = _body(src, "export async function renderSharePreview")
         self.assertIn("specRows(c, scopeLabel)", share)
 
     def test_제외_후_카운트가_모든_종을_다시_센다(self):
@@ -153,7 +153,7 @@ class ShareSheetSpecTests(unittest.TestCase):
         self.assertIn('n.type === "record" || n.type === "episode"', helper)
         self.assertIn('n.type === "decision"', helper)
         self.assertIn("documents: docs.length", helper)
-        share = _body(src, "export async function openShareSheet")
+        share = _body(src, "export async function renderSharePreview")
         self.assertIn("recount(keep, edges, docs, c)", share)
 
     def test_가져오기_요약이_기록과_결정을_문서와_섞지_않는다(self):

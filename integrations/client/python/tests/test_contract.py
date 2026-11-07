@@ -33,7 +33,16 @@ CALLS = [
     _Base._document("vinc.spec.fixture", None),
     _Base._search("q", 5, "c", "summary", True, None),
     _Base._recall("vinc/design", ["a"], 5, "c", None),
-    _Base._ingest([{}], [{}], None),
+    _Base._ingest([{}], [{}], None, True, "op"),
+    _Base._operation_status("op", None),
+    _Base._edges("concept:x", None, "relates_to", "out", 5, None),
+    _Base._edges(None, ["concept:x"], "relates_to", "out", 5, None),
+    _Base._role("agent-dev-core", None, "a" * 64),
+    _Base._role_check("agent-dev-core", "text", [{"action": "a", "reason": "r"}], True, None),
+    _Base._delete("concept:x", True, "d", "op", None),
+    _Base._delete_edge("concept:x", "concept:y", "relates_to", True, "d", "op", None),
+    _Base._merge_nodes("concept:x", "concept:y", True, "d", "op", None),
+    _Base._doc_delete("vinc.spec.fixture", True, "d", "op", None),
 ]
 
 

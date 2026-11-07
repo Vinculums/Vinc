@@ -170,6 +170,12 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         self.assertEqual(sidecar.applied[0]["content_hash"], "h1")
         self.assertEqual(sidecar.applied[0]["model"], "BAAI/bge-base-en-v1.5")
 
+    def test_조각_상한은_기본_500토큰이다(self):
+        """다른 테스트는 조각을 `MAX_CONTENT` 와만 대조해서 그 값이 바뀌어도 통과한다.
+        env 가 없을 때의 기본값을 여기서 못 박는다(`vinc_rag/rerank.py` 의 PIECE_TOKENS 도 같은 기본)."""
+        with _env(VINC_EMBED_CONTENT_TOKENS=None):
+            self.assertEqual(_load_module().MAX_CONTENT, 500)
+
     def test_긴_청크는_조각_여럿으로_임베딩된다(self):
         """v8 부모-자식 — 청크는 정본이라 안 자르고, **벡터만** 쪼갠다.
 
@@ -322,6 +328,45 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
                              f"배치 상한을 넘겨 세션에 넣었다: {max(seen)} > {self.mod.EMBED_BATCH}")
         self.assertEqual(sum(seen), n_chunks, "일부 청크가 누락되거나 중복 처리됐다")
 
+    def test_같은_조각은_함께_실린_조각과_무관하게_같은_벡터를_낸다(self):
+        """VIN-696. 운영 int8 모델은 세션 실행에 실린 텐서 전체로 양자화 스케일을 잡는다.
+        그래서 조각을 묶어 넣으면 같은 글자라도 함께 실린 조각과 패딩에 따라 벡터가 바뀐다.
+        가짜 세션이 그 성질을 흉내 낸다: 출력이 그 실행의 입력 전체 합으로 나뉜다.
+        기본 설정의 `encode` 는 요청에 무엇이 함께 왔든 같은 벡터를 내야 한다."""
+        np = _np_or_skip(self)
+
+        class _Enc:
+            def __init__(self, ids, width):
+                self.ids = ids + [0] * (width - len(ids))
+                self.attention_mask = [1] * len(ids) + [0] * (width - len(ids))
+                self.type_ids = [0] * width
+
+        class _Tok:
+            def encode_batch(self, texts):
+                ids = [[ord(c) % 97 + 1 for c in t] for t in texts]
+                width = max(len(i) for i in ids)
+                return [_Enc(i, width) for i in ids]
+
+        class _ScaledByTheRun:
+            def run(self, _out, feed):
+                ids = feed["input_ids"].astype(np.float32)
+                return [np.stack([ids / ids.sum(), np.ones_like(ids)], axis=-1)]
+
+        emb = self.mod._Embedder()
+        emb._sess, emb._tok, emb._names = _ScaledByTheRun(), _Tok(), ["input_ids", "attention_mask"]
+        piece = "짧은 조각"
+        mates = ["같은 요청에 실려 온 훨씬 긴 조각 하나", "또 다른 조각"]
+
+        # 대조군: 이 가짜 세션은 정말 배치에 따라 다른 벡터를 낸다(아니면 아래 검사가 공허하다).
+        self.assertNotEqual(emb._encode_batch([piece])[0], emb._encode_batch([piece, *mates])[0])
+
+        alone = emb.encode([piece])[0]
+        self.assertEqual(emb.encode([piece, *mates])[0], alone,
+                         "함께 실린 조각이 이 조각의 벡터를 바꿨다 — 조각이 묶여 세션에 들어갔다")
+        self.assertEqual(emb.encode([*mates, piece])[-1], alone)
+        self.assertEqual(emb.encode([piece, *mates], query=True)[0],
+                         emb.encode([piece], query=True)[0])
+
     def test_첫_적재_중에_온_질의가_모델을_한_벌_더_올리지_않는다(self):
         """RV-32 (VIN-228). 로컬 모드는 배치 루프와 `serve_encode` 의 질의가 **같은
         `_Embedder`** 를 쓴다. 적재가 잠금 밖이면 첫 문서를 적재하는 동안 들어온 질의가
@@ -411,6 +456,82 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
         finally:
             hold.set()
             t.join(5)
+
+    def test_토큰화_전에_글자_상한으로_자른다(self):
+        """VIN-634. 토크나이저는 512 로 자르기 **전에** 전체를 토큰화하므로 아주 긴 텍스트
+        하나가 순간 메모리를 튀긴다. 상한을 넘는 텍스트만 잘리고 짧은 것은 그대로 가는지 본다.
+        numpy 없이 돌도록 토크나이저에서 멈춘다."""
+
+        class Stop(Exception):
+            pass
+
+        seen: list[list[str]] = []
+
+        class Tok:
+            def encode_batch(self, texts):
+                seen.append(list(texts))
+                raise Stop
+
+        self.mod.MAX_CHARS = 10
+        emb = self.mod._Embedder()
+        emb._tok = Tok()
+        with self.assertRaises(Stop):
+            emb._run(["짧은 글", "x" * 25])
+        self.assertEqual(seen, [["짧은 글", "x" * 10]])
+
+    def test_잠금_밖_질의_추론은_상한만큼만_겹친다(self):
+        """VIN-634. 적재가 끝난 뒤의 질의는 배치 잠금을 건너뛴다. 그 대신 동시에 도는 수에
+        상한이 있어야 몰린 질의가 활성값을 그만큼 겹쳐 쌓지 않는다."""
+        import threading
+
+        self.mod.QUERY_CONCURRENCY = 2
+        emb = self.mod._Embedder()
+        emb._sess = object()                  # 적재는 끝났다
+        hold = threading.Event()
+        lock = threading.Lock()
+        state = {"now": 0, "peak": 0}
+
+        class Stop(Exception):
+            pass
+
+        def fake_run(texts):
+            with lock:
+                state["now"] += 1
+                state["peak"] = max(state["peak"], state["now"])
+            hold.wait(5)
+            with lock:
+                state["now"] -= 1
+            raise Stop
+
+        emb._run = fake_run
+
+        def one():
+            try:
+                emb._encode_batch(["query"], query=True)
+            except Stop:
+                pass
+
+        threads = [threading.Thread(target=one) for _ in range(5)]
+        for t in threads:
+            t.start()
+        try:
+            for _ in range(200):
+                if state["peak"] >= 2:
+                    break
+                threading.Event().wait(0.01)
+            threading.Event().wait(0.1)       # 상한이 없다면 나머지가 이 사이에 들어온다
+            self.assertEqual(state["peak"], 2, "동시 질의 추론이 상한을 넘었거나 하나도 안 돌았다")
+        finally:
+            hold.set()
+            for t in threads:
+                t.join(5)
+
+    def test_요청_크기_기록에는_본문이_없다(self):
+        """VIN-634 진단 줄은 크기만 싣는다. 본문은 계정 데이터라 로그에 남으면 안 된다."""
+        line = self.mod._text_stats(["비밀 문장 하나", "secret"])
+        self.assertEqual(line, "n=2 max_chars=8 total_chars=14")
+        self.assertNotIn("비밀", line)
+        self.assertNotIn("secret", line)
 
     def test_인코딩_창구가_쿼리에만_접두를_붙인다(self):
         """`serve_encode` 계약 — 사이드카가 이 창구로 쿼리 임베딩을 얻어 간다.
@@ -627,6 +748,23 @@ class EmbedWorkerOrchestrationTest(unittest.TestCase):
                          "구워진 이미지·캐시가 쓰는 이름이라 바뀌면 안 된다")
         self.assertEqual(an("BAAI/bge-m3"), "bge-m3-int8-rr.onnx")
         self.assertNotEqual(an("BAAI/bge-m3"), an("intfloat/multilingual-e5-large"))
+
+    def test_양자화를_끄면_내보낸_fp32_아티팩트를_쓴다(self):
+        """GPU 가 있는 로컬 설치(vincOS)는 fp32 를 CUDA 로 돌린다. 이름은 `<모델>-fp32.onnx`
+        이고, 경로가 있으면 받지도 굽지도 않고 그 파일을 쓴다. 기본(양자화 on)은 그대로다."""
+        import tempfile
+        an = self.mod.artifact_name
+        with _env(VINC_EMBED_QUANTIZE="off"):
+            self.assertEqual(an("dragonkue/BGE-m3-ko"), "bge-m3-ko-fp32.onnx")
+        with _env(VINC_EMBED_QUANTIZE=None):
+            self.assertEqual(an("dragonkue/BGE-m3-ko"), "bge-m3-ko-int8-rr.onnx")
+        fp32 = os.path.join(tempfile.mkdtemp(), "bge-m3-ko-fp32.onnx")
+        open(fp32, "wb").close()
+        called: list[str] = []
+        with _hf_stub(lambda repo, path, **kw: called.append(path) or "/tmp/x"), \
+                _env(VINC_EMBED_MODEL_PATH=fp32, VINC_EMBED_QUANTIZE="off"):
+            self.assertEqual(self.mod._resolve_model("dragonkue/BGE-m3-ko", "/tmp/c"), fp32)
+        self.assertEqual(called, [], f"구운 fp32 가 있는데 내려받으려 했다: {called}")
 
     def test_다른_모델의_구운_아티팩트는_거절한다(self):
         """이미지는 e5 를 구웠는데 env 만 m3 로 바꾼 조합. 그대로 쓰면 **딴 모델로

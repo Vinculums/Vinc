@@ -69,6 +69,8 @@ def _min_args(name: str) -> dict:
                 "action": "agent_detail", "payload": {"shareId": "0198c0de-2222-7222-8333-444455556666"}}
     if name == "vinc_edges":
         out["node"] = "concept:x"
+    if name == "vinc_decide_paths":
+        return {"paths": ["vinc:api/sync.py"]}   # 빈 배열은 인자 오류다(1..200 경로)
     for req in sch.get("required", []):
         p = (sch.get("properties") or {}).get(req) or {}
         typ = p.get("type")
@@ -245,7 +247,7 @@ class _Resp:
 
 def _with_account(monkeypatch, responder):
     monkeypatch.setattr(entitlement, "_seed", lambda: b"\x01" * 32)
-    monkeypatch.setattr(urllib.request, "urlopen",
+    monkeypatch.setattr(entitlement.hubhttp, "urlopen",
                         lambda req, timeout=None: responder(req))
     entitlement._cache.clear()
 
@@ -300,14 +302,42 @@ def test_verify_key_team_answer_carries_scope(monkeypatch):
         entitlement._cache.clear()
 
 
-@pytest.mark.parametrize("key_space", [None, "personal", "t2"])
-def test_team_key_verification_requires_matching_credential_scope(monkeypatch, key_space):
-    _with_account(monkeypatch, lambda req: _Resp({"sub":"u1", "plan":"team", "scope":"full",
-                                                 "graph_owner":"team:t1", "role":"admin",
-                                                 "key_space":key_space}))
+def _team_answer(key_space):
+    body = {"sub": "u1", "plan": "team", "scope": "full", "graph_owner": "team:t1", "role": "admin"}
+    if key_space != "absent":
+        body["key_space"] = key_space
+    return body
+
+
+@pytest.mark.parametrize("key_space", ["absent", None, "personal", "t1"])
+def test_team_question_accepts_its_own_team_key_and_a_personal_key(monkeypatch, key_space):
+    """개인 키의 팀 접근은 계정이 가른다(멤버십 · 엄격 모드). 계정이 받은 답을 허브가 다시 거절하지 않는다.
+    `key_space` 가 없는 답도 개인 키로 읽는다."""
+    _with_account(monkeypatch, lambda req: _Resp(_team_answer(key_space)))
+    try:
+        got = entitlement.verify_key("vinc_sk_fixture", "t1")
+        assert got["owner"] == "team:t1" and got["role"] == "admin"
+    finally:
+        entitlement._cache.clear()
+
+
+def test_team_question_refuses_a_key_bound_to_another_team(monkeypatch):
+    _with_account(monkeypatch, lambda req: _Resp(_team_answer("t2")))
     with pytest.raises(entitlement.VerificationUnavailable):
         entitlement.verify_key("vinc_sk_fixture", "t1")
     assert not entitlement._cache
+
+
+@pytest.mark.parametrize("key_space", ["absent", "personal"])
+def test_personal_question_accepts_a_personal_key(monkeypatch, key_space):
+    body = {"sub": "u1", "plan": "free", "scope": "full"}
+    if key_space != "absent":
+        body["key_space"] = key_space
+    _with_account(monkeypatch, lambda req: _Resp(body))
+    try:
+        assert entitlement.verify_key("vinc_sk_fixture")["owner"] == "user:u1"
+    finally:
+        entitlement._cache.clear()
 
 
 def test_team_credential_never_resolves_as_personal(monkeypatch):

@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import hashlib
-import json
 
 from api import docstore, query
-from store import pkns
+from store import canon, pkns
 from store.embedded_schema import node_table_specs, rel_table_specs
 
 MAX_ROWS = 200
@@ -16,8 +15,7 @@ class PreviewRefused(ValueError):
     pass
 
 
-def _canonical(value):
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+_canonical = canon.canonical_json
 
 
 def _node(store, owner, ident):
@@ -97,7 +95,60 @@ def _shadows(store, owner, ident):
     }
 
 
+def _stray(store, owner, ident, stray):
+    # 사본 행만 지운다. 묘비·벡터·동기화 base 는 살아 있는 행의 것이라 남는다.
+    table = query._SEED_TABLES.get(stray) if isinstance(stray, str) else None
+    if table is None or table == query._SEED_TABLES[ident.partition(":")[0]]:
+        raise PreviewRefused("preview_kind_not_supported")
+    label, pk = table
+    rows = _rows(store, label, f"n.{pk}=$id AND n.owner_id=$owner",
+                 {"id": pkns.key(owner, ident), "owner": owner})
+    if not rows:
+        raise PreviewRefused("preview_target_unavailable")
+    edges = _incident(store, owner, [ident], label_override=label)
+    return {"deleted_nodes": [{**row, pk: pkns.strip(row[pk])} for row in rows],
+            "deleted_edges": edges, "retained_documents": [], "deleted_shadows": {},
+            "stray_type": stray, "node": 1, "edge_count": len(edges), "complete": True,
+            "edges": [{"from": e["source"], "to": e["target"], "type": e["type"],
+                       "props": e["props"]} for e in edges]}
+
+
+#: 응답이 다음 할 일을 말한다. 도구 설명은 짧은 요약이라 미리보기 → 적용 절차를 싣지 않는다.
+#: 해시(preview_digest)는 `preview` 내용으로만 계산하므로 이 문장들은 해시에 들지 않는다.
+#: 근거: [[decision:mcp-tool-descriptions-are-short-summaries-with-a-docs-link]]
+NEXT_STEP = ("Nothing was changed. Show this preview to the person; to apply it, repeat the same call "
+             "without dry_run and with this preview_digest.")
+HINTS = {
+    "preview_conflict": "Nothing was changed: the target changed after your preview. Run the call again "
+                        "with dry_run:true and show the new preview before applying.",
+    "preview_incomplete": "Nothing was changed: a complete preview would exceed 200 rows or the size "
+                          "budget, so it was refused rather than cut. Narrow the target.",
+    "preview_target_unavailable": "Nothing was changed: the target does not exist in this graph or "
+                                  "cannot be read here. Check the id.",
+    "preview_apply_not_supported": "Nothing was changed: drop_id has relations this merge cannot carry "
+                                   "over (unsupported_edges in the preview).",
+    "preview_kind_not_supported": "Nothing was changed: this kind of target cannot be changed with "
+                                  "this tool.",
+    "preview_read_unavailable": "Nothing was changed: the store could not be read completely. Try the "
+                                "preview again shortly.",
+    "preview_boundary_unavailable": "Nothing was changed: the store could not be read completely. Try "
+                                    "the preview again shortly.",
+    "preview_owner_required": "Nothing was changed: this call has no owner.",
+}
+
+
+def _guided(result):
+    if result.get("executed") and result.get("preview_complete"):
+        return {**result, "next_step": NEXT_STEP}
+    hint = HINTS.get(result.get("error"))
+    return {**result, "hint": hint} if hint else result
+
+
 def preview(store, *, owner, operation, arguments):
+    return _guided(_preview_body(store, owner=owner, operation=operation, arguments=arguments))
+
+
+def _preview_body(store, *, owner, operation, arguments):
     base = {"kind": operation, "executed": False, "dry_run": True, "preview_complete": False}
     if not owner:
         return {**base, "error": "preview_owner_required"}
@@ -107,6 +158,13 @@ def preview(store, *, owner, operation, arguments):
             ident = arguments["node"]
             if ident.startswith("domain:") or ident.partition(":")[0] not in query._SEED_TABLES:
                 raise PreviewRefused("preview_kind_not_supported")
+            if arguments.get("stray_type") is not None:
+                details = _stray(store, owner, ident, arguments["stray_type"])
+                payload = _canonical({"owner": owner, "operation": operation, "preview": details})
+                if len(payload.encode("utf-8")) > MAX_BYTES:
+                    raise PreviewRefused("preview_incomplete")
+                return {**base, "executed": True, "preview_complete": True, "preview": details,
+                        "preview_digest": hashlib.sha256(payload.encode("utf-8")).hexdigest()}
             target = _node(store, owner, ident)
             details = {"deleted_nodes": [target], "deleted_edges": _incident(store, owner, [ident]),
                        "retained_documents": [], "deleted_shadows": _shadows(store, owner, ident)}
@@ -207,7 +265,9 @@ def apply_checked(store, *, owner, operation, arguments, digest, apply):
     if not current.get("executed"):
         return {**current, "dry_run": False}
     if current["preview_digest"] != digest:
-        return {"executed": False, "error": "preview_conflict", "status": "conflict"}
+        return {"executed": False, "error": "preview_conflict", "status": "conflict",
+                "hint": HINTS["preview_conflict"]}
     if current["preview"].get("apply_supported") is False:
-        return {"executed": False, "error": "preview_apply_not_supported"}
+        return {"executed": False, "error": "preview_apply_not_supported",
+                "hint": HINTS["preview_apply_not_supported"]}
     return apply()

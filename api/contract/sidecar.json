@@ -1,0 +1,1654 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Vinc sidecar HTTP contract",
+    "version": "1.0.0",
+    "description": "The HTTP routes of the Vinc sidecar (api/server.py) and the account routes the desktop and web app (app/) call. Paths are the ones the app passes to its data plane: the desktop shell calls them on the loopback sidecar with the session bearer, web Vinc reaches the same graph operations under /api/graph on the account, and desktop account mode sends them through POST /space/proxy. Only paths and methods are pinned here; request and response bodies are not.\n\nx-served-by: 'sidecar' is a route in api/server.py; 'account' is served by the account backend and never by the sidecar.\nx-internal: true means the app does not call the operation; other callers (MCP bridge, CLI, hub entrypoint, embedding worker, account proxy) may. false means app/src or the shell in app/src-tauri calls it.\n\nChecked by tests/core/test_sidecar_contract.py (every sidecar route is listed, every listed sidecar operation is a route) and app/dev/sidecar-contract-check.ts (every call the app makes is listed and not internal, every listed non-internal operation is called). OPTIONS answers CORS preflight on any path and is not listed."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:{port}",
+      "description": "Loopback sidecar started by the desktop shell.",
+      "variables": {
+        "port": {
+          "default": "8787",
+          "description": "Port the shell hands over through sidecar_conn; 8787 is only the fallback."
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "sidecarToken": []
+    }
+  ],
+  "paths": {
+    "/activate": {
+      "post": {
+        "operationId": "write_activate",
+        "summary": "Build an activation pack from the store and write it out.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/api/community/agents/destinations": {
+      "get": {
+        "operationId": "account_community_destinations",
+        "summary": "Community share destinations for the web session.",
+        "x-internal": false,
+        "x-served-by": "account",
+        "security": [
+          {
+            "accountSession": []
+          }
+        ],
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/api/me": {
+      "get": {
+        "operationId": "account_me",
+        "summary": "Web session check. Same origin, session cookie.",
+        "x-internal": false,
+        "x-served-by": "account",
+        "security": [
+          {
+            "accountSession": []
+          }
+        ],
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/api/teams": {
+      "get": {
+        "operationId": "account_teams",
+        "summary": "Team list for the web session.",
+        "x-internal": false,
+        "x-served-by": "account",
+        "security": [
+          {
+            "accountSession": []
+          }
+        ],
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/backup": {
+      "post": {
+        "operationId": "submit_backup",
+        "summary": "Back the store up to a file (202 and a job).",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/brief": {
+      "get": {
+        "operationId": "read_brief",
+        "summary": "Answer material for one question (text, excerpts, relations, ids).",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/changes": {
+      "get": {
+        "operationId": "read_changes",
+        "summary": "Change marker. Does not read the store.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/community-agent/export": {
+      "post": {
+        "operationId": "render_community_agent",
+        "summary": "Render a community agent for publishing.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/community-agent/import": {
+      "post": {
+        "operationId": "import_community_agent",
+        "summary": "Import a community agent with a receipt.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/community-agent/import-preview": {
+      "post": {
+        "operationId": "preview_community_agent",
+        "summary": "Preview a community agent import.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/community-agent/import-result": {
+      "get": {
+        "operationId": "read_community_agent_result",
+        "summary": "Result of a community agent import.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/community-pack/inspect": {
+      "post": {
+        "operationId": "inspect_community_pack",
+        "summary": "Inspect a community pack before import.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/config": {
+      "get": {
+        "operationId": "read_config",
+        "summary": "Storage settings and the open store. Answers without a store.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      },
+      "post": {
+        "operationId": "write_config",
+        "summary": "Change storage settings (mode, folder). Answers without a store.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/config/inspect": {
+      "get": {
+        "operationId": "read_config_inspect",
+        "summary": "Inspect a folder before choosing it. Writes nothing.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/connect/callback": {
+      "post": {
+        "operationId": "connect_callback",
+        "summary": "Device connect callback from the browser. No bearer: the state nonce and the Origin allowlist stand in.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "security": [],
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/connect/start": {
+      "post": {
+        "operationId": "write_connect_start",
+        "summary": "Start device connect: issue a state nonce.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/connect/status": {
+      "get": {
+        "operationId": "read_connect_status",
+        "summary": "Device connect mailbox: collect the key once.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/conventions": {
+      "get": {
+        "operationId": "read_conventions",
+        "summary": "The owner's GRAPH.md conventions.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/conventions/build": {
+      "post": {
+        "operationId": "write_conventions_build",
+        "summary": "Regenerate the generated part of GRAPH.md.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/conversion/capabilities": {
+      "get": {
+        "operationId": "account_conversion_capabilities",
+        "summary": "Topic to team conversion: whether it is enabled and any pending run.",
+        "x-internal": false,
+        "x-served-by": "account",
+        "security": [
+          {
+            "accountSession": []
+          },
+          {
+            "memberKey": []
+          }
+        ],
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/conversion/inventory/{ticket}": {
+      "parameters": [
+        {
+          "name": "ticket",
+          "in": "path",
+          "required": true,
+          "description": "Inventory ticket from the preflight.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "account_conversion_inventory",
+        "summary": "Topic to team conversion: inventory result for a ticket.",
+        "x-internal": false,
+        "x-served-by": "account",
+        "security": [
+          {
+            "accountSession": []
+          },
+          {
+            "memberKey": []
+          }
+        ],
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/conversion/preflight": {
+      "post": {
+        "operationId": "account_conversion_preflight",
+        "summary": "Topic to team conversion: preflight check.",
+        "x-internal": false,
+        "x-served-by": "account",
+        "security": [
+          {
+            "accountSession": []
+          },
+          {
+            "memberKey": []
+          }
+        ],
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/conversion/runs": {
+      "post": {
+        "operationId": "account_conversion_reserve",
+        "summary": "Topic to team conversion: reserve a run.",
+        "x-internal": false,
+        "x-served-by": "account",
+        "security": [
+          {
+            "accountSession": []
+          },
+          {
+            "memberKey": []
+          }
+        ],
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/conversion/runs/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Conversion run id.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "account_conversion_status",
+        "summary": "Topic to team conversion: run status.",
+        "x-internal": false,
+        "x-served-by": "account",
+        "security": [
+          {
+            "accountSession": []
+          },
+          {
+            "memberKey": []
+          }
+        ],
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/conversion/runs/{id}/cancel": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Conversion run id.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "account_conversion_cancel",
+        "summary": "Topic to team conversion: cancel a run.",
+        "x-internal": false,
+        "x-served-by": "account",
+        "security": [
+          {
+            "accountSession": []
+          },
+          {
+            "memberKey": []
+          }
+        ],
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/conversion/runs/{id}/resume": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "Conversion run id.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "account_conversion_resume",
+        "summary": "Topic to team conversion: resume a run.",
+        "x-internal": false,
+        "x-served-by": "account",
+        "security": [
+          {
+            "accountSession": []
+          },
+          {
+            "memberKey": []
+          }
+        ],
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/coupling": {
+      "get": {
+        "operationId": "read_coupling",
+        "summary": "Concept to concept coupling pairs between two topics.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/decide": {
+      "get": {
+        "operationId": "read_decide",
+        "summary": "Decision material for a topic.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/decide-paths": {
+      "get": {
+        "operationId": "read_decide_paths",
+        "summary": "Decision gate: current records and decisions that govern touched paths.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/delete": {
+      "post": {
+        "operationId": "write_delete",
+        "summary": "Delete a node (preview with dry_run, apply with the preview digest).",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/delete-edge": {
+      "post": {
+        "operationId": "write_delete_edge",
+        "summary": "Delete one relation and leave an edge tombstone.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/diagnose": {
+      "get": {
+        "operationId": "read_diagnose",
+        "summary": "Graph diagnosis: components, communities, community context, claims.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/doc": {
+      "get": {
+        "operationId": "read_doc",
+        "summary": "One document restored from its chunks and verified by hash.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/doc/context": {
+      "get": {
+        "operationId": "read_doc_context",
+        "summary": "Reader head: concept chips, sections and chunk offsets of a document.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/doc/delete": {
+      "post": {
+        "operationId": "write_doc_delete",
+        "summary": "Delete a document (preview with dry_run).",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/doc/extract": {
+      "post": {
+        "operationId": "write_doc_extract",
+        "summary": "Propose or apply concepts extracted from a document.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/doc/highlights": {
+      "get": {
+        "operationId": "read_doc_highlights",
+        "summary": "Character ranges where a concept is mentioned in a document.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/doc/put": {
+      "post": {
+        "operationId": "write_doc_put",
+        "summary": "Store or edit a document (rechunked; embedding is deferred).",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/doc/put-file": {
+      "post": {
+        "operationId": "write_doc_put_file",
+        "summary": "Store a document from file bytes (base64 in JSON).",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/doc/reembed": {
+      "post": {
+        "operationId": "write_doc_reembed",
+        "summary": "Queue documents for re-embedding.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/docs": {
+      "get": {
+        "operationId": "read_docs",
+        "summary": "Document list (limit, cursor, detail, title filter).",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/docs-in-range": {
+      "get": {
+        "operationId": "read_docs_in_range",
+        "summary": "Dated items in [start, end) on the chosen time basis.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/domain/rename": {
+      "post": {
+        "operationId": "write_domain_rename",
+        "summary": "Rename or move a topic for the owner's nodes.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/domains": {
+      "get": {
+        "operationId": "read_domains",
+        "summary": "Topic (domain) list for an owner.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/edge-context": {
+      "get": {
+        "operationId": "read_edge_context",
+        "summary": "Relation detail: evidence, confidence and excerpts of both ends.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/embed/apply": {
+      "post": {
+        "operationId": "write_embed_apply",
+        "summary": "Embedding worker writes vectors back.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/embed/pending": {
+      "get": {
+        "operationId": "read_embed_pending",
+        "summary": "Work for the embedding worker.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/events": {
+      "get": {
+        "operationId": "read_events",
+        "summary": "One page of events computed from the change log, after a cursor.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/runs": {
+      "get": {
+        "operationId": "read_runs",
+        "summary": "Run records, optionally only those that cited one claim.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/agent-writes": {
+      "get": {
+        "operationId": "read_agent_writes",
+        "summary": "Recent writes grouped by the source the store records, with the checks a person should look at.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/eval-cards": {
+      "get": {
+        "operationId": "read_eval_cards",
+        "summary": "Evaluation cards attached to one Agent role, newest first.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/evidence/backfill": {
+      "post": {
+        "operationId": "write_evidence_backfill",
+        "summary": "Fill relation evidence from document sentences.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/graph": {
+      "get": {
+        "operationId": "read_graph",
+        "summary": "Graph read for the View (topics, seed, depth, layout, staged reads).",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/graph/roots": {
+      "get": {
+        "operationId": "read_graph_roots",
+        "summary": "Held whole graph layout for one time basis.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health",
+        "summary": "Readiness probe without auth. `live=1` answers without reading the store.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "security": [],
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/ingest": {
+      "post": {
+        "operationId": "write_ingest",
+        "summary": "Fragment write (nodes and edges merged by id).",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/ingest/fragment": {
+      "post": {
+        "operationId": "submit_ingest_fragment",
+        "summary": "Fragment write, the same path as /ingest.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/ingest/pack": {
+      "post": {
+        "operationId": "submit_ingest_pack",
+        "summary": "Import a share pack under the receiving owner.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/ingest/{engine}": {
+      "parameters": [
+        {
+          "name": "engine",
+          "in": "path",
+          "required": true,
+          "description": "Ingest engine name.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "submit_ingest",
+        "summary": "Ingest by engine: inbox and registered engines (202 and a job). fragment and pack have their own paths.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/jobs/{job_id}": {
+      "parameters": [
+        {
+          "name": "job_id",
+          "in": "path",
+          "required": true,
+          "description": "Job id returned with a 202.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "get_job",
+        "summary": "Status of a queued job (queued, running, done, error).",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/learner": {
+      "get": {
+        "operationId": "read_learner",
+        "summary": "Learner patterns for an owner.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/ledger": {
+      "get": {
+        "operationId": "read_ledger",
+        "summary": "Ledger rollup (source x topic x link state), optionally around a seed.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/ledger-drilldown": {
+      "get": {
+        "operationId": "read_ledger_drilldown",
+        "summary": "Concepts behind one totals band (topic, mark).",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/merge-candidates": {
+      "get": {
+        "operationId": "read_merge_candidates",
+        "summary": "Merge candidates (read only; merging goes through /merge-nodes).",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/merge-nodes": {
+      "post": {
+        "operationId": "write_merge",
+        "summary": "Merge two nodes. Irreversible.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/merge-reject": {
+      "post": {
+        "operationId": "write_merge_reject",
+        "summary": "Reject a merge candidate pair, or undo the rejection.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/merge-rejections": {
+      "get": {
+        "operationId": "read_merge_rejections",
+        "summary": "Rejected merge pairs that can be reopened.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/nav-tree": {
+      "get": {
+        "operationId": "read_nav_tree",
+        "summary": "Left document tree: topic to documents, optional node lists and kind counts.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/neighbors": {
+      "get": {
+        "operationId": "read_neighbors",
+        "summary": "One hop relations of a node.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/node": {
+      "get": {
+        "operationId": "read_node",
+        "summary": "One node by id.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/node-context": {
+      "get": {
+        "operationId": "read_node_context",
+        "summary": "Node detail: description, props, source excerpts and paged links.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/node-edges": {
+      "get": {
+        "operationId": "read_node_edges",
+        "summary": "Relations of one node or of a node set.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/node-mirror/rebuild": {
+      "post": {
+        "operationId": "write_node_mirror_rebuild",
+        "summary": "Rebuild the node mirror index.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/operation-status": {
+      "get": {
+        "operationId": "read_operation_status",
+        "summary": "Receipt of an earlier write by its operation_id.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/owner-stats": {
+      "get": {
+        "operationId": "read_owner_stats",
+        "summary": "Per owner node and document counts for the operator.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/path": {
+      "get": {
+        "operationId": "read_path",
+        "summary": "Shortest evidence path between two nodes.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/pin": {
+      "post": {
+        "operationId": "write_pin",
+        "summary": "Pin an episode.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/plan/{kind}": {
+      "parameters": [
+        {
+          "name": "kind",
+          "in": "path",
+          "required": true,
+          "description": "Plan kind: recall, decide or search.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "read_plan",
+        "summary": "Query plan of recall, decide or search without running it.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/promote-candidates": {
+      "get": {
+        "operationId": "read_promote",
+        "summary": "Pin candidates (read only; confirming goes through /pin).",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/recall": {
+      "get": {
+        "operationId": "read_recall",
+        "summary": "Recall episodes for an owner (query, topic, tags, rank).",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/roles": {
+      "get": {
+        "operationId": "read_roles",
+        "summary": "Agent roles; `roster=1` pages the roster with its relations.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/roles/export": {
+      "get": {
+        "operationId": "read_role_export",
+        "summary": "One owned role as a host file: skill, claude, gpt, agents-md, vincpack or mcp.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/search": {
+      "get": {
+        "operationId": "read_search",
+        "summary": "Hybrid search over documents and nodes.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/share": {
+      "get": {
+        "operationId": "read_share",
+        "summary": "Build a share pack and return its body (the caller saves it).",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/shutdown": {
+      "post": {
+        "operationId": "write_shutdown",
+        "summary": "Close the sidecar cleanly before the shell restarts it.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/space/proxy": {
+      "post": {
+        "operationId": "write_space_proxy",
+        "summary": "Forward one graph call to the account (desktop account mode). The member key travels in the body.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/spaces": {
+      "get": {
+        "operationId": "account_graph_spaces",
+        "summary": "Spaces the member key can open. Account graph plane: /api/graph/spaces on the web, /space/proxy on the desktop.",
+        "x-internal": false,
+        "x-served-by": "account",
+        "security": [
+          {
+            "accountSession": []
+          },
+          {
+            "memberKey": []
+          }
+        ],
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/suggest-ties": {
+      "get": {
+        "operationId": "read_suggest",
+        "summary": "Tie candidates for an orphan node from tags and topics.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/sync": {
+      "post": {
+        "operationId": "submit_sync",
+        "summary": "Run a sync session, pull then push (202 and a job).",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/sync/apply-delta": {
+      "post": {
+        "operationId": "write_sync_apply_delta",
+        "summary": "Apply a delta bundle.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/sync/docs-apply": {
+      "post": {
+        "operationId": "write_sync_docs_apply",
+        "summary": "Apply a document delta.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/sync/docs-export": {
+      "get": {
+        "operationId": "read_sync_docs_export",
+        "summary": "Document delta since a sequence number, or all of it.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/sync/domains": {
+      "get": {
+        "operationId": "read_sync_domains",
+        "summary": "Selectable sync topics and the current selection.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      },
+      "post": {
+        "operationId": "write_sync_domains",
+        "summary": "Save the selected sync topics.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/sync/pull-all": {
+      "post": {
+        "operationId": "submit_sync_pull_all",
+        "summary": "Copy the whole account graph into this store (202 and a job).",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/sync/pull-delta": {
+      "get": {
+        "operationId": "read_sync_pull_delta",
+        "summary": "This store's delta as a bundle.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/sync/purge-owner": {
+      "post": {
+        "operationId": "write_sync_purge_owner",
+        "summary": "Delete every node of an owner (account deletion cascade).",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/sync/push-all": {
+      "post": {
+        "operationId": "submit_sync_push_all",
+        "summary": "Copy every topic on this device to the account (202 and a job).",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/tag": {
+      "post": {
+        "operationId": "write_tag",
+        "summary": "Tag an episode.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/themes": {
+      "get": {
+        "operationId": "read_themes",
+        "summary": "Type vocabulary themes.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      },
+      "post": {
+        "operationId": "write_theme_create",
+        "summary": "Create a vocabulary theme.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/themes/activate": {
+      "post": {
+        "operationId": "write_theme_activate",
+        "summary": "Activate a vocabulary theme.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/topic-conversion": {
+      "post": {
+        "operationId": "write_topic_conversion",
+        "summary": "Topic to team conversion steps (preflight, batches, commit) driven by the account.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/topic-description": {
+      "post": {
+        "operationId": "write_topic_description",
+        "summary": "Write a topic description guarded by its content hash.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/touch": {
+      "post": {
+        "operationId": "write_touch",
+        "summary": "Record an access to an episode.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/types": {
+      "get": {
+        "operationId": "read_types",
+        "summary": "Types of one theme, optionally by status.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/types/ratify": {
+      "post": {
+        "operationId": "write_type_ratify",
+        "summary": "Ratify a proposed type.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/types/reject": {
+      "post": {
+        "operationId": "write_type_reject",
+        "summary": "Reject a proposed type.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/types/rename": {
+      "post": {
+        "operationId": "write_type_rename",
+        "summary": "Rename a type.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/view": {
+      "get": {
+        "operationId": "read_view",
+        "summary": "View level 0: topic distribution and the coupling matrix.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sidecarToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Session token the shell generates and hands to the app."
+      },
+      "accountSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-session",
+        "description": "Account session cookie (web). Writes also send the CSRF double submit."
+      },
+      "memberKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Member key from the OS keychain. The app puts it in the /space/proxy body and the sidecar sends it to the account as a bearer token."
+      }
+    },
+    "responses": {
+      "Json": {
+        "description": "JSON envelope. Errors carry an `error` field.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    }
+  }
+}

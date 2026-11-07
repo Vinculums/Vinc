@@ -79,6 +79,36 @@ class BuildPackTests(unittest.TestCase):
         self.assertEqual(pack["fragment"]["edges"],
                          [{"from": "concept:a", "to": "concept:b", "type": "relates_to"}])
 
+    def test_node_cap_refuses_before_building(self):
+        # 상한을 넘으면 팩을 안 짓고 거절한다(한 호출로 통째 긁기 방지). 노드 수·상한을 함께 돌려준다.
+        store = self._store()
+        pack = share.build_share_pack(owner="user:alice", domain="math", max_nodes=1, store=store)
+        self.assertFalse(pack["executed"])
+        self.assertEqual(pack["note"], "share_too_large")
+        self.assertEqual(pack["limit"], 1)
+        self.assertEqual(pack["node_count"], 3)   # concept:a · concept:b · ep:1
+        # 거절은 엣지를 읽기 전이다 — 엣지 쿼리(UNION ALL)가 돌지 않는다.
+        self.assertFalse(any("UNION ALL" in cy for cy, _ in store.calls))
+
+    def test_node_cap_off_builds(self):
+        # 0 이하면 상한 없음 — 기존 동작 그대로.
+        pack = share.build_share_pack(owner="user:alice", domain="math", max_nodes=0, store=self._store())
+        self.assertTrue(pack["executed"])
+
+    def test_node_cap_default_from_env(self):
+        import os
+        prev = os.environ.get("VINC_SHARE_MAX_NODES")
+        os.environ["VINC_SHARE_MAX_NODES"] = "2"
+        try:
+            pack = share.build_share_pack(owner="user:alice", domain="math", store=self._store())
+            self.assertFalse(pack["executed"])
+            self.assertEqual(pack["limit"], 2)
+        finally:
+            if prev is None:
+                del os.environ["VINC_SHARE_MAX_NODES"]
+            else:
+                os.environ["VINC_SHARE_MAX_NODES"] = prev
+
     def test_no_preference_signals_in_pack(self):
         pack = share.build_share_pack(owner="user:alice", domain="math",
                                       generated_at="x", store=self._store())

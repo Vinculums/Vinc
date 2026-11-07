@@ -1,17 +1,20 @@
-import { api, cfg, WEB } from "./api";
-import type { GraphEdge, NavGroup, NavNode, NavTreeRes } from "./api";
+import { api, cfg, isCommunitySpace } from "./api";
+import type { GraphEdge, GraphNode, NavGroup, NavTreeRes } from "./api";
 import { COPY } from "./copy";
 import { docTitle } from "./doc-title";
 import { icon } from "./icons";
-import { applyDefaults, foldsOwnRows, ownKey } from "./lnb-tree";
+import { applyDefaults, bridgeKey, foldsOwnRows, ownKey } from "./lnb-tree";
 import type { ThemeMode } from "./theme";
-import { tintMap } from "./view-tint";
-import { mark3dSvg, markSvg } from "./surfaces/view-planar";
+import { tintPlan } from "./view-tint";
+import { esc } from "./components";
+import { loaderRows } from "./vinc-loaders.js";
 
-/** 좌측 문서 트리 (DEC D69) — 셸의 두 번째 크롬.
+/** 좌측 문서 트리 (DEC D69) — 셸의 LNB 한 장.
  *
- *  여기 사는 것: 표면 내비(홈·검색·팩) · 주제 트리(주제 → 그 주제의 문서 또는 노드)
- *  · 접기.
+ *  여기 사는 것: 맨 위 줄(홈 · Agent) · 주제 트리(주제 → 그 주제의 문서) · 바닥의
+ *  설정. 층이 둘이던 시절의 종 레일(개념·결정·기록…)은 2026-10-22 에 걷었다 — 문서를
+ *  다루는 자리에서 노드 종을 고르는 일은 그래프의 범례가 맡는다.
+ *  근거: [[decision:the-desktop-shell-is-documents-first]]
  *  D56 이 상단 바 하나로 몰아넣었던 것을 되돌린다. 되돌리는 이유는 그때와 전제가
  *  다르기 때문이다 — 이 사이드바가 싣는 것은 "표면 5개로 가는 내비"(D26 이 아이콘
  *  레일로 충분하다고 판정한 것)가 아니라 **문서 탐색기**다. Obsidian 으로 치면
@@ -20,10 +23,12 @@ import { mark3dSvg, markSvg } from "./surfaces/view-planar";
  *  **문서 정렬은 개념 계층 깊이순**이다(`/nav-tree`). 얕은 개념(선행·원본)의 문서가
  *  위, 깊은 개념(파생)의 문서가 아래로 들여쓰기된다. 최근 수정순이 아닌 이유: 목록의
  *  일이 "무엇이 새로운가"가 아니라 "이 주제가 어떻게 짜여 있는가"이기 때문이다.
+ *  "무엇이 새로운가"는 문서 홈의 목록이 맡는다(surfaces/home.ts).
  *
- *  **표면과의 계약은 훅 하나뿐이다**(상단 바와 같은 태도). View 가 마운트되면
- *  자기 `focusNode` 를 넘기고(setLnbNavigator), 떠나면 지운다. 훅이 없으면 문서
- *  클릭은 해시 착지로 강등된다 — 눌러도 아무 일 없는 줄을 만들지 않는다. */
+ *  **표면과의 계약은 훅뿐이다**(상단 바와 같은 태도). 문서 홈은 문서 열기를
+ *  (setLnbDocOpener), 그래프는 노드 착지를(setLnbNavigator) 넘기고, 둘 다 주제 고르기를
+ *  넘긴다(setLnbTopicPicker). 떠나면 지운다. 훅이 없으면 문서 클릭은 해시 착지로
+ *  강등된다 — 눌러도 아무 일 없는 줄을 만들지 않는다. */
 
 /** 트리는 그 문서가 **어느 주제 밑에 있는지 이미 안다** — 그 정보를 함께 넘긴다.
  *  받는 쪽(합계 뷰)은 개념 마크가 없어서 그래프 노드로는 주제를 되짚을 수 없다. */
@@ -37,15 +42,18 @@ type TopicPicker = (path: string | string[], add: boolean, set?: boolean) => voi
 
 const KEY_OPEN = "vinc.shell.lnb";        // 열림 상태(접기는 사용자 소유)
 // 펼친 주제 목록을 담던 옛 키. 이제 저장하지 않으므로 켤 때 한 번 지우기만 한다.
+// 제거 조건: 0.9.8 태그 뒤. 이 키를 쓴 마지막 판은 0.9.3 이고, 남은 값은 아무도 읽지 않아 해가 없다.
 const KEY_EXPANDED = "vinc.shell.lnb.groups";
-const KEY_KIND = "vinc.shell.lnb.kind";   // 종 레일이 고른 것
+const KEY_KIND = "vinc.shell.lnb.kind";   // 맨 위 줄이 고른 것(홈 = 빈 값 · Agent)
 
 let navigate: Navigator | null = null;
+/** 문서 홈이 넘기는 문서 열기. 있으면 문서 줄은 착지 노드와 무관하게 이것으로 연다. */
+let openDocHere: ((docId: string, domain?: string) => void) | null = null;
 let pickTopic: TopicPicker | null = null;
 let tree: NavTreeRes | null = null;
 let loading = false;
 let failed = false;
-let active: { domain?: string; nodeId?: string } = {};
+let active: { domain?: string; nodeId?: string; docId?: string } = {};
 /** 지금 스코프가 걸고 있는 주제들 — 트리 줄의 선택 표시가 이걸 읽는다. */
 let picked = new Set<string>();
 /** 펼친 주제(와 `own:` 접두의 항목 묶음). **저장하지 않는다**: 앱을 켤 때마다 기본
@@ -54,97 +62,58 @@ let picked = new Set<string>();
 let expanded = new Set<string>();
 const seenDefault = new Set<string>();
 
-/** 주제 색(보석색, 늘 켜짐) — 지도와 같은 `tintMap` 으로 만든다. paint 마다 한 번 만들어 줄마다 조회한다.
+/** 주제 색(보석색, 늘 켜짐) — 지도와 같은 `tintPlan` 으로, 주제 경로의 조상까지 넣어 만든다(`planTints`). paint 마다 한 번 만들어 줄마다 조회한다.
  *
  *  ⚠ **색을 배정하는 배열은 이 트리의 것이다**(지도의 것을 받아 오지 않는다).
- *  `tintMap` 은 넘긴 주제 집합을 정렬해 순위로 색을 주므로, 지도의 배열을 따라가면
+ *  `tintPlan` 은 넘긴 주제 집합을 정렬해 순위로 색을 주므로, 지도의 배열을 따라가면
  *  (1) 스코프를 옮길 때마다 왼쪽 트리의 색이 함께 흔들리고 (2) 지금 지도에 없는
  *  주제의 줄은 색을 잃으며 (3) 지도가 없는 표면에서는 색이 통째로 사라진다. 트리는
  *  자기 주제 전량을 늘 갖고 있어 집합이 안정적이라 이쪽을 정본으로 뒀다.
- *  대가는 **같은 주제가 지도와 다른 색으로 보일 수 있다**는 것이고, 받아들이는
- *  근거는 이 색이 뜻을 나르지 않는다는 성질이다(꺼도 아무 정보가 사라지지 않는다:
- *  [[decision:topic-tint-ships-on]]). */
+ *  대가는 **같은 주제가 지도와 다른 색으로 보일 수 있다**는 것이다. 전체 화면의 지도도
+ *  전량으로 색을 매기므로(view3d `tintDomains`) 거기서는 같은 영역·같은 색이 나오고, 영역
+ *  하나로 좁힌 렌즈에서만 갈린다(색은 영역을 말한다:
+ *  [[decision:topics-wear-their-area-jewel-2026-10-28]]). */
 let tints: Map<string, string> | null = null;
 const themeMode = (): ThemeMode =>
   document.documentElement.dataset.theme === "dark" ? "dark" : "light";
 /** 줄의 style 에 얹을 조각. ⚠ 깊이 잉크는 CSS 가 **부분문자열**로 읽는다
  *  (app.css 의 `[style*="--ink:0"]`) — `--ink:N` 리터럴을 깨지 않도록 **뒤에** 붙인다. */
+/** 주제 하나의 색. 그래프에서는 나침반이 쓰는 색 그대로(gsrc.colour), 문서에서는 같은 규칙으로 만든 표에서
+ *  가장 가까운 조상의 색을 쓴다. 뿌리(최상위 주제가 하나뿐일 때 그 주제)는 어느 영역도 아니라 색이 없다(중립 잉크).
+ *  그래프에서는 뿌리인지도 나침반의 `colour` 가 가린다(빈 문자열). 문서에서는 `planTints` 가 정한 `tintRoot` 다. */
+const tintOf = (domain: string): string => {
+  const d = domain.trim();
+  if (!d) return "";
+  if (gsrc?.colour) return gsrc.colour(d);
+  if (d === tintRoot) return "";
+  const segs = d.split("/");
+  for (let i = segs.length; i >= 1; i--) { const c = tints?.get(segs.slice(0, i).join("/")); if (c) return c; }
+  return "";
+};
 const tintStyle = (domain: string): string => {
-  const c = tints?.get(domain.trim());
+  const c = tintOf(domain);
   return c ? `;--tint:${c}` : "";
 };
+/** 문서 트리의 색 표: 나침반과 같게 주제 경로의 모든 조상까지 넣어 tintPlan 을 돌린다(넣는 집합이 같아야 같은 색이 나온다). */
+function planTints(domains: string[]): Map<string, string> {
+  const all = new Set<string>(), tops = new Set<string>();
+  for (const d of domains) { const segs = (d || "").split("/").filter(Boolean); if (segs.length) tops.add(segs[0]); segs.forEach((_, i) => all.add(segs.slice(0, i + 1).join("/"))); }
+  tintRoot = tops.size === 1 ? [...tops][0] : "";   // 최상위가 둘 이상이면 뿌리는 이름 없는 가상 뿌리라 색을 뺄 주제가 없다
+  return tintPlan([...all], themeMode()).topics;
+}
+/** 문서 트리의 뿌리 주제(`planTints` 가 정한다). `tints` 와 같은 때 같은 집합에서 만들어진다. */
+let tintRoot = "";
 
-/** 종 레일 한 칸. `dest` 는 종이 아니라 목적지(Agent). `offTopic` 은 주제 트리에
- *  서지 않는 종(Entity·Bridge)이라 조회를 보내지 않고 지도 렌즈만 건다.
- *  `group` 은 같은 표식을 쓰는 종을 자리로 묶는다(구/정사면체). */
 /** 새 역할의 기본 주제와 기존 호환 주제. 목록 발견은 이 주제로 제한하지 않는다. */
 export const AGENT_TOPICS = ["agent", "vinc/agent"] as const;
-/** 주제가 역할 주제이거나 그 아래인가. `agents`·`vinc/agentic` 은 아니다. */
-export const inAgentTopic = (d: string): boolean =>
-  AGENT_TOPICS.some((t) => d === t || d.startsWith(t + "/"));
 
-type RailItem = {
-  key: string; kind?: string; topics?: readonly string[]; mark: string;
-  dest?: boolean; offTopic?: boolean; group?: "sphere" | "tetra"; icon?: string;
-};
-
-/** 종 레일이 고를 수 있는 것. 2026-09-21 scope-back: 홈과 Agent 가 구분선 **위**
- *  (같은 급의 목적지), 선 아래는 종 묶음이다. Agent 를 선 아래에 두던 2026-09-09
- *  배치는 이 지시가 덮는다.
- *
- *  Entity·Bridge 는 `/nav-tree` 모집단이 아니다(`IN_DOMAIN` 이 넷에만 걸리고
- *  Bridge 는 `CROSSES`). 레일에 세우는 이유는 지도 렌즈이지 빈 주제를 만들기
- *  위함이 아니다. 정본은 `api/query.py` 의 `_TREE_PK`. */
-const RAIL: readonly RailItem[] = [
-  { key: "agent", kind: "concept", topics: AGENT_TOPICS, mark: "concept",
-    dest: true, icon: "domains" },
-  { key: "concept", kind: "concept", mark: "concept", group: "sphere" },
-  { key: "decision", kind: "decision", mark: "decision", group: "sphere" },
-  { key: "record", kind: "record", mark: "record", group: "tetra" },
-  { key: "episode", kind: "episode", mark: "episode", group: "tetra" },
-  // Entity 는 기록과 같은 정사면체 표식. 묶음이 같은 모양의 형제를 가른다.
-  { key: "entity", kind: "entity", mark: "record", group: "tetra", offTopic: true },
-  { key: "bridge", kind: "bridge", mark: "bridge", offTopic: true },
-];
-const RAIL_KEYS = RAIL.map((r) => r.key);
-/** 레일의 현재 선택. **빈 문자열이 뜻을 가진 상태다: "아무것도 안 고름" = 전체**
- *  (발주자 지시 2026-09-09: "홈 누르면 아무것도 선택 안 한 것으로 보여준다.
- *  아무것도 선택 안 함은 모든 노드 전체라는 즉, 기본 화면을 말한다").
- *  그래서 기본값도 빈 값이다 — 앱을 처음 열면 한 종에 갇혀 있는 것이 아니라
- *  전체를 보고 있어야 한다(여태 기본이 `concept` 이라 개념만 보였다). */
-let railKey: string = RAIL_KEYS.includes(localStorage.getItem(KEY_KIND) || "")
-  ? localStorage.getItem(KEY_KIND)! : "";
-/** 고른 종의 정의. 아무것도 안 골랐으면 **없다** — 여기서 첫 항목으로 흘려보내면
- *  "전체"라는 상태가 조용히 "개념"이 된다(그 폴백이 이 기능을 막고 있었다). */
-const rail = () => RAIL.find((r) => r.key === railKey);
+/** 맨 위 줄의 선택. **빈 문자열 = 홈**(아무것도 안 고름 = 전체, 발주자 지시 2026-09-09).
+ *  다른 값은 `agent` 하나다. 종 레일이 쓰던 저장값(`concept` 등)은 홈으로 읽는다. */
+let railKey: string = localStorage.getItem(KEY_KIND) === "agent" ? "agent" : "";
+const isAgent = () => railKey === "agent";
 let wired = false;
 
-/** 종 표식 — 지도가 쓰는 어휘 그대로다. 여기서 **다시 그리지 않고** 그 함수를
- *  부른다: 갈라 두면 같은 노드가 화면마다 다른 모양이 되고, 그건 형태에 뜻을 실은
- *  것을 스스로 무너뜨리는 일이다(D35).
- *
- *  **레일은 3D, 줄은 평면이다.** 같은 어휘의 두 투영이고(범례가 관점에 따라 그렇게
- *  한다) 나누는 근거는 둘이다:
- *   ① 크기 — 레일은 18px 배지라 구의 상단 하이라이트와 정사면체의 두 면이 읽히지만,
- *     줄의 11px 에서는 그 음영이 잉크 얼룩이 된다.
- *   ② id — 3D 구는 하이라이트에 그라디언트 `<defs>` 가 필요하고 그 id 는 문서 안에서
- *     유일해야 한다. 레일은 다섯 줄이라 종마다 하나면 되는데, 트리는 같은 종이 수십
- *     줄이라 같은 id 가 그만큼 생긴다(브라우저는 첫 정의만 쓴다 — 지금은 값이 같아
- *     안 보이지만 하나를 고치는 날 나머지가 조용히 안 따라온다). */
-function kindMark3d(kind: string, key: string, px: number): string {
-  return mark3dSvg(kind, px, `rail-${key}`, "lnb-mk");
-}
-/** 트리 줄의 평면 표식. `markSvg` 는 좌표를 받으므로 20×20 뷰박스 중앙에 세운다. */
-function kindMark(kind: string, px: number): string {
-  const body = markSvg(kind, false, 10, 10, kind === "concept" || kind === "decision" ? 6 : 5.6,
-                       "lnb-kmk");
-  return `<svg class="lnb-mk" width="${px}" height="${px}" viewBox="0 0 20 20"
-    aria-hidden="true">${body}</svg>`;
-}
-
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T | null;
-const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
-  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
 /** 저장된 **넓은 창의** 선호 — 트리를 열로 펴 둘지. */
 function isOpen(): boolean {
@@ -163,9 +132,8 @@ const compact = () => window.matchMedia(COMPACT).matches;
 function setOpen(open: boolean, persist = true) {
   if (persist) localStorage.setItem(KEY_OPEN, open ? "open" : "closed");
   document.getElementById("shell")?.setAttribute("data-lnb", open ? "open" : "closed");
-  // 손잡이는 **상단 바 왼쪽 끝**에 하나다(발주자 지시 2026-09-09). 접는 대상이
-  // 레일 + 트리 **둘 다**이므로, 접히는 것 안에 손잡이를 두면 함께 사라진다.
-  // 자리가 레일 위라 접는 대상 위에 손잡이가 선다.
+  // 손잡이는 LNB 맨 위 줄의 오른쪽 끝에 하나다(2026-10-22). 접히면 LNB 가 좁은 띠가
+  // 되고 손잡이는 그 띠의 맨 위에 남는다 — 접는 것이 다시 펼 손잡이를 지우지 않는다.
   const t = $("tb-shell-toggle");
   if (t) {
     t.setAttribute("aria-expanded", String(open));
@@ -183,67 +151,73 @@ function setOpen(open: boolean, persist = true) {
 /** View 가 마운트/언마운트하며 착지 동작을 넘긴다. null 이면 해시 착지로 강등. */
 export function setLnbTopicPicker(fn: TopicPicker | null) {
   pickTopic = fn;
-  // 저장된 레일이 Agent 인 채로 새로 열면 setRailKey 를 안 거치므로 스코프가 안 걸린다.
-  // View 가 피커를 처음 걸 때 한 번만 건다(딥링크로 들어왔으면 그 착지를 덮지 않는다).
-  // View 의 첫 show 뒤에 도는 것은 안전하다 — show 는 세대 번호로 옛 것을 버린다.
-  if (fn && !launchScoped && railKey === "agent" && agentRoster !== null) {
-    launchScoped = true;
-    const here = location.hash.replace(/^#/, "");
-    if (here === "" || here === "view") queueMicrotask(scopeAgentGraph);
-  }
+  // 맨 위 줄(홈 · Agent)은 **무엇을** 볼지, 머리의 문서 | 그래프는 **어떻게** 볼지다. 그래서 Agent 가
+  // 골라져 있으면 표면이 첫 자리로 뜰 때마다 Agent 의 첫 자리로 맞춘다: 그래프는 역할 주제로 좁히고,
+  // 문서 홈은 Agents 보드로 간다. 앱을 켤 때만이 아니라 문서 | 그래프를 오갈 때마다다. 딥링크(첫 자리가
+  // 아닌 주소)는 덮지 않는다. View 의 첫 show 뒤에 도는 것은 안전하다 — show 는 세대 번호로 옛 것을 버린다.
+  if (fn && isAgent() && atSurfaceRoot()) queueMicrotask(() => {
+    if (pickTopic !== fn || !isAgent() || !atSurfaceRoot()) return;
+    if (onGraph()) scopeAgentGraph();
+    else location.hash = AGENTS_BOARD;
+  });
 }
-/** 첫 실행 스코프를 이미 걸었는가(세션에 한 번). */
-let launchScoped = false;
+/** 읽어 온 Agent 역할 수. 아직 안 읽었으면 null. 홈의 빈 목록이 무엇으로 이을지 가른다. */
+export const agentRoleCount = (): number | null => agentRoster ? agentRoster.length : null;
 
-/** 종 렌즈 — 레일에서 고른 종을 **지도에도** 건다. 훅이 없으면(표면이 없거나 떠났으면)
- *  레일은 트리만 바꾼다: 눌러도 아무 일 없는 손잡이를 만들지 않는다는 규율의 반대편
- *  이다. 여기서는 "지도가 없으면 지도 일은 안 한다"가 그 규율이다.
- *
- *  넘기는 것은 **종 이름 하나**다(노드 id 목록이 아니라). 지금 지도에 무엇이 그려져
- *  있는지는 표면만 알고, 그 집합을 트리가 다시 계산하면 두 벌이 어긋난다. */
-type KindLens = (kind: string | null) => void;
-let kindLens: KindLens | null = null;
-export function setLnbKindLens(fn: KindLens | null) {
-  kindLens = fn;
-  if (fn) fn(lnbKind());
-}
+/** Agents 보드의 주소. 문서 홈 표면 안의 한 면이다(surfaces/home.ts). */
+export const AGENTS_BOARD = "#home/agents";
 
-/** 지금 레일이 고른 종. Agent 는 주제 필터라 **종으로는 개념**이다 — 지도 강조도
- *  개념 전체가 되면 뜻이 흐려지므로 그때는 종 렌즈를 걸지 않는다(null). */
-export function lnbKind(): string | null {
-  const r = rail();
-  if (!r) return null;                 // 아무것도 안 고름 = 렌즈 없음 = 지도 전체
-  return r.topics ? null : (r.kind || null);
+/** 지금 표면이 자기 첫 자리에 있는가(`#` · `#home` · `#view`) — 딥링크 착지를 덮지 않으려는 검사. */
+const atSurfaceRoot = (): boolean => ["", "home", "view"].includes(location.hash.replace(/^#/, ""));
+/** 지금 표면이 그래프인가. 아니면 문서 홈이다(검색 표면은 둘 다 아니지만 홈의 동선을 따른다). */
+const onGraph = (): boolean => /^#view(\/|$)/.test(location.hash);
+/** 문서 쪽의 첫 자리 — Agent 가 골라져 있으면 Agents 보드, 아니면 문서 홈. 머리의 `문서` 전환이 쓴다. */
+export const documentsHome = (): string => isAgent() ? AGENTS_BOARD : "#home";
+
+/** 그래프가 캔버스에서 고른 주제를 풀어 준다(주소는 그대로 `#view` 라 해시로는 못 푼다).
+ *  풀었으면 true. 없거나 풀 것이 없으면 해시 착지로 간다. */
+let clearScope: (() => boolean) | null = null;
+export function setLnbScopeClearer(fn: (() => boolean) | null) {
+  clearScope = fn;
 }
 
 export function setLnbNavigator(fn: Navigator | null) {
   navigate = fn;
 }
 
+/** 문서 홈이 마운트하며 문서 열기를 넘긴다. null 이면 종전 동선(그래프 착지)으로 간다. */
+export function setLnbDocOpener(fn: ((docId: string, domain?: string) => void) | null) {
+  openDocHere = fn;
+}
+
 /** 지금 어디를 보고 있는지 트리에 표시한다(크럼이 하던 일 — D71 로 여기 왔다). */
 
-export function setLnbActive(sel: { domain?: string; domains?: string[]; nodeId?: string }) {
+let lastActiveKey = "";
+export function setLnbActive(sel: { domain?: string; domains?: string[]; nodeId?: string;
+                                    docId?: string; reveal?: string }) {
   // 주제는 이제 **여럿**일 수 있다(스코프가 목록이 됐다). 첫 번째를 대표로 두고
   // 나머지는 선택 표시로만 쓴다 — 조상 펼치기는 대표 하나면 충분하다.
+  // `reveal` 은 고르지 않고 **펼치기만** 할 주제다(문서 홈에서 연 문서의 자리).
   const doms = sel.domains?.length ? sel.domains : sel.domain ? [sel.domain] : [];
   active = { ...sel, domain: doms[0] };
   picked = new Set(doms);
-  if (doms[0]) {
+  // 뷰 머리가 그래프의 범위를 이 한 자리에서 받는다(topbar.ts `paintGraphLead`).
+  dispatchEvent(new CustomEvent("vinc:lnb-active", { detail: { domain: doms[0] || "" } }));
+  const open = sel.reveal || doms[0];
+  // 같은 자리를 다시 알리면(목록을 다시 그릴 때마다 온다) 펴지 않는다: 사용자가 방금 접은 주제가 되살아나지 않게
+  const key = `${sel.reveal ? "r:" : ""}${open || ""}`;
+  const fresh = key !== lastActiveKey;
+  lastActiveKey = key;
+  if (open && (fresh || sel.reveal)) {
     // 지금 있는 주제는 접혀 있으면 안 된다 — 그리고 중첩이 생겼으므로 **조상까지**
-    // 함께 편다. 자기만 펴면 부모가 닫힌 채라 화면에 나타나지 않는다.
-    const segs = doms[0].split("/").filter(Boolean);
+    // 함께 편다. 자기만 펴면 부모가 닫힌 채라 화면에 나타나지 않는다. 하위 주제가 있는
+    // 줄은 자기 문서를 한 줄로 접어 두므로(`ownKey`) 그 묶음도 편다.
+    const segs = open.split("/").filter(Boolean);
     segs.forEach((_s, i) => expanded.add(segs.slice(0, i + 1).join("/")));
+    if (sel.reveal) expanded.add(ownKey(sel.reveal));
   }
   paint();
 }
-
-/** 이 응답이 노드 갈래를 그릴 수 있는가. 서버는 `nodes=1` 로 물었을 때만 싣는다. */
-const hasNodes = (t: NavTreeRes | null): boolean =>
-  !!t?.domains?.length && t.domains.some((g) => Array.isArray(g.nodes));
-
-/** 레일이 그리는 개수 — 응답의 `counts.kinds` 하나에서 온다(제목을 싣지 않는 집계).
- *  종을 갈아 끼워도 이 값은 안 바뀌므로 마지막으로 받은 것을 들고 있는다. */
-let kindCounts: Record<string, number> = {};
 
 /** 역할 id 접두. 로스터 개념 `concept:agent-orchestration` 은 접두가 같아
  *  역할이 아니다(`vinc_mcp.roles.is_role_id`). */
@@ -260,7 +234,7 @@ export const stripRolePrefix = (s: string): string => s.replace(/^Agent role:\s*
 /** 여섯 팀의 화면 순서. 이름은 `props.team` 정본이고, 순서는 로스터 v2 가
  *  비준한 그대로다. 여기 일곱 번째 팀을 만들지 않는다.
  *  근거: [[decision:roster-v2-ratified-2026-09-16]]
- *  [[decision:vin88-agent-click-opens-roster-list-graph-scopes-agent-domains-2026-09-22]] */
+ *  [[decision:the-agent-rail-opens-an-agents-board-and-roles-edit-in-place-2026-10-24]] */
 const AGENT_TEAM_ORDER = [
   "Program Office",
   "Product Engineering",
@@ -270,17 +244,14 @@ const AGENT_TEAM_ORDER = [
   "Platform and Release",
 ] as const;
 
-type AgentRel = { from: string[]; then: string[]; beside: string[] };
-type AgentRole = {
+export type AgentRel = { from: string[]; then: string[]; beside: string[] };
+export type AgentRole = {
   id: string; domain: string; title: string; team: string;
-  teamRole: string; rel: AgentRel;
+  teamRole: string; mission: string; rel: AgentRel;
 };
 
-/** `/graph` 가 노드에 싣는 props. 클라 GraphNode 타입은 이 열을 아직 안 적는다. */
-type GraphRoleNode = {
-  id: string; label?: string; domain?: string; kind?: string;
-  props?: Record<string, unknown>;
-};
+/** `/graph` 가 노드에 싣는 props 까지 읽는 노드. 클라 GraphNode 타입은 이 열을 아직 안 적는다. */
+type GraphRoleNode = GraphNode & { props?: Record<string, unknown> };
 
 let agentRoster: AgentRole[] | null = null;
 
@@ -324,7 +295,7 @@ function roleRels(rid: string, byId: Map<string, GraphRoleNode>,
   return { from: sort(from), then: sort(then), beside: sort(beside) };
 }
 
-function teamRank(team: string): number {
+export function teamRank(team: string): number {
   const i = (AGENT_TEAM_ORDER as readonly string[]).indexOf(team);
   return i < 0 ? AGENT_TEAM_ORDER.length : i;
 }
@@ -334,7 +305,7 @@ function teamRoleRank(role: string): number {
   return 2;
 }
 
-function buildAgentRoster(g: { nodes?: GraphRoleNode[]; edges?: GraphEdge[] } | null
+export function buildAgentRoster(g: { nodes?: GraphRoleNode[]; edges?: GraphEdge[] } | null
                           | undefined): AgentRole[] {
   const nodes = [...new Map((g?.nodes || []).filter((n) => isRoleId(n.id))
     .map((n) => [n.id, n])).values()];
@@ -346,6 +317,8 @@ function buildAgentRoster(g: { nodes?: GraphRoleNode[]; edges?: GraphEdge[] } | 
     title: roleTitle(n),
     team: strProp(n.props, "team"),
     teamRole: strProp(n.props, "team_role"),
+    mission: (typeof (n as { mission?: unknown }).mission === "string"
+      ? String((n as { mission?: string }).mission) : strProp(n.props, "mission")).trim(),
     rel: roleRels(n.id, byId, edges),
   }));
   rows.sort((a, b) => {
@@ -359,47 +332,58 @@ function buildAgentRoster(g: { nodes?: GraphRoleNode[]; edges?: GraphEdge[] } | 
   return rows;
 }
 
-function relLine(label: string, names: string[]): string {
-  if (!names.length) return "";
-  return `<span class="lnb-agent-rel">${esc(label)} · ${esc(names.join(" · "))}</span>`;
-}
-
-function agentHintHtml(): string {
+/** Agent 레일의 트리. 보드(agent-map)와 같은 구조다: Agent(Maker · Checker) → 그 Agent 가 읽는 절차, 그리고 정책 묶음.
+ *  물러난 직함 역할은 싣지 않는다. Agent 가 없는 스페이스(절차가 붙은 역할이 없다)는 역할을 한 줄씩 나열한다.
+ *  줄을 누르면 보드가 그것을 고른다(절차는 보드 옆 칸에서 바로 고친다). 근거: [[vinc.canon.terminology §3.2]] */
+type AgentMapLite = { agents: { id: string; title: string; domain: string }[];
+  procedures: { id: string; title: string; agent: string; domain: string }[]; policies: { id: string; title: string; domain: string }[] };
+let agentMap: AgentMapLite | null = null;
+let lastDomains: string[] = [];   // 문서 트리가 마지막으로 받은 주제들(Agent 트리의 색을 같은 표로 매긴다)
+let agentMapLoading = false;
+let agentPick = "";
+let agentCol = new Map<string, string>(), polCol = "";   // Agent 화면의 색 = Agent 단위(보드와 같은 표, agent-map.agentColours)
+const AGENT_POL = "agent-policies";
+function paintAgentTree(): string {
   const L = COPY.ui.lnb;
-  return `<p class="lnb-none hint">${esc(WEB
-    ? L.agentHintWeb(COPY.ui.viewx.cardAskCopy, COPY.ui.viewx.askRole)
-    : L.agentHint(COPY.ui.viewx.cardAskCopy, COPY.ui.viewx.askRole, COPY.ui.settingsUi.navAi))}</p>`;
-}
-
-function paintAgentList(roles: AgentRole[]): string {
-  const L = COPY.ui.lnb;
-  const hint = agentHintHtml();
-  if (!roles.length) {
-    return hint + `<p class="lnb-none hint">${esc(L.noNodes)}</p>`;
+  if (!agentMap) {
+    const roles = agentRoster || [];
+    if (!roles.length) return `<div class="lnb-agent-empty"><p class="lnb-none hint">${esc(L.agentsEmpty)}</p>
+      <button class="btn btn-primary lnb-new-role" type="button">${esc(COPY.author.role.title)}</button></div>`;
+    return `<div class="lnb-tree" role="tree">${roles.map((r) => { const on = active.nodeId === r.id;
+      return `<button class="lnb-doc lnb-node lnb-agent-role${on ? " on" : ""}" role="treeitem" aria-level="1" data-nodeid="${esc(r.id)}" data-dom="${esc(r.domain)}"
+        style="--lvl:0;--ink:0${tintStyle(r.domain)}"><span class="lnb-dot" aria-hidden="true"></span><span class="lnb-dtitle">${esc(r.title)}</span></button>`; }).join("")}</div>`;
   }
-  const parts: string[] = [hint, `<div class="lnb-tree lnb-agent-list" role="tree">`];
-  let team = "\0";
-  for (const r of roles) {
-    const t = r.team || L.agentNoTeam;
-    if (t !== team) {
-      team = t;
-      parts.push(`<p class="lnb-agent-team">${esc(t)}</p>`);
-    }
-    const on = active.nodeId === r.id;
-    const lead = r.teamRole === "lead" ? ` · ${esc(L.agentLead)}` : "";
-    parts.push(`<button class="lnb-doc lnb-node lnb-agent-role${on ? " on" : ""}"
-      role="treeitem" aria-level="2"${on ? ' aria-selected="true"' : ""}
-      data-nodeid="${esc(r.id)}" data-dom="${esc(r.domain)}"
-      data-tip="${esc(L.nodeTip)}">
-      <span class="lnb-dtitle">${esc(r.title)}${lead}</span>
-      ${relLine(L.agentFrom, r.rel.from)}
-      ${relLine(L.agentThen, r.rel.then)}
-      ${relLine(L.agentBeside, r.rel.beside)}
-    </button>`);
+  const tintA = (agentId: string) => { const c = agentId === AGENT_POL ? polCol : agentCol.get(agentId); return c ? `;--tint:${c}` : ""; };
+  const row = (kind: string, id: string, title: string, agentId: string) => { const on = agentPick === id;
+    return `<button class="lnb-doc lnb-arow${on ? " on" : ""}" role="treeitem" aria-level="2" data-apick="${kind}" data-id="${esc(id)}" title="${esc(title)}"
+      style="--lvl:1;--ink:0${tintA(agentId)}"><span class="${kind === "policy" ? "lnb-pdot" : "lnb-dot"}" aria-hidden="true"></span><span class="lnb-dtitle">${esc(title)}</span></button>`; };
+  let h = `<div class="lnb-tree" role="tree">`;
+  // 만드는 쪽이 먼저(보드도 Maker 가 왼쪽이다). 그 밖의 Agent 는 이름순
+  const rank = (a: { title: string }) => { const i = ["maker", "checker"].indexOf(a.title.toLowerCase()); return i < 0 ? 9 : i; };
+  for (const a of [...agentMap.agents].sort((x, y) => rank(x) - rank(y) || x.title.localeCompare(y.title))) {
+    const key = `agent:${a.id}`, open = expanded.has(key), on = agentPick === a.id, procs = agentMap.procedures.filter((p) => p.agent === a.id);
+    h += `<div class="lnb-grow${on ? " on" : ""}"><button class="lnb-group${on ? " on" : ""}" role="treeitem" aria-level="1" data-group="${esc(key)}" data-apick="agent" data-id="${esc(a.id)}"
+        aria-expanded="${open}" style="${tintA(a.id).slice(1)}"><span class="lnb-caret${open ? " open" : ""}" aria-hidden="true">›</span>
+        <span class="lnb-adot" aria-hidden="true"></span><span class="lnb-gname">${esc(a.title)}</span><span class="lnb-gcount">${procs.length}</span></button></div>`;
+    if (open) h += `<div class="lnb-docs" role="group">${procs.map((p) => row("procedure", p.id, p.title, a.id)).join("")}</div>`;
   }
-  parts.push(`</div>`);
-  return parts.join("");
+  if (agentMap.policies.length) {
+    const open = expanded.has(ownKey(AGENT_POL));
+    h += `<div class="lnb-grow"><button class="lnb-group" type="button" role="treeitem" aria-level="1" data-fold="${AGENT_POL}" aria-expanded="${open}" style="${tintA(AGENT_POL).slice(1)}">
+        <span class="lnb-caret${open ? " open" : ""}" aria-hidden="true">›</span><span class="lnb-pdot lnb-pmark" aria-hidden="true"></span><span class="lnb-gname">${esc(L.agentPolicies)}</span><span class="lnb-gcount">${agentMap.policies.length}</span></button></div>`
+      + (open ? `<div class="lnb-docs" role="group">${agentMap.policies.map((q) => row("policy", q.id, q.title.replace(/^Policy:\s*/, ""), AGENT_POL)).join("")}</div>` : "");
+  }
+  return h + `</div>`;
 }
+/** 보드에서 고르면 LNB 의 그 줄을 켠다. */
+window.addEventListener("vinc:agent-pick", (e) => {
+  const d = (e as CustomEvent).detail as { kind?: string; id?: string } | null; agentPick = String(d?.id || "");
+  // 보드에서 고른 것이 LNB 에서 보이게: 절차면 그 Agent 를, 정책이면 정책 묶음을 편다
+  if (d?.kind === "procedure") { const p = agentMap?.procedures.find((q) => q.id === d.id); if (p) expanded.add(`agent:${p.agent}`); }
+  else if (d?.kind === "agent") expanded.add(`agent:${d.id}`);
+  else if (d?.kind === "policy") expanded.add(ownKey(AGENT_POL));
+  if (isAgent() && !gsrc) { paint(); document.querySelector<HTMLElement>("#lnb-body .lnb-doc.on, #lnb-body .lnb-group.on")?.scrollIntoView({ block: "nearest" }); }
+});
 
 /** 다시 읽기의 세대 번호. 종을 빠르게 갈아 끼우면 앞 종의 응답이 늦게 와서 뒤 종의
  *  트리를 덮는다 — 가장 최근 호출의 응답만 상태에 쓴다. */
@@ -418,52 +402,32 @@ export async function refreshLnb(opts: { quiet?: boolean } = {}): Promise<void> 
     paint();
   }
   try {
-    const r = rail();
-    if (r?.offTopic) {
-      // Entity·Bridge 는 주제 트리 계약 밖이다. 없는 종을 물으면 서버가
-      // unknown kind 로 실패하고, 그때 레일이 "종이 없어졌다"로 읽힌다.
-      tree = { executed: true, domains: [], unfiled: [] };
-      agentRoster = null;
-      failed = false;
-      // 레일 개수는 nav-tree 응답에만 실려 온다. 이 종을 고른 채 새로 열면 그 조회를
-      // 한 번도 안 하므로, 제목 없이 개수만 받는 호출로 채운다(노드 목록을 안 실어 가볍다).
-      // 못 받으면 레일은 지난 값 그대로 둔다.
-      if (!Object.keys(kindCounts).length) {
-        try {
-          const c = await api.navTree(cfg.owner);
-          if (stale()) return;
-          if (c?.counts?.kinds) kindCounts = c.counts.kinds;
-        } catch { /* 개수만 못 받았다 */ }
-      }
-      paintRail();
-    } else if (r?.dest) {
+    if (isAgent()) {
       // 주제 트리로 강등하지 않는다. 빈 로스터와 조회 실패를 구별한다.
       const roster = await api.roleRoster(cfg.owner);
       if (stale()) return;
       tree = { executed: true, domains: [], unfiled: [] };
       agentRoster = buildAgentRoster(roster);
       failed = false;
-      if (!opts.quiet && ["", "view"].includes(location.hash.replace(/^#/, ""))) scopeAgentGraph();
+      window.dispatchEvent(new CustomEvent("vinc:agents-changed"));
+      // Agent(절차가 붙은 역할)와 그 절차·정책. 보드가 같은 것을 읽으므로 잠깐 사이의 두 번째 읽기는 앞의 것을 쓴다
+      agentMapLoading = true;
+      try { const m = await import("./surfaces/agent-map"); const d = await m.loadAgentMap(agentRoster);
+        if (stale()) return; agentMap = d ? { agents: d.agents, procedures: d.procedures, policies: d.policies } : null;
+        agentCol = d ? m.agentColours(d.agents) : new Map(); polCol = m.policyColour();
+        if (!agentPick) agentPick = m.pickedInAgentMap(); }
+      catch { agentMap = null; }
+      agentMapLoading = false;
     } else {
-      // 늘 노드까지 받는다 — 층 2 가 문서를 **노드 아래** 세우므로 노드 목록이
-      // 없으면 그릴 것이 없다. 대신 **한 종만** 받는다: 넷을 한꺼번에 실으면 응답이
-      // 그래프 전량이 된다(기록이 가장 큰 종이고 웹모드에서는 계정 프록시를 건넌다).
-      // 종을 안 골랐으면 `kind` 를 안 싣는다 — 서버는 그때 네 종을 모두 준다.
-      // 응답은 지역에 받고, 세대가 그대로일 때만 상태에 쓴다(늦게 온 앞 종의 응답이
-      // 뒤 종의 트리를 덮지 않게).
-      const next = await api.navTree(cfg.owner, { nodes: true, kind: r?.kind });
+      // 주제 → 문서만 받는다(노드 목록은 싣지 않는다). 노드는 그래프가 그리고, 이 열은
+      // 문서를 다룬다. 응답은 지역에 받고 세대가 그대로일 때만 상태에 쓴다.
+      const next = await api.navTree(cfg.owner);
       if (stale()) return;
       tree = next;
       failed = !tree?.executed;
+      if (tree?.domains?.length) lastDomains = tree.domains.map((g) => g.domain);
       agentRoster = null;
     }
-    // 개수는 이 응답에 함께 온다. 못 받았으면 지난 값을 지우지 않는다 — 레일의
-    // 숫자가 조회 실패마다 사라지면 그것이 곧 "종이 없어졌다"로 읽힌다.
-    if (tree?.counts?.kinds) kindCounts = tree.counts.kinds;
-    // 개수가 방금 왔으므로 레일을 다시 칠한다. 첫 마운트 때 레일이 먼저 그려지고
-    // 조회가 뒤따르므로, 이 한 줄이 없으면 레일의 숫자가 **첫 화면에서 늘 0** 이다
-    // (실측 2026-09-08: 마운트 직후 툴팁이 "노드 0개"였다).
-    paintRail();
   } catch {
     if (stale()) return;
     if (opts.quiet) return;          // 있던 트리를 지우지 않는다
@@ -473,7 +437,8 @@ export async function refreshLnb(opts: { quiet?: boolean } = {}): Promise<void> 
   paint();
 }
 
-/** 역할들의 실제 주제로 지도를 연다. 빈 목록에는 기존 역할 주제를 쓴다. */
+/** 역할들의 실제 주제로 지금 표면을 좁힌다(그래프는 지도를, 문서 홈은 목록을).
+ *  빈 목록에는 기존 역할 주제를 쓴다. */
 let agentGraphTopics: string[] = [...AGENT_TOPICS];
 function scopeAgentGraph(): void {
   const here = [...new Set((agentRoster || []).map((r) => r.domain).filter(Boolean))];
@@ -482,113 +447,88 @@ function scopeAgentGraph(): void {
 }
 
 /** Agent 를 떠나면 그 주제 스코프를 벗긴다. pickTopic 은 해시를 안 바꾸므로
- *  `#view` 가 이미 자리여도 hashchange 를 한 번 보내 L0 로 되돌린다. */
+ *  표면의 첫 자리가 이미 주소여도 hashchange 를 한 번 보내 전체로 되돌린다. */
 function unscopeAgentGraph(): void {
   const agentScope = [...picked].some((d) => agentGraphTopics.includes(d));
   if (!agentScope) return;
-  const here = location.hash.replace(/^#/, "");
-  if (here === "view" || here.startsWith("view/")) {
-    if (here !== "view") location.hash = "#view";
-    else window.dispatchEvent(new HashChangeEvent("hashchange"));
-  }
+  goSurfaceRoot();
 }
 
-/** 종 전환 — **늘 다시 읽는다.** 응답이 한 종만 싣기 때문이고, 캐시를 두지 않는
- *  것이 그 계약을 지키는 방법이다(종마다 트리를 들고 있으면 결국 전량을 메모리에
- *  갖는 것이고, 그러면 응답을 좁힌 이유가 사라진다). */
+/** 지금 표면(그래프 또는 문서 홈)의 첫 자리로 간다 = 전체. 이미 거기면 다시 그리게 깨운다. */
+function goSurfaceRoot(): void {
+  const root = onGraph() ? "#view" : "#home";
+  if (location.hash === root) window.dispatchEvent(new HashChangeEvent("hashchange"));
+  else location.hash = root;
+}
+
+/** 홈 ↔ Agent 전환 — **늘 다시 읽는다.** 두 목록은 다른 응답이다(주제 트리 · 역할 로스터). */
 function setRailKey(next: string): void {
-  // 빈 값(= 전체)도 유효한 목적지다. 그것을 거르면 홈이 아무 일도 못 한다.
-  if (railKey === next || (next !== "" && !RAIL_KEYS.includes(next))) return;
+  if (next !== "" && next !== "agent") return;
+  if (railKey === next) {
+    // 다시 누르면 지금 표면에서 그 줄의 첫 자리로 돌아간다. 홈은 전체(좁혀 둔 것을 푸는 길),
+    // Agent 는 그래프면 역할 주제로 좁힌 지도, 문서면 Agents 보드다.
+    if (next === "") goSurfaceRoot();
+    else if (onGraph()) scopeAgentGraph();
+    else location.hash = AGENTS_BOARD;
+    return;
+  }
   const prev = railKey;
   railKey = next;
   localStorage.setItem(KEY_KIND, next);
   // Agent 목록은 역할을 고르기 전엔 줄이 켜지지 않는다. 직전 표면의 노드
-  // 초점이 그대로 남으면 다른 종이 선택된 것처럼 보인다.
+  // 초점이 그대로 남으면 다른 것이 선택된 것처럼 보인다.
   if (next === "agent") active = { domain: AGENT_TOPICS[0] };
   paintRail();
-  // 지도에도 같은 종을 건다 — 왼쪽에서 고른 것이 오른쪽에서 안 보이면 두 화면이
-  // 다른 것을 보고 있는 셈이다(발주자 지적 2026-09-09).
-  kindLens?.(lnbKind());
+  // 표면은 그대로 둔다. 문서에서 Agent 를 고르면 Agents 보드(팀 · 역할 카드)로, 그래프에서 고르면
+  // 그래프인 채로 역할 주제로 좁힌다(로스터를 읽은 뒤 — 역할의 실제 주제로 좁힌다).
+  if (next === "agent" && !onGraph()) location.hash = AGENTS_BOARD;
+  else if (prev === "agent" && location.hash.startsWith(AGENTS_BOARD)) location.hash = "#home";
   void refreshLnb().then(() => {
-    // 그 사이 다른 종을 골랐으면 이 전환의 뒷일은 없다. 늦게 끝난 Agent 전환이
-    // 뒤에 고른 종 위에 Agent 스코프를 걸면 안 된다.
+    // 그 사이 다른 쪽을 골랐으면 이 전환의 뒷일은 없다.
     if (railKey !== next) return;
-    if (next === "agent") scopeAgentGraph();
-    else if (prev === "agent") unscopeAgentGraph();
+    if (next === "" && prev === "agent") unscopeAgentGraph();
+    if (next === "agent" && onGraph()) scopeAgentGraph();
   });
 }
 
-/** 층 1 — 종 레일. 트리와 **다른 요소**라 트리를 다시 그려도 여기는 그대로다
- *  (레일은 상주 크롬이고 목록은 조회 결과다). */
-function paintRail(): void {
-  // ⚠ 레일 **전체**가 아니라 가운데 칸만 칠한다(2026-09-09). 레일에는 손잡이와 앱
-  // 버튼 넷이 함께 사는데, 여기서 `#lnb-rail` 을 덮으면 그 둘이 종을 다시 그릴
-  // 때마다 사라진다(그리고 그때 붙인 리스너도 함께 죽는다).
-  const el = $("rail-kinds");
-  if (!el) return;
-  const names = COPY.ui.lnb.kinds;
-  const here = location.hash.replace(/^#/, "").split("/")[0] || "view";
-  // **홈은 레일에 산다**(발주자 지시 2026-09-09). 트리에 있던 동안 그 목록은
-  // "문서 목록 + 내비 한 줄"이라 두 성질이 섞여 있었다 — 트리는 이제 문서만 든다.
-  // 자리가 맨 위인 이유: 지도 전체로 돌아가는 것은 종을 고르는 일보다 상위다.
-  // 홈이 켜진 상태 = **지도 위에 있으면서 아무 종도 안 고른 것**이다. 여태
-  // 표면만 봤기 때문에 종을 고른 뒤에도 홈이 함께 켜져 있었다 — 레일에 켜진 것이
-  // 둘이면 무엇이 지금 보이는 것인지 화면이 말하지 못한다.
-  const atAll = here === "view" && !railKey;
-  const home = `<a class="rail-btn rail-home${atAll ? " on" : ""}"
-      href="#view" data-rail="" aria-current="${atAll ? "page" : "false"}"
-      aria-label="${esc(COPY.ui.topbar.home)}" data-tip="${esc(COPY.ui.topbar.home)}">
-      <span class="lnb-mk" aria-hidden="true">${icon("graph", 18)}</span>
-      <span class="rail-name">${esc(COPY.ui.topbar.home)}</span>
-    </a>`;
-  const railBtn = (r: RailItem): string => {
-    const on = r.key === railKey;
-    const name = names[r.key] || r.key;
-    // 개수는 그 **종**의 수다. Agent 는 역할 목록이고 Entity·Bridge 는 주제 집계 밖이라
-    // 숫자를 내지 않는다 — 셀 수 없는 것에 그럴싸한 숫자를 붙이지 않는다.
-    const cnt = (r.dest || r.offTopic) ? 0 : (kindCounts[r.key] || 0);
-    const mark = r.icon
-      ? `<span class="lnb-mk" aria-hidden="true">${icon(r.icon, 18)}</span>`
-      : kindMark3d(r.mark, r.key, 20);
-    const tip = (r.dest || r.offTopic) ? name : COPY.ui.lnb.kindTip(name, cnt);
-    return `<button class="rail-btn${r.dest ? " rail-dest" : ""}" type="button"
-      data-rail="${esc(r.key)}" aria-pressed="${on}" aria-label="${esc(name)}"
-      data-tip="${esc(tip)}">
-      ${mark}<span class="rail-name">${esc(names[r.key + ".short"] || name)}${
-      cnt ? `<span class="rail-n">${cnt}</span>` : ""}</span>
-    </button>`;
-  };
-  // 구분선은 홈·Agent(목적지)와 종 묶음 사이다. Agent 를 선 아래로 두던 배치는
-  // 2026-09-21 scope-back 이 덮는다.
-  const destHtml = RAIL.filter((r) => r.dest).map(railBtn).join("");
-  const kindItems = RAIL.filter((r) => !r.dest);
-  let kindHtml = "";
-  for (let i = 0; i < kindItems.length; ) {
-    const g = kindItems[i].group;
-    if (!g) { kindHtml += railBtn(kindItems[i]); i += 1; continue; }
-    const chunk: RailItem[] = [];
-    while (i < kindItems.length && kindItems[i].group === g) {
-      chunk.push(kindItems[i]); i += 1;
-    }
-    kindHtml += `<div class="rail-group" data-group="${g}">${chunk.map(railBtn).join("")}</div>`;
-  }
-  el.innerHTML = home + destHtml + `<hr class="rail-sep">` + kindHtml
-    + `<span class="rail-fill"></span>`;
-  // 설정 버튼은 `#rail-kinds` **밖**(레일 바닥)에 산다. 종을 다시 그려도 그 자리는
-  // 그대로다. 뱃지만 여기서 다시 묻는다 — 제안 적체가 레일 바닥에 남아 있어야 한다.
-  void import("./conventions").then((m) => m.refreshBadge());
-  // ⚠ 레일에 접기 버튼을 두었다가 뺐다(2026-09-09). 접는 대상이 레일까지이므로
-  // 손잡이가 그 안에 있으면 함께 사라진다 — 상단 바 왼쪽 끝으로 갔다.
+/** 보드 주소로 바로 들어오면(주소창 · 새로고침) 레일도 Agent 로 맞춘다. 주소는 바꾸지 않는다. */
+export function showAgentRail(): void {
+  if (railKey === "agent") return;
+  railKey = "agent";
+  localStorage.setItem(KEY_KIND, "agent");
+  active = { domain: AGENT_TOPICS[0] };
+  paintRail();
+  void refreshLnb();
 }
 
-/* ⚠ `navRows()` 와 `surfaceHash()` 는 **사라졌다**(2026-09-09). 홈 한 줄이
-   레일로 갔으므로 이 열은 문서만 든다 — 내비를 그릴 것이 없다. */
+/** 맨 위 줄 — 홈 · Agent. 트리와 **다른 요소**라 트리를 다시 그려도 여기는 그대로다
+ *  (상주 크롬이고 목록은 조회 결과다). 접기 손잡이는 같은 줄의 형제(`#tb-shell-toggle`)다. */
+function paintRail(): void {
+  const el = $("rail-kinds");
+  if (!el) return;
+  const L = COPY.ui.lnb;
+  const btn = (key: string, name: string, tip: string, ico: string) => {
+    const on = railKey === key;
+    return `<button class="rail-btn lnb-navbtn" type="button" data-rail="${esc(key)}"
+      aria-pressed="${on}" aria-label="${esc(name)}" data-tip="${esc(tip)}">
+      <span class="lnb-mk" aria-hidden="true">${icon(ico, 16)}</span>
+      <span class="rail-name">${esc(name)}</span>
+    </button>`;
+  };
+  el.innerHTML = btn("", COPY.ui.home.nav, COPY.ui.home.navTip, "doc")
+    + btn("agent", L.kinds["agent.short"], L.kinds.agent, "domains");
+  // 설정 버튼은 LNB 바닥(`#lnb-foot`)에 산다. 뱃지만 여기서 다시 묻는다 — 제안 적체가
+  // 바닥에 남아 있어야 한다.
+  void import("./conventions").then((m) => m.refreshBadge());
+}
+/* 이 열은 주제와 문서만 든다. 홈 · Agent 는 맨 위 줄에 있다. */
 
 function docRow(d: { doc_id: string; title: string; node_id?: string; depth?: number },
                 domain = ""): string {
   const depth = Math.min(Math.max(Number(d.depth ?? 0), 0), 8);   // 들여쓰기 상한 — 8단 넘으면 글자가 사라진다
-  const on = d.node_id && active.nodeId === d.node_id;
-  const tip = d.node_id ? COPY.ui.lnb.depthTip(Number(d.depth ?? 0)) : COPY.ui.lnb.editOnly;
+  const on = active.docId ? active.docId === d.doc_id : !!d.node_id && active.nodeId === d.node_id;
+  // 깊이 툴팁은 착지 개념이 있을 때만 뜻이 있다(개념 계층 안의 자리다).
+  const tip = d.node_id ? COPY.ui.lnb.depthTip(Number(d.depth ?? 0)) : "";
   // 깊이는 세 갈래로 말한다. 여태 들여쓰기 하나뿐이라 1단이 10.88px 밖에 안 벌어져
   // 종속이 거의 안 보였고, 보조기술에는 8단 트리가 평평한 목록으로 들렸다.
   //   --lvl  : 들여쓰기(폭이 232px 라 단차를 무한정 키울 수 없다)
@@ -606,23 +546,6 @@ function docRow(d: { doc_id: string; title: string; node_id?: string; depth?: nu
   </button>`;
 }
 
-/** 노드 한 줄. 문서 줄과 **같은 깊이 표현**을 쓴다(들여쓰기 · 잉크 · aria-level) —
- *  두 갈래가 같은 계층을 그리는데 다르게 생기면 같은 트리로 안 읽힌다. 다른 것은
- *  하나뿐이다: 열 문서가 없으므로 누르면 지도에서 그 노드로 간다. */
-function nodeRow(nd: NavNode, domain = ""): string {
-  const depth = Math.min(Math.max(Number(nd.depth ?? 0), 0), 8);
-  const on = active.nodeId === nd.id;
-  const ink = Math.min(depth, 2);
-  // 표식이 **종**을 말한다(도트가 아니라). 도트는 문서의 것으로 남는다 — 그래서
-  // "이 줄이 노드인가 문서인가"를 색이나 위치가 아니라 모양이 먼저 말한다.
-  return `<button class="lnb-doc lnb-node${on ? " on" : ""}" role="treeitem"
-    aria-level="${depth + 2}"${on ? ' aria-selected="true"' : ""} data-nodeid="${esc(nd.id)}"
-    data-dom="${esc(domain)}" style="--lvl:${depth};--ink:${ink}${tintStyle(domain)}"
-    data-tip="${esc(COPY.ui.lnb.nodeTip)}">
-    ${kindMark(nd.kind || "concept", 11)}<span class="lnb-dtitle">${esc(nd.title || nd.id)}</span>
-  </button>`;
-}
-
 /** 주제 트리의 한 마디. `path` 가 `/nav-tree` 의 주제 문자열 통짜와 같은 값이라
  *  선택·활성 키는 그대로다 — 중첩은 **화면의 일**이고 계약은 안 바뀐다. */
 type DomNode = { seg: string; path: string; group?: NavGroup; kids: DomNode[] };
@@ -636,8 +559,12 @@ type DomNode = { seg: string; path: string; group?: NavGroup; kids: DomNode[] };
  *  이 없어 문서를 안 갖고 자식만 갖는다 — 그래도 행은 낸다(그 이름이 계층이다). */
 function nestGroups(groups: NavGroup[]): DomNode[] {
   const root: DomNode = { seg: "", path: "", kids: [] };
+  let loose: DomNode | null = null;
   for (const g of groups) {
     const segs = g.domain.split("/").filter(Boolean);
+    // 그래프: 주제 없는 노드는 이름 없는 가상 뿌리에 직접 선다(최상위 주제가 여럿일 때). 줄은 "주제 없음" 하나로 맨 끝에 낸다.
+    // 경로가 빈 문자열이라 누르면 접고 펴기만 한다(문서 트리의 미분류 줄과 같다). 문서 트리는 예전 그대로 이 묶음을 내지 않는다.
+    if (!segs.length) { if (gsrc) loose = { seg: COPY.ui.lnb.unfiled, path: "", group: g, kids: [] }; continue; }
     let cur = root;
     segs.forEach((seg, i) => {
       const path = segs.slice(0, i + 1).join("/");
@@ -647,6 +574,7 @@ function nestGroups(groups: NavGroup[]): DomNode[] {
     });
     cur.group = g;
   }
+  if (loose) root.kids.push(loose);
   return root.kids;
 }
 const subDocs = (n: DomNode): number =>
@@ -655,82 +583,68 @@ const subDocs = (n: DomNode): number =>
  *  (`kind` 로 물었을 때만 오는 열이고, 그것이 곧 그 갈래의 줄 수라는 계약이다).
  *  문서는 노드 아래 매달리므로 이 숫자에 안 들어간다 — 세는 것과 그리는 것이
  *  같아야 한다는 규율은 **노드 줄에 대한 것**이다. */
-const subCount = (n: DomNode): number =>
-  (n.group?.count ?? n.group?.concepts ?? 0) + n.kids.reduce((s, k) => s + subCount(k), 0);
-const subConcepts = (n: DomNode): number =>
-  (n.group?.concepts || 0) + n.kids.reduce((s, k) => s + subConcepts(k), 0);
 
 function groupRows(n: DomNode, level = 1): string {
-  const open = expanded.has(n.path);
-  const on = picked.has(n.path);
-  // 주제 행도 treeitem 이다(여태 role 이 없어 트리에서 빠져 있었다). 그리고 자식
-  // group 은 **항목의 형제가 아니라 안쪽**에 와야 한다 — 형제로 두면 보조기술이
-  // 계층으로 읽지 않는다.
-  // 줄은 **접고 펴기만** 한다. 지도를 이 주제로 좁히는 것은 줄 끝의 버튼이다 — 줄
-  // 클릭이 지도까지 바꾸면 "안을 보려고" 누른 사람의 지도가 통째로 재배치된다.
+  const open = exp().has(n.path);
+  const on = gsrc ? gActive === `topic:${n.path}` : picked.has(n.path);
+  // 주제 행도 treeitem 이다. 자식 group 은 **항목의 형제가 아니라 안쪽**에 와야 한다 —
+  // 형제로 두면 보조기술이 계층으로 읽지 않는다.
+  // 줄은 **접고 펴기만** 한다. 지금 표면을 이 주제로 좁히는 것은 줄 끝의 버튼이다 — 줄
+  // 클릭이 화면까지 바꾸면 "안을 보려고" 누른 사람의 화면이 통째로 바뀐다.
   // 버튼은 줄의 형제다(버튼 안에 버튼을 둘 수 없다). 골라져 있음(aria-pressed)도 버튼이 든다.
+  const docsHere = subDocs(n);
   const head = `<div class="lnb-grow${on ? " on" : ""}">
-    <button class="lnb-group${on ? " on" : ""}" role="treeitem" aria-level="${level}"
+    <button class="lnb-group${on ? " on" : ""}" role="treeitem" aria-level="${level}" style="${tintStyle(n.path).slice(1)}"
       ${on ? 'aria-selected="true" ' : ""}data-group="${esc(n.path)}"
-      aria-expanded="${open}" data-tip="${esc(COPY.ui.lnb.conceptCount(subConcepts(n)))}">
+      aria-expanded="${open}"${gsrc ? "" : ` data-tip="${esc(COPY.ui.home.count(docsHere))}"`}>
       <span class="lnb-caret${open ? " open" : ""}" aria-hidden="true">›</span>
-      <span class="lnb-gname">${esc(n.seg)}</span>
-      <span class="lnb-gcount">${subCount(n) || "·"}</span>
+      <span class="lnb-gring" aria-hidden="true"></span><span class="lnb-gname">${esc(n.seg)}</span>
+      <span class="lnb-gcount">${docsHere || "·"}</span>
     </button>
-    <button class="lnb-gscope" type="button" data-scope="${esc(n.path)}" aria-pressed="${on}"
-      aria-label="${esc(COPY.ui.lnb.scopeBtn(n.seg))}"
-      data-tip="${esc(COPY.ui.lnb.topicTip)}">${icon("graph", 13)}</button>
   </div>`;
   if (!open) return head;
   // 자식 가지가 먼저, 그다음 이 주제 자신의 문서. 순서를 뒤집으면 문서 목록 끝에
   // 가지가 붙어 "문서인 줄 알았던 것"이 사실 폴더인 상황이 된다.
   const kids = n.kids.map((k) => groupRows(k, level + 1)).join("");
-  // **구조를 보여 준다**: 노드 한 줄, 그 아래 그 노드의 문서. 여태는 둘 중 하나만
-  // 보여 줬고(칩이 배타였다), 그래서 "이 문서가 어느 개념의 것인가"가 화면에
-  // 없었다. 조인 열은 응답에 이미 있다(`NavDoc.node_id` ↔ `NavNode.id`).
-  const docs = n.group?.docs || [];
-  const byNode = new Map<string, typeof docs>();
-  for (const d of docs) {
-    const k = d.node_id || "";
-    const cur = byNode.get(k);
-    if (cur) cur.push(d); else byNode.set(k, [d]);
+  // 이 주제의 문서. 들여쓰기는 착지 개념의 계층 깊이다(얕은 개념의 문서가 위).
+  const all = n.group?.docs || [];
+  // 그래프: 다리(bridge)는 하위 주제들을 잇는 것이라 그 주제의 **맨 위**(하위 주제보다 앞)에 늘 펼쳐 둔다.
+  // 줄은 묶음 단위로 가른다: depth 0 줄과 그 뒤에 붙은 depth 1 줄들이 한 묶음이다(다리에 붙은 것도 다리와 함께 간다).
+  const kindOf = (d: unknown) => (d as { kind?: string }).kind || "";
+  const bridgeRows: typeof all = [], docs: typeof all = [];
+  if (gsrc) { let into = docs; for (const d of all) { if (Number(d.depth ?? 0) === 0) into = kindOf(d) === "bridge" ? bridgeRows : docs; into.push(d); } }
+  else docs.push(...all);
+  const gRow = (d: (typeof all)[number]) => gnodeRow({ id: d.doc_id, title: d.title, kind: kindOf(d), depth: Number(d.depth ?? 0) }, n.path);
+  // 다리는 한 묶음("다리 N개")으로 묶어 맨 위에 둔다. 처음엔 접혀 있고 누르면 펼친다.
+  const nBridges = bridgeRows.filter((d) => Number(d.depth ?? 0) === 0).length;
+  let bridgesHtml = "";
+  if (nBridges) {
+    const bOpen = exp().has(bridgeKey(n.path));
+    bridgesHtml = `<button class="lnb-fold lnb-bfold" type="button" role="treeitem" aria-level="${level + 1}"
+        data-bfold="${esc(n.path)}" aria-expanded="${bOpen}">
+        <span class="lnb-caret${bOpen ? " open" : ""}" aria-hidden="true">›</span>
+        <span class="lnb-gmark" aria-hidden="true" style="${tintStyle(n.path).slice(1)}">${gsrc ? gsrc.mark("bridge", n.path) : ""}</span>
+        <span class="lnb-fname">${esc(COPY.ui.lnb.bridgeItems(nBridges))}</span></button>`
+      + (bOpen ? `<div class="lnb-docs" role="group">${bridgeRows.map((d) => gRow({ ...d, depth: Number(d.depth ?? 0) + 1 })).join("")}</div>` : "");
   }
-  const nodes = n.group?.nodes || [];
-  const seen = new Set<string>();
-  const rows = nodes.map((nd) => {
-    seen.add(nd.id);
-    const mine = byNode.get(nd.id) || [];
-    // 문서의 들여쓰기는 **자기 노드보다 한 단**이다. 여태는 착지 개념의 깊이를
-    // 그대로 물려받아, 문서 줄의 들여쓰기가 그 문서의 것이 아닌 값을 말했다.
-    return nodeRow(nd, n.path)
-      + mine.map((d) => docRow({ ...d, depth: (nd.depth || 0) + 1 }, n.path)).join("");
-  }).join("");
-  // 착지 노드가 이 종에 없는 문서 — **숨기지 않는다.** 종을 고른 것이 문서를 지우는
-  // 일이 되면 목록을 신뢰할 수 없다. 주제 자리에 그대로 세우고 왜 거기 있는지 말한다.
-  const orphans = docs.filter((d) => !d.node_id || !seen.has(d.node_id));
-  const rest = orphans.length
-    ? `<p class="lnb-none hint">${esc(COPY.ui.lnb.docsElsewhere)}</p>`
-      + orphans.map((d) => docRow({ ...d, depth: 0 }, n.path)).join("")
-    : "";
-  const own = (rows + rest)
-    // 이 종이 없는 주제 — 그렇다고 목록에서 지우면 이름을 바꾸거나 문서를 붙일
+  const own = docs.map((d) => gsrc ? gRow(d) : docRow(d, n.path)).join("")
+    // 문서가 없는 주제 — 그렇다고 목록에서 지우면 이름을 바꾸거나 문서를 붙일
     // 진입점이 사라진다. 빈 채로 두되 빈 이유를 말한다.
     // (자식 가지가 있으면 비어 보이지 않으므로 그 문구를 내지 않는다.)
-    || (n.kids.length ? "" : `<p class="lnb-none hint">${esc(COPY.ui.lnb.noNodes)}</p>`);
-  // 하위 주제가 있는 줄은 자기 항목을 **한 줄로 접어 둔다**: 기본 펼침이 3단계까지
-  // 여는데, 그 줄들의 항목까지 쏟으면 구조가 항목 더미에 묻힌다. 하위 주제가 없는 줄은
-  // 펴면 곧장 항목이다.
+    || (n.kids.length || bridgeRows.length ? "" : `<p class="lnb-none hint">${esc(COPY.ui.home.topicEmpty)}</p>`);
+  // 하위 주제가 있는 줄은 자기 문서를 **한 줄로 접어 둔다**: 기본 펼침이 주제를
+  // 여는데, 그 줄들의 문서까지 쏟으면 주제의 짜임이 문서 더미에 묻힌다. 하위 주제가 없는
+  // 줄은 펴면 곧장 문서다.
   let ownHtml = own;
-  if (foldsOwnRows(n) && (rows || rest)) {
-    const ownOpen = expanded.has(ownKey(n.path));
-    const count = nodes.length + orphans.length;
+  if (foldsOwnRows(n) && docs.length) {
+    const ownOpen = exp().has(ownKey(n.path));
     ownHtml = `<button class="lnb-fold" type="button" role="treeitem" aria-level="${level + 1}"
         data-fold="${esc(n.path)}" aria-expanded="${ownOpen}">
         <span class="lnb-caret${ownOpen ? " open" : ""}" aria-hidden="true">›</span>
-        <span class="lnb-fname">${esc(COPY.ui.lnb.ownItems(count))}</span></button>`
+        <span class="lnb-fname">${esc(COPY.ui.lnb.ownItems(docs.length))}</span></button>`
       + (ownOpen ? `<div class="lnb-docs" role="group">${own}</div>` : "");
   }
-  return head + `<div class="lnb-docs" role="group">${kids}${ownHtml}</div>`;
+  return head + `<div class="lnb-docs" role="group">${bridgesHtml}${kids}${ownHtml}</div>`;
 }
 
 /** 스크롤 밖의 머리 — 지금 몇 주제를 보고 있는지. 인자가 없으면 비운다(아직
@@ -744,9 +658,10 @@ function paintHead(n?: number, label?: string): void {
   // 있으면 그 주제로 채운다(authoring.openCreateMenu).
   h.innerHTML = n === undefined ? ""
     : `<div class="lnb-sec"><span class="lnb-sec-label">${esc(label || COPY.ui.lnb.documents)}</span>`
-      + `<span class="lnb-sec-end"><span class="hint">${n || "·"}</span>`
-      + `<button class="rail-x lnb-add" type="button" aria-haspopup="${railKey === "agent" ? "dialog" : "menu"}"
-           aria-label="${esc(addTip())}" data-tip="${esc(addTip())}">+</button></span></div>`;
+      + `<span class="lnb-sec-end${isCommunitySpace(cfg.team) || railKey === "agent" ? " no-add" : ""}"><span class="lnb-gcount">${n || "·"}</span>`
+      // 커뮤니티 스페이스는 읽기 전용이라 만들기 `+` 를 두지 않는다.
+      + (isCommunitySpace(cfg.team) || railKey === "agent" ? "" : `<button class="rail-x lnb-add" type="button" aria-haspopup="${railKey === "agent" ? "dialog" : "menu"}"
+           aria-label="${esc(addTip())}" data-tip="${esc(addTip())}">+</button>`) + `</span></div>`;
 }
 
 /** 주제 스코프 칩 — 고른 주제가 없으면 빈 문자열. */
@@ -758,12 +673,63 @@ function scopeChip(): string {
     </div>`;
 }
 
+/** 그래프 탭의 트리 원천. 문서 트리와 **같은 그림**(주제 마디 · 접기 규칙 · 줄 모양)으로 그래프의 노드를 나열한다:
+ *  주제 아래에 그 주제의 개념·문서·결정(뜻의 층, depth 0)과 거기 붙은 기록·사건·결정(depth 1).
+ *  거르개(LNB 검색 · 시간 · 범례의 종류)는 나침반이 쥐고, 바뀌면 `repaintLnbGraph` 로 다시 그리게 한다.
+ *  펼침 상태는 문서 트리와 따로 둔다(한쪽에서 접은 것이 다른 쪽을 접지 않게). 그래프를 떠나면 null. */
+export type LnbGraphRow = { id: string; title: string; kind: string; depth: number };
+export type LnbGraphSource = {
+  groups: () => { domain: string; rows: LnbGraphRow[] }[];
+  open: (id: string) => void;
+  mark: (kind: string, domain: string) => string;
+  colour?: (domain: string) => string;
+  dock?: HTMLElement;
+};
+let gsrc: LnbGraphSource | null = null;
+let gActive = "";
+const gExpanded = new Set<string>();
+const gSeen = new Set<string>();
+export function setLnbGraphSource(src: LnbGraphSource | null) { gsrc = src; paint(); }
+/** 거르개가 바뀌었을 때. `reveal` 이 있으면 그 주제 경로(와 조상)를 편다: 찾은 것이 접힌 줄 밑에 숨지 않게.
+ *  `reset` 이면 펼침을 기본(영역까지)으로 되돌린다(검색을 비웠을 때). */
+export function repaintLnbGraph(opts: { reveal?: string[]; reset?: boolean } = {}) {
+  if (opts.reset) { gExpanded.clear(); gSeen.clear(); }
+  for (const d of opts.reveal || []) {
+    const segs = d.split("/");
+    segs.forEach((_, i) => gExpanded.add(segs.slice(0, i + 1).join("/")));
+    gExpanded.add(ownKey(d));
+    gExpanded.add(bridgeKey(d));
+  }
+  if (gsrc) paint();
+}
+/** 나침반의 가운데가 바뀔 때. 다시 그리지 않고 켜진 줄만 옮긴다(트리가 크면 다시 그리기가 비싸다). */
+export function setLnbGraphActive(id: string) {
+  gActive = id;
+  const body = $("lnb-body");
+  if (!body || !gsrc) return;
+  body.querySelectorAll(".lnb-gnode.on, .lnb-group.on").forEach((b) => b.classList.remove("on"));
+  if (id.startsWith("topic:")) body.querySelector(`.lnb-group[data-group="${CSS.escape(id.slice(6))}"]`)?.classList.add("on");
+  else body.querySelector(`.lnb-gnode[data-gid="${CSS.escape(id)}"]`)?.classList.add("on");
+}
+/** 지금 트리가 쓰는 펼침 집합 — 그래프면 그래프 것, 아니면 문서 것. */
+const exp = (): Set<string> => (gsrc ? gExpanded : expanded);
+
+function gnodeRow(d: LnbGraphRow, domain: string): string {
+  const depth = Math.min(Math.max(d.depth, 0), 8), ink = Math.min(depth, 2), on = gActive === d.id;
+  return `<button class="lnb-doc lnb-gnode${on ? " on" : ""}" role="treeitem" aria-level="${depth + 2}"
+    data-gid="${esc(d.id)}" data-dom="${esc(domain)}" title="${esc(d.title)}"
+    style="--lvl:${depth};--ink:${ink}${tintStyle(domain)}">
+    <span class="lnb-gmark" aria-hidden="true">${gsrc ? gsrc.mark(d.kind, domain) : ""}</span><span class="lnb-dtitle">${esc(d.title)}</span>
+  </button>`;
+}
+
 function paint() {
   const body = $("lnb-body");
   if (!body) return;
+  if (gsrc) { paintGraphTree(body); return; }   // 그래프에서는 어느 레일이든 그래프 노드 트리가 선다
   if (loading && !tree) {
     paintHead();
-    body.innerHTML = `<p class="lnb-none hint">${esc(COPY.ui.lnb.loading)}</p>`;
+    body.innerHTML = loaderRows(COPY.ui.lnb.loading, { count: 5, compact: true });
     return;
   }
   if (failed) {
@@ -772,53 +738,33 @@ function paint() {
       + `<button class="btn btn-quiet lnb-retry" id="lnb-retry">${esc(COPY.ui.lnb.retry)}</button>`;
     return;
   }
-  if (rail()?.offTopic) {
-    paintHead();
-    // 트리는 없어도 주제 스코프는 살아 있을 수 있다. 칩을 빼면 걸린 스코프를
-    // 볼 길도 풀 길도 없다.
-    body.innerHTML = scopeChip()
-      + `<p class="lnb-none hint">${esc(COPY.ui.lnb.offTopicKind[railKey === "bridge" ? "bridge" : "entity"])}</p>`;
-    return;
-  }
   // Agent 목적지는 주제 트리가 아니라 로스터 목록이다. 팀을 섹션으로 두고
   // 각 줄에 이미 있는 관계를 붙인다. 그래프 스코프 칩은 목적지가 이미
   // 역할 주제라 내지 않는다.
-  if (rail()?.dest && agentRoster) {
-    paintHead(agentRoster.length, COPY.ui.lnb.agents);
-    body.innerHTML = paintAgentList(agentRoster);
+  if (isAgent() && agentRoster) {
+    if (agentMapLoading) { paintHead(); body.innerHTML = loaderRows(COPY.ui.lnb.loading, { count: 3, compact: true }); return; }
+    const doms = lastDomains.length ? lastDomains : agentMap ? [...agentMap.agents, ...agentMap.procedures, ...agentMap.policies].map((x) => x.domain) : agentRoster.map((r) => r.domain);
+    tints = planTints(doms);   // 주제 색은 문서 트리와 같은 표로(같은 주제 = 같은 색)
+    paintHead(agentMap ? agentMap.agents.length : agentRoster.length, COPY.ui.lnb.agents);
+    body.innerHTML = paintAgentTree();
     return;
   }
   const groups = tree?.domains || [];
   const unfiled = tree?.unfiled || [];
   // 색은 paint 마다 한 번 만든다(줄마다 만들면 같은 답을 n 번 낸다). 토글이 꺼져
   // 있으면 null 이고, 그때 줄에는 --tint 가 아예 안 실려 CSS 의 잉크가 그대로 쓰인다.
-  tints = tintMap(groups.map((g) => g.domain), themeMode());
+  tints = planTints(groups.map((g) => g.domain));
   paintHead((tree?.domains || []).length);
-  let html = rail()?.dest ? agentHintHtml() : "";
+  let html = "";
   // ③ 고른 것이 있으면 **말한다**. 켜진 배경만으로는 몇 개인지도, 어떻게 푸는지도
   //    안 보인다 — 홈 행이 전체로 돌아가는 길이지만 그렇게 읽히지 않는다.
   html += scopeChip();
-  // 노드 갈래를 골랐는데 응답이 노드를 안 실어 왔다. 데스크탑에서는 사이드카가 앱과
-  // 한 벌이라 날 수 없지만 **웹모드는 다르다** — 사이트가 배포한 앱과 허브의 사이드카가
-  // 따로 올라가므로 앱이 먼저 새것일 수 있다. 그때 빈 트리를 그리면 "내 개념이
-  // 사라졌다"로 읽힌다. 갈래는 사용자가 고른 대로 두고, 못 받았다고 말한다.
-  // ⚠ 주제가 하나도 없을 때는 여기 오면 안 된다 — 그건 빈 그래프이지 못 받은 것이
-  // 아니다. 아래 빈 상태 CTA 가 그 경우를 맡는다.
-  if (groups.length > 0 && !hasNodes(tree)) {
-    body.innerHTML = html
-      + `<p class="lnb-none hint">${esc(COPY.ui.lnb.failed)}</p>`
-      + `<button class="btn btn-quiet lnb-retry" id="lnb-retry">${esc(COPY.ui.lnb.retry)}</button>`;
-    return;
-  }
   if (!groups.length && !unfiled.length) {
-    html += `<p class="lnb-none hint">${esc(
-      rail()?.topics ? COPY.ui.lnb.noNodes : COPY.ui.lnb.empty)}</p>`;
-    if (!rail()?.topics) {
-      html += `<button class="btn btn-quiet lnb-retry" id="lnb-add">${esc(COPY.ui.lnb.emptyCta)}</button>`;
-    }
+    html += `<p class="lnb-none hint">${esc(COPY.ui.lnb.empty)}</p>`
+      + `<button class="btn btn-quiet lnb-retry" id="lnb-add">${esc(COPY.ui.lnb.emptyCta)}</button>`;
   } else {
     const tops = nestGroups(groups);
-    // 기본 펼침(3단계까지 보이게). 처음 보는 경로에만 걸어서, 세션 안에서 접은 주제를
+    // 기본 펼침(맨 위 주제 아래 영역까지). 처음 보는 경로에만 걸어서, 세션 안에서 접은 주제를
     // 다시 그릴 때마다 되살리지 않는다.
     applyDefaults(tops, expanded, seenDefault);
     html += `<div class="lnb-tree" role="tree">${tops.map((n) => groupRows(n)).join("")}`;
@@ -839,6 +785,27 @@ function paint() {
   body.innerHTML = html;
 }
 
+/** 그래프 노드 트리. 문서 트리의 `nestGroups` · `groupRows` 를 그대로 쓴다(그래서 생김새와 접기 규칙이 같다).
+ *  줄만 다르다: 문서 줄 대신 노드 줄(`gnodeRow`, 도트 자리에 종류 모양). 고정(핀) 판이 있으면 트리 위에 세운다. */
+function paintGraphTree(body: HTMLElement): void {
+  const src = gsrc!;
+  const gs = src.groups();
+  const groups: NavGroup[] = gs.map((g) => ({ domain: g.domain,
+    docs: g.rows.map((r) => ({ doc_id: r.id, title: r.title, node_id: r.id, depth: r.depth, kind: r.kind })) } as unknown as NavGroup));
+  tints = planTints(groups.map((g) => g.domain));
+  paintHead(groups.length, COPY.ui.lnb.documents);
+  const tops = nestGroups(groups);
+  applyDefaults(tops, gExpanded, gSeen);   // 문서 트리와 같은 기본: 맨 위 주제 아래 영역(가장 상위 도메인)까지만 보인다
+  const tree = document.createElement("div");
+  tree.className = "lnb-tree";
+  tree.setAttribute("role", "tree");
+  tree.innerHTML = tops.length ? tops.map((n) => groupRows(n)).join("") : `<p class="lnb-none hint">${esc(COPY.ui.lnb.empty)}</p>`;
+  const kids: HTMLElement[] = [];
+  if (src.dock) kids.push(src.dock);
+  kids.push(tree);
+  body.replaceChildren(...kids);
+}
+
 /** 캐럿을 **실제로 돌린다.** paint() 가 트리를 통째로 다시 그리므로 새 캐럿은 최종 각도로
  *  태어나고 전이는 시작점이 없다 — `.lnb-caret` 의 transition 이 여태 한 번도 돌지 않은
  *  이유. 방금 그린 캐럿을 이전 각도에 세워 한 프레임 확정한 뒤 놓아 준다(FLIP). */
@@ -857,8 +824,9 @@ function spinCaret(row: HTMLElement, open: boolean): void {
 function rowFor(key: string): HTMLElement | null {
   const body = $("lnb-body");
   if (!body) return null;
+  if (key.startsWith("bridge:")) return body.querySelector<HTMLElement>(`.lnb-bfold[data-bfold="${CSS.escape(key.slice(7))}"]`);
   return key.startsWith("own:")
-    ? body.querySelector<HTMLElement>(`.lnb-fold[data-fold="${CSS.escape(key.slice(4))}"]`)
+    ? body.querySelector<HTMLElement>(`[data-fold="${CSS.escape(key.slice(4))}"]`)
     : body.querySelector<HTMLElement>(`.lnb-group[data-group="${CSS.escape(key)}"]`);
 }
 
@@ -866,11 +834,12 @@ function rowFor(key: string): HTMLElement | null {
  *  같은 줄로 옮긴다(키보드로 펼친 뒤 초점이 사라지면 다음 화살표가 갈 곳이 없다). */
 function toggleRow(key: string): void {
   const hadFocus = !!document.activeElement?.closest("#lnb-body");
-  if (expanded.has(key)) expanded.delete(key); else expanded.add(key);
+  const set = exp();
+  if (set.has(key)) set.delete(key); else set.add(key);
   paint();
   const row = rowFor(key);
   if (!row) return;
-  spinCaret(row, expanded.has(key));
+  spinCaret(row, set.has(key));
   if (hadFocus) row.focus();
 }
 
@@ -879,6 +848,8 @@ function toggleRow(key: string): void {
  *  클릭조차 "그 노드의 발췌가 마침 이 문서일 때"만 성립했다. 착지 노드가 없는
  *  문서는 지도에 자리가 없으므로 본문만 연다. */
 async function openDoc(docId: string, nodeId: string, domain?: string) {
+  // 문서 홈이 떠 있으면 그 자리에서 연다 — 착지 개념이 있든 없든 문서는 문서로 읽는다.
+  if (openDocHere) { openDocHere(docId, domain); return; }
   if (nodeId) {
     if (navigate) navigate(nodeId, domain, docId);
     // View 밖에서는 해시로 착지한다. `read` 는 trace 와 같되 넓은 문서 열로 연다
@@ -907,17 +878,15 @@ export function mountLnb(opts: { deferLoad?: boolean } = {}) {
   expanded = new Set();
   try { localStorage.removeItem(KEY_EXPANDED); } catch { /* 저장소가 없으면 지울 것도 없다 */ }
 
-  // **머리가 없다.** 여태 이 카드의 첫 52px 는 셰브론 하나를 담은 머리였고, 그만큼
-  // 첫 줄(홈)을 아래로 밀었다(발주자 지적 2026-09-09, `수정항목/lnb.JPG`).
-  // 접기 손잡이는 상단 바로 갔으므로 여기 담을 것이 없다.
-  // ⚠ **덮지 않고 잇는다**(2026-09-09). 이 카드의 첫 칸은 관점 세그이고 그것은
-  // `index.html` 에 있다 — 대입으로 쓰면 세그가 지워진다.
+  // ⚠ **덮지 않고 잇는다.** 이 카드의 맨 위 줄(홈 · Agent)과 바닥(설정 · 접기)은
+  // `index.html` 에 있다 — 대입으로 쓰면 그 둘이 지워진다. 머리와 트리는 그 사이에 선다.
   // 머리는 **스크롤 밖**이다(발주자 지적 2026-09-10: 스크롤 시작 지점이 더 아래여야
-  // 한다). 여태 `문서 N` 줄이 목록과 한 상자에 있어 굴리면 함께 사라졌다 — 지금 무엇을
-  // 보고 있는지 말하는 줄이 스크롤과 함께 없어지면 그 줄의 일이 성립하지 않는다.
-  // 렌즈 패널·시트와 같은 배치다(머리 고정 · 몸만 스크롤).
-  root.insertAdjacentHTML("beforeend",
-    `<div class="lnb-head" id="lnb-head"></div><div class="lnb-body" id="lnb-body"></div>`);
+  // 한다) — 지금 무엇을 보고 있는지 말하는 줄이 스크롤과 함께 없어지면 그 줄의 일이
+  // 성립하지 않는다. 렌즈 패널·시트와 같은 배치다(머리 고정 · 몸만 스크롤).
+  const slot = $("lnb-foot");
+  const parts = `<div class="lnb-head" id="lnb-head"></div><div class="lnb-body" id="lnb-body"></div>`;
+  if (slot) slot.insertAdjacentHTML("beforebegin", parts);
+  else root.insertAdjacentHTML("beforeend", parts);
   $("lnb-head")?.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>(".lnb-add");
     if (!b) return;
@@ -945,7 +914,7 @@ export function mountLnb(opts: { deferLoad?: boolean } = {}) {
     setOpen(!e.matches && isOpen(), false));
 
 
-  // 레일은 자기 배선을 갖는다 — 트리 본문과 다른 요소이므로.
+  // 맨 위 줄과 바닥은 자기 배선을 갖는다 — 트리 본문과 다른 요소이므로.
   paintRail();
   const settingsBtn = $("rail-settings");
   if (settingsBtn) {
@@ -959,17 +928,15 @@ export function mountLnb(opts: { deferLoad?: boolean } = {}) {
         `<span class="rail-name">${esc(COPY.ui.topbar.settings)}</span>`);
     }
   }
-  $("lnb-rail")?.addEventListener("click", (e) => {
+  settingsBtn?.addEventListener("click", () =>
+    void import("./surfaces/settings").then((m) => m.openSettings("general", undefined, true)));
+  $("lnb-top")?.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>(".rail-btn");
-    if (b?.id === "rail-settings") {
-      void import("./surfaces/settings").then((m) => m.openSettings("general", undefined, true));
-      return;
-    }
     // ⚠ `if (b?.dataset.rail)` 이면 홈의 빈 값이 falsy 라 걸러진다 — 있는지를 묻는다.
     if (b?.dataset.rail !== undefined) {
       setRailKey(b.dataset.rail);
-      // 좁은 창에서는 서랍이 닫힌 채 시작하므로 종을 고르면 그 목록이 보여야 한다.
-      // 홈(빈 값)은 목록이 아니라 지도로 가는 것이라 열지 않는다.
+      // 좁은 창에서는 서랍이 닫힌 채 시작하므로 Agent 를 고르면 그 목록이 보여야 한다.
+      // 홈(빈 값)은 목록이 아니라 표면의 첫 자리로 가는 것이라 열지 않는다.
       if (compact() && b.dataset.rail) setOpen(true, false);
     }
   });
@@ -978,11 +945,38 @@ export function mountLnb(opts: { deferLoad?: boolean } = {}) {
   body.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
 
+    // Agent 트리: Agent 줄은 따라가며 펴고(이미 고른 Agent 면 접고 편다), 절차·정책 줄은 보드에서 고른다
+    const ap = t.closest<HTMLElement>("[data-apick]");
+    if (ap && !gsrc) {
+      const kind = ap.dataset.apick as "agent" | "procedure" | "policy", id = ap.dataset.id || "";
+      if (kind === "agent") { const key = `agent:${id}`; if (agentPick === id) { toggleRow(key); return; } if (!expanded.has(key)) expanded.add(key); }
+      agentPick = id; paint();
+      void import("./surfaces/agent-map").then((m) => { if (!m.pickInAgentMap(kind, id) && location.hash !== "#home/agents") location.hash = "#home/agents"; });
+      if (compact()) setOpen(false, false);
+      return;
+    }
+    // 그래프 트리의 노드 줄 — 나침반이 그 노드로 간다(주제 사슬을 따라 펼친다).
+    const gn = t.closest<HTMLElement>(".lnb-gnode");
+    if (gn && gsrc) {
+      gsrc.open(gn.dataset.gid || "");
+      setLnbGraphActive(gn.dataset.gid || "");
+      if (compact()) setOpen(false, false);
+      return;
+    }
     // 노드 줄이 문서 줄의 class 를 함께 쓰므로(같은 생김새) **먼저** 가른다.
     const nd = t.closest<HTMLElement>(".lnb-node");
     if (nd) {
       const id = nd.dataset.nodeid || "";
       if (!id) return;
+      if (nd.classList.contains("lnb-agent-role") && !(onGraph() && navigate)) {
+        // 문서 쪽에서는 역할을 Agents 보드 안의 역할 편집 면으로 연다. 그래프에서는 다른 노드처럼
+        // 지도 위에서 연다(아래 `navigate`) — 고른다고 그래프를 떠나지 않는다.
+        active = { domain: nd.dataset.dom || "", nodeId: id };
+        paint();
+        void import("./role-composer").then((m) => m.openRoleComposer({ id }));
+        if (compact()) setOpen(false, false);
+        return;
+      }
       if (navigate) navigate(id, nd.dataset.dom || "");
       else location.hash = `#view/read/${encodeURIComponent(id)}`;
       active = { domain: nd.dataset.dom || "", nodeId: id };
@@ -991,28 +985,41 @@ export function mountLnb(opts: { deferLoad?: boolean } = {}) {
       if (compact()) setOpen(false, false);
       return;
     }
+    if (t.closest(".lnb-new-role")) {
+      void import("./role-composer").then((m) => m.openRoleComposer());
+      return;
+    }
     const doc = t.closest<HTMLElement>(".lnb-doc");
     if (doc) {
       void openDoc(doc.dataset.doc || "", doc.dataset.node || "", doc.dataset.dom || "");
       if (compact()) setOpen(false, false);
       return;
     }
-    // 줄 끝 버튼 = 지도를 이 주제로 좁히기(Ctrl·Cmd 는 더하기). 줄 자체는 접고 펴기만.
-    // 미분류 묶음은 실재하는 주제가 아니라 버튼이 없다.
-    const scope = t.closest<HTMLElement>(".lnb-gscope");
-    if (scope) {
-      const key = scope.dataset.scope ?? "";
-      if (key && pickTopic) pickTopic(key, e.ctrlKey || e.metaKey);
-      return;
-    }
     const fold = t.closest<HTMLElement>(".lnb-fold");
-    if (fold) { toggleRow(ownKey(fold.dataset.fold ?? "")); return; }
+    // 주제 줄을 누르면 지금 표면이 그 주제를 따라간다: 그래프는 나침반 가운데가, 문서는 문서 목록이 그 주제로 좁혀진다.
+    // 아직 그 주제가 아니면 따라가며 펴고(접지 않는다), 이미 그 주제면 접고 편다. Ctrl·Cmd 클릭(문서)은 주제를 더한다.
+    const here = (path: string) => gsrc ? gActive === `topic:${path}` : picked.size === 1 && picked.has(path);
+    const follow = (path: string) => {
+      if (!path) return;
+      if (gsrc) { gsrc.open(`topic:${path}`); setLnbGraphActive(`topic:${path}`); }
+      else if (pickTopic && !here(path)) pickTopic(path, false);
+    };
+    if (fold?.dataset.bfold !== undefined) { toggleRow(bridgeKey(fold.dataset.bfold ?? "")); return; }
+    if (fold?.dataset.fold === AGENT_POL) { toggleRow(ownKey(AGENT_POL)); return; }   // Agent 트리의 정책 묶음: 접고 펴기만
+    if (t.closest<HTMLElement>(`.lnb-group[data-fold="${AGENT_POL}"]`)) { toggleRow(ownKey(AGENT_POL)); return; }
+    if (fold) { toggleRow(ownKey(fold.dataset.fold ?? "")); follow(fold.dataset.fold ?? ""); return; }
     const group = t.closest<HTMLElement>(".lnb-group");
-    if (group) { toggleRow(group.dataset.group ?? ""); return; }
+    if (group) {
+      const path = group.dataset.group ?? "";
+      if (path && !gsrc && pickTopic && (e.ctrlKey || e.metaKey)) { pickTopic(path, true); return; }
+      if (path && (gsrc || pickTopic) && !here(path)) { if (!exp().has(path)) toggleRow(path); follow(path); return; }
+      toggleRow(path); return;
+    }
     if (t.closest(".lnb-scope-clear")) {
       // 고른 것을 전부 뺀다 = 전체(L0). `pickTopic` 에 같은 경로를 다시 넘기면
       // 토글이라 하나씩 꺼야 하므로, 첫 번째를 비-add 로 두 번 눌러 비우는 대신
       // 홈 해시로 간다 — 그것이 이 앱에서 "전체"의 정본 주소다.
+      if (clearScope?.()) return;
       location.hash = "#view";
       return;
     }
@@ -1031,9 +1038,10 @@ export function mountLnb(opts: { deferLoad?: boolean } = {}) {
     if (!cur) return;
     const rows = [...body.querySelectorAll<HTMLElement>(".lnb-group, .lnb-fold, .lnb-doc")];
     const i = rows.indexOf(cur);
-    const key = cur.classList.contains("lnb-fold") ? ownKey(cur.dataset.fold ?? "")
+    const key = cur.dataset.bfold !== undefined ? bridgeKey(cur.dataset.bfold)
+      : cur.classList.contains("lnb-fold") ? ownKey(cur.dataset.fold ?? "")
       : cur.classList.contains("lnb-group") ? (cur.dataset.group ?? "") : null;
-    const open = key !== null && expanded.has(key);
+    const open = key !== null && exp().has(key);
     const go = (el: HTMLElement | null | undefined) => { e.preventDefault(); el?.focus(); };
     switch (e.key) {
       case "ArrowDown": go(rows[i + 1]); break;

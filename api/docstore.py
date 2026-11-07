@@ -42,14 +42,13 @@ import hashlib
 import re
 import sys
 import time
-import uuid
 from typing import Any, Callable
 
 from engines import domain_hierarchy
 from store import pkns
 from store.embedded_backend import DDL_GUARD, keep_vector_index
 from store.lexical import lex_text
-from store.querybase import validity_state
+from store.querybase import now_iso, validity_state
 # 청킹은 순수 함수라 아래 층에 있다. 임베딩 워커와 리랭커(vinc_rag)도 같은 경계를 쓴다.
 from store.chunking import (DEFAULT_MAX_CHARS, _HEADING_RE, _section_title,  # noqa: F401
                             chunk_doc, estimate_tokens, normalize_boundaries,
@@ -70,14 +69,10 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _now_iso() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-
 def _age_s(iso_ts: str) -> float | None:
-    """`_now_iso()` 문자열 → 지금까지 경과 초. 비어 있거나 못 읽으면 None(모른다).
+    """`now_iso()` 문자열 → 지금까지 경과 초. 비어 있거나 못 읽으면 None(모른다).
 
-    `time.gmtime()` 으로 찍은 문자열이라 되돌릴 때도 지역시간 가정이 없는
+    UTC 로 찍은 문자열이라 되돌릴 때도 지역시간 가정이 없는
     `calendar.timegm` 을 쓴다(`time.mktime` 은 로컬 타임존을 가정해 틀린다)."""
     if not iso_ts:
         return None
@@ -220,6 +215,43 @@ def _doc_id_warnings(text: str, doc_id: str) -> list[str]:
     return []
 
 
+# 프런트매터의 관계 줄. 본문 텍스트일 뿐이라 저장이 엣지로 바꾸지 않는다.
+_FM_RELATION_KEYS = ("inherits_from", "derives_from", "related", "supersedes")
+
+
+def _no_mirror_warnings(store, text: str, doc_id: str, *, owner: str) -> list[str]:
+    """쓰기가 끝났는데 `concept:doc.<id>` 미러가 없고, 프런트매터가 주제나 관계를
+    적어 뒀으면 말한다. 그 둘은 미러가 있어야 붙는데 아무것도 적용되지 않았다.
+
+    미러는 `topic` 을 받을 때만 생긴다(`_set_authored_topic`). 이 경고가 없으면 topic 없는
+    쓰기가 성공만 답하고, 그 문서는 토픽도 관계도 없이 남는다. 근거 기록의 id 는
+    `tests/core/test_doc_put_warns_without_mirror.py` 머리에 있다.
+
+    프런트매터가 아무것도 적지 않은 문서는 조용하다. 동기화·팩 가져오기·주제 설명이
+    같은 깔때기로 topic 없이 쓰고, 그 경우까지 말하면 경고가 소음이 된다."""
+    m = _FM_DOC_ID_RE.match(text or "")
+    if not m:
+        return []
+    block = m.group(1)
+    dm = _FM_DOMAIN_RE.search(block)
+    declared = dm.group(1).strip() if dm else ""
+    rels = [k for k in _FM_RELATION_KEYS if re.search(rf"^{k}\s*:", block, re.M)]
+    if not declared and not rels:
+        return []
+    mid = pkns.key(owner, _DOC_MIRROR_PREFIX + doc_id)
+    if store.run("MATCH (n:Concept) WHERE n.concept_id = $id RETURN n.concept_id AS id",
+                 {"id": mid}):
+        return []
+    parts = [f"concept:doc.{doc_id} does not exist, so this document has no topic and "
+             f"no relations: pass topic to create it"]
+    if declared:
+        parts.append(f"the front matter's domain: {declared} is text and was not applied")
+    if rels:
+        parts.append(f"the front matter's {', '.join(rels)} lines are text, not edges; "
+                     f"send them with vinc_ingest from concept:doc.{doc_id}")
+    return ["; ".join(parts)]
+
+
 def _stamp_updated_at(store) -> str:
     """정본 갱신 시각 — 스토어 내 단조 HLC(revstamp). 벽시계 스큐에도 동기화
     LWW 비교가 성립하도록. revstamp 미가용(경량 스토어)이면 벽시계로 강등."""
@@ -227,7 +259,7 @@ def _stamp_updated_at(store) -> str:
         from . import revstamp
         return revstamp.hlc_now(store)
     except Exception:
-        return _now_iso()
+        return now_iso()
 
 
 def _next_doc_seq(store, owner: str) -> int:
@@ -259,7 +291,7 @@ def _node_stamp(store, owner: str, rev: int = 0) -> dict:
         from . import revstamp
         return revstamp.make_stamp(store, {"owner": owner, "rev": rev})
     except Exception:
-        return {"updated_at": _now_iso(), "rev": int(rev or 0) + 1, "sync_seq": 0}
+        return {"updated_at": now_iso(), "rev": int(rev or 0) + 1, "sync_seq": 0}
 
 
 def doc_id_for_origin(owner: str, origin: str) -> str:
@@ -311,7 +343,7 @@ def _drop_vector_index_if_any(store) -> None:
         # 그 밖의 실패(DDL 가드 시간 초과·다른 커넥션의 쓰기 트랜잭션 등) = 인덱스가 **아직
         # 걸려 있다.** 삼키고 벡터를 넣으면 그게 세그폴트 경로다. 쓰기를 실패시킨다(잡이
         # 재시도한다). '색인 없음'은 백엔드 드롭(`_drop_index`)이 이미 흡수했다.
-        # 근거: [[record:hub-segfault-loop-index-ddl-races-readers-2026-09-25]]
+        # 근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]
         raise
 
 
@@ -375,7 +407,7 @@ def _with_fts_repair(store, fn: Callable[[], Any]) -> Any:
         # 추정이 아니라 로그로 알아야 한다. 이 호출이 도는 동안 /health 가 굶을
         # 수 있다는 것이 이 재구축의 실제 위험이므로(entrypoint.sh 의
         # sidecar_healthy 주석 참고) 소요 시간이 그대로 진단이다.
-        # 근거: [[record:editing-the-conventions-document-restarts-the-hub-2026-09-09]]
+        # 근거: [[vinc.manual.core §3]] · [[vinc.plan.korean-retrieval-p1-p2-2026-10-02]]
         _t0 = time.monotonic()
         rebuild()
         print(f"[WARN] FTS 재빌드 완료 — {time.monotonic() - _t0:.1f}s", file=sys.stderr)
@@ -475,6 +507,21 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         return base
     validity_changed = prev is not None and any(
         validity[k] != str(prev.get(k) or "") for k in validity)
+    # 내용 시점도 같은 3값이다(키 부재=보존 · ""=비움 · 값=설정). 형식이 틀리면 쓰지 않고
+    # 저장된 값을 남기며 말한다 — 노드 content_time 과 같은 규칙이고, 조용히 비우면
+    # 오타 한 번이 저장된 시점을 지운다.
+    stored_ctime = str((prev or {}).get("content_time") or "")
+    ctime_warnings: list[str] = []
+    if content_time is None:
+        ctime = stored_ctime
+    else:
+        ctime = _norm_content_time(content_time)
+        if not ctime and str(content_time).strip():
+            ctime = stored_ctime
+            ctime_warnings.append(
+                f"content_time '{content_time}' is not YYYY[-MM[-DD]] — kept the "
+                f"stored value")
+    ctime_changed = prev is not None and ctime != stored_ctime
     # 소유의 정본은 메타다. 메타 없이 남은 청크(첫 쓰기가 ③ 전에 끊긴 잔해)는 청크의
     # owner_id 가 유일한 근거라, 하나라도 남의 것(무소유 포함)이면 지우지도 덮지도
     # 않는다 — 아래 MERGE 가 남의 청크 owner_id 를 덮어쓰던 길이다(RV-12).
@@ -502,9 +549,9 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         if prev.get("content_hash") == content_hash and prev.get("title") == kept_title \
                 and n_live == int(prev.get("chunk_count") or 0):
             origin_changed = origin is not None and origin != str(prev.get("origin") or "")
-            if origin_changed or validity_changed:
-                # 출처나 유효구간만 바뀌면 원문 청크와 임베딩을 다시 만들 필요가 없다. 쓰기 창
-                # 표식은 청크·메타 사이에서 끊겨도 다음 re-put 이 복구하게 한다.
+            if origin_changed or validity_changed or ctime_changed:
+                # 출처·유효구간·내용 시점만 바뀌면 원문 청크와 임베딩을 다시 만들 필요가 없다.
+                # 쓰기 창 표식은 청크·메타 사이에서 끊겨도 다음 re-put 이 복구하게 한다.
                 stamp = updated_at or _stamp_updated_at(store)
                 seq = _next_doc_seq(store, owner)
                 count = int(prev.get("chunk_count") or 0)
@@ -527,25 +574,29 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
                 store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id "
                           "SET d.origin = $origin, d.updated_at = $ts, "
                           "d.sync_seq = $seq, d.chunk_count = $count, "
-                          "d.valid_from = $vf, d.valid_until = $vu, d.superseded_by = $sb",
+                          "d.valid_from = $vf, d.valid_until = $vu, d.superseded_by = $sb, "
+                          "d.content_time = $ctime",
                           {"id": doc_id, "origin": kept_origin, "ts": stamp,
                            "seq": seq, "count": count, "vf": validity["valid_from"],
-                           "vu": validity["valid_until"], "sb": validity["superseded_by"]})
+                           "vu": validity["valid_until"], "sb": validity["superseded_by"],
+                           "ctime": ctime})
                 _clear_doc_tombstone(store, doc_id)
                 base.update(executed=True, skipped=False, created=False,
                             chunks=count, replaced=0, title=kept_title,
                             content_hash=content_hash, mentions=linked,
                             updated_at=stamp, sync_seq=seq, **validity,
-                            warnings=_doc_id_warnings(text, doc_id))
+                            warnings=_doc_id_warnings(text, doc_id) + ctime_warnings)
                 if topic:
                     base["topic"] = _set_authored_topic(
                         store, doc_id, topic, owner=owner, title=kept_title)
+                base["warnings"] += _no_mirror_warnings(store, text, doc_id, owner=owner)
                 base["needs_embed"] = None if prev.get("needs_embed") is None else bool(prev["needs_embed"])
                 base["retrieval"] = document_retrieval(prev.get("needs_embed"))
                 return base
             base.update(executed=True, skipped=True, created=False,
                         chunks=int(prev.get("chunk_count") or 0), title=kept_title,
-                        content_hash=content_hash, warnings=_doc_id_warnings(text, doc_id))
+                        content_hash=content_hash,
+                        warnings=_doc_id_warnings(text, doc_id) + ctime_warnings)
             # ⚠ 주제는 본문과 **독립**이다. 본문이 그대로라고 "이 문서를 X 밑에 둬라"를
             # 버리면 그 지시가 조용히 사라진다 — 부르는 쪽에서 가장 흔한 형태가
             # "본문은 그대로 두고 주제만 적는다" 인데 그것이 정확히 안 먹혔다
@@ -553,6 +604,7 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
             if topic:
                 base["topic"] = _set_authored_topic(store, doc_id, topic, owner=owner,
                                                     title=kept_title)
+            base["warnings"] += _no_mirror_warnings(store, text, doc_id, owner=owner)
             base.update(**validity, needs_embed=None if prev.get("needs_embed") is None else bool(prev["needs_embed"]))
             base["retrieval"] = document_retrieval(prev.get("needs_embed"))
             return base
@@ -627,8 +679,6 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
         born = created_at or stamp          # 신규 — 지금이 곧 최초 시각
     else:
         born = str(prev.get("created_at") or "")   # 편집 — 있으면 보존, 없으면 ''
-    ctime = _norm_content_time(content_time) if content_time is not None \
-        else str((prev or {}).get("content_time") or "")
     store.run(
         "MERGE (d:_DocMeta {doc_id: $id}) SET d.owner_id = $owner, d.title = $title, "
         "d.origin = $origin, d.content_hash = $hash, d.chunk_count = $n, "
@@ -661,10 +711,11 @@ def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
                 chunks=len(chunks), replaced=removed, title=kept_title,
                 content_hash=content_hash, mentions=linked, updated_at=stamp,
                 sync_seq=seq, needs_embed=bool(needs_embed),
-                warnings=_doc_id_warnings(text, doc_id),
+                warnings=_doc_id_warnings(text, doc_id) + ctime_warnings,
                 note="search indexes dropped — 검색 경로가 지연 재빌드(T3b)")
     if topic:
         base["topic"] = authored
+    base["warnings"] += _no_mirror_warnings(store, text, doc_id, owner=owner)
     base.update(**validity)
     base["retrieval"] = document_retrieval(bool(needs_embed))
     return base
@@ -765,7 +816,7 @@ def _relink_mentions(store, doc_id: str, *, owner: str, origin: str) -> int:
     """이 doc 의 청크만 대상으로 :MENTIONS 재생성. 링크 규칙·우선순위는 E-G1
     링커(engines.mentions_link)를 그대로 재사용한다 — 규칙 분기 금지(SSoT 하나).
     구 링크는 put_doc 의 DETACH DELETE 가 이미 지웠다. 실패는 적재를 무효화하지
-    않는다(증강 — embed_pipeline 의 링크 단계와 동일한 태도)."""
+    않는다(증강)."""
     try:
         from engines.mentions_link import compute_links, merge_links, _fetch_concepts
         rows = store.run(
@@ -1253,11 +1304,10 @@ def pending_embed_chunks(store, *, limit: int = 16) -> list[dict]:
 
     행마다 그 문서의 ``content_hash`` 를 싣는다. 워커는 이 값을 apply 에 **그대로**
     돌려보내야 한다 — chunk_id 는 위치 기반이라, 인코딩하는 사이 re-put 된 문서에 옛 본문
-    벡터가 박히는 것을 apply 가 이 값으로만 가려낸다."""
-    docs = store.run(
-        "MATCH (d:_DocMeta) WHERE d.needs_embed = 1 "
-        "RETURN d.doc_id AS doc_id, d.content_hash AS content_hash "
-        "ORDER BY d.doc_id LIMIT $lim", {"lim": int(limit)}) or []
+    벡터가 박히는 것을 apply 가 이 값으로만 가려낸다.
+
+    고르는 순서는 :func:`_fair_pending_docs` 가 정한다(owner 마다 돌아가며)."""
+    docs = _fair_pending_docs(store, int(limit))
     out: list[dict] = []
     for d in docs:
         rows = store.run(
@@ -1268,6 +1318,36 @@ def pending_embed_chunks(store, *, limit: int = 16) -> list[dict]:
             out.append({"doc_id": d["doc_id"], "chunk_id": r["chunk_id"],
                         "text": r.get("text") or "",
                         "content_hash": d.get("content_hash") or ""})
+    return out
+
+
+def _fair_pending_docs(store, limit: int) -> list[dict]:
+    """임베딩을 기다리는 문서를 owner 마다 돌아가며 고른다.
+
+    한 owner 의 대량 적재가 대기열을 차지하면 다른 owner 의 새 문서가 그 뒤로 통째로 밀려
+    의미 검색에서 빠진다. 그래서 가장 오래 기다린 문서를 가진 owner 부터 한 문서씩 차례로
+    담고, owner 안에서는 오래 기다린 문서(`updated_at` 이 단조 HLC 라 사전순이 곧 시간순)
+    부터 낸다. 한 owner 뿐이면 그 owner 의 오래된 순서 그대로다. 묻는 owner 는 `limit`
+    명까지라 쿼리는 많아야 `limit + 1` 번이다."""
+    if limit <= 0:
+        return []
+    owners = store.run(
+        "MATCH (d:_DocMeta) WHERE d.needs_embed = 1 "
+        "WITH coalesce(d.owner_id, '') AS owner, min(coalesce(d.updated_at, '')) AS since "
+        "RETURN owner, since ORDER BY since, owner LIMIT $lim", {"lim": limit}) or []
+    queues = []
+    for row in owners:
+        # owner 마다 limit 개까지 받는다: 문서가 모자란 owner 의 빈자리를 남은 owner 가 채운다.
+        queues.append(list(store.run(
+            "MATCH (d:_DocMeta) WHERE d.needs_embed = 1 AND coalesce(d.owner_id, '') = $o "
+            "RETURN d.doc_id AS doc_id, d.content_hash AS content_hash "
+            "ORDER BY d.updated_at, d.doc_id LIMIT $lim",
+            {"o": row["owner"], "lim": limit}) or []))
+    out: list[dict] = []
+    for turn in range(limit):
+        for queue in queues:
+            if turn < len(queue) and len(out) < limit:
+                out.append(queue[turn])
     return out
 
 
@@ -1291,7 +1371,7 @@ def apply_embeddings(store, doc_id: str, embeddings: dict[str, Any],
     지금까지의 허브 크래시는 전부 이 적용 도중에 났다. 인덱스 드롭만이 아니라 ChunkVec
     삭제·삽입과 메타 갱신(커밋)까지 다른 커넥션의 스캔과 겹치지 않게 한다. 안의 드롭은
     같은 스레드 재진입이라 교착하지 않는다. 대가: 적용하는 동안 읽기가 기다린다.
-    근거: [[record:hub-segfault-loop-index-ddl-races-readers-2026-09-25]]"""
+    근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]"""
     with DDL_GUARD.exclusive():
         return _apply_embeddings(store, doc_id, embeddings, encoder_runtime,
                                  content_hash=content_hash, model=model)
@@ -1315,7 +1395,7 @@ def _apply_embeddings(store, doc_id: str, embeddings: dict[str, Any],
     그대로 돌려주고, 자기 모델을 싣는다). 지금 문서·스토어와 다르면 아무것도 안 쓰고
     거절한다(`content_changed` · `model_changed`) — needs_embed 는 1 로 남아 다음 라운드가
     새 본문으로 다시 한다. None 이면 대조하지 않는다(직접 부르는 CLI·스크립트).
-    근거: [[record:embedding-apply-accepted-vectors-it-never-checked-2026-09-29]]"""
+    근거: [[record:reembed-only-requeues-and-apply-checks-what-a-vector-was-built-from-2026-09-30]]"""
     base: dict[str, Any] = {"kind": "doc.embed.apply", "executed": False, "doc_id": doc_id}
     if not embeddings:
         base["error"] = "no embeddings"
@@ -1396,7 +1476,7 @@ def _apply_embeddings(store, doc_id: str, embeddings: dict[str, Any],
     # 자체가 알람이다 — 진행 지표만으로는 정지를 못 본다
     # ([[record:worker-heartbeat-separates-backlog-from-death]]).
     store.run("MERGE (m:_SchemaMeta {key: $k}) SET m.value = $v",
-              {"k": _EMBED_APPLIED_KEY, "v": _now_iso()})
+              {"k": _EMBED_APPLIED_KEY, "v": now_iso()})
     base.update(executed=True, embedded=applied)
     return base
 
@@ -1507,7 +1587,7 @@ def embed_model_state(store, *, stall_after_s: float = _EMBED_STALL_DEFAULT_S) -
     # 전문 re-put 이나 삭제뿐이다. 이것까지 `stalled` 에 세면 워커가 멀쩡히 놀고 있어도 정체
     # 알람이 켜진다 — 2026-10-02 허브가 하루 종일 pending=2 · stalled 였는데, 그 둘은 put_doc
     # 가 청크를 지운 뒤 끊긴 쓰기 창 문서였다. `pending` 자체는 그대로 둔다(이행 게이트가 본다).
-    # 근거: [[record:the-node-mirror-rebuild-oom-kills-the-sidecar-2026-10-02]]
+    # 근거: [[vinc.ops.incident-2026-10-02-node-mirror-oom §4]]
     # 따로 감싼다: 이 부가 수치가 실패해도 위의 pending·이행 판정은 그대로 나가야 한다
     # (같은 try 에 두면 이행 게이트가 열린다 — test_server 가 잡았다). 실패하면 0 으로,
     # 즉 예전처럼 pending 전부를 정체 판정에 센다.
@@ -1605,12 +1685,6 @@ def stale_docs(store, *, owner: str | None = None, limit: int = 50) -> list[str]
         f"ORDER BY d.updated_at LIMIT {max(1, min(int(limit), 500))}",
         {"o": owner} if owner else None) or []
     return [r["id"] for r in rows]
-
-
-def new_doc_id() -> str:
-    """비결정론 doc_id 가 필요할 때(내용 무관 신규 정체성)의 대안 — 기본 경로는
-    make_doc_id(결정론)다."""
-    return "d" + uuid.uuid4().hex[:16]
 
 
 # ── 정본→노드 파생 (D45-V — 옵션1 결정론 + 옵션2 확인 흐름의 공용 백엔드) ────────
@@ -2194,7 +2268,7 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
              # 시간 원천을 비워 두면 타임라인이 이 개념을 "만진 때"로만 알게 된다.
              # 벽시계가 아니라 **스탬프의 HLC** 를 쓴다: 출생 시각은 기기 간 비교
              # (`x.created > $born`)로 화해되는데 그 비교가 사전식이라, 초 단위
-             # `_now_iso` 와 밀리초 HLC 가 섞이면 같은 순간이 다르게 정렬된다.
+             # `now_iso` 와 밀리초 HLC 가 섞이면 같은 순간이 다르게 정렬된다.
              "now": st["updated_at"], "ct": ctime,
              "ua": st["updated_at"], "rev": st["rev"], "seq": st["sync_seq"]})
         _link_domain(store, key, ndom)

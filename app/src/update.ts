@@ -9,6 +9,7 @@
 // 로 다운로드 아티팩트 서명을 강제한다. CI 개인키(TAURI_SIGNING_PRIVATE_KEY)로
 // 서명되지 않은 번들은 설치 자체가 거부된다(중간자 방지).
 import { COPY } from "./copy";
+import { loaderInline } from "./vinc-loaders.js";
 
 const IN_SHELL =
   location.protocol === "tauri:" || location.hostname === "tauri.localhost";
@@ -72,7 +73,7 @@ function showToast(
   el.querySelector<HTMLButtonElement>('[data-act="install"]')!
     .addEventListener("click", async () => {
       actions.remove(); // 진행 중엔 버튼 숨김(중복 클릭 방지)
-      msg.textContent = t.downloading;
+      msg.innerHTML = loaderInline(t.downloading);
       try {
         let total = 0;
         let got = 0;
@@ -81,11 +82,11 @@ function showToast(
             total = e.data.contentLength ?? 0;
           } else if (e.event === "Progress") {
             got += e.data.chunkLength;
-            msg.textContent = total > 0
+            msg.innerHTML = loaderInline(total > 0
               ? t.pct(Math.min(100, Math.round((got / total) * 100)))
-              : t.downloading;
+              : t.downloading);
           } else if (e.event === "Finished") {
-            msg.textContent = t.installing;
+            msg.innerHTML = loaderInline(t.installing);
           }
         });
         await relaunch(); // 설치 완료 → 새 버전으로 재기동

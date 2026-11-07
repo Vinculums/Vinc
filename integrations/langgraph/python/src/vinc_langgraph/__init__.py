@@ -7,17 +7,18 @@ from __future__ import annotations
 
 from typing import Any
 
-__version__ = "0.1.4"
+__version__ = "0.1.16"
 
 from .helpers import (aget_vinc_context, arecord_episode, build_system_message,  # noqa: E402
                       create_vinc_tools, get_vinc_context, last_user_text, record_episode,
+                      record_run, arecord_run,
                       get_vinc_package_context, aget_vinc_package_context, write_package,
                       awrite_package, prefetch, aprefetch)
 from .review import arun_review, run_review  # noqa: E402
 from .approval import create_person_only_node  # noqa: E402
 from vinc_client import ReviewOutput, UnparsedReview  # noqa: E402
-from .output_gate import (create_output_gate_middleware, evaluate_output_node,  # noqa: E402
-                          require_output_pass)
+from .output_gate import (create_output_gate_middleware, deliver_output,  # noqa: E402
+                          evaluate_output_node, require_output_pass)
 
 
 def __getattr__(name: str) -> Any:
@@ -26,6 +27,9 @@ def __getattr__(name: str) -> Any:
     if name == "VincContextMiddleware":
         from .middleware import VincContextMiddleware
         return VincContextMiddleware
+    if name in ("build_agent", "abuild_agent", "VincAgent"):
+        from . import agent
+        return getattr(agent, name)
     if name == "PackageProvider":
         from .middleware import PackageProvider
         return PackageProvider
@@ -33,9 +37,11 @@ def __getattr__(name: str) -> Any:
 
 
 __all__ = ["__version__", "get_vinc_context", "aget_vinc_context", "build_system_message",
-           "create_vinc_tools", "record_episode", "arecord_episode", "last_user_text",
+           "create_vinc_tools", "record_episode", "arecord_episode", "record_run", "arecord_run",
+           "last_user_text",
            "run_review", "arun_review", "ReviewOutput", "UnparsedReview",
            "create_person_only_node",
            "VincContextMiddleware", "create_output_gate_middleware", "evaluate_output_node",
-           "require_output_pass", "PackageProvider", "get_vinc_package_context",
-           "aget_vinc_package_context", "write_package", "awrite_package", "prefetch", "aprefetch"]
+           "require_output_pass", "deliver_output", "PackageProvider", "get_vinc_package_context",
+           "aget_vinc_package_context", "write_package", "awrite_package", "prefetch", "aprefetch",
+           "build_agent", "abuild_agent", "VincAgent"]

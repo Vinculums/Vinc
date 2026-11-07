@@ -21,6 +21,7 @@ import re
 
 from engines.domain_hierarchy import normalize
 from api.role_gate_contract import check as check_gates
+from api.role_policy_contract import check as check_policy
 
 #: 새 역할의 기본 주제와 기존 호환 주제. 역할 식별은 주제 분류와 별개다.
 TOPICS = ("agent", "vinc/agent")
@@ -120,6 +121,7 @@ def check(node: dict, *, created: bool, stored_domain: str | None = None) -> lis
         out.append(f"role {nid}: {', '.join(bad)} must be a list; a single string is "
                    f"rendered one character per bullet ({why})")
     out.extend(f"role {nid}: {warning} ({why})" for warning in check_gates(props))
+    out.extend(f"role {nid}: {warning} ({why})" for warning in check_policy(props))
     person = props.get("person_only")
     if isinstance(person, list):
         # 기존 팩의 문자열 목록은 그대로 읽는다. 새 구조는 설명을 파싱하지 않고
@@ -141,7 +143,9 @@ def check(node: dict, *, created: bool, stored_domain: str | None = None) -> lis
                        f"action/reason objects ({why})")
     mission = props.get("mission")
     one = node.get("one_liner")
-    if (isinstance(one, str) and isinstance(mission, str)
+    # 빈 one_liner 는 어긋남이 아니다. 읽는 쪽(api/roles)이 비면 mission 으로 물러서고,
+    # 동기화 번들은 빈 값도 키째 싣는다.
+    if (isinstance(one, str) and one.strip() and isinstance(mission, str)
             and " ".join(one.split()) != " ".join(mission.split())):
         out.append(f"role {nid}: one_liner and props.mission differ; hosts show the "
                    f"first when listing roles and the second when running one ({why})")

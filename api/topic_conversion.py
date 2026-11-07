@@ -21,7 +21,7 @@ from store.scoped_topic_inventory import read_scoped_inventory
 from store.topic_manifest import TopicManifest, ManifestLimit
 from store.topic_transfer import (TransferRefused, fingerprint, read_snapshot,
                                  plan_transfer, transformed_snapshot, _write_difference, check_inventory_budget,
-                                 _canonical, _REFERENCE, retained_history_counts)
+                                 _canonical, _REFERENCE, retained_history_counts, preserved_reference_counts)
 
 request_owner = ContextVar("conversion_request_owner", default=None)
 request_payload = ContextVar("conversion_request_payload", default=None)
@@ -91,13 +91,30 @@ def journals(store):
 
 
 def fenced(store, owner):
-    return any(r["status"] not in ("active", "cancelled") and (owner is None or owner in (r["source"], r["target"]))
+    return any(not _terminal_visible(store, r) and (owner is None or owner in (r["source"], r["target"]))
                for r in journals(store))
+
+
+def _terminal_visible(store, journal):
+    if journal["status"] not in ("active", "cancelled"):
+        return False
+    if journal.get("inventory_version", 1) in (1, SCOPED_INVENTORY_VERSION):
+        return True
+    # 새 프로토콜은 영속 게시 증명이 확인된 이 프로세스에서만 울타리를 해제한다.
+    # 재시작 뒤에는 봉인 파일과 같은 실행의 영수증을 다시 확인해야 한다.
+    return _canonical(journal) in getattr(store, "_topic_conversion_terminals", set())
 
 
 def check_read(store, owner):
     if fenced(store, owner):
         raise TransferRefused("space_conversion_pending")
+
+
+def check_index_write(store):
+    # 다른 소유자의 검색이 예약한 재빌드도 전환 중인 전역 색인을 되살리지 않는다.
+    if any(r.get('inventory_version')==3 and r.get('indexes')
+           and r.get('phase') not in ('graph_committed','active','cancelled') for r in journals(store)):
+        raise TransferRefused('conversion_index_maintenance')
 
 
 def _strings(value):
@@ -212,6 +229,7 @@ def preflight(store, source, topic, *, conventions_policy="retain"):
             "conventions": _conventions_effect(snap, plan),
             "counts_known": True, "counts": counts, "documents": len(plan.documents),
             "retained_personal_history": retained_history_counts(snap, plan),
+            "preserved_references": preserved_reference_counts(plan),
             "inventory_rows": inventory.retained_rows, "inventory_bytes": inventory.retained_bytes,
             "inspected_rows": inventory.inspected_rows,
             "projected_rows": projected_rows, "projected_bytes": projected_bytes,
@@ -221,6 +239,7 @@ def preflight(store, source, topic, *, conventions_policy="retain"):
 def inventory_diagnostics(store, source, topic, *, conventions_policy="retain"):
     """Read the complete bounded closure without authorizing the legacy executor."""
     check_read(store, source)
+    from store.topic_batch_manifest import authorized_hash
     # 로컬 임시 목록만 만들며, 공유 디스크나 그래프에 payload를 쓰지 않는다.
     temporary_root = Path(tempfile.gettempdir())
     if str(temporary_root).startswith(("\\\\", "//")):
@@ -242,18 +261,24 @@ def inventory_diagnostics(store, source, topic, *, conventions_policy="retain"):
                 for label, _ in plan.selected:
                     counts[label] = counts.get(label, 0) + 1
                 blockers = {b.split(":", 1)[0] for b in plan.blockers}
-                # 큰 목록을 읽었다고 기존 단일 트랜잭션 실행까지 허용하지 않는다.
-                blockers.add("conversion_bounded_executor_required")
-                return {"ready": False, "scope": "topic", "topic": topic,
+                # 준비된 큰 토픽은 봉인 목록·유한 배치 실행기로만 옮긴다. 지문은 그 실행기가
+                # 예약 때 다시 대조하는 값이다. 기존 단일 트랜잭션 실행은 여전히 허용하지 않는다.
+                # 근거: [[decision:large-topic-conversion-admission-2026-10-16]]
+                fingerprint = authorized_hash(plan.before_hash, conventions_policy)
+                result = {"ready": not blockers, "scope": "topic", "topic": topic,
                         "counts_known": True, "counts": counts, "documents": len(plan.documents),
                         "retained_personal_history": retained_history_counts(inventory.snapshot, plan),
+                        "preserved_references": preserved_reference_counts(plan),
                         "conventions": _conventions_effect(inventory.snapshot, plan),
                         "document_ownership": _document_scope_summary(inventory.snapshot,plan,source),
                         "document_missing_evidence": _missing_document_evidence(inventory.snapshot,plan,source),
                         "inventory_rows": inventory.retained_rows, "inventory_bytes": inventory.retained_bytes,
-                        "inspected_rows": inventory.inspected_rows, "inventory_hash": plan.before_hash,
-                        "inventory_version": 3, "diagnostic_only": True,
+                        "inspected_rows": inventory.inspected_rows, "inventory_hash": fingerprint,
+                        "inventory_version": 3, "diagnostic_only": bool(blockers),
                         "blockers": sorted(blockers)}
+                if not blockers:
+                    result["fingerprint"] = fingerprint
+                return result
     except (TransferRefused, OSError, sqlite3.Error) as exc:
         code = str(exc).split(":", 1)[0] if isinstance(exc, TransferRefused) else "conversion_scratch_unavailable"
         result = {"ready": False, "scope": "topic", "topic": topic, "counts_known": False,
@@ -346,6 +371,8 @@ def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None,
         previous = _get(store, run)
         if previous:
             _identity(previous, source, target, topic)
+            if previous.get('inventory_version',1) not in (1,SCOPED_INVENTORY_VERSION):
+                raise TransferRefused('unsupported_conversion_inventory_version')
             if previous.get("conventions_policy", "retain") != conventions_policy:
                 raise TransferRefused("run_conventions_policy_changed")
             if previous["status"] == "cancelled":
@@ -463,6 +490,8 @@ def cancel(store, *, source, target, topic, run):
         journal = _get(store, run)
         if journal:
             _identity(journal, source, target, topic)
+            if journal.get("inventory_version", 1) not in (1, SCOPED_INVENTORY_VERSION):
+                raise TransferRefused("unsupported_conversion_inventory_version")
             if journal["status"] not in ("prepared", "cancelled"):
                 raise TransferRefused("conversion_resume_required")
             _indexes(store, journal["indexes"])

@@ -93,6 +93,17 @@ def _json_file(path: str, *, source: str = "JSON input") -> dict:
     return value
 
 
+def _text_file(path: str) -> str:
+    """검사할 산출물 원문. `-` 는 stdin 이고 바이트를 고치지 않는다."""
+    if path == "-":
+        return sys.stdin.read()
+    try:
+        with open(path, encoding="utf-8") as stream:
+            return stream.read()
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ValueError(f"--output: {exc}") from None
+
+
 def _tool_request(args) -> tuple[str, dict, str | None]:
     cmd = args.cmd
     owner = getattr(args, "owner", None)
@@ -152,6 +163,9 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
         if args.doccmd == "rm":
             return "vinc_doc_delete", {"doc_id": args.id, **common}, args.id
         if args.doccmd == "put":
+            # 생략(None)은 보존, 빈 문자열은 지우기다(`vinc_doc_put` 계약). 파일 이름 기본값은
+            # 만들 때만 쓴다: `--id` 로 고치는 문서의 제목·origin 을 파일 이름으로 덮으면 안 된다.
+            origin, title = args.origin, args.title
             if args.file:
                 from . import textextract
                 import os
@@ -159,11 +173,12 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
                 if not got.get("executed"):
                     raise ValueError(str(got.get("error") or "cannot read document file"))
                 text = got["text"]
-                origin = args.origin or os.path.basename(args.file)
-                title = args.title or os.path.splitext(os.path.basename(args.file))[0]
+                if not args.id or getattr(args, "create_only", None):
+                    name = os.path.basename(args.file)
+                    origin = name if origin is None else origin
+                    title = os.path.splitext(name)[0] if title is None else title
             else:
                 text = sys.stdin.read()
-                origin, title = args.origin, args.title
             return "vinc_doc_put", {"text": text, "doc_id": args.id,
                                     "title": title, "origin": origin, **common,
                                     **{key: getattr(args, key) for key in (
@@ -183,6 +198,64 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
             if getattr(args, "review_mirror", False):
                 data["review_mirror"] = True
         return name, {**common, **data}, None
+    if cmd == "edges":
+        # 단건(위치 인자)과 묶음(--nodes)은 도구 계약처럼 둘 중 하나만이다. 둘 다·둘 다 없음은
+        # validate_args 가 같은 문장으로 거절한다.
+        data = {"node": args.id, "nodes": args.nodes, "type": args.type,
+                "dir": args.dir, "limit": args.limit}
+        return "vinc_edges", {**common, **{k: v for k, v in data.items() if v is not None}}, None
+    if cmd == "role":
+        if args.rolecmd == "export":
+            return "vinc_role_export", {**common, "role": args.id, "format": args.format}, None
+        if args.rolecmd == "get":
+            return "vinc_role", {**common, "role": args.id,
+                                 **({"compact": True} if getattr(args, "compact", None) else {})}, None
+        data = {**common, "role": args.id, "output": _text_file(args.output)}
+        if args.person_only_requests is not None:
+            try:
+                requests = json.loads(args.person_only_requests)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"--person-only-requests: {exc}") from None
+            if not isinstance(requests, list):
+                raise ValueError("--person-only-requests: expected a JSON array")
+            data["person_only_requests"] = requests
+        if args.self_authored:
+            data["self_authored"] = True
+        return "vinc_role_check", data, None
+    if cmd == "events":
+        data = {"since": args.since, "role": args.role, "kinds": args.kind, "limit": args.limit}
+        return "vinc_events", {**common, **{k: v for k, v in data.items()
+                                             if v not in (None, "", [])}}, None
+    if cmd == "run":
+        if args.runcmd == "start":
+            data = {"role": args.role, "task": args.task, "subject": args.subject,
+                    "run_id": args.run_id, "host": args.host}
+            return "vinc_run_start", {**common, **{k: v for k, v in data.items()
+                                                    if v not in (None, "")}}, None
+        if args.runcmd == "submit":
+            data = {"run": args.run, "answer": args.answer, "cited_ids": args.cited}
+            if args.abandon:
+                data["abandon"] = True
+            if args.output is not None:
+                data["output"] = _text_file(args.output)
+            for flag, key in (("person_only_requests", "person_only_requests"), ("usage", "usage")):
+                raw = getattr(args, flag)
+                if raw is not None:
+                    try:
+                        data[key] = json.loads(raw)
+                    except json.JSONDecodeError as exc:
+                        raise ValueError(f"--{flag.replace('_', '-')}: {exc}") from None
+            return "vinc_run_submit", {**common, **{k: v for k, v in data.items()
+                                                     if v not in (None, "", [])}}, None
+        if args.runcmd == "show":
+            return "vinc_runs", {**common, "run": args.run}, None
+        data = {"cited": args.cited, "role": args.role, "limit": args.limit}
+        return "vinc_runs", {**common, **{k: v for k, v in data.items()
+                                           if v not in (None, "")}}, None
+    if cmd == "eval":
+        data = {"role": args.role, "limit": args.limit}
+        return "vinc_eval_cards", {**common, **{k: v for k, v in data.items()
+                                                 if v not in (None, "")}}, None
     if cmd == "path":
         return "vinc_path", {**common, "a": args.a, "b": args.b,
                              "max_depth": args.max_depth}, None

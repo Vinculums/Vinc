@@ -10,8 +10,8 @@ import importlib.util
 import pathlib
 import unittest
 
-HUB = pathlib.Path(__file__).resolve().parents[2] / "design-hub"
-_spec = importlib.util.spec_from_file_location("figma_app_copy", HUB / "scripts" / "figma_app_copy.py")
+HUB = pathlib.Path(__file__).resolve().parents[2] / "scripts" / "design"
+_spec = importlib.util.spec_from_file_location("figma_app_copy", HUB / "figma_app_copy.py")
 fac = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(fac)
 
@@ -50,7 +50,7 @@ class GitTests(unittest.TestCase):
         import json
         if _shallow(fac.REPO):
             self.skipTest("shallow checkout: the gate refuses to judge here by contract")
-        m = json.loads((HUB / "reports" / "captures" / "app" / "manifest.json").read_text(encoding="utf-8"))
+        m = json.loads((HUB / "captures" / "app" / "manifest.json").read_text(encoding="utf-8"))
         self.assertTrue(m.get("sourceRev"), "app manifest carries no sourceRev")
         self.assertTrue(m.get("sourceTree"), "app manifest carries no sourceTree")
         # 지문은 캡처한 그 리비전의 트리여야 한다 — 아무 값이나 적혀 있으면 판정이 거짓이 된다.

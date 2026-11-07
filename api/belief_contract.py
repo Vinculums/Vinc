@@ -10,6 +10,8 @@ import math
 
 from store import pkns
 
+from . import belief_calibrations
+
 SCHEMA = "vinc.belief.v1"
 # 술어는 props에 남고 물리 엣지만 기존 관계를 쓴다.
 RELATIONS = {"supports": "RELATED_TO", "contradicts": "RELATED_TO",
@@ -17,6 +19,7 @@ RELATIONS = {"supports": "RELATED_TO", "contradicts": "RELATED_TO",
              "prerequisite_of": "PREREQUISITE_OF", "derives_from": "DERIVES_FROM",
              "inherits_from": "INHERITS_FROM"}
 ENDS = {"concept": ("Concept", "concept_id"), "decision": ("Decision", "decision_id")}
+CALIBRATION_FIELDS = ("calibration_id", "judged_by", "predicate", "language", "decision")
 
 
 class InvalidBelief(ValueError):
@@ -36,6 +39,22 @@ def _day(value):
         return isinstance(value, str) and date.fromisoformat(value).isoformat() == value
     except ValueError:
         return False
+
+
+def admitted_index(entries):
+    """승인된 보정을 id 로 묶는다. 형식이 틀린 목록은 조용히 줄이지 않고 터뜨린다."""
+    index = {}
+    for entry in entries:
+        if (not isinstance(entry, dict) or set(entry) != set(CALIBRATION_FIELDS)
+                or not all(_text(entry[k]) for k in CALIBRATION_FIELDS)
+                or entry["predicate"] not in RELATIONS or not entry["decision"].startswith("decision:")
+                or entry["calibration_id"] in index):
+            raise ValueError("admitted calibrations need unique ids, a known predicate and a decision id")
+        index[entry["calibration_id"]] = entry
+    return index
+
+
+ADMITTED = admitted_index(belief_calibrations.ADMITTED)
 
 
 def validate(node):
@@ -68,6 +87,13 @@ def validate(node):
         raise InvalidBelief("belief rev_seen requires nonnegative integer revisions for both endpoint ids")
     if props.get("grade") not in ("model", "rule", "user-confirmed"):
         raise InvalidBelief("belief grade must be model, rule, or user-confirmed")
+    if props["grade"] == "model":
+        # 승인되지 않은 보정의 모델 점수는 확률이 아니다. 읽기도 이 검사를 거치므로 그런 행은
+        # 확률 근거로 읽히지 않는다. 채점 모델과 술어까지 승인 항목과 같아야 한다.
+        entry = ADMITTED.get(props["calibration_id"])
+        if (not entry or entry["judged_by"] != props["judged_by"]
+                or entry["predicate"] != subject["predicate"]):
+            raise InvalidBelief("a model belief requires an admitted calibration for its judge and predicate")
     distribution = props.get("distribution")
     if distribution is not None:
         if (not isinstance(distribution, list) or not distribution

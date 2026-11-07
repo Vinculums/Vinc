@@ -50,6 +50,17 @@ class SnippetTests(unittest.TestCase):
         self.assertEqual(out["snippet"], _TARGET)
         self.assertFalse(out["truncated"])
 
+    def test_발췌는_240자이고_그보다_길어야_잘렸다고_한다(self):
+        """위 테스트는 SNIPPET_CHARS 를 상한으로만 쓴다. 값 자체를 여기서 못 박는다."""
+        self.assertEqual(SNIPPET_CHARS, 240)
+        word = "abcd "
+        exact = (word * 48).strip() + "e"     # 240자
+        self.assertEqual(len(exact), 240)
+        out = _summary_row(_row(exact), None)
+        self.assertEqual((out["snippet"], out["truncated"]), (exact, False))
+        out = _summary_row(_row(exact + "f"), None)
+        self.assertEqual((len(out["snippet"]), out["truncated"]), (240, True))
+
     def test_처음에_모였으면_접두가_없다(self):
         text = _TARGET + " " + _FILL
         out = _summary_row(_row(text), lex_tokens("하수 승부"))

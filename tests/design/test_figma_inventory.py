@@ -15,7 +15,7 @@ import json
 import pathlib
 import unittest
 
-_PATH = pathlib.Path(__file__).resolve().parent.parent.parent / "design-hub" / "scripts" / "figma_inventory.py"
+_PATH = pathlib.Path(__file__).resolve().parent.parent.parent / "scripts" / "design" / "figma_inventory.py"
 _spec = importlib.util.spec_from_file_location("figma_inventory", _PATH)
 fi = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(fi)
@@ -118,7 +118,7 @@ class TheUnitIsScreenTimesState(unittest.TestCase):
         self.assertEqual((m["rotten"], m["declared"]), ([], 0))
 
     def test_the_real_matrix_only_names_states_that_exist(self):
-        live = json.loads((fi.HUB / "imports" / "figma-inventory.json").read_text(encoding="utf-8"))
+        live = json.loads((fi.HUB / "figma" / "figma-inventory.json").read_text(encoding="utf-8"))
         frames, _, _, kids = fi.figma_names(live)
         # ⚠ 자식만 보면 단일 상태 라우트가 전부 부패로 잡힌다 — 그 상태는 곧 최상위
         # 프레임이기 때문이다. main() 과 같은 집합을 봐야 테스트가 실물을 검사한다.
@@ -149,7 +149,7 @@ class WithoutTheSiteRepoTheGateSkipsRatherThanLies(unittest.TestCase):
     def test_the_absent_repo_does_not_produce_stale_map_failures(self):
         # 이 조합이 바로 CI 에서 게이트를 38건 실패로 만들 뻔한 것이다.
         r = fi._check("routes", fi.site_routes(), fi.ROUTES, set())
-        self.assertGreater(len(r["stale_map"]), 30, "빈 코드 목록은 맵 전체를 잔여로 만든다")
+        self.assertGreater(len(r["stale_map"]), 20, "빈 코드 목록은 맵 전체를 잔여로 만든다")
 
     def test_the_gate_passes_and_says_it_skipped(self):
         import io as _io
@@ -166,7 +166,7 @@ class WithoutTheSiteRepoTheGateSkipsRatherThanLies(unittest.TestCase):
 class ComponentsAreCheckedAgainstCodeMarks(unittest.TestCase):
     """세는 축이 전부 초록인 채로 이름만 코드와 어긋난 적이 있다(2026-09-06). 그 축이다."""
 
-    LIVE = {"pages": {"02 · App Components": {
+    LIVE = {"pages": {"02 · Components": {
         "components": ["App / Chip"], "variants": {"App / Chip": ["State=Default", "State=Static"]}}}}
 
     def test_a_variant_whose_code_mark_is_gone_fails(self):
@@ -193,10 +193,46 @@ class ComponentsAreCheckedAgainstCodeMarks(unittest.TestCase):
         self.assertEqual((r["plain"], r["rotten"]), (["App / Chip · State=Default"], []))
 
     def test_the_real_map_matches_the_real_dump_and_the_real_source(self):
-        live = json.loads((fi.HUB / "imports" / "figma-inventory.json").read_text(encoding="utf-8"))
+        live = json.loads((fi.HUB / "figma" / "figma-inventory.json").read_text(encoding="utf-8"))
         r = fi.check_components(live, fi.APP_COMPONENTS, fi.app_source())
         self.assertEqual((r["undeclared"], r["stale"], r["rotten"]), ([], [], []))
         self.assertGreater(r["declared"], 40)
+
+
+class StoryboardStepsPointAtLiveScreens(unittest.TestCase):
+    """여정 단계가 사라진 화면을 가리키면 실패다. #1101 이 2D·Timeline·Weave 를 걷어 낸 뒤에도 그 셋을
+    밟는 여정 줄이 06 · Storyboards 에 남아 있었다. 그 페이지를 세는 게이트가 없어서였다."""
+
+    def live(self, journeys, boards=("App · View · 3d / dark",)):
+        return {"pages": {"03 · App": {"frames": [{"name": b} for b in boards]},
+                          "06 · Storyboards": {"journeys": journeys}}}
+
+    def test_a_step_on_a_live_captured_board_is_clean(self):
+        r = fi.check_storyboards(self.live({"J": ["1 · App · View · 3d / dark"]}), {"App · View · 3d / dark"})
+        self.assertEqual((r["rotten"], r["retired"], r["malformed"], r["steps"]), ([], [], [], 1))
+
+    def test_a_step_whose_board_is_gone_fails(self):
+        r = fi.check_storyboards(self.live({"J": ["1 · App · View · 2d / dark"]}), {"App · View · 3d / dark"})
+        self.assertEqual(r["rotten"], [("J › 1 · App · View · 2d / dark", "App · View · 2d / dark")])
+
+    def test_a_board_that_outlived_its_capture_state_fails(self):
+        # 화면을 걷어 내면서 보드 보관을 빠뜨린 경우. 보드만 보면 통과한다.
+        r = fi.check_storyboards(self.live({"J": ["1 · App · View · 3d / dark"]}), set())
+        self.assertEqual(r["retired"], [("J › 1 · App · View · 3d / dark", "App · View · 3d / dark")])
+
+    def test_a_step_without_a_number_fails(self):
+        r = fi.check_storyboards(self.live({"J": ["App · View · 3d / dark"]}), {"App · View · 3d / dark"})
+        self.assertEqual(r["malformed"], ["J › App · View · 3d / dark"])
+
+    def test_a_dump_without_the_page_fails(self):
+        # 덤프를 다시 뜨면서 이 축을 빼먹으면 조용히 초록이 되면 안 된다.
+        self.assertTrue(fi.check_storyboards({"pages": {}}, set())["missing_page"])
+
+    def test_the_real_dump_is_clean(self):
+        live = json.loads((fi.HUB / "figma" / "figma-inventory.json").read_text(encoding="utf-8"))
+        r = fi.check_storyboards(live, fi.captured_boards())
+        self.assertEqual((r["missing_page"], r["rotten"], r["retired"], r["malformed"]), (False, [], [], []))
+        self.assertGreater(r["steps"], 40)
 
 
 if __name__ == "__main__":

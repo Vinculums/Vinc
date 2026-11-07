@@ -31,6 +31,7 @@ import weakref
 from contextlib import contextmanager, nullcontext
 
 from . import pkns, request_timing
+from .envflag import truthy
 from .open_diagnostics import emit_open_failure
 from .config import StoreConfig
 from .embedded_schema import (DOMAIN_HIERARCHY_VERSION,
@@ -185,7 +186,10 @@ _DDL_STMT = re.compile(
 #: 더 잡으면 도장 캐시가 한 번 더 훑을 뿐이고, 덜 잡으면 캐시가 옛 답을 준다.
 _VEC_TABLE = re.compile(r"\b(?:ChunkVec|NodeVec)\b", re.IGNORECASE)
 _VEC_WRITE = re.compile(r"\b(?:CREATE|MERGE|SET|DELETE|REMOVE|COPY|DROP|ALTER)\b", re.IGNORECASE)
+#: 노드 미러만 바꾼 문장. 청크 임베딩 적용은 이 세대를 올리지 않는다.
+_NODE_VEC_TABLE = re.compile(r"\bNodeVec\b", re.IGNORECASE)
 _vector_generation = 0
+_node_vector_generation = 0
 _vector_generation_lock = threading.Lock()
 
 
@@ -198,10 +202,19 @@ def vector_generation() -> int:
     return _vector_generation
 
 
-def _bump_vector_generation() -> None:
-    global _vector_generation
+def node_vector_generation() -> int:
+    """노드 미러(`NodeVec`) 쓰기 세대. :func:`vector_generation` 과 같은 규칙이되 `NodeVec` 을
+    바꾼 문장에서만 오른다. 미러 라벨은 재구축 때만 바뀌므로, 청크 재임베딩이 도는 동안에도
+    미러를 읽는 캐시가 빗나가지 않는다."""
+    return _node_vector_generation
+
+
+def _bump_vector_generation(node_mirror: bool = False) -> None:
+    global _vector_generation, _node_vector_generation
     with _vector_generation_lock:
         _vector_generation += 1
+        if node_mirror:
+            _node_vector_generation += 1
 
 
 def _forget_prepared(raw) -> None:
@@ -263,7 +276,7 @@ class _Conn:
                 for c in list(self._family or (self,)):
                     _forget_prepared(c._raw)
             if isinstance(query, str) and _VEC_TABLE.search(query) and _VEC_WRITE.search(query):
-                _bump_vector_generation()
+                _bump_vector_generation(node_mirror=bool(_NODE_VEC_TABLE.search(query)))
 
     def __getattr__(self, name):
         return getattr(self._raw, name)
@@ -324,10 +337,57 @@ def _driver_kwargs(cfg) -> dict:
         kwargs["buffer_pool_size"] = int(cfg.buffer_pool_mb) * 1024 * 1024
     if getattr(cfg, "checkpoint_threshold_mb", 0):
         kwargs["checkpoint_threshold"] = int(cfg.checkpoint_threshold_mb) * 1024 * 1024
-    wal_tolerant = os.environ.get("VINC_WAL_REPLAY_TOLERANT", "").strip().lower() \
-        in ("1", "true", "on")
+    wal_tolerant = truthy(os.environ.get("VINC_WAL_REPLAY_TOLERANT"))
     kwargs["throw_on_wal_replay_failure"] = not wal_tolerant
     return kwargs
+
+#: 끝나지 않은 체크포인트의 짝 파일 접미사. 엔진(ladybug 0.21.2)의 체크포인트 순서:
+#: ``db.wal`` 을 ``db.wal.checkpoint`` 로 이름을 바꾸고(동결 WAL) → 바뀐 페이지를
+#: ``db.shadow`` 에 쓰고 fsync → 동결 WAL 끝에 CHECKPOINT 레코드를 붙이고 → 섀도 페이지를
+#: 본 파일에 적용하고 fsync → ``db.shadow`` 를 지우고 → **마지막으로** 동결 WAL 을 지운다.
+_FROZEN_WAL_SUFFIX = ".wal.checkpoint"
+_SHADOW_SUFFIX = ".shadow"
+
+
+def _stale_checkpoint_marker_note(data_dir: str, exc: BaseException) -> str:
+    """열기가 실패한 뒤, 그 실패가 "섀도 없는 동결 WAL" 때문이면 동결 WAL 을 옆으로 옮기고
+    사람이 읽을 한 줄을 준다. 아니면 ""(아무것도 건드리지 않는다).
+
+    "동결 WAL 은 있고 ``.shadow`` 는 없다"는 **한 상태가 아니라 둘**이다:
+
+    - 동결 WAL 에 CHECKPOINT 레코드가 **있다** — 섀도 페이지는 이미 본 파일에 적용되고
+      fsync 됐으며 섀도 파일까지 지워진 뒤, 동결 WAL 을 지우기 직전에 죽은 것이다.
+      본 파일 + 활성 ``.wal`` 이 커밋된 쓰기 전부를 담고 있고 동결 WAL 은 낡은 표식일
+      뿐이다. 그런데 엔진은 이 레코드를 보면 섀도 파일을 **무조건 읽기 전용으로 열어**
+      다시 적용하려 하고, 없으니 ``Cannot open file <db>.shadow`` 로 열기가 끝난다.
+      ``VINC_WAL_REPLAY_TOLERANT`` 는 이 예외를 덮지 않는다(dry replay 에만 걸린다).
+      동결 WAL 을 옆으로 옮기면 엔진이 그 다음에 하려던 것(동결 WAL 삭제 → 본 파일 읽기
+      → 활성 WAL 재생)과 같은 결과로 열린다. 50회 강제 종료 중 1회가 이 상태였다.
+    - CHECKPOINT 레코드가 **없다** — 이름만 바뀐 채 죽은 것이고, 그 안의 커밋은 아직
+      본 파일에 없다. 엔진이 스스로 재생하니 **절대 옮기면 안 된다**(옮기면 그 커밋을
+      통째로 잃는다 — 시험에서는 표 자체가 사라졌다).
+
+    둘을 가르는 것은 WAL 포맷 해석이 아니라 **엔진의 실패 문구**다: 섀도 파일을 여는 것은
+    첫째 갈래뿐이다. 그래서 열기 전에 옮기지 않고, 그 실패를 보고 나서 한 번만 옮긴다.
+    ``.shadow`` 가 있으면 체크포인트를 엔진이 마저 끝내므로 건드리지 않는다.
+    근거: [[record:linux-50-forced-kill-reopen-requalification-on-main-2026-11-04]]
+    """
+    frozen = data_dir + _FROZEN_WAL_SUFFIX
+    shadow = data_dir + _SHADOW_SUFFIX
+    if not os.path.exists(frozen) or os.path.exists(shadow):
+        return ""
+    text = _driver_error_text(exc)
+    if "Cannot open file" not in text or os.path.basename(shadow) not in text:
+        return ""
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    aside = f"{frozen}.stale-{stamp}"
+    try:
+        os.replace(frozen, aside)
+    except OSError as err:
+        return (f"checkpoint marker '{frozen}' outlived its shadow file and could not be "
+                f"set aside ({type(err).__name__}: {err})")
+    return (f"checkpoint marker '{frozen}' outlived its shadow file (the engine already "
+            f"applied that checkpoint); set aside as '{aside}' and reopening")
 
 
 def _stable_ext_dir() -> str:
@@ -587,7 +647,7 @@ def _filter_clause(var: str, filters: dict | None, params: dict, *,
 # 커넥션의 스캔과 겹치면** 엔진이 힙을 깨고 프로세스가 죽는다(파이썬 예외가 아니라
 # SIGABRT — except 로 못 막는다). 그래서 DDL 은 배타, 모든 문장 실행은 공유로 잡는다.
 # 공유는 `_exec_to_dicts` 한 곳에서 잡으므로 호출부는 이 가드를 모른다.
-# 근거: [[record:hub-segfault-loop-index-ddl-races-readers-2026-09-25]]
+# 근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]
 #
 # 규칙(깨면 교착이나 크래시다):
 #   - 배타 대기 중이면 **새** 공유는 기다린다(라이터 우선 — DDL 이 굶지 않게).
@@ -694,9 +754,9 @@ DDL_GUARD = _DdlGuard()
 #: 증분 삽입은 혼자서는 살지만, 삽입이 남긴 색인을 다른 커넥션이 읽는 동안 자동 체크포인트가
 #: 돌면 세그폴트한다. 그래서 드롭을 빼는 대신 벡터 질의를 문장마다 배타로 돌린다.
 #: 측정하지 않은 판에서는 플래그가 켜져 있어도 드롭으로 물러난다.
-#: 근거: [[record:ladybug-0-20-4-hnsw-insert-survives-alone-but-a-reader-during-a-checkpoint-segfaults-2026-09-30]] ·
-#: [[record:keep-index-mode-survived-104-hub-condition-trials-while-the-unguarded-control-crashed-3-of-20-2026-10-03]]
-_KEEP_VEC_INDEX_ENGINES = ("0.20.4",)
+#: 근거: [[decision:keep-the-chunk-vector-index-behind-a-flag-and-run-each-vector-query-alone-2026-10-03]] ·
+#: [[record:keep-index-mode-survived-104-trials-on-ladybug-0-21-2-at-two-cores-while-the-unguarded-control-crashed-1-of-20-2026-10-18]]
+_KEEP_VEC_INDEX_ENGINES = ("0.20.4", "0.21.2")
 
 
 @functools.lru_cache(maxsize=None)
@@ -711,12 +771,13 @@ def _keep_vec_engine_ok(ver: str) -> bool:
 
 def keep_vector_index() -> bool:
     """`VINC_KEEP_VECTOR_INDEX=on` 이고 엔진이 측정한 판일 때만 참(기본 거짓).
+    켜는 값은 다른 플래그와 같이 `store.envflag.truthy` 가 정한다.
 
     참이면 두 자리가 함께 바뀐다: 임베딩 적용이 색인을 드롭하지 않고
     (`api.docstore._apply_embeddings`), 벡터 질의가 배타 가드 안에서 돈다
     (:meth:`EmbeddedBackend.vector_search` · :meth:`EmbeddedBackend.node_vector_search`).
     하나만 바꾸면 세그폴트 자리로 돌아간다."""
-    if os.environ.get("VINC_KEEP_VECTOR_INDEX", "").strip().lower() not in ("1", "true", "on"):
+    if not truthy(os.environ.get("VINC_KEEP_VECTOR_INDEX")):
         return False
     try:
         ver = str(getattr(__import__("ladybug"), "__version__", "") or "")
@@ -797,6 +858,11 @@ class _ReaderView:
     #: 있고, 그 경우 "스코프를 걸었다고 믿는 무스코프 조회"가 되기 때문이다 —
     #: 위험 감사 1.1 이 정확히 그 모양이었다. 실제 적용은 :func:`_filter_clause`.
     scoped_chunk_search = True
+
+    @property
+    def _topic_conversion_terminals(self):
+        # 완료 증명은 프로세스의 writer가 검증한다. 리더마다 복사하면 철회가 늦어진다.
+        return getattr(self._b, "_topic_conversion_terminals", set())
 
     def __init__(self, backend: "EmbeddedBackend", conn, writer=None):
         self._b = backend
@@ -1103,6 +1169,9 @@ class EmbeddedBackend:
         #: 소유자별 저장 벡터 도장 `{owner: (벡터 쓰기 세대, frozenset)}`. 채우고 읽는 것은
         #: `api.query._stored_runtimes` 이고, 요청마다 새로 뜨는 리더 뷰도 이 백엔드의 것을 쓴다.
         self.runtime_stamps: dict = {}
+        #: 소유자별 노드 미러 모델 라벨 `{owner: (노드 미러 쓰기 세대, frozenset)}`. 채우고 읽는 것은
+        #: `vinc_rag.retrieval._mirror_models` 이고, 리더 뷰도 이 백엔드의 것을 쓴다.
+        self.mirror_models: dict = {}
         #: 전문 색인이 `Chunk.lex` 위에 섰는가(`LEX_INDEX_KEY` 표지). None = 아직 안 읽었다.
         #: 참이 되면 내려가지 않는다(표지를 지우는 경로가 없다). 리더 뷰도 이 값을 쓴다.
         self._lex_ready: bool | None = None
@@ -1142,7 +1211,17 @@ class EmbeddedBackend:
                         os.fsync(fd)
                     finally:
                         os.close(fd)
-            db = drv.Database(data_dir, **kwargs)
+            try:
+                db = drv.Database(data_dir, **kwargs)
+            except Exception as first:
+                # 섀도 파일이 사라진 뒤에 남은 체크포인트 표식이면 옆으로 옮기고 **한 번만**
+                # 다시 연다. 표식이 아직 커밋을 담고 있는 상태는 엔진이 다른 문구로 말하거나
+                # 스스로 재생하므로 여기 걸리지 않는다(`_stale_checkpoint_marker_note`).
+                note = _stale_checkpoint_marker_note(data_dir, first)
+                if not note:
+                    raise
+                print(f"[embedded_backend] {note}", file=sys.stderr, flush=True)
+                db = drv.Database(data_dir, **kwargs)
             family = weakref.WeakSet()
             conn = _open_connection(drv, db, family)
         except Exception as exc:
@@ -2131,7 +2210,7 @@ class EmbeddedBackend:
         미러가 `_NODE_VEC_EXACT_MAX_ROWS` 밑이면 HNSW 를 부르지 않고 정확 코사인으로 훑는다
         (진단 구간 `node_vector_exact`). `use_index=True` 는 행 수와 무관하게 HNSW 경로를
         탄다 — 인덱스가 실제로 답하는지 재는 쪽(:func:`api.node_mirror.index_answers`)이 쓴다.
-        근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]"""
+        근거: [[decision:the-semantic-arm-ships-on-and-the-mirror-rebuilds-at-the-release-boundary]]"""
         c = conn or self._conn
         try:
             with request_timing.measure("node_vector_load"):

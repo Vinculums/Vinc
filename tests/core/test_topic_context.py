@@ -21,7 +21,8 @@ class TopicContextTests(unittest.TestCase):
     def put(self, owner, nid, domain, kind="concept"):
         result = fragment.merge_fragment({"owner": owner, "nodes": [
             {"id": nid, "type": kind, "title": nid,
-             **({"domain": domain} if kind != "experiment" else {})}]}, store=self.store)
+             **({"domain": domain} if kind not in ("experiment", "bridge") else {})}]},
+            store=self.store)
         self.assertFalse(result.get("warnings"), result)
 
     def context(self, topic, owner=OWNER, offset=0):
@@ -87,10 +88,17 @@ class TopicContextTests(unittest.TestCase):
         self.assertEqual("query_failed", result["status"])
         self.assertFalse(result["executed"])
         self.assertNotIn("topic", result)
+        # 개방 타입(Entity)은 읽힌다. 지원하지 않는 종류는 Bridge 다.
         self.put(OWNER, "experiment:mine", "", "experiment")
-        unsupported = query.node_context(owner=OWNER, node="experiment:mine", store=self.store)
+        entity = query.node_context(owner=OWNER, node="experiment:mine", store=self.store)
+        self.assertTrue(entity["executed"], entity)
+        self.assertEqual("entity", entity["node_kind"])
+        self.assertEqual("unavailable", query.node_context(
+            owner=TEAM, node="experiment:mine", store=self.store)["status"])
+        self.put(OWNER, "bridge:mine", "", "bridge")
+        unsupported = query.node_context(owner=OWNER, node="bridge:mine", store=self.store)
         self.assertEqual("unsupported_kind", unsupported["status"])
-        inaccessible = query.node_context(owner=TEAM, node="experiment:mine", store=self.store)
+        inaccessible = query.node_context(owner=TEAM, node="bridge:mine", store=self.store)
         self.assertEqual("unavailable", inaccessible["status"])
 
     def test_drift_is_reported_without_writing_or_repairing(self):

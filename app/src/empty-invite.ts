@@ -107,7 +107,7 @@ export function wireEmptyInvite(root: ParentNode, onDone?: (nodeId?: string) => 
 /** 노드 하나를 손으로 만든다 — 이제 컴포저(흐름 E)가 그 일을 한다. 여태 이 폼은 이미
  *  있는 id 에 조용히 합쳤고, 한글·영문 밖의 제목을 빈 id 로 만들었고, 소유자를 박아
  *  두었다(`node-composer.ts` 머리말). 만든 노드를 지도에 세우는 것도 컴포저가 한다. */
-export async function openNewNodeSheet(onCreated?: (id: string) => void) {
+async function openNewNodeSheet(onCreated?: (id: string) => void) {
   const { startNewNode } = await import("./authoring");
   const made = await startNewNode();
   if (made) onCreated?.(made.id);

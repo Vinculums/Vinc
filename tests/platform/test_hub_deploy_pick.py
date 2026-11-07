@@ -302,7 +302,7 @@ class TriggerRunById(unittest.TestCase):
     def _plan(self, run_id: str) -> hp.Plan:
         h = _History(3, {2: ["vinc_mcp/oauth.py"]}, {})
         status = hp._ci_status_via_api("https://api.test", "o/r", "t", h.c[2], run_id)
-        with mock.patch.object(hp.urllib.request, "urlopen", self._urlopen([])):
+        with mock.patch.object(hp.hubhttp, "urlopen", self._urlopen([])):
             plan = h.run(live=1, trigger=2, ci_status=status)
         self.assertEqual(plan.sha, h.c[2])
         return plan
@@ -323,7 +323,7 @@ class TriggerRunById(unittest.TestCase):
             seen.append(req.full_url)
             return inner(req, timeout)
         status = hp._ci_status_via_api("https://api.test", "o/r", "t", "a" * 40, str(self.RUN))
-        with mock.patch.object(hp.urllib.request, "urlopen", urlopen):
+        with mock.patch.object(hp.hubhttp, "urlopen", urlopen):
             self.assertEqual(status("a" * 40), "success")
         self.assertEqual(len(seen), 2)   # 목록 + 잡. 런 단건 조회는 없다
 

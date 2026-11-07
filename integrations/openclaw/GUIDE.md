@@ -7,14 +7,14 @@
 
 # Vinc x OpenClaw 등록 가이드
 
-Vinc 계정 그래프를 OpenClaw 에이전트의 메모리로 붙이는 두 경로를 다룬다.
-두 경로는 배타적이지 않고, 어느 쪽도 내장 memory-core 를 대체하지 않는다
-(경로 판정: `decision:openclaw-integration-corpus-supplement`).
+Vinc 계정 그래프를 OpenClaw 에이전트의 메모리로 붙이는 세 경로를 다룬다. 1 은 2·3 과
+함께 쓸 수 있고, 2 와 3 은 같은 플러그인의 두 모드다(슬롯을 Vinc 에 주면 3, 아니면 2).
 
 | 경로 | 도달 방식 | 쓰기 |
 |---|---|---|
 | 1. 표준 MCP 등록 | 에이전트가 Vinc 도구를 스스로 호출 | 명시적 도구 호출로만 |
-| 2. 코퍼스 supplement 플러그인 | `memory_search`/`memory_get` 이 자동으로 Vinc 코퍼스에 도달 | 없음 (읽기 전용) |
+| 2. 코퍼스 supplement | memory-core 의 `memory_search`/`memory_get` 이 Vinc 코퍼스에도 닿는다 | 없음 |
+| 3. memory 슬롯 | Vinc 가 슬롯 주인이 되어 `memory_search`/`memory_get` 과 호스트의 메모리 표면을 낸다 | 없음. 압축 전 플러시도 쓰지 않는다 |
 
 어느 경로든 **자동 추출은 없다**: 대화에서 사실을 추출해 자동 저장하는 기능은
 만들지 않는다. 그래프에 들어가는 것은 사람 또는 에이전트가 명시적으로 확정해
@@ -85,6 +85,36 @@ Vinc 계정 그래프를 OpenClaw 에이전트의 메모리로 붙이는 두 경
 검색 결과의 `path` 는 `vinc://doc/<doc_id>` 또는 `vinc://node/<node_id>` 형태이고,
 `memory_get` 에 그대로 넘기면 문서 전문 또는 노드 상세(속성·관계·인용)를 받는다.
 
+## 2a. memory 슬롯 (표의 경로 3, OpenClaw 2026.10 이후)
+
+같은 플러그인을 배타 memory 슬롯에 앉힌다. 그러면 memory-core 대신 Vinc 가 회수를 맡는다:
+
+```json
+{
+  "plugins": {
+    "slots": { "memory": "vinc" },
+    "entries": { "vinc": { "config": { "apiKey": "<VINC_RO_KEY>", "agents": ["<나만 쓰는 에이전트 id>"] } } }
+  }
+}
+```
+
+- 회수: `memory_search` 는 `vinc_brief` 가 고른 노드를 첫 결과로, `vinc_search` 의 문서·노드를
+  그 뒤에 낸다. `memory_get` 은 그 경로(`vinc://doc/…` · `vinc://node/…`)를 읽는다.
+- 호스트의 메모리 표면(Memory 화면, `memory.status`·`memory.search`)은 슬롯의 `providerRuntime`
+  을 읽는다. 운영자와 에이전트 주인의 개인 세션만 검색·읽기가 되고, 그룹 대화·청중 없는
+  세션·호스트 권한은 거절된다(상태 확인은 모두에게 답하되 내용은 내지 않는다).
+- 쓰기: 이 플러그인에는 없다. 압축 전 플러시는 `null` 을 내므로 호스트가 건너뛴다. 그래프에
+  남기려면 사람이 요청하고 에이전트가 1 의 MCP 쓰기 도구를 직접 부른다(쓰기 키가 필요하다).
+  근거: `decision:vinc-memory-providers-write-only-through-explicit-tools-2026-10-25`
+- ⚠ 슬롯을 넘기면 memory-core 의 워크스페이스 메모리 파일 회수와 dreaming 이 멈춘다. 그것을
+  계속 쓰려면 슬롯은 memory-core 에 두고 2 의 supplement 로 쓴다.
+- 에이전트 도구 `memory_search`·`memory_get` 은 `agents` 에 적은 에이전트에게만 간다. 도구는 부른
+  세션의 청중을 알 수 없어서, 그 에이전트의 어느 세션(그룹 대화 포함)이 불러도 그래프 전체가 읽힌다.
+  그러니 나만 말을 거는 에이전트만 적는다. 비우면 어느 에이전트도 도구를 받지 않고 경고가 남는다.
+
+설치: `openclaw plugins install <이 디렉터리 또는 패키지>`. 매니페스트는 `openclaw.plugin.json`
+(`kind: "memory"`), 엔트리는 `package.json` 의 `openclaw.extensions` 다.
+
 ## 3. 인용 게이트 시맨틱
 
 Vinc 가 돌려주는 재료에는 항상 출처가 붙는다. 소비하는 에이전트(brief 응답 포함)는
@@ -106,7 +136,9 @@ Vinc 가 돌려주는 재료에는 항상 출처가 붙는다. 소비하는 에�
 ## 안 한 것 (사람 게이트)
 
 - 라이브 OpenClaw 게이트웨이에 플러그인을 실제 로드하는 e2e (pi-embedded 런너에서,
-  사람 판단으로 실행). 단위 테스트는 플러그인 API 와 허브를 모킹한다: `npm test`.
+  사람 판단으로 실행). 슬롯 모드에서 에이전트가 Vinc 로 회수하는지, 압축을 거쳐도 그래프에
+  아무것도 쓰이지 않는지, 슬롯을 안 줬을 때 supplement 만 서는지를 본다. 단위 테스트는
+  플러그인 API 와 허브를 모킹한다: `npm test`.
 - 공개 배포(패키징·레지스트리 게시). W18 은 풀렸으므로 이제 남은 것은 배포 작업
   자체이지 선행조건이 아니다.
 - 1절 `mcp.servers` 블록의 라이브 OpenClaw 게이트웨이 왕복 (필드명은 2026-09-05 에

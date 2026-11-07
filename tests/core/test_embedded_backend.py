@@ -858,12 +858,15 @@ class EmbeddedE2E(unittest.TestCase):
                         return text[i + 1:j]
             return None
 
-        by_name = {t["name"]: t for t in _tool_specs()}
+        # 반환 형식은 내보내는 요약이 아니라 참조문(전체 계약)이 말한다.
+        from vinc_mcp.tools import HOST_TOOLS, TOOLS
+        by_name = {t["name"]: t for t in TOOLS + HOST_TOOLS}
+        assert set(calls) <= {t["name"] for t in _tool_specs()}
         try:
             for name, call in calls.items():
-                desc = by_name[name]["description"]
+                desc = by_name[name]["reference"]
                 block = _returns_block(desc)
-                self.assertIsNotNone(block, f"{name}: 설명에 Returns 절이 없다")
+                self.assertIsNotNone(block, f"{name}: 참조문에 Returns 절이 없다")
                 # 중첩 {...} 를 걷어내고 남은 top-level 키 이름만 취한다.
                 flat = block
                 while "{" in flat:
@@ -1130,7 +1133,7 @@ class EmbeddedE2E(unittest.TestCase):
     def test_bridge_owner_scoping_2owner_with_legacy(self):
         """F5 — alice/bob 브릿지 + 레거시 '' 브릿지: view_l0(alice) 의 Bridge 결합에
         bob 것은 없고, 자기 것 + 레거시(과도기 술어)는 있다. 실엔진 2-소유자 검증
-        ([[vinc-owner-isolation-sec1]] — 스텁 아님)."""
+        ([[decision:sec-1]] — 스텁 아님)."""
         from store.config import load_config
         from store.backend import open_store
         from api import fragment as frag
@@ -1215,7 +1218,7 @@ class EmbeddedE2E(unittest.TestCase):
                          "RETURN m.value AS v")
         # 리터럴로 못박는다(파생 금지) — 버전을 올릴 때 이 줄이 실패해야 "그 버전이
         # 요구하는 데이터/DDL 스텝을 실제로 넣었나"를 한 번 보게 된다.
-        self.assertEqual(rows[0]["v"], "22")   # v22 — 문서 유효구간(_DocMeta)
+        self.assertEqual(rows[0]["v"], "24")   # v24 — 노드 미러 행의 ColBERT 토큰 열
         # v17 — 미러는 **부팅 DDL 이 만든다**(ALTER 도 백필도 없다). 실제로 서는지
         # 여기서 확인한다: 이 가정이 틀리면 채우기가 'Table NodeVec does not exist' 로
         # 죽는다(2026-09-09 에 실제로 물렸다).

@@ -1,0 +1,249 @@
+# 별도 G6 사본 실행 승인을 받은 사람이 수동 호출한다. 실제 이동은 하지 않는다.
+name: topic-copy-rehearsal
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Exact reviewed commit with successful CI and synthetic container qualification
+        required: true
+        type: string
+      owner_uuid:
+        description: Personal owner UUID for the vinc topic rehearsal
+        required: true
+        type: string
+      confirm:
+        description: Enter REHEARSE PERSONAL VINC COPY after owner approval
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: hub-deploy
+  cancel-in-progress: false
+jobs:
+  audit:
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      RG: vincsRG
+      STORAGE: vinchubssd01
+      SHARE: hub-data
+      APP: vinc-hub
+      REHEARSAL_OWNER_UUID: ${{ inputs.owner_uuid }}
+      CONFIRM: ${{ inputs.confirm }}
+      REHEARSAL_SOURCE: ${{ inputs.source_ref }}
+    steps:
+      - name: Set absolute work deadline with cleanup reserve
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" > "$RUNNER_TEMP/rehearsal-jobs.json"
+          python - <<'PY'
+          import datetime, json, os
+          jobs = json.load(open(os.environ["RUNNER_TEMP"] + "/rehearsal-jobs.json"))["jobs"]
+          jobs = [j for j in jobs if j["name"] == "audit" and j["status"] == "in_progress"]
+          assert len(jobs) == 1, "Cannot establish job deadline"
+          started = datetime.datetime.fromisoformat(jobs[0]["started_at"].replace("Z", "+00:00"))
+          deadline = int(started.timestamp()) + 80 * 60
+          with open(os.environ["GITHUB_ENV"], "a") as out:
+              out.write(f"REHEARSAL_WORK_DEADLINE={deadline}\n")
+          PY
+          cat > "$RUNNER_TEMP/rehearsal-budget.sh" <<'SH'
+          # 작업 마감 뒤 10분은 정리용이다. 강제 종료와 컨테이너 정리 시간도 미리 뺀다.
+          run_bounded() {
+            local cap=$1 remaining
+            shift
+            remaining=$((REHEARSAL_WORK_DEADLINE - $(date +%s) - 90))
+            if (( remaining < 60 )); then
+              echo "::error::Insufficient time before cleanup deadline" >&2
+              return 1
+            fi
+            (( remaining < cap )) || remaining=$cap
+            timeout --signal=TERM --kill-after=30s "${remaining}s" "$@"
+          }
+          SH
+      - name: Require operator and main branch
+        env:
+          OPERATORS: ${{ vars.PROD_OPERATORS }}
+          ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$CONFIRM" = 'REHEARSE PERSONAL VINC COPY'
+          case ",$OPERATORS," in *",$ACTOR,"*) ;; *) exit 1 ;; esac
+          python -c 'import os,uuid; v=os.environ["REHEARSAL_OWNER_UUID"]; assert str(uuid.UUID(v)) == v'
+          echo "::add-mask::$REHEARSAL_OWNER_UUID"
+      - uses: actions/checkout@v4
+      - name: Verify exact reviewed source checks before accessing production
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$REHEARSAL_SOURCE" =~ ^[0-9a-f]{40}$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$REHEARSAL_SOURCE&per_page=100" > "$RUNNER_TEMP/rehearsal-checks.json"
+          python scripts/qa/verify_rehearsal_source.py "$RUNNER_TEMP/rehearsal-checks.json" "$REHEARSAL_SOURCE"
+          git fetch origin "$REHEARSAL_SOURCE"
+          git worktree add --detach qualified-source "$REHEARSAL_SOURCE"
+          test "$(git -C qualified-source rev-parse HEAD)" = "$REHEARSAL_SOURCE"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Isolate Azure profile
+        run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+      - uses: azure/login@v2
+        timeout-minutes: 3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Resolve live snapshot and runtime policy
+        timeout-minutes: 3
+        id: live
+        run: |
+          set -euo pipefail
+          source "$RUNNER_TEMP/rehearsal-budget.sh"
+          env_of() {
+            run_bounded 60 az containerapp show -n "$APP" -g "$RG" --query "properties.template.containers[0].env[?name=='$1'].value | [0]" -o tsv
+          }
+          p=$(env_of VINC_STORE_SNAPSHOT)
+          [ -n "$p" ] || p=$(env_of VINC_DATA_DIR)
+          case "$p" in /data/*) ;; *) exit 1 ;; esac
+          rel=${p#/data/}
+          case "$rel" in ""|*/*|*..*) exit 1 ;; esac
+          durable=$(env_of VINC_DURABLE_ACK)
+          case "${durable,,}" in 1|true|on) durable=on ;; *) durable=off ;; esac
+          pkns=$(env_of VINC_PK_NAMESPACED)
+          test "$pkns" = on
+          conversion=$(env_of VINC_TOPIC_CONVERSION)
+          case "$conversion" in ""|0|1) ;; *) exit 1 ;; esac
+          # 이번 복구 근거는 현재 운영 설정과 같은 전역 ACK off / 전환 on에 한정한다.
+          test "$durable" = off
+          test "$conversion" = 1
+          echo "DURABLE_ACK=$durable" >> "$GITHUB_ENV"
+          echo "VINC_PK_NAMESPACED=$pkns" >> "$GITHUB_ENV"
+          # 전역 ACK가 꺼져 있어도 전환 전용 게시 세대는 같은 복원 경로로 고른다.
+          echo "VINC_TOPIC_CONVERSION=$conversion" >> "$GITHUB_ENV"
+          echo "rel=$rel" >> "$GITHUB_OUTPUT"
+      - name: Create isolated share snapshot
+        id: snap
+        run: |
+          set -euo pipefail
+          source "$RUNNER_TEMP/rehearsal-budget.sh"
+          ts=$(run_bounded 120 az storage share snapshot --account-name "$STORAGE" --name "$SHARE" \
+            --metadata rehearsal=topic_copy repository_id="$GITHUB_REPOSITORY_ID" run_id="$GITHUB_RUN_ID" run_attempt="$GITHUB_RUN_ATTEMPT" \
+            --query snapshot -o tsv)
+          test -n "$ts"
+          echo "ts=$ts" >> "$GITHUB_OUTPUT"
+      - name: Restore copy and vocabulary sidecar
+        env:
+          SOURCE: ${{ steps.live.outputs.rel }}
+          SNAPSHOT: ${{ steps.snap.outputs.ts }}
+        run: |
+          set -euo pipefail
+          source "$RUNNER_TEMP/rehearsal-budget.sh"
+          umask 077
+          mkdir restored
+          run_bounded 900 python scripts/restore_hub_snapshot.py --account "$STORAGE" --share "$SHARE" --snapshot "$SNAPSHOT" --source "$SOURCE" --out restored/db --durable-ack "$DURABLE_ACK" > restored/restore-private.log 2>&1
+          exists=$(run_bounded 60 az storage file exists --account-name "$STORAGE" --share-name "$SHARE" --snapshot "$SNAPSHOT" --path "$SOURCE.themes.json" --query exists -o tsv)
+          case "$exists" in
+            true) run_bounded 120 az storage file download --account-name "$STORAGE" --share-name "$SHARE" --snapshot "$SNAPSHOT" --path "$SOURCE.themes.json" --dest restored/db.themes.json --output none ;;
+            false) ;;
+            *) exit 1 ;;
+          esac
+          test -s restored/db
+      - name: Build the isolated execution runtime
+        run: |
+          set -euo pipefail
+          source "$RUNNER_TEMP/rehearsal-budget.sh"
+          engine=$(python -c "import tomllib; print(tomllib.load(open('qualified-source/pyproject.toml','rb'))['project']['optional-dependencies']['embedded'][0])")
+          test "$engine" = ladybug==0.21.2
+          run_bounded 600 docker build -t vinc-copy-rehearsal - <<'DOCKERFILE'
+          FROM python:3.12-slim
+          RUN pip install --no-cache-dir ladybug==0.21.2 argon2-cffi pyyaml
+          DOCKERFILE
+      - name: Rehearse only the isolated copy with no network
+        run: |
+          set -euo pipefail
+          source "$RUNNER_TEMP/rehearsal-budget.sh"
+          stop_container() { timeout --kill-after=5s 20s docker rm -f vinc-copy-rehearsal >/dev/null 2>&1 || true; }
+          trap stop_container EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          # 보고서 없이 죽어도 원인을 가를 수 있게 숫자만 남긴다(내용·식별자 없음).
+          free_bytes() { df --output=avail -B1 "$GITHUB_WORKSPACE" | tail -1 | tr -d ' '; }
+          before=$(free_bytes)
+          # Azure 자격 증명은 컨테이너에 전달하지 않는다. 실행에는 네트워크가 없다.
+          # --rm 을 쓰지 않는다: 끝난 뒤 종료 코드와 OOMKilled 를 읽고, EXIT 트랩이 지운다.
+          rc=0
+          run_bounded 4500 docker run --name vinc-copy-rehearsal \
+            --network none --cpus 1 --memory 2g --memory-swap 2g --pids-limit 128 \
+            --read-only --security-opt no-new-privileges --cap-drop ALL \
+            --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,nosuid,nodev,size=1g \
+            --mount "type=bind,src=$GITHUB_WORKSPACE/qualified-source,dst=/src,readonly" \
+            --mount "type=bind,src=$GITHUB_WORKSPACE/restored,dst=/rehearsal" \
+            --workdir /src -e GITHUB_ACTIONS=true -e VINC_COPY_REHEARSAL=approved \
+            -e REHEARSAL_OWNER_UUID -e VINC_PK_NAMESPACED=on -e VINC_TOPIC_CONVERSION=1 \
+            -e VINC_DURABLE_ACK=off -e PYTHONDONTWRITEBYTECODE=1 \
+            -e VINC_LBUG_EXT_DIR=/src/packaging/lbug_extensions \
+            vinc-copy-rehearsal python -X utf8 scripts/qa/topic_copy_rehearsal.py \
+            > restored/rehearsal-private.log 2>&1 || rc=$?
+          state=$(timeout --kill-after=5s 20s docker inspect -f '{{.State.ExitCode}} {{.State.OOMKilled}}' vinc-copy-rehearsal 2>/dev/null || echo "unknown unknown")
+          read -r container_exit oom_killed <<< "$state"
+          after=$(free_bytes || true)
+          printf '{"step_exit": %s, "container_exit": "%s", "oom_killed": "%s", "free_bytes_before": "%s", "free_bytes_after": "%s"}\n' \
+            "$rc" "$container_exit" "$oom_killed" "$before" "$after" > "$RUNNER_TEMP/rehearsal-facts.json"
+          exit "$rc"
+      - name: Stop the isolated process
+        if: always()
+        run: timeout --kill-after=5s 20s docker rm -f vinc-copy-rehearsal 2>/dev/null || true
+      - name: Publish aggregate result only
+        if: always()
+        run: |
+          if test -f "$RUNNER_TEMP/rehearsal-facts.json"; then cat "$RUNNER_TEMP/rehearsal-facts.json"; fi
+          # 단계 이름만 싣는다. 소문자·숫자·밑줄·콜론 밖의 글자는 지운다.
+          if test -f restored/stage.txt; then printf '{"last_stage": "%s"}\n' "$(head -c 64 restored/stage.txt | tr -cd 'a-z0-9_:')"; fi
+          if test -f restored/report.json; then cat restored/report.json; fi
+      - name: Remove only this rehearsal snapshot
+        if: ${{ always() && steps.snap.outcome != 'skipped' && steps.snap.outcome != '' }}
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          # 생성 응답/출력 유실 때도 이 실행 시도의 표식만으로 찾는다.
+          test -n "$GITHUB_REPOSITORY_ID"
+          test -n "$GITHUB_RUN_ID"
+          test -n "$GITHUB_RUN_ATTEMPT"
+          own_snapshots() {
+            timeout --kill-after=5s 60s az storage share list --account-name "$STORAGE" \
+              --include-snapshots --include-metadata --num-results '*' -o json |
+              jq -er --arg share "$SHARE" --arg repo "$GITHUB_REPOSITORY_ID" \
+                --arg run "$GITHUB_RUN_ID" --arg attempt "$GITHUB_RUN_ATTEMPT" '
+                if type != "array" then error("Invalid snapshot inventory") else
+                [.[] | select(.name == $share and .snapshot != null and .snapshot != ""
+                  and .metadata.rehearsal == "topic_copy" and .metadata.repository_id == $repo
+                  and .metadata.run_id == $run and .metadata.run_attempt == $attempt)
+                  | .snapshot] end'
+          }
+          snapshots=$(own_snapshots)
+          while IFS= read -r snapshot; do
+            test -n "$snapshot"
+            timeout --kill-after=5s 60s az storage share delete --account-name "$STORAGE" \
+              --name "$SHARE" --snapshot "$snapshot" --output none
+          done < <(jq -r '.[]' <<< "$snapshots")
+          remaining=$(own_snapshots)
+          test "$(jq 'length' <<< "$remaining")" = 0
+      - name: Remove private runner copy
+        if: always()
+        run: |
+          set -euo pipefail
+          test "$PWD" = "$GITHUB_WORKSPACE"
+          rm -rf -- restored
+
+

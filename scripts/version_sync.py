@@ -29,7 +29,10 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+try:
+    from scripts._root import ROOT
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT
 
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 

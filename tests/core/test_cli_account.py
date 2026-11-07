@@ -59,7 +59,7 @@ def test_account_environment_url_and_space(monkeypatch):
 
 def test_every_public_tool_uses_a_v1_route(monkeypatch):
     names = {item["name"] for item in tools.TOOLS}
-    assert len(names) == 31
+    assert len(names) == 38
     observed = []
 
     def receive(request, *, timeout):
@@ -99,7 +99,7 @@ def test_every_public_tool_uses_a_v1_route(monkeypatch):
         else:
             assert request.data is None
     assert {route.tool for route in rest_routes.ROUTES} == names
-    assert len(observed) == 31
+    assert len(observed) == 38
 
 
 def test_edge_batch_uses_the_read_post_route(monkeypatch):

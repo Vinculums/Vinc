@@ -111,7 +111,7 @@ def ko_stripped_text(text: str) -> str:
     ⚠ 그 함수의 docstring 은 과잉 절단('전문가'→'전문')이 무해하다고 적는데, 그 근거는
     노드 검색이 `CONTAINS` 로 맞춘다는 것이다. FTS 는 **토큰 완전일치**라 그 근거가
     여기서는 성립하지 않는다 — 과잉 절단의 손해는 재보는 수밖에 없고, 그것이 이
-    실험이 재는 것의 절반이다. 근거: [[record:korean-fts-analyser-2026-09-08]]"""
+    실험이 재는 것의 절반이다. 근거: [[vinc.plan.retrieval-research-2026-09-08]]"""
     from api.query import _strip_ko_suffix
     return " ".join(_strip_ko_suffix(t) for t in _KO_SPLIT.split(text or "") if t)
 

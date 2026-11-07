@@ -49,6 +49,22 @@ class Text(unittest.TestCase):
         out = node_mirror.mirror_text("A", "x" * (node_mirror.EXTRA_CHARS + 50))
         self.assertEqual(len(out), node_mirror.EXTRA_CHARS + 3)   # "A. " + 잘린 부가
 
+    def test_an_episode_keeps_a_longer_extra_than_other_kinds(self):
+        long = "x" * 900
+        self.assertEqual(len(node_mirror.mirror_text("A", long, "episode")), 600 + 3)
+        for kind in ("concept", "record", "decision", ""):
+            self.assertEqual(len(node_mirror.mirror_text("A", long, kind)),
+                             node_mirror.EXTRA_CHARS + 3)
+
+    def test_freshness_check_uses_the_episode_length(self):
+        from store import node_mirror_state as st
+        summary = "w " * 400
+        text = st.mirror_text("T", st.extra_text("episode", summary), "episode")
+        hit = {"id": "e1", "kind": "episode", "text": text}
+        row = {"id": "e1", "title": "T", "extra": summary}
+        kept, state = st.validate(lambda *_a, **_k: [row], [hit], owner="o")
+        self.assertEqual((len(kept), state["stale_candidates"]), (1, 0))
+
 
 class _FakeStore:
     """미러 연산만 받아 적는 스토어. 드라이버 없이 핸들러 흐름을 그대로 태운다."""
@@ -199,6 +215,56 @@ class Collect(unittest.TestCase):
         self.assertEqual(by_id["concept:a"]["text"], "Alpha. one liner")
         self.assertEqual(by_id["concept:a"]["title"], "Alpha")
         self.assertEqual(by_id["record:b"]["text"], "Bravo")
+
+    def test_a_record_and_a_decision_carry_their_own_body(self):
+        """Record·Decision 은 props 본문을 붙인다. 주소·측정 표지는 본문이 아니다."""
+        nodes = [{"label": "Record", "id": "record:r", "title": "Hub restart measured",
+                  "owner": "user:mine",
+                  "extra": '{"subject_path": "vinc:api/server.py", "note": "restart took 26 s"}'},
+                 {"label": "Decision", "id": "decision:d", "title": "Keep one replica",
+                  "owner": "user:mine",
+                  "extra": '{"measured_ref": "main 1234567890abcdef", "why": "two replicas share one SMB file"}'}]
+        rows, _ = node_mirror.collect(_FakeStore(nodes), "user:mine")
+        by_id = {r["id"]: r["text"] for r in rows}
+        self.assertEqual(by_id["record:r"], "Hub restart measured. restart took 26 s")
+        self.assertEqual(by_id["decision:d"], "Keep one replica. two replicas share one SMB file")
+
+
+class PropsBody(unittest.TestCase):
+    """미러의 Record·Decision 본문 고르기(`store.node_mirror_state.props_body`)."""
+
+    def setUp(self):
+        from store.node_mirror_state import props_body
+        self.body = props_body
+
+    def test_the_named_body_keys_come_first(self):
+        self.assertEqual(self.body({"why": "a much longer reason than the note", "note": "n"}), "n")
+
+    def test_otherwise_the_longest_text_value(self):
+        self.assertEqual(self.body({"why": "short reason here", "ruling": "the longer ruling text wins"}),
+                         "the longer ruling text wins")
+
+    def test_addresses_and_markers_are_never_the_body(self):
+        self.assertEqual(self.body({"subject_path": "vinc:api/a-very-long-path/that/is/long.py",
+                                    "measured_ref": "main abcdef1234567890 at the hub"}), "")
+
+    def test_bad_or_empty_props_give_no_body(self):
+        for raw in (None, "", "not json", "[1, 2]", {"note": "   "}, {"why": "too short"}):
+            self.assertEqual(self.body(raw), "", raw)
+
+    def test_collection_and_validation_build_the_same_text(self):
+        """대조가 다른 텍스트를 만들면 멀쩡한 미러 행이 낡은 것으로 걸러진다."""
+        from store.node_mirror_state import validate
+        props = '{"note": "restart took 26 s"}'
+        text = node_mirror.mirror_text("Hub restart", node_mirror.extra_text("record", props))
+        hits = [{"id": "record:r", "kind": "record", "text": text}]
+
+        def run(cypher, params):
+            return [{"id": "record:r", "title": "Hub restart", "extra": props}] if "Record" in cypher else []
+
+        kept, state = validate(run, hits, owner="user:mine")
+        self.assertEqual(state["stale_candidates"], 0)
+        self.assertEqual([h["id"] for h in kept], ["record:r"])
 
 
 class Replace(unittest.TestCase):
@@ -417,6 +483,7 @@ class RebuildReuse(unittest.TestCase):
         self.app = VincApp(store=self.store)
         self._saved = (sv._encode_post, sv._ENCODER_RUNTIME, sv._ENCODER_BUILD,
                        sv.docstore.embed_model_state, os.environ.get("VINC_EMBED_ENCODE"))
+        self._saved_model = os.environ.pop("VINC_EMBED_MODEL", None)
         os.environ["VINC_EMBED_ENCODE"] = "http://encoder.invalid"
         sv._ENCODER_RUNTIME, sv._ENCODER_BUILD = "rt", "b1"
         sv.docstore.embed_model_state = lambda _s: {"stored": "bge"}
@@ -435,6 +502,9 @@ class RebuildReuse(unittest.TestCase):
         os.environ.pop("VINC_EMBED_ENCODE", None)
         if prev is not None:
             os.environ["VINC_EMBED_ENCODE"] = prev
+        os.environ.pop("VINC_EMBED_MODEL", None)
+        if self._saved_model is not None:
+            os.environ["VINC_EMBED_MODEL"] = self._saved_model
 
     def rebuild(self):
         self.encoded.clear()
@@ -474,6 +544,16 @@ class RebuildReuse(unittest.TestCase):
         sv._ENCODER_RUNTIME = "rt2"
         self.assertEqual(self.rebuild()["encoded"], 3)
         self.assertEqual({m["runtime"] for m in self.store.mirror}, {"rt2"})
+
+    def test_the_encoders_model_labels_the_mirror_while_the_stored_key_is_still_the_previous_one(self):
+        """모델을 바꾼 배포에서 재구축은 워커의 첫 폴(스토어 키 교체)보다 먼저 돌 수 있다.
+        그때 스토어 키로 라벨을 달면 이전 모델의 벡터가 전부 "안 바뀜"으로 남는다."""
+        self.rebuild()
+        os.environ["VINC_EMBED_MODEL"] = "bge-ko"
+        res = self.rebuild()
+        self.assertEqual(res["encoded"], 3)
+        self.assertEqual({m["model"] for m in self.store.mirror}, {"bge-ko"})
+        self.assertTrue(self.rebuild()["unchanged"])
 
     def test_without_a_build_id_it_rebuilds_whole_as_before(self):
         self.rebuild()

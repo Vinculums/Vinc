@@ -6,19 +6,33 @@ conversation.
 """
 from __future__ import annotations
 
-from typing import Any, Iterable, Sequence
+import logging
+from typing import Any, Awaitable, Callable, Iterable, Mapping, Sequence
 
-from agent_framework import AgentSession, ContextProvider, FunctionTool, SessionContext, tool
+from agent_framework import (AgentSession, ChatContext, ChatMiddleware, ChatMiddlewareLayer,
+                             ContextProvider, FunctionInvocationContext, FunctionMiddleware,
+                             FunctionTool, SessionContext, tool)
 from vinc_client import (AsyncVincClient, VincNotFound, VincQuotaExceeded, VincUnavailable,
                          format_brief, format_search)
+from vinc_client.compiler import ContextPolicy, arole_prefetch
 from vinc_client.context import DEFAULT_MAX_CHARS
 from vinc_client.package import DEFAULT_PACKAGE_MAX_CHARS, package_space
 from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
-from vinc_client.tools import (BRIEF_DESCRIPTION, BRIEF_NAME, SEARCH_DESCRIPTION,
-                               SEARCH_LIMIT_DEFAULT, SEARCH_NAME, TOOL_CALLS_PER_RUN, BriefArgs,
-                               SearchArgs, ToolCallCap, temporal_options)
+from vinc_client.tool_policy import RoleToolPolicy
+from vinc_client.doc_tool import aread_document, doc_tool_allowed
+from vinc_client.tools import (BRIEF_DESCRIPTION, BRIEF_NAME, DOC_DESCRIPTION, DOC_NAME,
+                               SEARCH_DESCRIPTION, SEARCH_LIMIT_DEFAULT, SEARCH_NAME,
+                               TOOL_CALLS_PER_RUN, BriefArgs, DocArgs, SearchArgs, ToolCallCap,
+                               temporal_options)
+from vinc_client.tools import (DOC_PUT_DESCRIPTION, DOC_PUT_NAME, INGEST_DESCRIPTION, INGEST_NAME,
+                               DocPutArgs, IngestArgs)
+from vinc_client.write_tools import arun_doc_put, arun_ingest
 
 DEFAULT_SOURCE_ID = "vinc"
+log = logging.getLogger("vinc_agent_framework")
+NO_CHAT_MIDDLEWARE = ("Role %s disallows tools, but this chat client runs no chat middleware "
+                      "(it does not include ChatMiddlewareLayer), so the model still sees them; "
+                      "calls to them are refused.")
 
 
 def _last_user_text(messages: Sequence[Any]) -> str:
@@ -30,14 +44,22 @@ def _last_user_text(messages: Sequence[Any]) -> str:
 
 
 def create_vinc_tools(client: AsyncVincClient, *, max_chars: int = DEFAULT_MAX_CHARS,
-                      cap: ToolCallCap | None = None) -> list[FunctionTool]:
+                      cap: ToolCallCap | None = None,
+                      documents: bool = False, writes: bool = False) -> list[FunctionTool]:
     """Two read-only tools the model may call: ``vinc_brief`` and ``vinc_search``.
 
-    Nothing here can write. When Vinc is unavailable, the quota is spent or
+    Without ``writes`` nothing here can write. With ``writes`` two more, ``vinc_ingest`` and
+    ``vinc_doc_put``, save to the graph; give them only to a role that may write
+    (``plan.may_write``) and with a ``vinc_sk_`` key. They do not spend the read cap. When Vinc is unavailable, the quota is spent or
     the id does not exist, the tool answers with a sentence saying so instead
-    of failing the run. With ``cap`` the two tools share its call budget; the
+    of failing the run. With ``cap`` the tools share its call budget; the
     provider passes its own and resets it at every run.
+
+    With ``documents`` a third, ``vinc_doc_get``, reads a canonical document by id, whole,
+    by character range or under one heading, under the same cap.
     """
+    # 도구는 모델 턴 안에서 돈다. 허브를 기다리지 않고 곧장 문장으로 물러선다.
+    client = client.without_retries()
     # 없는 id(코드 not_found)는 프레임워크 기본 오류("Error: Function failed.") 대신 이유를 담은
     # 문장으로 돌린다. space_not_found 같은 설정 오류는 그대로 올린다. LangGraph 쪽과 같은 문장이다.
     # 근거: [[record:vin318-live-exp02-r2-parity-tool-calls-2-vs-1-2026-10-07]]
@@ -71,7 +93,81 @@ def create_vinc_tools(client: AsyncVincClient, *, max_chars: int = DEFAULT_MAX_C
         except (VincUnavailable, VincQuotaExceeded) as exc:
             return f"Vinc is not available right now ({exc.code}); answer without it."
 
-    return [vinc_brief, vinc_search]
+    @tool(name=DOC_NAME, description=DOC_DESCRIPTION, schema=DocArgs)
+    async def vinc_doc_get(doc_id: str, start: int | None = None, end: int | None = None,
+                           section: str | None = None) -> str:
+        if cap is not None and not cap.spend():
+            return cap.message
+        return await aread_document(client, doc_id, start=start, end=end, section=section)
+
+    tools = [vinc_brief, vinc_search, vinc_doc_get] if documents else [vinc_brief, vinc_search]
+    if not writes:
+        return tools
+
+    @tool(name=INGEST_NAME, description=INGEST_DESCRIPTION, schema=IngestArgs)
+    async def vinc_ingest(nodes: list[dict[str, Any]],
+                          edges: list[dict[str, Any]] | None = None) -> str:
+        return await arun_ingest(client, nodes, edges)
+
+    @tool(name=DOC_PUT_NAME, description=DOC_PUT_DESCRIPTION, schema=DocPutArgs)
+    async def vinc_doc_put(text: str, doc_id: str | None = None, title: str | None = None,
+                           valid_from: str | None = None,
+                           expected_content_hash: str | None = None) -> str:
+        return await arun_doc_put(client, text, doc_id, title, valid_from, expected_content_hash)
+
+    return tools + [vinc_ingest, vinc_doc_put]
+
+
+class _HideDisallowedTools(ChatMiddleware):
+    """Chat middleware for one run: the model does not see the role's disallowed tools.
+
+    The first model call of the run logs one warning naming the contract entries that
+    matched none of the agent's tools.
+    """
+
+    def __init__(self, policy: RoleToolPolicy) -> None:
+        self.policy = policy
+        self._warned = False
+
+    async def process(self, context: ChatContext, call_next: Callable[[], Awaitable[None]]) -> None:
+        options = dict(context.options or {})
+        tools = list(options.get("tools") or [])
+        if not self._warned:
+            self._warned = True
+            self.policy.warn_unmatched(tools)
+        allowed = self.policy.allowed(tools)
+        if len(allowed) != len(tools):
+            # 새 dict 로 바꾼다. 함수 호출 루프가 쥔 도구 목록은 그대로라서, 모델이 그래도 부른
+            # 호출은 _RefuseDisallowedTools 가 거절 문장으로 답한다. 다 빠지면 tools 칸을 비운다.
+            if allowed:
+                options["tools"] = allowed
+            else:
+                options.pop("tools", None)
+                options.pop("tool_choice", None)
+            context.options = options
+        await call_next()
+
+
+class _RefuseDisallowedTools(FunctionMiddleware):
+    """Function middleware for one run: a call to a disallowed tool, or one held for
+    approval, gets a refusal result, and calls past ``budget.tool_calls`` get the budget
+    sentence. Calls are counted in the order they run."""
+
+    def __init__(self, policy: RoleToolPolicy) -> None:
+        self.policy = policy
+        self.used = 0
+
+    async def process(self, context: FunctionInvocationContext,
+                      call_next: Callable[[], Awaitable[None]]) -> None:
+        name = context.function.name
+        position, self.used = self.used, self.used + 1
+        if self.policy.over_budget(position):
+            context.result = self.policy.budget_message()
+            return
+        if self.policy.allows(name):
+            await call_next()
+            return
+        context.result = self.policy.refusal(name)
 
 
 class VincContextProvider(ContextProvider):
@@ -87,6 +183,33 @@ class VincContextProvider(ContextProvider):
     With ``expose_tools`` the model may call ``vinc_brief`` and ``vinc_search``
     at most ``tool_calls_per_run`` times per run; past that the tool answers with
     a sentence saying so. ``None`` turns the cap off.
+
+    With ``prefetch_role`` the role contract's ``disallowed_tools`` apply to the run, by
+    exact tool name. The provider adds two middleware for that run only: a chat middleware
+    that removes those tools from what the model sees, and a function middleware that
+    answers a call to one of them with a sentence saying the role does not allow it. The
+    first model call logs one warning naming entries that matched none of the agent's tools.
+    Hiding needs a chat client that runs chat middleware (``ChatMiddlewareLayer``, as the
+    built-in clients do); with any other client the tools stay visible, calls are still
+    refused, and the run logs a warning saying so.
+
+    The contract's run policy applies too (``RoleToolPolicy.from_contract``). With
+    ``capability_map`` (tool name to capability id) a tool the role denies is removed the
+    same way, and a call to one it holds for approval gets a sentence asking for a person
+    instead of running. ``budget.tool_calls`` caps all tool calls of a run, in the order they
+    run. A malformed policy stops the run before the model is called.
+
+    ``prefetch_pin`` (the ``hash`` from ``AsyncVincClient.role``) holds role prefetch to that
+    contract: when the role changed, ``before_run`` raises ``VincRoleChanged`` and the model is
+    not called. Moving the pin to the new hash is your decision; nothing moves it for you.
+
+    ``context_policy`` (with ``prefetch_role``) builds the role's block with
+    ``vinc_client.acompile_context`` under that policy instead of ``prefetch``.
+    ``vinc_client.FULL_TEXT`` gives prefetch's block. With ``expose_documents`` (and
+    ``expose_tools``) the model also gets ``vinc_doc_get``, and the policy may then shorten
+    required readings, because the model can read the rest. With ``expose_documents`` and no
+    ``context_policy`` the block comes from the compiler's default: the task evidence policy
+    when the role allows the tool, prefetch's block when it does not.
     """
 
     def __init__(self, client: AsyncVincClient | None = None, *, api_key: str | None = None,
@@ -96,7 +219,23 @@ class VincContextProvider(ContextProvider):
                  min_query_chars: int = 3, expose_tools: bool = False,
                  prefetch_role: str | None = None,
                  prefetch_max_chars: int = DEFAULT_PREFETCH_MAX_CHARS,
-                 tool_calls_per_run: int | None = TOOL_CALLS_PER_RUN) -> None:
+                 tool_calls_per_run: int | None = TOOL_CALLS_PER_RUN,
+                 prefetch_pin: str | None = None,
+                 capability_map: Mapping[str, str] | None = None,
+                 context_policy: ContextPolicy | None = None,
+                 expose_documents: bool = False, expose_writes: bool = False) -> None:
+        if prefetch_pin is not None and not prefetch_role:
+            # 역할 없이 고정만 주면 맥락 모드로 조용히 돌게 된다. 시작 전에 멈춘다.
+            raise ValueError("prefetch_pin needs prefetch_role")
+        if context_policy is not None and not prefetch_role:
+            raise ValueError("context_policy needs prefetch_role")
+        if expose_documents and not expose_tools:
+            raise ValueError("expose_documents needs expose_tools")
+        if expose_writes and not expose_tools:
+            raise ValueError("expose_writes needs expose_tools")
+        self.context_policy = context_policy
+        self.expose_documents = expose_documents
+        self.expose_writes = expose_writes
         super().__init__(source_id)
         self.client = client or AsyncVincClient(api_key, base_url=base_url, space=space)
         self._owns_client = client is None
@@ -106,15 +245,43 @@ class VincContextProvider(ContextProvider):
         self.min_query_chars = min_query_chars
         self.prefetch_role = prefetch_role
         self.prefetch_max_chars = prefetch_max_chars
+        self.prefetch_pin = prefetch_pin
         self.expose_tools = expose_tools
         self.tool_calls_per_run = tool_calls_per_run
+        self.capability_map = capability_map
+
+    def _read_tool(self) -> Any:
+        # 도구를 내주더라도 역할이 그것을 막거나 승인으로 묶으면 모델은 못 쓴다. 계약을 읽은 뒤에 정한다.
+        if not self.expose_documents:
+            return False
+        return lambda contract: doc_tool_allowed(contract, self.capability_map)
 
     async def before_run(self, *, agent: Any, session: AgentSession, context: SessionContext,
                          state: dict[str, Any]) -> None:
         task = _last_user_text(context.input_messages)
         if self.prefetch_role:
-            block = await prefetch(self.client, self.prefetch_role, task,
-                                   max_chars=self.prefetch_max_chars)
+            if self.context_policy is not None or self.expose_documents:
+                # 정책 없이 vinc_doc_get 을 내주면 컴파일러의 기본값이 고른다: 역할이 도구를 허락하면
+                # 과제 근거 정책, 아니면 prefetch 와 같은 P0.
+                fetched = await arole_prefetch(self.client, self.prefetch_role, task,
+                                               policy=self.context_policy,
+                                               max_chars=self.prefetch_max_chars,
+                                               pin=self.prefetch_pin,
+                                               read_tool=self._read_tool())
+            else:
+                fetched = await self.client.prefetch_with_contract(
+                    self.prefetch_role, task, max_chars=self.prefetch_max_chars,
+                    pin=self.prefetch_pin)
+            block = fetched.block
+            # 계약의 도구 목록이 잘못됐으면 여기서 멈춘다(모델 호출 전).
+            policy = RoleToolPolicy.from_contract(fetched.contract, self.capability_map)
+            if policy:
+                if policy.disallowed and not isinstance(getattr(agent, "client", None),
+                                                        ChatMiddlewareLayer):
+                    log.warning(NO_CHAT_MIDDLEWARE, policy.role_id)
+                # 미들웨어는 이 런의 것이다. 동시에 도는 런끼리 나눠 쓰지 않는다.
+                context.extend_middleware(self.source_id, [_HideDisallowedTools(policy),
+                                                           _RefuseDisallowedTools(policy)])
         else:
             block = await self.client.get_context(
                 task, search_fallback=self.search_fallback,
@@ -126,7 +293,8 @@ class VincContextProvider(ContextProvider):
             # 도구는 런마다 새로 만든다: 상한(ToolCallCap)이 그 런의 것이라 동시에 도는 런끼리
             # 나눠 쓰지 않는다. LangGraph 쪽은 그래프 상태에서 같은 수를 센다.
             context.extend_tools(self.source_id, create_vinc_tools(
-                self.client, max_chars=self.max_chars, cap=ToolCallCap(self.tool_calls_per_run)))
+                self.client, max_chars=self.max_chars, cap=ToolCallCap(self.tool_calls_per_run),
+                documents=self.expose_documents, writes=self.expose_writes))
 
     async def after_run(self, *, agent: Any, session: AgentSession, context: SessionContext,
                         state: dict[str, Any]) -> None:
@@ -143,7 +311,9 @@ class VincContextProvider(ContextProvider):
 async def record_episode(client: AsyncVincClient, title: str, *, summary: str = "",
                          about: Iterable[str] = (), date: str | None = None,
                          domain: str | None = None, tags: Iterable[str] | None = None,
-                         space: str | None = None, episode_id: str | None = None) -> dict[str, Any]:
+                         space: str | None = None, episode_id: str | None = None,
+                         create_only: bool | None = None,
+                         operation_id: str | None = None) -> dict[str, Any]:
     """Write one Episode about existing concepts or decisions. Needs a ``vinc_sk_`` key.
 
     Call it after a person approved what the agent did; see
@@ -151,7 +321,18 @@ async def record_episode(client: AsyncVincClient, title: str, *, summary: str = 
     Save episode_id in host state before approval and reuse it only for this event's retries.
     """
     return await client.record_episode(title, summary=summary, about=about, date=date,
-                                       domain=domain, tags=tags, space=space, episode_id=episode_id)
+                                       domain=domain, tags=tags, space=space, episode_id=episode_id,
+                                       create_only=create_only, operation_id=operation_id)
+
+
+async def record_run(client: AsyncVincClient, run_id: str, *, role: str, outcome: str,
+                     **fields: Any) -> dict[str, Any]:
+    """Write one agent run as an Episode about its role. Needs a ``vinc_sk_`` key.
+
+    ``fields`` are :meth:`vinc_client.AsyncVincClient.record_run`'s keyword
+    arguments. Call it after the run ends; a retry of the same ``run_id`` merges.
+    """
+    return await client.record_run(run_id, role=role, outcome=outcome, **fields)
 
 
 class PackageProvider(ContextProvider):
@@ -186,14 +367,20 @@ class PackageProvider(ContextProvider):
 
 async def write_package(client: AsyncVincClient, question: str, conclusion: str, *,
                         claims: Iterable[dict[str, Any]], produced_by: str, run_id: str,
-                        space: str, package_id: str | None = None) -> dict[str, Any]:
+                        space: str, package_id: str | None = None,
+                        create_only: bool | None = None,
+                        operation_id: str | None = None) -> dict[str, Any]:
     """Explicit producer write; invoke after reviewing its conclusion and claim evidence."""
     return await client.write_package(question, conclusion, claims=claims,
                                       produced_by=produced_by, run_id=run_id,
-                                      space=space, package_id=package_id)
+                                      space=space, package_id=package_id,
+                                      create_only=create_only, operation_id=operation_id)
 
 
 async def prefetch(client: AsyncVincClient, role_id: str, task: str, *, space: str | None = None,
-                   max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
-    """Read the selected role and its required/task evidence before a model call; never write."""
-    return await client.prefetch(role_id, task, space=space, max_chars=max_chars)
+                   max_chars: int = DEFAULT_PREFETCH_MAX_CHARS, pin: str | None = None) -> str:
+    """Read the selected role and its required/task evidence before a model call; never write.
+
+    With ``pin`` a role that changed raises ``VincRoleChanged`` instead.
+    """
+    return await client.prefetch(role_id, task, space=space, max_chars=max_chars, pin=pin)

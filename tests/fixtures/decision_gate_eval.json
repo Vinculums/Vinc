@@ -1,0 +1,90 @@
+{
+  "note": "VIN-784 decision gate evaluation. Planted claims and decisions with the paths that must surface them, and controls that must not. scripts/eval_decision_gate.py loads this into a fresh store and scores precision and recall over (path, id) pairs.",
+  "owner": "user:gate-eval",
+  "today_after": "2026-10-25",
+  "fragments": [
+    {
+      "owner": "user:gate-eval",
+      "nodes": [
+        {"id": "concept:gate-topic", "type": "concept", "title": "Gate eval topic"},
+        {"id": "record:gate-exact-sync", "type": "record", "title": "sync.py drops birth on pull",
+         "props": {"subject_path": "vinc:api/sync.py", "measured_at": "2026-10-01", "measured_ref": "abc1234"}},
+        {"id": "record:gate-dir-api", "type": "record", "title": "every api module reads owner from the request",
+         "props": {"subject_path": "vinc:api/", "measured_at": "2026-09-01"}},
+        {"id": "record:gate-dir-noslash", "type": "record", "title": "vinc_mcp never imports api",
+         "props": {"subject_path": "vinc:vinc_mcp", "measured_at": "2026-09-02"}},
+        {"id": "record:gate-folded", "type": "record", "title": "pkns strips the owner namespace",
+         "props": {"subject_path": "Vinc:store\\pkns.py", "measured_at": "2026-09-03"}},
+        {"id": "record:gate-retired", "type": "record", "title": "sync.py once wrote birth twice",
+         "valid_until": "2026-01-01",
+         "props": {"subject_path": "vinc:api/sync.py", "measured_at": "2025-12-01"}},
+        {"id": "record:gate-result", "type": "record", "title": "a dated run of the sync tests",
+         "props": {"subject_path": "vinc:api/sync.py", "measured_at": "2026-10-02", "claim_kind": "result"}},
+        {"id": "record:gate-other-repo", "type": "record", "title": "the site has its own api/sync.py",
+         "props": {"subject_path": "vinc-homepage:api/sync.py", "measured_at": "2026-09-04"}},
+        {"id": "record:gate-prefix-trap", "type": "record", "title": "a folder named api/sync",
+         "props": {"subject_path": "vinc:api/sync", "measured_at": "2026-09-05"}},
+        {"id": "record:gate-bare", "type": "record", "title": "a claim that names no repository",
+         "props": {"subject_path": "api/sync.py", "measured_at": "2026-09-06"}},
+        {"id": "record:gate-future", "type": "record", "title": "engines/x.py changes next year",
+         "valid_from": "2027-01-01",
+         "props": {"subject_path": "vinc:engines/x.py", "measured_at": "2026-10-03"}},
+        {"id": "decision:gate-direct", "type": "decision", "title": "copy.ts holds every visible string",
+         "props": {"subject_path": "vinc:app/src/copy.ts", "valid_from": "2026-09-01"}},
+        {"id": "decision:gate-list", "type": "decision", "title": "infra is declared as code",
+         "props": {"subject_path": ["vinc:infra/", "vinc:packaging/x.spec"]}},
+        {"id": "decision:gate-linked", "type": "decision", "title": "sync keeps the birth column"},
+        {"id": "decision:gate-retired-linked", "type": "decision", "title": "sync once kept two births",
+         "props": {"valid_until": "2026-01-01"}},
+        {"id": "decision:gate-via-retired", "type": "decision", "title": "decided on a claim that was retired"},
+        {"id": "decision:gate-chain", "type": "decision", "title": "copy follows the terminology canon"},
+        {"id": "decision:gate-two-hops", "type": "decision", "title": "the terminology canon is English first"},
+        {"id": "decision:gate-about-concept", "type": "decision", "title": "a decision about the topic only"},
+        {"id": "decision:gate-prereq", "type": "decision", "title": "the copy gate runs before release"}
+      ],
+      "edges": [
+        {"from": "record:gate-exact-sync", "to": "decision:gate-linked", "type": "derives_from"},
+        {"from": "record:gate-exact-sync", "to": "decision:gate-retired-linked", "type": "derives_from"},
+        {"from": "record:gate-retired", "to": "decision:gate-via-retired", "type": "derives_from"},
+        {"from": "record:gate-exact-sync", "to": "concept:gate-topic", "type": "derives_from"},
+        {"from": "decision:gate-about-concept", "to": "concept:gate-topic", "type": "about"},
+        {"from": "decision:gate-direct", "to": "decision:gate-chain", "type": "derives_from"},
+        {"from": "decision:gate-chain", "to": "decision:gate-two-hops", "type": "derives_from"},
+        {"from": "decision:gate-prereq", "to": "decision:gate-direct", "type": "prerequisite_of"}
+      ]
+    },
+    {
+      "owner": "user:gate-other",
+      "nodes": [
+        {"id": "record:gate-foreign", "type": "record", "title": "another owner's claim about sync.py",
+         "props": {"subject_path": "vinc:api/sync.py", "measured_at": "2026-10-04"}}
+      ],
+      "edges": []
+    }
+  ],
+  "cases": [
+    {"path": "vinc:api/sync.py",
+     "expect": {"record:gate-exact-sync": "exact", "record:gate-dir-api": "directory", "decision:gate-linked": "related"},
+     "controls": ["record:gate-retired", "record:gate-result", "record:gate-other-repo", "record:gate-prefix-trap",
+                  "record:gate-bare", "decision:gate-retired-linked", "decision:gate-via-retired",
+                  "decision:gate-about-concept", "record:gate-foreign"]},
+    {"path": "vinc:api/query.py", "expect": {"record:gate-dir-api": "directory"},
+     "controls": ["record:gate-exact-sync", "decision:gate-linked"]},
+    {"path": "vinc:vinc_mcp/tools.py", "expect": {"record:gate-dir-noslash": "directory"}, "controls": []},
+    {"path": "vinc:store/pkns.py", "expect": {"record:gate-folded": "exact"}, "controls": []},
+    {"path": "vinc-homepage:api/sync.py", "expect": {"record:gate-other-repo": "exact"},
+     "controls": ["record:gate-exact-sync", "record:gate-dir-api"]},
+    {"path": "vinc:app/src/copy.ts",
+     "expect": {"decision:gate-direct": "exact", "decision:gate-chain": "related", "decision:gate-prereq": "related"},
+     "controls": ["decision:gate-two-hops"]},
+    {"path": "vinc:infra/main.tf", "expect": {"decision:gate-list": "directory"}, "controls": []},
+    {"path": "vinc:packaging/x.spec", "expect": {"decision:gate-list": "exact"}, "controls": []},
+    {"path": "vinc:engines/x.py", "expect": {"record:gate-future": "exact"}, "controls": []},
+    {"path": "vinc:api2/x.py", "expect": {}, "controls": ["record:gate-dir-api"]},
+    {"path": "vinc:api/sync/inner.py", "expect": {"record:gate-prefix-trap": "directory", "record:gate-dir-api": "directory"},
+     "controls": ["record:gate-exact-sync"]},
+    {"path": "vinc:docs/readme.md", "expect": {}, "controls": []},
+    {"path": "api/sync.py", "expect": {"record:gate-bare": "exact"},
+     "controls": ["record:gate-exact-sync", "record:gate-dir-api"]}
+  ]
+}

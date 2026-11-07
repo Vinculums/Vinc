@@ -198,6 +198,238 @@ class ClaimDiagnosisE2E(unittest.TestCase):
         self.assertTrue(out["executed"], out)
         self.assertEqual(out["scanned"], 0)
 
+    # ── 현재 기록만 짝짓는다: 은퇴했거나 대체된 주장은 더 서 있지 않다 ──────────
+
+    def test_은퇴한_옛_주장은_어긋남이_아니다(self):
+        """valid_until 이 지난 옛 주장은 짝이 되지 않는다. 짝이 되면 그 주장이 지워지기
+        전까지 같은 어긋남이 영영 남는다."""
+        self._ingest([
+            {"id": "record:gone", "type": "record", "title": "은퇴한 측정",
+             "valid_until": "2026-02-01",
+             "props": {"subject_path": "api/r.py", "measured_at": "2026-01-01"}},
+            {"id": "record:now", "type": "record", "title": "현재 측정",
+             "props": {"subject_path": "api/r.py", "measured_at": "2026-02-01"}}])
+        out = self._run()
+        self.assertEqual(out["conflict_count"], 0, out["conflicts"])
+        self.assertEqual(out["anchored_count"], 2)      # 닻 수는 은퇴한 기록도 센다
+        self.assertEqual(out["scanned"], 2)
+
+    def test_오늘_끝난_주장도_은퇴했다(self):
+        """유효구간은 반개구간이다. valid_until 이 오늘이면 오늘은 이미 밖이다."""
+        import datetime as dt
+        today = dt.date.today().isoformat()
+        self._ingest([
+            {"id": "record:until-today", "type": "record", "title": "오늘까지",
+             "valid_until": today,
+             "props": {"subject_path": "api/t.py", "measured_at": "2026-01-01"}},
+            {"id": "record:fresh", "type": "record", "title": "새 측정",
+             "props": {"subject_path": "api/t.py", "measured_at": "2026-02-01"}}])
+        self.assertEqual(self._run()["conflict_count"], 0)
+
+    def test_끝날이_미래면_아직_현재다(self):
+        self._ingest([
+            {"id": "record:later", "type": "record", "title": "아직 유효",
+             "valid_until": "2999-01-01",
+             "props": {"subject_path": "api/f.py", "measured_at": "2026-01-01"}},
+            {"id": "record:latest", "type": "record", "title": "새 측정",
+             "props": {"subject_path": "api/f.py", "measured_at": "2026-02-01"}}])
+        out = self._run()
+        self.assertEqual(out["conflict_count"], 1, out["conflicts"])
+        self.assertEqual(out["conflicts"][0]["older"]["id"], "record:later")
+
+    def test_대체된_주장은_어긋남이_아니다(self):
+        """대체는 대체당한 기록의 valid_until 로 현재 읽기를 떠난다(대체 엣지가 그 값을
+        요구하는 경고를 낸다). 그 기록은 짝에도 낡은 목록에도 남지 않는다."""
+        out = frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "record:replaced", "type": "record", "title": "대체된 측정",
+             "valid_until": "2026-03-01",
+             "props": {"subject_path": "vinc:api/s2.py", "measured_at": "2026-01-01"}},
+            {"id": "record:replacement", "type": "record", "title": "대체한 측정",
+             "valid_from": "2026-03-01",
+             "props": {"subject_path": "vinc:api/s2.py", "measured_at": "2026-03-01"}}],
+            "edges": [{"from": "record:replacement", "to": "record:replaced",
+                       "type": "supersedes", "evidence": "다시 쟀다"}]},
+            store=self.store)
+        self.assertFalse(out.get("warnings"), out)
+        got = self._run()
+        self.assertEqual(got["conflict_count"], 0, got["conflicts"])
+
+    def test_은퇴한_최신_주장_대신_현재_것끼리_짝짓는다(self):
+        """가장 최근 측정이 은퇴했으면 남은 현재 측정 중 최신이 기준이 된다."""
+        self._ingest([
+            {"id": "record:c2", "type": "record", "title": "C2", "valid_until": "2026-04-01",
+             "props": {"subject_path": "api/c.py", "measured_at": "2026-03-01"}},
+            {"id": "record:c1", "type": "record", "title": "C1",
+             "props": {"subject_path": "api/c.py", "measured_at": "2026-02-01"}},
+            {"id": "record:c0", "type": "record", "title": "C0",
+             "props": {"subject_path": "api/c.py", "measured_at": "2026-01-01"}}])
+        out = self._run()
+        self.assertEqual(out["conflict_count"], 1, out["conflicts"])
+        c = out["conflicts"][0]
+        self.assertEqual((c["newer"]["id"], c["older"]["id"]), ("record:c1", "record:c0"))
+
+    def test_은퇴한_기록은_닻_없는_목록에_안_든다(self):
+        """은퇴한 주장에 닻을 달아도 짝에도 낡은 목록에도 오르지 않는다. 목록에 남기면
+        줄일 수 없는 수가 된다."""
+        self._ingest([
+            {"id": "record:retired-loose", "type": "record", "title": "은퇴한 느슨한 주장",
+             "valid_until": "2026-01-15",
+             "props": {"note": "api/sync.py 가 created 를 흘렸다"}},
+            {"id": "record:current-loose", "type": "record", "title": "현재 느슨한 주장",
+             "props": {"note": "api/server.py 가 응답을 늦춘다"}}])
+        out = self._run()
+        self.assertEqual([u["id"] for u in out["unanchored"]], ["record:current-loose"])
+        self.assertEqual(out["unanchored_count"], 1)
+        self.assertEqual(out["scanned"], 2)
+
+    # ── 시점 결과(claim_kind=result)는 짝을 짓지 않는다 ─────────────────────────
+
+    def test_시점_결과는_최신_자리를_차지하지_않는다(self):
+        """가장 새 기록이 결과면 그것을 빼고 남은 주장끼리 짝을 짓는다."""
+        self._ingest([
+            {"id": "record:run", "type": "record", "title": "실행 결과",
+             "props": {"subject_path": "vinc:api/k.py", "measured_at": "2026-03-01",
+                       "claim_kind": "result"}},
+            {"id": "record:k1", "type": "record", "title": "K1",
+             "props": {"subject_path": "vinc:api/k.py", "measured_at": "2026-02-01"}},
+            {"id": "record:k0", "type": "record", "title": "K0",
+             "props": {"subject_path": "vinc:api/k.py", "measured_at": "2026-01-01"}}])
+        out = self._run()
+        self.assertEqual(out["conflict_count"], 1, out["conflicts"])
+        c = out["conflicts"][0]
+        self.assertEqual((c["newer"]["id"], c["older"]["id"]), ("record:k1", "record:k0"))
+        self.assertEqual(out["results_excluded"], 1)
+        self.assertEqual(out["anchored_count"], 3)      # 닻 수와 훑은 수는 결과도 센다
+        self.assertEqual(out["scanned"], 3)
+
+    def test_시점_결과는_나머지_자리에도_오르지_않는다(self):
+        self._ingest([
+            {"id": "record:now", "type": "record", "title": "현재 동작",
+             "props": {"subject_path": "vinc:api/m.py", "measured_at": "2026-03-01"}},
+            {"id": "record:mid", "type": "record", "title": "중간 측정",
+             "props": {"subject_path": "vinc:api/m.py", "measured_at": "2026-02-01"}},
+            {"id": "record:run-old", "type": "record", "title": "이전 실행 결과",
+             "props": {"subject_path": "vinc:api/m.py", "measured_at": "2026-01-01",
+                       "claim_kind": "result"}}])
+        out = self._run()
+        self.assertEqual(out["conflict_count"], 1, out["conflicts"])
+        self.assertEqual([c["older"]["id"] for c in out["conflicts"]], ["record:mid"])
+        self.assertEqual(out["results_excluded"], 1)
+
+    def test_뺀_결과는_현재_기록만_센다(self):
+        """은퇴한 결과는 은퇴 때문에 빠진 것이라 results_excluded 에 들지 않는다."""
+        self._ingest([
+            {"id": "record:r1", "type": "record", "title": "결과 1",
+             "props": {"subject_path": "vinc:api/a.py", "measured_at": "2026-01-01",
+                       "claim_kind": "result"}},
+            {"id": "record:r2", "type": "record", "title": "결과 2",
+             "props": {"subject_path": "vinc:api/b.py", "measured_at": "2026-01-02",
+                       "claim_kind": "result"}},
+            {"id": "record:r-gone", "type": "record", "title": "은퇴한 결과",
+             "valid_until": "2026-02-01",
+             "props": {"subject_path": "vinc:api/a.py", "measured_at": "2025-12-01",
+                       "claim_kind": "result"}}])
+        out = self._run()
+        self.assertEqual(out["results_excluded"], 2)
+        self.assertEqual(out["anchored_count"], 3)
+        self.assertEqual(out["scanned"], 3)
+        self.assertEqual(out["conflict_count"], 0)
+
+    def test_결과가_없으면_뺀_수는_0이다(self):
+        self.assertEqual(self._run()["results_excluded"], 0)
+
+    def test_모르는_claim_kind_는_보통_주장이다(self):
+        """정확히 "result" 가 아니면 무시한다. 대소문자가 다른 값과 문자열이 아닌 값도 같다."""
+        self._ingest([
+            {"id": "record:n1", "type": "record", "title": "N1",
+             "props": {"subject_path": "vinc:api/n.py", "measured_at": "2026-03-01",
+                       "claim_kind": "Result"}},
+            {"id": "record:n0", "type": "record", "title": "N0",
+             "props": {"subject_path": "vinc:api/n.py", "measured_at": "2026-01-01",
+                       "claim_kind": ["result"]}},
+            {"id": "record:n2", "type": "record", "title": "N2",
+             "props": {"subject_path": "vinc:api/n.py", "measured_at": "2026-02-01",
+                       "claim_kind": "observation"}}])
+        out = self._run()
+        self.assertEqual(out["conflict_count"], 2, out["conflicts"])
+        self.assertEqual({c["newer"]["id"] for c in out["conflicts"]}, {"record:n1"})
+        self.assertEqual(out["results_excluded"], 0)
+
+    # ── 확인일(reviewed_at)은 그 날짜까지의 변경을 낡음에서 뺀다 ────────────────
+
+    @staticmethod
+    def _change(eid: str, date: str, files: list[str]) -> dict:
+        return {"id": eid, "type": "episode", "title": eid, "date": date,
+                "props": {"files": files, "head_sha": "f" * 40}}
+
+    def _stale(self) -> dict:
+        return {s["claim"]["id"]: s for s in self._run()["stale"]}
+
+    def test_확인일_이전_변경은_세지_않고_이후_변경은_센다(self):
+        self._ingest([
+            {"id": "record:checked", "type": "record", "title": "확인한 주장",
+             "props": {"subject_path": "vinc:api/v.py", "measured_at": "2026-01-01",
+                       "reviewed_at": "2026-02-15"}},
+            self._change("episode:before-review", "2026-02-01", ["vinc:api/v.py"]),
+            self._change("episode:after-review", "2026-03-01", ["vinc:api/v.py"])])
+        hit = self._stale()["record:checked"]
+        self.assertEqual(hit["change"]["id"], "episode:after-review")
+        self.assertEqual(hit["changes_since"], 1)
+        self.assertFalse(hit["same_day"])
+        self.assertEqual(hit["claim"]["reviewed_at"], "2026-02-15")
+        self.assertEqual(hit["claim"]["measured_at"], "2026-01-01")
+
+    def test_확인일까지의_변경만_있으면_낡지_않았다(self):
+        """확인일 당일의 변경도 살펴본 것으로 친다. 시점 결과에도 같다."""
+        self._ingest([
+            {"id": "record:quiet", "type": "record", "title": "확인 뒤 조용한 결과",
+             "props": {"subject_path": "vinc:api/q.py", "measured_at": "2026-01-01",
+                       "reviewed_at": "2026-02-15", "claim_kind": "result"}},
+            {"id": "record:unreviewed", "type": "record", "title": "확인 안 한 결과",
+             "props": {"subject_path": "vinc:api/q.py", "measured_at": "2026-01-01",
+                       "claim_kind": "result"}},
+            self._change("episode:q-early", "2026-02-01", ["vinc:api/q.py"]),
+            self._change("episode:q-review-day", "2026-02-15", ["vinc:api/q.py"])])
+        stale = self._stale()
+        self.assertNotIn("record:quiet", stale)
+        self.assertEqual(stale["record:unreviewed"]["changes_since"], 2)
+        self.assertNotIn("reviewed_at", stale["record:unreviewed"]["claim"])
+
+    def test_측정일보다_이른_확인일은_아무것도_바꾸지_않는다(self):
+        """기준은 둘 중 늦은 쪽이다. 측정 당일 변경은 그대로 same_day 로 나온다."""
+        self._ingest([
+            {"id": "record:early-review", "type": "record", "title": "이른 확인일",
+             "props": {"subject_path": "vinc:api/e.py", "measured_at": "2026-05-01",
+                       "reviewed_at": "2026-04-01"}},
+            self._change("episode:e-older", "2026-04-15", ["vinc:api/e.py"]),
+            self._change("episode:e-same-day", "2026-05-01", ["vinc:api/e.py"])])
+        hit = self._stale()["record:early-review"]
+        self.assertEqual(hit["change"]["id"], "episode:e-same-day")
+        self.assertEqual(hit["changes_since"], 1)
+        self.assertTrue(hit["same_day"])
+
+    def test_날짜가_아닌_확인일은_무시한다(self):
+        self._ingest([
+            {"id": f"record:bad-{i}", "type": "record", "title": f"틀린 확인일 {i}",
+             "props": {"subject_path": f"vinc:api/bad{i}.py", "measured_at": "2026-01-01",
+                       "reviewed_at": v}}
+            for i, v in enumerate(("어제", "2026/02/15", "2026-2-15", 20260215, ""))
+        ] + [self._change("episode:bad-change", "2026-02-01",
+                          [f"vinc:api/bad{i}.py" for i in range(5)])])
+        stale = self._stale()
+        for i in range(5):
+            hit = stale.get(f"record:bad-{i}")
+            self.assertIsNotNone(hit, i)
+            self.assertEqual(hit["changes_since"], 1)
+            self.assertNotIn("reviewed_at", hit["claim"])
+
+    def test_측정일_없는_기록은_확인일이_있어도_대상이_아니다(self):
+        self._ingest([
+            {"id": "record:no-measure", "type": "record", "title": "측정일 없음",
+             "props": {"subject_path": "vinc:api/x2.py", "reviewed_at": "2026-01-01"}},
+            self._change("episode:x2", "2026-02-01", ["vinc:api/x2.py"])])
+        self.assertNotIn("record:no-measure", self._stale())
+
 
 class DiagnoseContractTests(unittest.TestCase):
     """도구 계약에 kind 가 없으면 어시스턴트는 이 러너의 존재를 모른다."""
@@ -206,7 +438,13 @@ class DiagnoseContractTests(unittest.TestCase):
         from vinc_mcp.tools import TOOLS
         spec = next(t for t in TOOLS if t["name"] == "vinc_diagnose")
         self.assertIn("claims", spec["inputSchema"]["properties"]["kind"]["enum"])
-        self.assertIn("unanchored", spec["description"])
+        self.assertIn("unanchored", spec["reference"])
+
+    def test_참조문이_결과와_확인일을_말한다(self):
+        from vinc_mcp.tools import TOOLS
+        ref = next(t for t in TOOLS if t["name"] == "vinc_diagnose")["reference"]
+        for word in ("claim_kind", "results_excluded", "reviewed_at"):
+            self.assertIn(word, ref, word)
 
     def test_라우트가_claims_를_분기한다(self):
         import inspect

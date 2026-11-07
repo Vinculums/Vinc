@@ -108,6 +108,21 @@ class ProxyTest(unittest.TestCase):
         self.assertEqual([s["sid"] for s in _Hosted.seen], [None, "sess-1", "sess-1"])
         self.assertEqual([s["pv"] for s in _Hosted.seen], [None, "2025-06-18", "2025-06-18"])
 
+    def test_run_start_carries_the_client_from_initialize_as_its_host(self):
+        # 허브는 세션을 추적하지 않아 clientInfo 를 모른다. 프로세스 하나에 클라이언트 하나인
+        # 프록시가 run_start 의 host 를 채워 넘긴다(VIN-867). 호출자가 준 host 는 그대로 둔다.
+        start = {"role": "agent-research", "task": "t"}
+        self._run("vinc_sk_good", self._session()[:2] + [
+            {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+             "params": {"name": "vinc_run_start", "arguments": dict(start)}},
+            {"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+             "params": {"name": "vinc_run_start", "arguments": {**start, "host": "mine"}}},
+            {"jsonrpc": "2.0", "id": 5, "method": "tools/call",
+             "params": {"name": "vinc_search", "arguments": {"query": "x"}}}])
+        sent = [s["msg"]["params"]["arguments"] for s in _Hosted.seen
+                if s["msg"].get("method") == "tools/call"]
+        self.assertEqual([a.get("host") for a in sent], ["t 0", "mine", None])
+
     def test_an_event_stream_answer_is_unwrapped(self):
         _Hosted.mode = "sse"
         replies = self._run("vinc_sk_good", self._session())
@@ -188,25 +203,40 @@ class LocalProfileTest(unittest.TestCase):
 
     def test_the_local_profile_carries_neither_target_nor_space(self):
         from vinc_mcp import tools
-        local = tools.specs(local_only=True)
-        desktop = tools.specs()
-        self.assertEqual({s["name"] for s in local}, {s["name"] for s in desktop})
+        local = tools.specs()
+        # 커뮤니티 도구 둘은 계정 서비스로만 돈다. 로컬에는 계정이 없어 늘 실패하므로
+        # 이 프로파일에서만 빠진다(VIN-589). 레지스트리의 나머지는 그대로 나간다.
+        self.assertEqual({s["name"] for s in local},
+                         {t["name"] for t in tools.TOOLS} - set(tools._ACCOUNT_ONLY_TOOLS))
         for s in local:
             props = s["inputSchema"].get("properties") or {}
             self.assertNotIn("target", props, s["name"])
             self.assertNotIn("space", props, s["name"])
 
+    def test_community_tools_leave_only_the_local_profile(self):
+        """로컬 stdio 목록에 있던 두 도구는 부르면 언제나 계정 커넥터가 필요하다는 오류였다.
+        목록에서 빼되 허브는 그대로 낸다. 레지스트리(`TOOLS`)의 수는 그대로다."""
+        from vinc_mcp import community, rpc, tools
+        pair = {community.READ_TOOL, community.WRITE_TOOL}
+        self.assertEqual(set(tools._ACCOUNT_ONLY_TOOLS), pair)
+        local = {s["name"] for s in rpc.Dispatcher(None).handle(
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})["result"]["tools"]}
+        hosted = {s["name"] for s in tools.specs(hub=True)}
+        self.assertFalse(pair & local)
+        self.assertTrue(pair <= hosted)
+        self.assertTrue(pair <= {t["name"] for t in tools.TOOLS})
+
     def test_a_remote_target_or_a_space_is_refused_not_ignored(self):
         from vinc_mcp import tools
         for extra, word in (({"target": "remote"}, "local mode"), ({"space": "personal"}, "no spaces")):
             with self.assertRaises(ValueError) as cm:
-                tools.call("vinc_domains", dict(extra), bridge=None, local_only=True)
+                tools.call("vinc_domains", dict(extra), bridge=None)
             self.assertIn(word, str(cm.exception))
 
     def test_stdio_serves_the_local_profile(self):
         import inspect
         from vinc_mcp import stdio
-        self.assertIn("Dispatcher(bridge, local_only=True)", inspect.getsource(stdio.serve))
+        self.assertIn("Dispatcher(bridge)", inspect.getsource(stdio.serve))
 
 
 class KeychainTest(unittest.TestCase):

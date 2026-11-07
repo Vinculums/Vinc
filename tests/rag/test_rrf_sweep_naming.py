@@ -56,7 +56,7 @@ def test_ko_stripper_is_one_function_and_leaves_english_alone():
     갈라진 순간 이 실험은 아무것도 재지 못한다(색인에 없는 토큰을 묻게 된다).
 
     영어를 건드리지 않는 것도 계약이다. 원문 열의 영어 어간 처리가 계속 맞아야
-    한국어를 살리면서 영어를 잃지 않는다. 근거: [[record:korean-fts-analyser-2026-09-08]]"""
+    한국어를 살리면서 영어를 잃지 않는다. 근거: [[vinc.plan.retrieval-research-2026-09-08]]"""
     from rag_eval.rerank import ko_stripped_text
     import r1c_ko_column
 

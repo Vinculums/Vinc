@@ -3,7 +3,7 @@
 """ONNX 크로스인코더 리랭커 · RRF 뒤에 붙는 2단계(정밀도)의 **측정용** 구현.
 
 `vinc_rag/embed/encoder.py` 가 임베딩 모델 비교용이듯 이 파일은 리랭커 비교용이다. 프로덕션
-경로(`api/query.py::search`)에는 리랭커가 **없다**. 이 파일은 그것을 붙일지 정하는
+경로(`vinc_rag/retrieval.py::search`)에는 리랭커가 **없다**. 이 파일은 그것을 붙일지 정하는
 재료(품질·지연·메모리)를 만드는 계기이지 제품 코드가 아니다. 측정과 근거는 그래프의
 `vinc.research.reranking-after-fusion-2026-09-03` (이중대괄호 인용을 안 쓴 이유는
 `vinc_rag/embed/worker.py::prefix` 주석과 같다: 매니페스트 갱신에 원격 그래프 키가 필요하다).

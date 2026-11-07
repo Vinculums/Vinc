@@ -7,10 +7,9 @@ import { keptDocs, standaloneDocs } from "./share-docs";
 import { shareMerges } from "./share-merges";
 import { COPY } from "./copy";
 import { docTitle } from "./doc-title";
-import { openSheet, sheetActions, sheetProgress } from "./components";
-
-const esc = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
-  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
+import { dayOf } from "./view-prefs";
+import { esc, openSheet, sheetActions, sheetProgress } from "./components";
+import { loaderTrack, setTrack } from "./vinc-loaders.js";
 
 /**
  * 팩 사양 표 — 나가는 것의 수치.
@@ -79,81 +78,123 @@ function packDoneTexts(c: Record<string, number>, where: string): string[] {
  * 미리보기·개별 제외 화면을 공유와 **똑같이** 쓰는 이유는, 나가는 것을 고르는
  * 일과 들여오는 것을 고르는 일이 사용자에게 같은 판단이기 때문이다.
  */
-export async function openShareSheet(
-  scope: { ids?: string[]; seed?: string; domain?: string; depth?: number },
-  opts: { from?: Scope; into?: Scope; intoLabel?: string } = {},
-) {
+export type ShareScope = { ids?: string[]; seed?: string; domain?: string; depth?: number };
+export type ShareOpts = { from?: Scope; into?: Scope; intoLabel?: string };
+/** 고른 것만 담은 팩. 보낼 것이 하나도 없으면 null. */
+export type SharePick = { out: any; keep: number; filename: string; scopeLabel: string } | null;
+
+/**
+ * 미리보기 — 팩을 떠서 수치 표와 개별 제외 목록을 `host` 에 그린다. 반환값은 지금 체크된 것만
+ * 담은 팩을 짓는 함수다. `onChange` 는 체크가 바뀔 때마다 보낼 것이 남았는지 알린다(버튼 켜고 끄기).
+ * 시트(`openShareSheet`)와 설정의 공유 탭이 같은 미리보기를 쓴다.
+ */
+export async function renderSharePreview(host: HTMLElement, scope: ShareScope, opts: ShareOpts,
+                                         onChange: (any: boolean) => void): Promise<() => SharePick> {
   // 요청이 뜬 뒤 공간을 바꿔도 파일 이름은 이 팩을 만든 공간을 가리킨다.
   const source = opts.from?.team === null ? "" : opts.from?.team ?? cfg.team;
   const spaceName = source || (accountMode() || WEB ? "personal" : "local");
+  const pack = await api.share(cfg.owner, {
+    ids: scope.ids?.join(","), seed: scope.seed, domain: scope.domain, depth: scope.depth,
+  }, opts.from);
+  // 범위가 상한을 넘으면 서버가 팩을 안 짓고 거절한다(한 호출로 통째 긁기·거대 팩 방지).
+  // 빈 결과("아무것도 없어요")와 구별해, 주제로 나눠 공유하라고 말한다. 전체 백업은 공유 탭 아래 링크다.
+  if ((pack as { executed?: boolean }).executed === false && (pack as { note?: string }).note === "share_too_large") {
+    host.innerHTML = `<p class="hint">${esc(COPY.ui.sheet.shareTooLarge(Number((pack as { limit?: number }).limit) || 0))}</p>`;
+    onChange(false);
+    return () => null;
+  }
+  const nodes: any[] = pack.fragment?.nodes || [];
+  const unlinked = standaloneDocs(pack.documents, pack.doc_refs);
+  const c = pack.manifest?.counts || {};
+  // 씨앗은 문서가 아니라 노드다 — 그 이름을 팩에서 읽어 범위에 적는다(VIN-265).
+  const seedName = scope.seed
+    ? nodes.find((n) => n.id === scope.seed)?.title || scope.seed.replace(/^[a-z]+:/, "")
+    : "";
+  const scopeLabel =
+    scope.seed ? COPY.ui.sheet.scopeSeed(seedName, scope.depth ?? 2)
+    : scope.domain ? scope.domain
+    : scope.ids?.length ? COPY.ui.sheet.scopeSelection(scope.ids.length)
+    : COPY.ui.sheet.scopeAll;
+  host.innerHTML = `
+    ${specRows(c, scopeLabel)}
+    <div class="sheet-list">
+      ${nodes.map((n, i) => `
+        <label class="list-row" style="cursor:pointer">
+          <input type="checkbox" checked data-i="${i}" />
+          <span class="title">${esc(n.title)}</span><span class="meta">${esc(n.domain || n.type)}</span>
+        </label>`).join("")}
+      ${unlinked.map((d, i) => `
+        <label class="list-row" style="cursor:pointer">
+          <input type="checkbox" checked data-doc-i="${i}" />
+          <span class="title">${esc(docTitle(d.title))}</span><span class="meta">${esc(COPY.ui.sheet.specDocs)}</span>
+        </label>`).join("")}
+      ${nodes.length || unlinked.length ? "" : `<p class="hint">${COPY.ui.sheet.nothing}</p>`}
+    </div>
+    <p class="hint">${COPY.ui.sheet.keepNote}</p>`;
+  // 보낼 것이 하나도 없으면(범위가 비었거나 전부 껐으면) 알린다. 빈 팩을 성공으로 내보내지 않는다.
+  const anyChecked = () => !!host.querySelector("input[data-i]:checked, input[data-doc-i]:checked");
+  host.querySelectorAll<HTMLInputElement>("input[data-i], input[data-doc-i]")
+    .forEach((cb) => cb.addEventListener("change", () => onChange(anyChecked())));
+  onChange(anyChecked());
+  return () => {
+    if (!anyChecked()) return null;
+    const excluded = new Set([...host.querySelectorAll<HTMLInputElement>("input[data-i]")]
+      .filter((cb) => !cb.checked).map((cb) => nodes[Number(cb.dataset.i)].id));
+    const standalone = new Set([...host.querySelectorAll<HTMLInputElement>("input[data-doc-i]")]
+      .filter((cb) => cb.checked).map((cb) => unlinked[Number(cb.dataset.docI)].doc_id as string));
+    const keep = nodes.filter((n) => !excluded.has(n.id));
+    const keepIds = new Set(keep.map((n) => n.id));
+    const edges = (pack.fragment?.edges || []).filter((e: any) => keepIds.has(e.from) && keepIds.has(e.to));
+    const docs = keptDocs(pack.documents, excluded, pack.doc_refs, keepIds, standalone);
+    const out = { ...pack, fragment: { nodes: keep, edges },
+      ...(pack.documents ? { documents: docs } : {}),
+      manifest: { ...pack.manifest, counts: recount(keep, edges, docs, c) } };
+    // 둘 다 응답에만 붙는 값이라 팩 파일에는 안 싣는다(`doc_refs` 는 위 원문 선택에만 쓴다).
+    delete (out as any).executed;
+    delete (out as any).doc_refs;
+    return { out, keep: keep.length, scopeLabel,
+             filename: packFilename(spaceName, scope.domain || scope.seed || "share") };
+  };
+}
+
+/** 고른 팩을 보낸다 — 목적지가 정해졌으면 그리로, 아니면 목적지를 묻는다. `into` 가 없으면 시트를 새로 연다. */
+export function sendSharePick(pick: NonNullable<SharePick>, opts: ShareOpts = {},
+                              into?: { sheet: Sheet; life: SheetLife }): void {
+  const life: SheetLife = into?.life ?? { onClose: () => {} };
+  const sheet = into?.sheet ?? openSheet({ title: COPY.ui.sheet.shareTitle,
+                                           subtitle: COPY.ui.sheet.shareSub,
+                                           onClose: () => life.onClose() });
+  // 목적지가 이미 정해져도 내 공간에 합치는 내용은 먼저 확인한다.
+  if (opts.into) {
+    if (!opts.into.team) { void copyToPersonal(sheet, life, pick.out, pick.keep); return; }
+    void sendToSpace(sheet, life, pick.out, pick.keep, opts.into,
+                     opts.intoLabel || COPY.ui.sheet.destTeam);
+    return;
+  }
+  void chooseDestination(sheet, life, pick.out, pick.keep, pick.filename, pick.scopeLabel);
+}
+
+export async function openShareSheet(scope: ShareScope, opts: ShareOpts = {}) {
   const life: SheetLife = { onClose: () => {} };
   const sheet = openSheet({ title: COPY.ui.sheet.shareTitle,
                             subtitle: COPY.ui.sheet.shareSub,
                             onClose: () => life.onClose() });
   sheet.body.innerHTML = sheetProgress(COPY.ui.sheet.preparing);
+  sheet.foot.innerHTML = sheetActions(
+    { id: "sheet-save", label: COPY.ui.sheet.save },
+    { id: "sheet-cancel", label: COPY.ui.common.cancel });
+  sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", sheet.close);
+  const saveBtn = sheet.foot.querySelector<HTMLButtonElement>("#sheet-save")!;
+  saveBtn.disabled = true;
   try {
-    const pack = await api.share(cfg.owner, {
-      ids: scope.ids?.join(","), seed: scope.seed, domain: scope.domain, depth: scope.depth,
-    }, opts.from);
-    const nodes: any[] = pack.fragment?.nodes || [];
-    const unlinked = standaloneDocs(pack.documents, pack.doc_refs);
-    const c = pack.manifest?.counts || {};
-    // 씨앗은 문서가 아니라 노드다 — 그 이름을 팩에서 읽어 범위에 적는다(VIN-265).
-    const seedName = scope.seed
-      ? nodes.find((n) => n.id === scope.seed)?.title || scope.seed.replace(/^[a-z]+:/, "")
-      : "";
-    const scopeLabel =
-      scope.seed ? COPY.ui.sheet.scopeSeed(seedName, scope.depth ?? 2)
-      : scope.domain ? scope.domain
-      : scope.ids?.length ? COPY.ui.sheet.scopeSelection(scope.ids.length)
-      : COPY.ui.sheet.scopeAll;
-    sheet.body.innerHTML = `
-      ${specRows(c, scopeLabel)}
-      <div class="sheet-list">
-        ${nodes.map((n, i) => `
-          <label class="list-row" style="cursor:pointer">
-            <input type="checkbox" checked data-i="${i}" />
-            <span class="title">${esc(n.title)}</span><span class="meta">${esc(n.domain || n.type)}</span>
-          </label>`).join("")}
-        ${unlinked.map((d, i) => `
-          <label class="list-row" style="cursor:pointer">
-            <input type="checkbox" checked data-doc-i="${i}" />
-            <span class="title">${esc(docTitle(d.title))}</span><span class="meta">${esc(COPY.ui.sheet.specDocs)}</span>
-          </label>`).join("")}
-        ${nodes.length || unlinked.length ? "" : `<p class="hint">${COPY.ui.sheet.nothing}</p>`}
-      </div>
-      <p class="hint">${COPY.ui.sheet.keepNote}</p>`;
-    sheet.foot.innerHTML = sheetActions(
-      { id: "sheet-save", label: COPY.ui.sheet.save },
-      { id: "sheet-cancel", label: COPY.ui.common.cancel });
-    sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", sheet.close);
-    sheet.foot.querySelector("#sheet-save")!.addEventListener("click", () => {
-      const excluded = new Set([...sheet.body.querySelectorAll<HTMLInputElement>("input[data-i]")]
-        .filter((cb) => !cb.checked).map((cb) => nodes[Number(cb.dataset.i)].id));
-      const standalone = new Set([...sheet.body.querySelectorAll<HTMLInputElement>("input[data-doc-i]")]
-        .filter((cb) => cb.checked).map((cb) => unlinked[Number(cb.dataset.docI)].doc_id as string));
-      const keep = nodes.filter((n) => !excluded.has(n.id));
-      const keepIds = new Set(keep.map((n) => n.id));
-      const edges = (pack.fragment?.edges || []).filter((e: any) => keepIds.has(e.from) && keepIds.has(e.to));
-      const docs = keptDocs(pack.documents, excluded, pack.doc_refs, keepIds, standalone);
-      const out = { ...pack, fragment: { nodes: keep, edges },
-        ...(pack.documents ? { documents: docs } : {}),
-        manifest: { ...pack.manifest, counts: recount(keep, edges, docs, c) } };
-      // 둘 다 응답에만 붙는 값이라 팩 파일에는 안 싣는다(`doc_refs` 는 위 원문 선택에만 쓴다).
-      delete (out as any).executed;
-      delete (out as any).doc_refs;
-      // 목적지가 이미 정해져도 내 공간에 합치는 내용은 먼저 확인한다.
-      if (opts.into) {
-        if (!opts.into.team) { void copyToPersonal(sheet, life, out, keep.length); return; }
-        void sendToSpace(sheet, life, out, keep.length, opts.into,
-                         opts.intoLabel || COPY.ui.sheet.destTeam);
-        return;
-      }
-      void chooseDestination(sheet, life, out, keep.length,
-        packFilename(spaceName, scope.domain || scope.seed || "share"), scopeLabel);
+    const collect = await renderSharePreview(sheet.body, scope, opts, (any) => { saveBtn.disabled = !any; });
+    saveBtn.addEventListener("click", () => {
+      const pick = collect();
+      if (pick) sendSharePick(pick, opts, { sheet, life });
     });
   } catch {
     sheet.body.innerHTML = `<div class="error-banner">${COPY.packs.error}</div>`;
+    sheet.foot.innerHTML = "";
   }
 }
 
@@ -287,25 +328,17 @@ function mountGauges(host: HTMLElement, label: string): (p: PackProgress) => voi
   host.innerHTML = `
     <div class="sheet-progress">
       <p class="hint">${esc(label)}</p>
-      ${STAGES.map((k) => `
-        <div class="sheet-gauge" data-stage="${k}">
-          <p class="hint"><span>${esc(names[k])}</span><span data-n></span></p>
-          <div class="sheet-progress-track is-determinate" role="progressbar"
-               aria-label="${esc(names[k])}" aria-valuemin="0"><span></span></div>
-        </div>`).join("")}
+      ${STAGES.map((k) => `<div class="sheet-gauge" data-stage="${k}">${loaderTrack(names[k])}</div>`).join("")}
     </div>`;
   return (p) => {
     for (const k of STAGES) {
       const row = host.querySelector<HTMLElement>(`[data-stage="${k}"]`);
       if (!row) return;   // 담던 자리가 다른 내용으로 바뀌었다
       const total = p.total[k], done = p.done[k];
-      row.querySelector("[data-n]")!.textContent = U.gaugeCount(done, total);
-      const bar = row.querySelector<HTMLElement>("[role=progressbar]")!;
-      bar.setAttribute("aria-valuemax", String(total));
-      bar.setAttribute("aria-valuenow", String(done));
-      bar.querySelector("span")!.style.width = `${total ? Math.round((done / total) * 100) : 0}%`;
+      setTrack(row, done, total, U.gaugeCount(done, total));
     }
   };
+
 }
 
 /** 시트를 닫은 뒤의 자리 — 화면 아래 알림 한 줄. 끝나면 결과와 닫기 버튼을 단다. */
@@ -474,7 +507,7 @@ export async function publishToCommunity(sheet: Sheet, out: Record<string, unkno
   sheet.foot.querySelector("#sheet-cancel")!.addEventListener("click", cancel);
   try {
     if (!WEB) throw new Error("A same-origin web session is required");
-    const response = await fetch("/api/community/agents/destinations", { credentials: "include", cache: "no-store", signal: controller.signal });
+    const response = await api.communityDestinations(controller.signal);
     const data = await response.json();
     if (closed || sheet.closed || !sheet.el.isConnected) return;
     if (!response.ok || data.features?.agents !== true || typeof data.draftActor !== "string" || !data.draftActor) throw new Error("Community sharing is unavailable");
@@ -498,7 +531,7 @@ export function openImportSheet(pack: any, onDone?: (res: any) => void) {
                             subtitle: COPY.ui.sheet.importSub });
   sheet.body.innerHTML = `
     <div class="sheet-spec">
-      <div><span class="hint">${COPY.ui.sheet.specCreated}</span><b>${esc(String(m.created || "?").slice(0, 10))}</b></div>
+      <div><span class="hint">${COPY.ui.sheet.specCreated}</span><b>${esc(dayOf(String(m.created || "?")))}</b></div>
       <div><span class="hint">${COPY.ui.sheet.specConcepts}</span><b>${c.concepts ?? n}</b></div>
       <div><span class="hint">${COPY.ui.sheet.specRecords}</span><b>${c.records ?? 0}</b></div>
       <div><span class="hint">${COPY.ui.sheet.specDecisions}</span><b>${c.decisions ?? 0}</b></div>

@@ -15,6 +15,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -23,6 +24,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from store import embedded_backend as eb  # noqa: E402
 
 _DRIVER, _ = eb._import_driver()
+_HANGUL_TAIL = "concept:재현-가능한-측정"
 
 
 def _seed(path: str) -> None:
@@ -39,6 +41,9 @@ def _seed(path: str) -> None:
                                  topic="vinc/test")
             assert r.get("executed"), r
         s.run("MERGE (c:Concept {concept_id: 'k1'}) SET c.owner_id = 'user:a', c.title = 'K'")
+        # 꼬리(마지막 길이 % 8 바이트)에 한글이 걸리는 키. 재구축본은 이것도 PK 로 찾아야 한다.
+        s.run("MERGE (c:Concept {concept_id: $k}) SET c.owner_id = 'user:a', c.title = 'H'",
+              {"k": _HANGUL_TAIL})
         from store import pkns
         for owner in ("user:a", "user:b"):
             key = owner + pkns.SEP + "same-id"
@@ -87,7 +92,39 @@ class NativeRebuildTests(unittest.TestCase):
         self.assertIn("NodeVec.node_vec", report["src_indexes"])
         self.assertIn("NodeVec.node_vec", report["dst_indexes"])
         self.assertTrue(report["probe_after"]["ok"], report["probe_after"])
+        self.assertEqual(report["dst_pk_misses"], {"Concept": {"keys": 1, "missed": 0}})
         self.assertTrue(os.path.exists(self.dst))
+
+    def test_a_non_ascii_key_the_index_misses_refuses_the_target(self):
+        import rebuild_store_native as rb
+        real = rb._pk_misses
+
+        def stale(s):
+            # 0.20.4 이하가 지은 색인을 0.21 이 연 것과 같은 결과를 대상에서 흉내 낸다.
+            out = real(s)
+            return {name: dict(v, missed=v["keys"]) for name, v in out.items()}
+
+        calls = iter([real, stale])
+        with mock.patch.object(rb, "_pk_misses", side_effect=lambda s: next(calls)(s)):
+            report = rb.rebuild(self.src, self.dst)
+        self.assertFalse(report["ok"])
+        self.assertIn("Concept: 1 of 1 non-ASCII keys miss the primary key index", report["problems"])
+
+    def test_a_row_changed_by_the_copy_rebuild_refuses_the_target(self):
+        import rebuild_store_native as rb
+        real = rb._rows_digest
+
+        def changed(s, plan):
+            out = real(s, plan)
+            return dict(out, Concept=[out["Concept"][0], "0" * 64])
+
+        calls = iter([real, changed])
+        with mock.patch.object(rb, "_rows_digest", side_effect=lambda s, plan: next(calls)(s, plan)):
+            report = rb.rebuild(self.src, self.dst)
+        if report.get("export_method") != "copy":
+            self.skipTest("this engine exports natively; the copy path is not taken")
+        self.assertFalse(report["ok"])
+        self.assertIn("Concept: rows changed in the copy rebuild", report["problems"])
 
     def test_an_existing_target_is_refused_and_left_alone(self):
         with open(self.dst, "wb") as f:

@@ -14,11 +14,14 @@ import pathlib
 import re
 import sys
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+try:
+    from scripts._root import ROOT
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT
 
 from store.config import EMBEDDING_DIM_BY_MODEL  # noqa: E402
 
-_DOCKERFILE = pathlib.Path(__file__).resolve().parents[1] / "Dockerfile.m3probe"
+_DOCKERFILE = ROOT / "Dockerfile.m3probe"
 
 
 def read_triple(path: pathlib.Path = _DOCKERFILE) -> dict[str, str]:

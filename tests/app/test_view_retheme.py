@@ -4,7 +4,7 @@
 정본: [[decision:a-theme-switch-repaints-the-open-view-in-place]].
 
 주제 색·잉크·안개·조명·환경맵은 마운트 때 그때의 모드로 굳는다. 그래서 설정(또는
-OS 가 "auto" 일 때)에서 테마를 뒤집으면 열린 3D·2D·타임라인·번들이 반대 모드의 값을
+OS 가 "auto" 일 때)에서 테마를 뒤집으면 열린 지도가 반대 모드의 값을
 들고 남았다 — 다크의 파스텔(명도 .72)이 밝은 배경에서 바래고, 라이트의 짙은 색이 검은
 배경에서 탁해졌다. 다시 마운트하면 풀리지만 그 길(`show`)은 읽던 문서 열과 노드 카드를
 닫는다. 그래서 색만 갈아 끼우는 길을 따로 둔다.
@@ -48,11 +48,9 @@ class WiringTests(unittest.TestCase):
         body = _fn(_read("surfaces/view.ts"), "function retheme(): void {")
         for bad in ("show(", "route(", "closeFloatPanel", "detail.hidden", "swapSurface"):
             self.assertNotIn(bad, body, bad)
-        # 표는 한 벌 — 새 모드로 다시 짓고 모든 렌더러가 그것을 읽는다.
+        # 표는 한 벌 — 새 모드로 다시 짓고 렌더러가 그것을 읽는다.
         self.assertIn("tintMap(curNodes.map((n) => n.domain), mode)", body)
         self.assertIn("__retheme", body)
-        self.assertIn("g2?.retheme()", body)
-        self.assertIn("planar?.retint?.(shownTints)", body)
         # 떠 있는 카드의 표식도 같은 표를 따른다.
         self.assertIn(".float-mark[data-domain]", body)
 
@@ -77,9 +75,9 @@ class ThreeDTests(unittest.TestCase):
         self.assertNotIn("buildInstancedNodes(", self.body)
 
     def test_팔레트에서_온_값을_전부_갈아_끼운다(self):
-        for need in ("pal = themePalette()", "applyTints()", "setColorAt(", "reglaze(", "toneMappingExposure",
-                     "takeSkins(", "repaintLabel(", "fog?.color", "studioEnv(", "g.lights(",
-                     "g.linkColor(linkColorFn)"):
+        for need in ("pal = themePalette()", "applyTints()", "orbs?.tint(", "orbs?.setLight(",
+                     "retintVolume(", "toneMappingExposure", "takeSkins(", "repaintLabel(", "fog.color",
+                     "g.lights(", "g.linkColor(linkColorFn)"):
             self.assertIn(need, self.body, need)
 
     def test_팔레트는_부를_때_읽는다(self):
@@ -87,40 +85,13 @@ class ThreeDTests(unittest.TestCase):
         self.assertIn("let pal = themePalette();", self.src)
         self.assertNotIn("const darkTheme", self.src)
 
-    def test_환경맵은_렌더러와_모드마다_따로다(self):
-        """PMREM 결과는 구운 컨텍스트 안에서만 산다. 전역 한 장이던 동안 두 번째
-        마운트부터 반사가 비어 있었고 모드도 첫 마운트의 것으로 굳어 있었다."""
+    def test_환경맵을_굽지_않는다(self):
+        """환경맵은 몸통이 PBR 유리이던 동안의 것이다. 몸통 셰이더는 그것을 읽지 않으므로
+        굽기만 하고 안 보이는 사문이 되지 않게 남기지 않는다(전역 캐시가 컨텍스트를 넘어
+        반사를 비우던 고장도 함께 사라진다)."""
         self.assertNotIn("_envTex", self.src)
-        self.assertIn("new WeakMap<THREE.WebGLRenderer, Map<ThemeMode, THREE.Texture>>()", self.src)
-
-
-class TwoDTests(unittest.TestCase):
-    def test_2D_는_색만_다시_쓴다(self):
-        src = _read("surfaces/view2d.ts")
-        body = src[src.index("    retheme() {"):]
-        body = body[:body.index("\n    },")]
-        for need in ("bg = hexStr(pal().background)", "tints = tintsNow()",
-                     "mergeNodeAttributes(n.id, markOf(n))", '"color", edgeColor(e)', '"labelColor"', "sigma.refresh()"):
-            self.assertIn(need, body, need)
-        # 선 색 규칙은 마운트와 한 벌이다.
-        self.assertIn("color: edgeColor(e),", src)
-
-
-class PlanarTests(unittest.TestCase):
-    def test_타임라인은_다시_그리지_않고_틴트만_고친다(self):
-        src = _read("surfaces/view-planar.ts")
-        body = src[src.index("    retint(tint) {"):]
-        body = body[:body.index("\n    },")]
-        self.assertIn('"--ink"', body)
-        self.assertNotIn("draw(", body)
-        self.assertNotIn("innerHTML", body)
-
-    def test_번들은_새_틴트로_다시_칠한다(self):
-        src = (APP / "surfaces" / "view-bundle.ts").read_bytes().decode("utf-8")
-        body = src[src.index("    retint(tint: Map<string, string> | null) {"):]
-        body = body[:body.index("    },")]
-        self.assertIn("opts = { ...opts, tint };", body)
-        self.assertIn("paint(...box(el));", body)
+        self.assertNotIn("scene.environment =", self.src)
+        self.assertNotIn("PMREMGenerator", self.src)
 
 
 if __name__ == "__main__":

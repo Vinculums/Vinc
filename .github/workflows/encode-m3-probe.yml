@@ -33,7 +33,7 @@
 # ⚠ **`--ref main` 으로만 돈다.** OIDC 연합 자격증명이 `refs/heads/main` 에 묶여 있다.
 #
 # 정본: [[vinc.plan.retrieval-research-2026-09-08]] ·
-# [[record:the-m3-encode-figure-needs-an-image-not-an-env-triple-2026-09-08]]
+# 결과: [[record:in-container-bge-m3-encode-2026-09-09]]
 name: encode-m3-probe
 
 on:

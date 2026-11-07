@@ -30,12 +30,17 @@ import upload from "./icons/upload.svg?raw";
 import packIn from "./icons/pack-in.svg?raw";
 import shareNodes from "./icons/share-nodes.svg?raw";
 import mcp from "./icons/mcp.svg?raw";
+//: 문서 홈(LNB 의 홈)과 주제로 거르기(트리 줄 끝 버튼 · 문서 홈의 주제 칩).
+import doc from "./icons/doc.svg?raw";
+import filter from "./icons/filter.svg?raw";
+//: 더 보기(가로 점 셋) — 카드·단 머리의 메뉴 손잡이.
+import more from "./icons/more.svg?raw";
 
 const REG: Record<string, string> = {
   ingest, recall, graph, search, "pack-export": packExport, settings,
   dot, "half-disc": halfDisc, ring, pin, alert, check,
   "chevron-left": chevronLeft, sidebar, "dot-grid": dotGrid, domains, decide,
-  lock, sparkle, x, upload, "pack-in": packIn, "share-nodes": shareNodes,
+  lock, sparkle, x, upload, "pack-in": packIn, "share-nodes": shareNodes, doc, filter, more,
   // MCP 공식 마크(발주자 지시, 2026-08-26). 이 세트에서 **유일하게 우리가 그리지 않은
   // 도형**이라, 기하를 손대지 않는다는 조건이 파일 주석에 함께 적혀 있다. 여기 쓰는
   // 자리는 "이 주소는 어시스턴트에게 건네는 것"이라는 표시 하나뿐이다.

@@ -107,9 +107,60 @@ def test_decision_supersedes_reads_the_interval_from_props(graph):
          "props": {"valid_from": "2026-10-11"}}], "edges": [
         {"from": "decision:approve-anyone", "to": "decision:approve-owner-only",
          "type": "supersedes", "evidence": "the owner widened approval"}]}, store=st)
-    assert any("has no valid_until" in w for w in out["warnings"]), out
+    assert any("has no props.valid_until" in w for w in out["warnings"]), out
     got = query.neighbors("decision:approve-owner-only", owner=OWNER, store=st)
     assert "decision:approve-anyone" in [n["id"] for n in got["neighbors"]], got
+
+
+def _supersede_decision(st, old_props, *, old_extra=None):
+    return fragment.merge_fragment({"owner": OWNER, "nodes": [
+        {"id": "decision:review-weekly", "type": "decision", "title": "Review weekly",
+         "props": old_props, **(old_extra or {})},
+        {"id": "decision:review-daily", "type": "decision", "title": "Review daily",
+         "props": {"valid_from": "2026-10-11"}}], "edges": [
+        {"from": "decision:review-daily", "to": "decision:review-weekly",
+         "type": "supersedes", "evidence": "the team moved to daily review"}]}, store=st)
+
+
+def test_decision_supersede_warning_names_a_field_the_decision_can_store(graph):
+    """대체 경고가 시키는 대로 하면 경고가 사라져야 한다. 열 이름(`valid_until`)을
+    시키면 결정은 그 값을 버리고 다시 같은 경고를 받는다."""
+    st, _ = graph
+    first = _supersede_decision(st, {"valid_from": "2026-09-01"})
+    asked = [w for w in first["warnings"] if w.startswith("supersedes ")]
+    assert len(asked) == 1 and "set props.valid_until" in asked[0], first
+    assert "props_patch" in asked[0], first
+
+    # 경고가 가리킨 자리에 값을 두면 대체 경고가 더 나오지 않는다.
+    done = _supersede_decision(st, {"valid_from": "2026-09-01", "valid_until": "2026-10-11"})
+    assert not [w for w in done["warnings"] if w.startswith("supersedes ")], done
+    got = query.node("decision:review-weekly", owner=OWNER, store=st)["node"]
+    assert got["props"]["valid_until"] == "2026-10-11", got
+
+    # 날짜가 다르면 결정의 필드 이름으로 말한다.
+    off = _supersede_decision(st, {"valid_from": "2026-09-01", "valid_until": "2026-10-12"})
+    differs = [w for w in off["warnings"] if "differs from" in w]
+    assert differs and "props.valid_until 2026-10-12" in differs[0], off
+    assert "props.valid_from 2026-10-11" in differs[0], off
+
+
+def test_decision_top_level_valid_until_says_where_the_value_lives(graph):
+    st, _ = graph
+    out = _supersede_decision(st, {"valid_from": "2026-09-01"},
+                              old_extra={"valid_until": "2026-10-11"})
+    dropped = [w for w in out["warnings"] if w.startswith("node.valid_until not persisted")]
+    assert dropped and "keeps it in props.valid_until" in dropped[0], out
+    # 버려진 값은 대체 판정에 쓰이지 않는다. 경고는 여전히 props 자리를 가리킨다.
+    assert any("set props.valid_until" in w for w in out["warnings"]), out
+
+
+def test_record_supersede_warning_keeps_the_column_name(graph):
+    st, _ = graph
+    out = seed(st, old_until="")
+    asked = [w for w in out["warnings"] if w.startswith("supersedes ")]
+    assert asked and "the old record has no valid_until" in asked[0], out
+    assert "props" not in asked[0], out
+    seed(st)   # 원상 복구 — 다른 테스트가 같은 모듈 스토어를 쓴다
 
 
 def test_sync_carries_the_edge_with_evidence_and_its_deletion(graph):

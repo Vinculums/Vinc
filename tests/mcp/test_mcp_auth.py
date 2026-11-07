@@ -122,7 +122,7 @@ class _Srv:
 
 
 # ── B-D2 쿼터 ────────────────────────────────────────────────────────────────
-_QCFG = {"free_limit": 3, "team_limit": 10, "window_s": 86400, "lock_s": 43200}
+_QCFG = {"free_limit": 3}
 
 
 def _quota_app(plan="free"):
@@ -138,29 +138,28 @@ def test_quota_allows_then_denies_with_human_message():
     denial = app.quota_check("user:u1", "free")                 # 4회째 초과
     assert denial["isError"] is True
     q = denial["_meta"]["vinc_quota"]
-    assert q["limit"] == 3 and q["retry_after_s"] == 43200
+    # 잠금이 없으니 기다릴 시간은 다음 00:00 UTC 까지다(하루를 넘지 않는다).
+    assert q["limit"] == 3 and 0 < q["retry_after_s"] <= 86400
     assert "vincs.io/account" in q["upgrade_url"]
-    assert "Free tier limit reached" in denial["content"][0]["text"]
+    assert "Daily limit reached on the Curious (free) plan" in denial["content"][0]["text"]
 
 
 def test_quota_exempt_owner_is_never_denied_while_others_still_count():
     cfg = dict(_QCFG, exempt_owners=frozenset({"user:owner"}))
     app = MCPHTTPApp(_StubBridge(), store=Store(":memory:"), quota_config=cfg,
-                     verify_key=lambda raw: {"owner": "user:owner", "plan": "team"})
+                     verify_key=lambda raw: {"owner": "user:owner", "plan": "free"})
     for _ in range(3):
         assert app.quota_check("user:u1", "free") is None
     assert app.quota_check("user:u1", "free")["isError"] is True   # 남은 owner 는 그대로 센다
-    for _ in range(_QCFG["team_limit"] * 2):
-        assert app.quota_check("user:owner", "team") is None         # 한도·잠금 무관
+    for _ in range(20):
+        assert app.quota_check("user:owner", "free") is None         # 무료여도 면제는 안 센다
 
 
-def test_quota_team_gets_higher_ceiling_and_no_upsell():
-    app = _quota_app("team")
-    for _ in range(10):
-        assert app.quota_check("user:u1", "team") is None        # team_limit=10
-    denial = app.quota_check("user:u1", "team")
-    assert denial["_meta"]["vinc_quota"]["limit"] == 10
-    assert "Upgrade" not in denial["content"][0]["text"]         # 유료 등급에겐 업셀 없음
+def test_quota_genius_has_no_daily_ceiling():
+    app = _quota_app("genius")
+    for _ in range(50):
+        assert app.quota_check("user:u1", "genius") is None
+    assert app.store.usage_rows() == []                              # 세지도 않는다
 
 
 def test_quota_unlimited_without_config_or_owner():

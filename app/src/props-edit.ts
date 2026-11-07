@@ -17,8 +17,8 @@ export const PROP_KINDS: PropKind[] = ["text", "list", "number", "bool", "json"]
 
 export type PropRow = { key: string; kind: PropKind; text: string };
 
-export type RowErrorCode = "key-empty" | "key-dup" | "number" | "bool" | "json";
-export type RowError = { index: number; code: RowErrorCode };
+type RowErrorCode = "key-empty" | "key-dup" | "number" | "bool" | "json";
+type RowError = { index: number; code: RowErrorCode };
 
 /** 저장된 값의 형식. 글만 담은 배열은 목록이고, 그 밖의 배열·객체·null 은 JSON 이다. */
 export function kindOf(v: unknown): PropKind {
@@ -30,7 +30,7 @@ export function kindOf(v: unknown): PropKind {
 }
 
 /** 값을 그 형식의 편집 글자로. 형식이 값과 안 맞으면(사람이 형식을 바꾼 직후) JSON 으로 쓴다. */
-export function textOf(v: unknown, kind: PropKind): string {
+function textOf(v: unknown, kind: PropKind): string {
   if (v === undefined) return "";
   if (kind === "text" && typeof v === "string") return v;
   if (kind === "list" && Array.isArray(v)) return v.map(String).join("\n");
@@ -118,6 +118,34 @@ export function sameProps(a: Record<string, unknown>, b: Record<string, unknown>
     return v;
   };
   return JSON.stringify(canon(a)) === JSON.stringify(canon(b));
+}
+
+const isObj = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+/** 객체 안(배열 밖)에 null 이 있나. merge patch 에서 null 은 "지운다"라서 값으로 못 싣는다. */
+const holdsNull = (v: unknown): boolean =>
+  v === null || (isObj(v) && Object.values(v).some(holdsNull));
+
+/** 편집 전후 props 의 차이를 JSON Merge Patch(RFC 7386)로 만든다. 서버(0.9.8
+ *  `props_patch`)가 저장된 props 에 합친다: null 은 키 삭제, 객체는 안으로 합침, 그 밖의
+ *  값(배열 포함)은 통째로 교체. 바꾼 값에 null 이 들어 있으면 patch 로 표현할 수 없어서
+ *  null 을 돌려주고, 호출부는 편집 결과 전체(`props`)를 보낸다. */
+export function propsPatchOf(before: Record<string, unknown>,
+                             after: Record<string, unknown>): Record<string, unknown> | null {
+  const patch: Record<string, unknown> = {};
+  for (const k of Object.keys(before)) if (!(k in after)) patch[k] = null;
+  for (const [k, v] of Object.entries(after)) {
+    const b = before[k];
+    if (isObj(v) && isObj(b)) {
+      const sub = propsPatchOf(b, v);
+      if (sub === null) return null;
+      if (Object.keys(sub).length) patch[k] = sub;
+    } else if (!(k in before) || !sameProps({ v: b }, { v })) {
+      if (holdsNull(v)) return null;
+      patch[k] = v;
+    }
+  }
+  return patch;
 }
 
 /** props 를 싣는 종. 여섯 전용 테이블 가운데 상세 열이 여는 셋이다(Episode 는 node-context

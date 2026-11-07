@@ -1,7 +1,8 @@
 import { api, cfg } from "./api";
 import { COPY } from "./copy";
-import { openSheet, armsNotice } from "./components";
+import { esc, openSheet, armsNotice } from "./components";
 import { viewHooks } from "./topbar";
+import { loaderInline } from "./vinc-loaders.js";
 
 /** 묻기 — 앱 안의 **무LLM 대화**(D73).
  *
@@ -44,7 +45,9 @@ type Card =
       /** 본문 출처. `doc` 이면 정본 발췌를 인용한 것이라 출처를 함께 적는다. */
       bodySrc: BodySrc; bodyCite: string;
       related: Rel[]; relatedTotal: number;
-      degree: number; attached: number }
+      degree: number; attached: number;
+      /** 이 답을 어느 날 기준으로 찾았나(비면 오늘). 효력이 끝난 항목이면 끝난 날. */
+      asOf?: string; ended?: string }
   | { kind: "choose"; options: Brief[] }
   | { kind: "none"; query: string }
   | { kind: "error" };
@@ -59,11 +62,11 @@ let turns: Turn[] = load();
 let panel: HTMLElement | null = null;
 let onClose: (() => void) | null = null;
 let busy = false;
+/** "As of" — 이 날짜에 유효했던 것으로 찾는다(검색의 `as_of`). 빈 값이면 오늘이다.
+ *  세션 동안만 산다: 다음에 열면 오늘부터 묻는 것이 기본이어야 한다(문서 화면 계획의 A4). */
+let asOf = "";
 /** 마지막 `resolve` 의 벡터 팔 상태. `busy` 가 턴을 직렬화하므로 겹치지 않는다. */
 let lastNote: string | undefined;
-
-const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) =>
-  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
 function load(): Turn[] {
   try {
@@ -96,8 +99,6 @@ export function askOpen() {
 export function askClose() {
   if (panel) panel.hidden = true;
 }
-
-export function askIsOpen(): boolean { return !!panel && !panel.hidden; }
 
 /** 한 턴 — 질문을 싣고, 답을 만들고, 다시 그린다. */
 export async function askSubmit(raw: string) {
@@ -138,7 +139,7 @@ export async function askSubmit(raw: string) {
  *  A1.10). 1위가 2위를 **엄격히** 이길 때만 확정하고, 비기면 되묻는다 — 임의
  *  임계값은 여전히 없다. 비교할 수치가 없던 것이 문제였지 규칙이 문제가 아니었다. */
 async function resolve(q: string): Promise<Card> {
-  const res: any = await api.search(q);
+  const res: any = await api.search(q, 20, asOf ? { as_of: asOf } : {});
   // 벡터 팔이 빠졌으면 그 사실을 이 턴에 남긴다. 이 표면은 "못 찾았다"를 자주 답하는데,
   // 반쪽 검색의 못 찾음을 진짜 못 찾음으로 읽게 두면 사용자가 자기 자료를 의심한다.
   lastNote = armsNotice(res)?.text;
@@ -191,8 +192,12 @@ async function answerFor(b: Brief): Promise<Card> {
   // 근거로서 강한 것부터: 신뢰도 → 근거 문장 보유 → 사이드카 순서(안정 정렬).
   all.sort((x, y) => y.confidence - x.confidence ||
                      Number(y.evidence) - Number(x.evidence));
+  // 끝난 날짜 — 결정은 속성(props.valid_until), 기록은 열(valid_until)에 있다.
+  const until = String(ctx?.valid_until || ctx?.props?.valid_until || "");
   return {
     kind: "answer",
+    asOf: asOf || undefined,
+    ended: until || undefined,
     id: b.id,
     title: String(ctx?.title || b.title),
     domain: b.domain,
@@ -248,13 +253,17 @@ function render(thinking = false) {
   const c = COPY.ui.ask;
   const head = `<div class="ask-head">
       <span class="ask-title">${esc(c.title)}</span>
+      <label class="ask-asof"><span>${esc(c.asOf)}</span>
+        <input type="date" id="ask-asof" value="${esc(asOf)}" max="${new Date().toISOString().slice(0, 10)}"
+          aria-label="${esc(c.asOf)}"></label>
+      ${asOf ? `<button class="ask-hbtn" id="ask-today">${esc(c.asOfToday)}</button>` : ""}
       <button class="ask-hbtn" id="ask-hist">${esc(c.history)}</button>
       <button class="ask-hbtn" id="ask-clear"${turns.length ? "" : " disabled"}>${esc(c.clear)}</button>
       <button class="ask-hbtn" id="ask-close">${esc(c.close)}</button>
     </div>`;
   const body = turns.length
     ? turns.map(bubble).join("") + (thinking
-        ? `<div class="ask-turn vinc"><div class="ask-bubble"><span class="hint">${esc(c.thinking)}</span></div></div>`
+        ? `<div class="ask-turn vinc"><div class="ask-bubble">${loaderInline(c.thinking)}</div></div>`
         : "")
     : `<div class="ask-empty"><p>${esc(c.intro)}</p>
          <p class="hint">${esc(c.examplesHint)}: ${esc(c.forms)}</p></div>`;
@@ -330,7 +339,9 @@ function cardHtml(card: Card): string {
   return `<div class="ask-ctitle"><b>${esc(card.title)}</b>${
       card.domain ? `<span class="ask-cdomain">${esc(card.domain)}</span>` : ""}</div>
     <p class="ask-body${card.body ? "" : " empty"}">${esc(card.body || c.noBody)}</p>
-    ${cite}${rel}${stat}
+    ${cite}${card.asOf || card.ended ? `<p class="ask-qmeta">${[
+      card.asOf ? c.asOfNote(card.asOf) : "", card.ended ? c.endedOn(card.ended) : ""]
+      .filter(Boolean).map(esc).join(" · ")}</p>` : ""}${rel}${stat}
     <div class="ask-chips">
       <button class="ask-chip" data-go="${esc(card.id)}">${esc(c.openMap)}</button>
     </div>`;
@@ -343,6 +354,15 @@ function wire() {
     turns = []; save(); render();
   });
   panel.querySelector("#ask-hist")?.addEventListener("click", () => openHistory());
+  // 날짜를 바꾸면 **마지막 질문을 그 날짜로 다시 묻는다** — 같은 질문을 기준일과 오늘로 나란히 본다.
+  const reask = (d: string) => {
+    asOf = d;
+    const last = [...turns].reverse().find((t) => t.role === "you");
+    if (last && last.role === "you") void askSubmit(last.text); else render();
+  };
+  panel.querySelector<HTMLInputElement>("#ask-asof")?.addEventListener("change", (e) =>
+    reask((e.target as HTMLInputElement).value));
+  panel.querySelector("#ask-today")?.addEventListener("click", () => reask(""));
   // 지도 착지 — View 가 떠 있으면 훅으로 그 노드까지, 아니면 해시로 띄운다
   // (topbar 의 결과 착지와 같은 규약).
   panel.querySelectorAll<HTMLElement>("[data-go]").forEach((b) =>

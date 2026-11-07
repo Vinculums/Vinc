@@ -14,8 +14,13 @@ from vinc_client import (AsyncVincClient, VincClient, VincNotFound, VincQuotaExc
 from vinc_client.context import DEFAULT_MAX_CHARS
 from vinc_client.package import DEFAULT_PACKAGE_MAX_CHARS
 from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
-from vinc_client.tools import (BRIEF_DESCRIPTION, BRIEF_NAME, SEARCH_DESCRIPTION,
-                               SEARCH_LIMIT_DEFAULT, SEARCH_NAME, BriefArgs, SearchArgs, temporal_options)
+from vinc_client.doc_tool import aread_document, read_document
+from vinc_client.tools import (BRIEF_DESCRIPTION, BRIEF_NAME, DOC_DESCRIPTION, DOC_NAME,
+                               SEARCH_DESCRIPTION, SEARCH_LIMIT_DEFAULT, SEARCH_NAME, BriefArgs,
+                               DocArgs, SearchArgs, temporal_options)
+from vinc_client.tools import (DOC_PUT_DESCRIPTION, DOC_PUT_NAME, INGEST_DESCRIPTION, INGEST_NAME,
+                               DocPutArgs, IngestArgs)
+from vinc_client.write_tools import arun_doc_put, arun_ingest, run_doc_put, run_ingest
 
 
 def last_user_text(messages: str | Sequence[Any]) -> str:
@@ -83,15 +88,18 @@ def build_system_message(block: str | None, base: SystemMessage | str | None = N
 
 
 def prefetch(client: VincClient, role_id: str, task: str, *, space: str | None = None,
-             max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
-    """Fetch a chosen role's reading list and task evidence before a graph model node."""
-    return client.prefetch(role_id, task, space=space, max_chars=max_chars)
+             max_chars: int = DEFAULT_PREFETCH_MAX_CHARS, pin: str | None = None) -> str:
+    """Fetch a chosen role's reading list and task evidence before a graph model node.
+
+    With ``pin`` a role that changed raises ``VincRoleChanged`` instead.
+    """
+    return client.prefetch(role_id, task, space=space, max_chars=max_chars, pin=pin)
 
 
 async def aprefetch(client: AsyncVincClient, role_id: str, task: str, *, space: str | None = None,
-                    max_chars: int = DEFAULT_PREFETCH_MAX_CHARS) -> str:
+                    max_chars: int = DEFAULT_PREFETCH_MAX_CHARS, pin: str | None = None) -> str:
     """Async :func:`prefetch`."""
-    return await client.prefetch(role_id, task, space=space, max_chars=max_chars)
+    return await client.prefetch(role_id, task, space=space, max_chars=max_chars, pin=pin)
 
 
 _DOWN = "Vinc is not available right now ({code}); answer without it."
@@ -103,14 +111,27 @@ _MISSING = "Vinc found nothing for that ({code}); try a different query."
 
 def create_vinc_tools(client: VincClient | None = None,
                       async_client: AsyncVincClient | None = None, *,
-                      max_chars: int = DEFAULT_MAX_CHARS) -> list[StructuredTool]:
+                      max_chars: int = DEFAULT_MAX_CHARS,
+                      documents: bool = False, writes: bool = False) -> list[StructuredTool]:
     """Two read-only tools, ``vinc_brief`` and ``vinc_search``.
 
     Pass a sync client, an async client, or both; each tool gets the paths it
-    has a client for. Nothing here can write.
+    has a client for. Without ``writes`` nothing here can write.
+
+    With ``writes`` two more, ``vinc_ingest`` and ``vinc_doc_put``, save to the graph. Give them
+    only to a role that may write (``plan.may_write``) and with a ``vinc_sk_`` key;
+    :func:`build_agent` does that. They are not counted against the read tool-call cap.
+
+    With ``documents`` a third, ``vinc_doc_get``, reads a canonical document by id, whole,
+    by character range or under one heading. Give it to an agent whose
+    ``VincContextMiddleware`` runs a ``context_policy``: the middleware sees the tool and
+    then lets the policy shorten required readings, since the model can read the rest.
     """
     if client is None and async_client is None:
         raise ValueError("pass a VincClient, an AsyncVincClient, or both")
+    # 도구는 모델 턴 안에서 돈다. 허브를 기다리지 않고 곧장 문장으로 물러선다.
+    client = client.without_retries() if client is not None else None
+    async_client = async_client.without_retries() if async_client is not None else None
 
     def brief(query: str, mode: str | None = None, historical: bool | None = None,
                      as_of: str | None = None, known_at: str | None = None) -> str:
@@ -154,7 +175,15 @@ def create_vinc_tools(client: VincClient | None = None,
         except (VincUnavailable, VincQuotaExceeded) as exc:
             return _DOWN.format(code=exc.code)
 
-    return [
+    def doc_get(doc_id: str, start: int | None = None, end: int | None = None,
+                section: str | None = None) -> str:
+        return read_document(client, doc_id, start=start, end=end, section=section)
+
+    async def adoc_get(doc_id: str, start: int | None = None, end: int | None = None,
+                       section: str | None = None) -> str:
+        return await aread_document(async_client, doc_id, start=start, end=end, section=section)
+
+    tools = [
         StructuredTool.from_function(
             func=brief if client else None, coroutine=abrief if async_client else None,
             name=BRIEF_NAME, args_schema=BriefArgs, description=BRIEF_DESCRIPTION),
@@ -162,28 +191,85 @@ def create_vinc_tools(client: VincClient | None = None,
             func=search if client else None, coroutine=asearch if async_client else None,
             name=SEARCH_NAME, args_schema=SearchArgs, description=SEARCH_DESCRIPTION),
     ]
+    if documents:
+        tools.append(StructuredTool.from_function(
+            func=doc_get if client else None, coroutine=adoc_get if async_client else None,
+            name=DOC_NAME, args_schema=DocArgs, description=DOC_DESCRIPTION))
+    if writes:
+        tools += _write_tools(client, async_client)
+    return tools
+
+
+def _write_tools(client: VincClient | None, async_client: AsyncVincClient | None) -> list[StructuredTool]:
+    def ingest(nodes: list[dict[str, Any]], edges: list[dict[str, Any]] | None = None) -> str:
+        return run_ingest(client, nodes, edges)
+
+    async def aingest(nodes: list[dict[str, Any]], edges: list[dict[str, Any]] | None = None) -> str:
+        return await arun_ingest(async_client, nodes, edges)
+
+    def doc_put(text: str, doc_id: str | None = None, title: str | None = None,
+                valid_from: str | None = None, expected_content_hash: str | None = None) -> str:
+        return run_doc_put(client, text, doc_id, title, valid_from, expected_content_hash)
+
+    async def adoc_put(text: str, doc_id: str | None = None, title: str | None = None,
+                       valid_from: str | None = None,
+                       expected_content_hash: str | None = None) -> str:
+        return await arun_doc_put(async_client, text, doc_id, title, valid_from,
+                                  expected_content_hash)
+
+    return [
+        StructuredTool.from_function(
+            func=ingest if client else None, coroutine=aingest if async_client else None,
+            name=INGEST_NAME, args_schema=IngestArgs, description=INGEST_DESCRIPTION),
+        StructuredTool.from_function(
+            func=doc_put if client else None, coroutine=adoc_put if async_client else None,
+            name=DOC_PUT_NAME, args_schema=DocPutArgs, description=DOC_PUT_DESCRIPTION),
+    ]
 
 
 def record_episode(client: VincClient, title: str, *, summary: str = "",
                    about: Iterable[str] = (), date: str | None = None,
                    domain: str | None = None, tags: Iterable[str] | None = None,
-                   space: str | None = None, episode_id: str | None = None) -> dict[str, Any]:
+                   space: str | None = None, episode_id: str | None = None,
+                   create_only: bool | None = None,
+                   operation_id: str | None = None) -> dict[str, Any]:
     """Write one Episode about existing concepts or decisions (needs a ``vinc_sk_`` key).
 
     Put it in the node that runs after a person resumed an ``interrupt()``.
     Save episode_id in host state before that boundary and reuse it only for this event's retries.
     """
     return client.record_episode(title, summary=summary, about=about, date=date,
-                                 domain=domain, tags=tags, space=space, episode_id=episode_id)
+                                 domain=domain, tags=tags, space=space, episode_id=episode_id,
+                                 create_only=create_only, operation_id=operation_id)
 
 
 async def arecord_episode(client: AsyncVincClient, title: str, *, summary: str = "",
                           about: Iterable[str] = (), date: str | None = None,
                           domain: str | None = None, tags: Iterable[str] | None = None,
-                          space: str | None = None, episode_id: str | None = None) -> dict[str, Any]:
+                          space: str | None = None, episode_id: str | None = None,
+                          create_only: bool | None = None,
+                          operation_id: str | None = None) -> dict[str, Any]:
     """Async :func:`record_episode`."""
     return await client.record_episode(title, summary=summary, about=about, date=date,
-                                       domain=domain, tags=tags, space=space, episode_id=episode_id)
+                                       domain=domain, tags=tags, space=space, episode_id=episode_id,
+                                       create_only=create_only, operation_id=operation_id)
+
+
+def record_run(client: VincClient, run_id: str, *, role: str, outcome: str,
+               **fields: Any) -> dict[str, Any]:
+    """Write one agent run as an Episode about its role (needs a ``vinc_sk_`` key).
+
+    ``fields`` are :meth:`vinc_client.VincClient.record_run`'s keyword arguments
+    (``trace`` from :func:`vinc_client.trace_ref`, counts, ``cited_ids``, ``space`` ...).
+    Put it in the last node of the graph; a retry of the same ``run_id`` merges.
+    """
+    return client.record_run(run_id, role=role, outcome=outcome, **fields)
+
+
+async def arecord_run(client: AsyncVincClient, run_id: str, *, role: str, outcome: str,
+                      **fields: Any) -> dict[str, Any]:
+    """Async :func:`record_run`."""
+    return await client.record_run(run_id, role=role, outcome=outcome, **fields)
 
 
 __all__ = ["last_user_text", "get_vinc_context", "aget_vinc_context",
@@ -194,17 +280,23 @@ __all__ = ["last_user_text", "get_vinc_context", "aget_vinc_context",
 
 def write_package(client: VincClient, question: str, conclusion: str, *,
                   claims: Iterable[dict[str, Any]], produced_by: str, run_id: str,
-                  space: str, package_id: str | None = None) -> dict[str, Any]:
+                  space: str, package_id: str | None = None,
+                  create_only: bool | None = None,
+                  operation_id: str | None = None) -> dict[str, Any]:
     """Explicit producer write; keep it in a graph node reached after review."""
     return client.write_package(question, conclusion, claims=claims,
                                 produced_by=produced_by, run_id=run_id,
-                                space=space, package_id=package_id)
+                                space=space, package_id=package_id,
+                                create_only=create_only, operation_id=operation_id)
 
 
 async def awrite_package(client: AsyncVincClient, question: str, conclusion: str, *,
                          claims: Iterable[dict[str, Any]], produced_by: str, run_id: str,
-                         space: str, package_id: str | None = None) -> dict[str, Any]:
+                         space: str, package_id: str | None = None,
+                         create_only: bool | None = None,
+                         operation_id: str | None = None) -> dict[str, Any]:
     """Async :func:`write_package`."""
     return await client.write_package(question, conclusion, claims=claims,
                                       produced_by=produced_by, run_id=run_id,
-                                      space=space, package_id=package_id)
+                                      space=space, package_id=package_id,
+                                      create_only=create_only, operation_id=operation_id)

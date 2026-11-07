@@ -11,7 +11,10 @@ FILE = Path(__file__).with_name("openapi_v1.json")
 
 
 def generate() -> dict:
-    specs = {item["name"]: item for item in tools.specs(allow_target=False)}
+    specs = {item["name"]: item for item in tools.specs(hub=True)}
+    # 요약은 MCP 설명의 첫 줄(짧은 요약)이고, 전체 계약(참조문)은 operation 의 description 에 싣는다.
+    # MCP 설명이 짧아져도 REST 사용자가 잃는 것이 없게 한다.
+    reference = {t["name"]: t["reference"] for t in tools.TOOLS + tools.HOST_TOOLS}
     paths: dict = {}
     for route in rest_routes.ROUTES:
         schema = specs[route.tool]["inputSchema"]
@@ -29,6 +32,7 @@ def generate() -> dict:
         operation = {"operationId": route.tool + "_" + route.method.lower() + "_" +
                      route.path.replace("/", "_").replace("{", "").replace("}", ""),
                      "summary": specs[route.tool]["description"].split("\n", 1)[0],
+                     "description": reference[route.tool],
                      "security": [{"MemberKey": []}],
                      "parameters": parameters,
                      "responses": {

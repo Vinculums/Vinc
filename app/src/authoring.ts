@@ -6,8 +6,7 @@
  *
  *  규칙은 하나다: **조용히 짐작하지 않는다.** 쓰기는 무엇을 만들었고 무엇을 맞췄고 무엇을
  *  거절당했는지를 말하고, 이미 있는 id 에 조용히 합치지 않는다.
- *  근거: [[vinc.plan.view-card-timeline-period-authoring-2026-09-27]] Part 3
- *  (인용 대조표 `scripts/graph-refs.json` 이 이 문서를 아직 싣지 않아 이중대괄호를 뺐다). */
+ *  근거: [[vinc.plan.view-card-timeline-period-authoring-2026-09-27]] Part 3 */
 import { api, cfg, docMidWrite } from "./api";
 import { COPY } from "./copy";
 import { armsNotice, esc, openContextMenu } from "./components";
@@ -29,7 +28,7 @@ export function slugOf(title: string): string {
 export const stampSlug = (): string => `note-${Date.now().toString(36)}`;
 
 /** id 접두로 종을 읽는다. 문서 미러(`concept:doc.<id>`)도 개념이다. 모르는 접두는 "other". */
-export function kindOfId(id: string): NodeKind | "other" {
+function kindOfId(id: string): NodeKind | "other" {
   const p = id.slice(0, id.indexOf(":"));
   return (NODE_KINDS as readonly string[]).includes(p) ? p as NodeKind : "other";
 }
@@ -78,7 +77,7 @@ export function edgeRefusal(warnings: unknown): string {
 }
 
 // ── 노드 찾기 — `[[` 목록 · 컴포저의 연결 대상 · 잇기 띠가 함께 쓴다 ──────────────
-export type NodeHit = { id: string; title: string; domain: string };
+type NodeHit = { id: string; title: string; domain: string };
 /** 이름으로 노드를 찾는다. 의미 팔이 빠진 검색이면 그 사실(`note`)을 함께 준다 — 반쪽
  *  결과를 온전한 것처럼 내밀지 않는다(검색 표면과 같은 규율, `components.armsNotice`). */
 export async function findNodes(q: string): Promise<{ hits: NodeHit[]; note: string }> {
@@ -101,7 +100,7 @@ export function nodeHitsHtml(hits: NodeHit[], note: string): string {
 // ── 주제 ───────────────────────────────────────────────────────────────────────
 let topicsCache: { at: number; list: string[] } | null = null;
 /** 이 소유자의 주제 목록(입력 제안용). 30초 동안 한 번만 묻는다 — 시트를 열 때마다 왕복하지 않게. */
-export async function topicOptions(): Promise<string[]> {
+async function topicOptions(): Promise<string[]> {
   if (topicsCache && Date.now() - topicsCache.at < 30_000) return topicsCache.list;
   const list: string[] = await api.domains(cfg.owner)
     .then((r: any) => (r?.rows || r?.domains || [])
@@ -120,7 +119,7 @@ export async function fillTopicList(dl: HTMLDataListElement): Promise<void> {
 }
 
 /** 지금 보고 있는 자리의 주제 — 새로 만드는 것에 미리 채운다. View 가 없으면 빈 값. */
-export function contextTopic(): string {
+function contextTopic(): string {
   return viewHooks()?.context?.().topic || "";
 }
 
@@ -172,8 +171,9 @@ export function mountAuthoringKeys(): void {
 
 // ── 흐름 B — 문서 열의 새 문서 ─────────────────────────────────────────────────
 /** 제목 조각에서 **아직 안 쓰인** 문서 id 를 고른다. `skip` 은 이미 거절당한 후보다
- *  (남의 스페이스가 가진 id 는 읽기로는 안 보이고 쓰기에서 거절돼 여기로 돌아온다). */
-async function freeDocId(title: string, stamp: string, skip: string[]): Promise<string> {
+ *  (남의 스페이스가 가진 id 는 읽기로는 안 보이고 쓰기에서 거절돼 여기로 돌아온다).
+ *  테스트가 고르는 규칙을 직접 대조하려고 내보낸다. */
+export async function freeDocId(title: string, stamp: string, skip: string[]): Promise<string> {
   const base = slugOf(title) || stamp;
   for (let i = 1; i <= 20; i++) {
     const cand = i === 1 ? base : `${base}-${i}`;

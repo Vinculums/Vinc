@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""PR-0 (v0.8.4 axis 1) regression for the two measurement scripts.
+"""PR-0 (v0.8.4 axis 1) regression for the pk collision measurement script.
 
 scripts/measure_pk_collisions.py is exercised against a fake store double
 (the same technique tests/mcp/test_owner_isolation.py uses for _ChunkSpy) rather
@@ -10,9 +10,6 @@ a duplicate primary key raises a RuntimeError), so "one known collision"
 cannot exist as two real rows in one store today. The fake store lets this
 test assert the script's query shape and its aggregation/formatting without
 fighting a constraint the script is specifically measuring the absence of.
-
-scripts/inventory_id_bindings.py is exercised against real temp files, since
-it is a plain regex sweep with no store involved.
 """
 from __future__ import annotations
 
@@ -23,7 +20,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import measure_pk_collisions as mpc   # noqa: E402
-import inventory_id_bindings as iib   # noqa: E402
 
 
 class _FakeStore:
@@ -143,38 +139,3 @@ def test_measure_assembles_all_labels_and_formats_as_text():
     # The caveat travels with the number: the distribution is about whose node
     # the base belongs to, and reading it as authorship is the M3 mistake.
     assert "not who wrote it" in text
-
-
-# ── inventory_id_bindings.py: a real scan over a small temp tree ───────────
-
-def test_inventory_scan_finds_each_pattern(tmp_path, monkeypatch):
-    api_dir = tmp_path / "api"
-    api_dir.mkdir()
-    (api_dir / "sample.py").write_text(
-        "def f(store, id):\n"
-        "    store.run('MATCH (n:Concept) WHERE n.concept_id = $id RETURN n', {'id': id})\n"
-        "    store.run('MATCH (n) WHERE n.concept_id IN $ids RETURN n')\n"
-        "    store.run(\"MATCH (n) WHERE n.concept_id STARTS WITH 'concept:'\")\n"
-        "    prefix = seed.split(':', 1)[0]\n"
-        "    kind = 'concept:margiela'\n"
-        "    where = 'a.id = b.id'\n",
-        encoding="utf-8")
-    (tmp_path / "store").mkdir()
-    (tmp_path / "engines").mkdir()
-
-    monkeypatch.setattr(iib, "REPO_ROOT", tmp_path)
-    grouped = iib.scan()
-
-    assert grouped["dollar_id"] == ["api/sample.py:2"]
-    assert grouped["in_dollar_ids"] == ["api/sample.py:3"]
-    assert grouped["starts_with"] == ["api/sample.py:4"]
-    assert grouped["split_colon"] == ["api/sample.py:5"]
-    assert grouped["kind_prefix_literal"] == ["api/sample.py:4", "api/sample.py:6"]
-    assert grouped["alias_id_eq_alias_id"] == ["api/sample.py:7"]
-
-
-def test_inventory_format_text_reports_a_total():
-    grouped = {"dollar_id": ["a.py:1"], "in_dollar_ids": [], "starts_with": [],
-               "split_colon": [], "kind_prefix_literal": [], "alias_id_eq_alias_id": []}
-    text = iib.format_text(grouped)
-    assert "total: 1" in text

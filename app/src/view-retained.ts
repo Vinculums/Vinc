@@ -15,13 +15,13 @@ import { viewSessionCache, type Entry, type RetainedSnapshot } from "./view-sess
  *  - 로그인이 풀리거나 계정·모드가 바뀌면(`viewSessionCache.purge`) 전부 지운다.
  * 근거: [[decision:retain-the-left-space-view-for-a-short-handoff-2026-10-12]] */
 export const TTL_MS = 15 * 60_000;
-export const MAX_RECORDS = 4;
-export const MAX_BYTES = 32 * 1024 * 1024;
+const MAX_RECORDS = 4;
+const MAX_BYTES = 32 * 1024 * 1024;
 
-export type RetainedRecord = { id: string; who: string; revision: string; expires: number;
+type RetainedRecord = { id: string; who: string; revision: string; expires: number;
   bytes: number; entries: [string, Entry][] };
 
-export interface RetainedBackend {
+interface RetainedBackend {
   get(id: string): Promise<RetainedRecord | undefined>;
   put(record: RetainedRecord): Promise<void>;
   delete(id: string): Promise<void>;
@@ -34,7 +34,7 @@ export interface RetainedBackend {
 const DB = "vinc-view-retained", STORE = "records";
 
 /** IndexedDB 백엔드. 없으면(비공개 창·차단) null 이고 보관 없이 종전대로 동작한다. */
-export function idbBackend(factory: IDBFactory | undefined = typeof indexedDB === "undefined" ? undefined : indexedDB): RetainedBackend | null {
+function idbBackend(factory: IDBFactory | undefined = typeof indexedDB === "undefined" ? undefined : indexedDB): RetainedBackend | null {
   if (!factory) return null;
   let opening: Promise<IDBDatabase> | undefined;
   const open = () => opening ||= new Promise<IDBDatabase>((resolve, reject) => {
@@ -67,7 +67,7 @@ export function idbBackend(factory: IDBFactory | undefined = typeof indexedDB ==
 }
 
 /** 세션 문자열의 지문. 토큰이 디스크에 남지 않게 한다. */
-export async function sessionId(session: string): Promise<string> {
+async function sessionId(session: string): Promise<string> {
   const bytes = new TextEncoder().encode(session);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, "0")).join("");
@@ -75,7 +75,7 @@ export async function sessionId(session: string): Promise<string> {
 
 /** "보관본이 있을 수 있다"는 시각 하나. 데이터가 아니라 만료 시각이라 localStorage 에 둬도
  * 되고, 화면을 그리기 전에 기록 전체를 읽지 않고도 기다릴지 정하게 해 준다. */
-export interface RetainedMark {
+interface RetainedMark {
   get(): number; set(until: number): void; clear(): void;
   /** 마지막으로 보관본을 버린 시각. 다른 탭의 저장이 그 뒤에 끝나면 그 기록을 되지운다. */
   purgedAt(): number; markPurged(at: number): void;
@@ -94,7 +94,7 @@ export const storageMark: RetainedMark = {
  * 달라져 이전 기록이 쓸모없어진다. 이메일 같은 추측 가능한 값으로 지문을 만들지 않는다
  * (프로필을 읽을 수 있는 사람이 추측을 오프라인으로 확인할 수 있다). CSRF 값이 없으면 신원
  * 문자열로 물러난다(웹이 아닌 환경과 테스트). 읽을 수 없으면 빈 문자열이다. */
-export async function identityId(session: string, hash: (s: string) => Promise<string> = sessionId): Promise<string> {
+async function identityId(session: string, hash: (s: string) => Promise<string> = sessionId): Promise<string> {
   try {
     const [scope, identity] = JSON.parse(session) as [unknown, unknown];
     let secret: unknown;

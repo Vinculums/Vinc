@@ -21,6 +21,7 @@ stdlib 전용(`http.server`·`threading`·`signal`) — DEC D5(threaded stdlib +
 from __future__ import annotations
 
 from store.procutil import pid_alive
+from store.querybase import split_csv as _csv
 
 import base64
 import contextvars
@@ -85,13 +86,45 @@ _MIRROR_BATCH = int(os.environ.get("VINC_NODE_MIRROR_BATCH", "32"))
 _MIRROR_ENCODE_TIMEOUT = float(os.environ.get("VINC_NODE_MIRROR_ENCODE_TIMEOUT", "120"))
 #: 교체(드롭·삭제·삽입·인덱스 빌드)의 상한. 인코딩이 빠져 있어 짧다.
 _MIRROR_REPLACE_TIMEOUT = float(os.environ.get("VINC_NODE_MIRROR_REPLACE_TIMEOUT", "600"))
+#: ColBERT 토큰을 한 요청에 몇 노드씩 묻는가. 노드 텍스트는 512토큰까지라 dense 미러의 32보다 작게 잡는다.
+_COLBERT_BATCH = int(os.environ.get("VINC_NODE_COLBERT_BATCH", "8"))
+#: 재구축 한 번에 토큰을 채우는 행 수의 상한(0 이면 무제한). 엔진은 쓴 토큰을 스토어가 닫힐 때까지
+#: 메모리에 붙들므로, 미러 전체를 한 프로세스에서 채우면 허브 한도를 넘는다. 남은 행은 다음 기동의
+#: 재구축이 해시로 이어 채운다. 근거: [[record:the-colbert-token-fill-holds-written-pages-in-the-sidecar-store-until-it-closes-so-a-whole-mirror-fill-ran-the-hub-out-of-memory-2026-10-31]]
+_COLBERT_FILL_MAX = int(os.environ.get("VINC_NODE_COLBERT_FILL_MAX", "3000"))
+
+
+def _colbert_rescore_on() -> bool:
+    from vinc_rag.colbert import rescore_on
+    return rescore_on()
+
+
+def _colbert():
+    """사이드카의 투영·코드북(재채점과 토큰 채우기가 같이 쓴다). 없으면 None — 그때는 둘 다 꺼진다."""
+    from vinc_rag.colbert import cached
+    return cached()
+
+
 _ENCODER_RESPONSE_RUNTIME = contextvars.ContextVar("encoder_response_runtime", default="")
+#: 마지막 질의 인코딩이 함께 받은 ColBERT 토큰(packed f32). 재채점이 꺼졌거나 못 받았으면 "".
+_ENCODER_RESPONSE_COLBERT = contextvars.ContextVar("encoder_response_colbert", default="")
 _ENCODER_RESPONSE_INSTANCE = contextvars.ContextVar("encoder_response_instance", default="")
 #: 창구가 답한 모델(`/encode` 의 `model`). 옛 창구는 안 실으므로 빈 값이 온다.
 _ENCODER_RESPONSE_MODEL = contextvars.ContextVar("encoder_response_model", default="")
+#: 요청 본문 상한(바이트). 넘으면 읽지 않고 413 이다(`store/httpbody.py`).
+#: 허브의 4MB(`vinc_mcp/http_server.py` `MAX_BODY`)보다 훨씬 크게 둔다: 로컬 모드 앱은 계정을
+#: 지나지 않아 파일·팩을 나누지 않고 한 본문으로 보낸다(`app/src/doc-import.ts` 의 상한 주석).
+#: 이 값은 그 경로를 막지 않으면서 본문 하나가 메모리를 무한히 쥐는 것만 막는다.
+MAX_BODY = 256 * 1024 * 1024
 
 
 def _encode_post(url: str, texts: list[str], kind: str, timeout: float) -> list:
+    """`_encode_call` 의 벡터만. 질의·미러 경로가 쓰는 원래 계약이다."""
+    return _encode_call(url, texts, kind, timeout).get("vectors") or []
+
+
+def _encode_call(url: str, texts: list[str], kind: str, timeout: float, *,
+                 colbert: bool = False) -> dict:
     """인코딩 창구에 한 번 묻는다(`vinc_rag/embed/worker.py` `serve_encode`).
 
     ⚠ **토큰을 실어야 한다**(2026-08-07). 창구가 루프백일 때는 인증이 없었는데, 모델을
@@ -100,7 +133,10 @@ def _encode_post(url: str, texts: list[str], kind: str, timeout: float) -> list:
     보였다. 그래서 창구를 부르는 자리를 여기 한 벌로 모았다.
 
     실패는 **던진다** — 부르는 쪽이 시간 초과 여부를 보고 다시 갈지 정한다."""
-    body = json.dumps({"texts": list(texts), "kind": kind}).encode("utf-8")
+    payload = {"texts": list(texts), "kind": kind}
+    if colbert:
+        payload["colbert"] = True             # ColBERT 토큰을 같은 실행에서 함께
+    body = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     tok = os.environ.get("VINC_EMBED_ENCODE_TOKEN", "").strip()
     if tok:
@@ -125,12 +161,15 @@ def _encode_post(url: str, texts: list[str], kind: str, timeout: float) -> list:
     _ENCODER_RESPONSE_RUNTIME.set(actual_runtime)
     _ENCODER_RESPONSE_INSTANCE.set(str(out.get("encoder_instance") or ""))
     _ENCODER_RESPONSE_MODEL.set(str(out.get("model") or ""))
-    return out.get("vectors") or []
+    return out
 
 from store.config import load_config
 from store import config as store_config
+from store import httpbody
 from store import request_timing
+from store import search_temporal
 from store.backend import open_store
+from store.envflag import truthy
 from store.embedded_backend import DdlGuardTimeout
 
 from .graph_loading import GraphWire
@@ -208,17 +247,27 @@ def store_unavailable() -> dict:
 #: (`record:fact-ap1-role-table-mirror` 와 같은 처방).
 _TEAM_OWNER_PREFIX = "team:"
 _COMMUNITY_OWNER_PREFIX = "community:"
+_PERSONAL_OWNER_PREFIX = "user:"
 
 
 def _owner_scope(owner: str | None) -> str:
     """이 owner 가 어느 종류의 그래프인가 — `personal` · `team` · `community` · `unscoped`.
 
-    `unscoped` 는 owner 없이 도는 로컬 단일 사용자 스토어다. 빈 문자열로 두면
-    호출부가 "모른다"와 "개인이다"를 구분할 수 없어서 이름을 준다."""
+    `unscoped` 는 계정 그래프가 아닌 로컬 단일 사용자 스토어다: owner 가 없거나, 로컬
+    기본 소유자 `tenant:local` 처럼 계정 접두가 없는 owner. 빈 문자열로 두면 호출부가
+    "모른다"와 "개인이다"를 구분할 수 없어서 이름을 준다. `personal` 은 계정의 개인
+    그래프(`user:`)만이다.
+
+    ⚠ `vinc_mcp.tools.owner_scope`(vinc_whoami)와 같은 값을 내야 한다. 여기만
+    `tenant:local` 을 personal 로 답해서, 같은 로컬 연결에서 관례와 whoami 가 서로 다른
+    scope 를 말했다. 대조는 tests/core/test_conventions_scope.py 가 한다."""
     if not owner:
         return "unscoped"
-    return ("community" if owner.startswith(_COMMUNITY_OWNER_PREFIX)
-            else "team" if owner.startswith(_TEAM_OWNER_PREFIX) else "personal")
+    if owner.startswith(_COMMUNITY_OWNER_PREFIX):
+        return "community"
+    if owner.startswith(_TEAM_OWNER_PREFIX):
+        return "team"
+    return "personal" if owner.startswith(_PERSONAL_OWNER_PREFIX) else "unscoped"
 
 
 def connect_origins() -> list[str]:
@@ -264,14 +313,15 @@ def _omit_absent_rows(res: dict) -> dict:
 
 def _timed(kind: str, p: dict, store, res, *, seed=None):
     """시점 읽기 후처리(`as_of`·`known_at`). 둘 다 없으면 결과 그대로다.
-    search·brief 의 `as_of` 는 자기 경로가 이미 처리하므로 거기서는 `known_at` 만 넘긴다.
+    search·brief 는 두 인자를 자기 경로에서 전부 처리하므로 여기서 건드리지 않는다.
+    brief 를 여기서 다시 거르던 시절에는 known_at 이 해소 뒤에만 걸려, 컷오프 뒤에 생긴
+    노드로 확정한 답이 알림 한 줄만 달고 나갔다(감사 B1, 2026-10-16).
     근거: [[vinc.plan.temporal-edges-point-in-time-document-validity-2026-09-28]] §1"""
     from . import temporal_read
-    if kind == "search":
+    if kind in ("search", "brief"):
         return res
-    as_of = None if kind == "brief" else p.get("as_of")
     return temporal_read.apply(kind, res, store=store, owner=p.get("owner") or None,
-                               as_of=as_of, known_at=p.get("known_at"), seed=seed)
+                               as_of=p.get("as_of"), known_at=p.get("known_at"), seed=seed)
 
 
 class VincApp:
@@ -315,8 +365,16 @@ class VincApp:
         # 전환의 영속 확인은 일반 쓰기의 전역 ACK 플래그와 별개다.
         self._conversion_durable = self._durable or (
             DurableAck(lambda: self.store, self.cfg.data_dir)
-            if os.environ.get("VINC_TOPIC_CONVERSION") == "1" and
+            if (os.environ.get("VINC_TOPIC_CONVERSION") == "1" or
+                getattr(store, "_topic_conversion_guard", False)) and
             resolve_snapshot_path() and self.cfg.data_dir else None)
+        # 워커·HTTP를 열기 전에 완료된 새 프로토콜의 영수증만 읽어 울타리를 복원한다.
+        if store is not None and getattr(store, "_topic_conversion_guard", False):
+            from .topic_conversion_batches import restore_terminal_visibility
+            from store.persistence import generations_root
+            root = (self._conversion_durable.root if self._conversion_durable is not None else
+                    generations_root(resolve_snapshot_path()) if resolve_snapshot_path() else None)
+            self._conversion_restored = restore_terminal_visibility(store, root)
         self.jobs = jobs or JobQueue(on_idle=self._maybe_snapshot,
                                      on_before_done=self._ack_before_done if (
                                          self._durable or self._conversion_durable) else None,
@@ -473,6 +531,14 @@ class VincApp:
             if (res.get("ownerless_remaining") or 0) > 0:
                 print(f"vinc: ⚠ owner 없는 청크 {res['ownerless_remaining']}개 — "
                       "재링크가 건너뛴다(문서 메타가 없는 고아)", file=sys.stderr)
+            # 규칙과 별개로, 문서보다 늦게 들어와 링크가 0인 개념·결정을 한 번 잇는다.
+            # 같은 잡 안이라 전량 재링크 뒤에 선다. 전량 재링크가 돈 기동이면 메울 것이 없다.
+            from engines.mentions_link import ensure_late_links
+            late = ensure_late_links(store)
+            if late.get("changed") and late.get("owners") and not self.quiet_boot:
+                print(f"vinc: MENTIONS 빈틈 메우기 — 소유자 {len(late['owners'])}곳 · "
+                      f"링크 {sum(late['owners'].values())}개", file=sys.stderr)
+            res["late"] = late
             return res
 
         try:
@@ -696,6 +762,50 @@ class VincApp:
             result.setdefault("durability", "graph_commit_only")
         return result
 
+    def read_events(self, p):
+        """Vinc 이벤트 피드 한 페이지(조회 전용). 계약: `api/events.py`."""
+        from . import events
+        try:
+            since = events.parse_cursor(p.get("since"))
+            kinds = events.parse_kinds(p.get("kinds"))
+            limit = events.clamp_limit(p.get("limit"))
+        except ValueError as exc:
+            return 400, {"kind": "events", "executed": False, "error": str(exc)}
+        return self._read(lambda r: events.scan(r, owner=_req(p, "owner"), since=since,
+                                                limit=limit, role=p.get("role"), kinds=kinds))
+
+    def read_runs(self, p):
+        """실행 기록 목록(조회 전용), `cited` 로 그 주장을 인용한 실행만. 계약: `api/runs.py`."""
+        from . import runs
+        try:
+            cited = runs.parse_cited(p.get("cited"))
+            flagged = runs.parse_flagged(p.get("flagged"))
+            limit = runs.clamp_limit(p.get("limit"))
+        except ValueError as exc:
+            return 400, {"kind": "runs", "executed": False, "error": str(exc)}
+        return self._read(lambda r: runs.list_runs(r, owner=_req(p, "owner"), cited=cited,
+                                                   role=p.get("role"), run=p.get("run") or None,
+                                                   flagged=flagged, limit=limit))
+
+    def read_agent_writes(self, p):
+        """최근 쓰기를 출처별로 묶은 검토 목록(조회 전용). 계약: `api/agent_writes.py`."""
+        from . import agent_writes
+        try:
+            days = agent_writes.clamp_days(p.get("days"))
+        except ValueError as exc:
+            return 400, {"kind": "agent_writes", "executed": False, "error": str(exc)}
+        return self._read(lambda r: agent_writes.scan(r, owner=_req(p, "owner"), days=days))
+
+    def read_eval_cards(self, p):
+        """역할에 붙은 평가 카드(조회 전용). 계약: `api/eval_cards.py`."""
+        from . import eval_cards
+        try:
+            limit = eval_cards.clamp_limit(p.get("limit"))
+        except ValueError as exc:
+            return 400, {"kind": "eval_cards", "executed": False, "error": str(exc)}
+        return self._read(lambda r: eval_cards.list_cards(r, owner=_req(p, "owner"),
+                                                          role=p.get("role"), limit=limit))
+
     def read_operation_status(self, p):
         from . import operation_receipts
         return self._read(lambda r: operation_receipts.status(r, owner=_req(p, "owner"),
@@ -714,8 +824,12 @@ class VincApp:
 
     def preview_community_agent(self, body):
         from . import community_agents
-        return self._read(lambda r: community_agents.preview(r, owner=_req(body, "owner"),
-            snapshot=_req(body, "snapshot"), source=_req(body, "source"), target_id=body.get("target_id")))
+        try:
+            return self._read(lambda r: community_agents.preview(r, owner=_req(body, "owner"),
+                snapshot=_req(body, "snapshot"), source=_req(body, "source"), target_id=body.get("target_id")))
+        except ValueError as exc:
+            # 목적지·스냅샷 검증 실패는 요청 오류다(팀 목적지 포함). 500 으로 새지 않는다.
+            return 400, {"executed": False, "error": str(exc)}
 
     def import_community_agent(self, body):
         from . import community_agents, operation_receipts
@@ -725,8 +839,11 @@ class VincApp:
             raise ValueError("invalid_agent_import_arguments")
         owner, mutation_id = _req(body, "owner"), _req(body, "mutation_id")
         snapshot, source = _req(body, "snapshot"), _req(body, "source")
-        community_agents.validate_import(owner=owner, snapshot=snapshot, source=source,
-            mode=body.get("mode", "separate"), expected_target=body.get("expected_target"))
+        try:
+            community_agents.validate_import(owner=owner, snapshot=snapshot, source=source,
+                mode=body.get("mode", "separate"), expected_target=body.get("expected_target"))
+        except ValueError as exc:
+            return 400, {"executed": False, "error": str(exc)}
         arguments = {k: v for k, v in body.items() if k not in {"mutation_id", "owner"}}
         def apply():
             try:
@@ -744,8 +861,11 @@ class VincApp:
     def read_community_agent_result(self, p):
         from . import community_agents
         durable = self._durable or self._conversion_durable
-        return self._read(lambda r: community_agents.import_result(r, owner=_req(p, "owner"),
-            mutation_id=_req(p, "mutation_id"), durability_root=durable.root if durable else None))
+        try:
+            return self._read(lambda r: community_agents.import_result(r, owner=_req(p, "owner"),
+                mutation_id=_req(p, "mutation_id"), durability_root=durable.root if durable else None))
+        except ValueError as exc:
+            return 400, {"executed": False, "error": str(exc)}
 
     def _conversion_write_guard(self, job):
         if self.store is not None and getattr(self.store, "_topic_conversion_guard", False) \
@@ -753,6 +873,8 @@ class VincApp:
             from . import topic_conversion as conversion
             conversion.check_write(self.store, conversion.request_owner.get(),
                                    conversion.request_payload.get())
+            if job.kind == 'search.index':
+                conversion.check_index_write(self.store)
 
     def write_topic_conversion(self, body):
         from . import topic_conversion as conversion
@@ -809,6 +931,20 @@ class VincApp:
                 if action == "preflight":
                     return conversion.preflight(self.store, source, str(body.get("topic") or ""))
                 args = dict(source=source, target=body["target"], topic=body["topic"], run=body["run"])
+                journal = conversion._get(self.store, args["run"])
+                if journal is not None and journal.get("inventory_version") == 3:
+                    conversion._identity(journal, source=source, target=body["target"], topic=body["topic"])
+                    return self._resume_bounded_conversion(action, args, body.get("fingerprint"), conventions_policy)
+                if action == "status" and journal is None and hasattr(self, "_conversion_jobs"):
+                    # 저널을 쓰기 전에 거절된 새 예약은 작업 상태에만 남는다. 예전 경로는
+                    # 저널이 없으면 "prepared" 를 돌려주므로 먼저 작업을 본다.
+                    pending = self._conversion_jobs.status(source, args["run"])
+                    if pending is not None:
+                        return pending
+                if action == "stage" and journal is None and self._exceeds_single_transaction(args):
+                    # 큰 토픽의 새 예약은 봉인 목록과 유한 배치로만 시작한다.
+                    return self._resume_bounded_conversion(action, args, body.get("fingerprint"),
+                                                           conventions_policy, allow_new=True)
                 if action == "stage":
                     args.update(expected=body["fingerprint"], stamp=revstamp.hlc_now(self.store),
                                 conventions_policy=conventions_policy)
@@ -831,6 +967,74 @@ class VincApp:
         out = self.jobs.run_sync("topic-conversion." + action, work)
         return (409 if out.get("status") == "blocked" else 200), out
 
+    def _exceeds_single_transaction(self, args):
+        """선택 범위가 기존 단일 트랜잭션 한도를 넘는가. 한도 안에서 읽기만 하고 쓰지 않는다."""
+        from . import topic_conversion as conversion
+        from store.topic_manifest import ManifestLimit
+        try:
+            conversion._inventory(self.store, args["source"], args["target"], args["topic"])
+        except ManifestLimit as exc:
+            return exc.reason in ("retained_payload", "retained_rows", "retained_bytes")
+        except Exception:
+            return False
+        return False
+
+    def _resume_bounded_conversion(self, action, args, expected, conventions_policy="retain",
+                                   allow_new=False):
+        """Start a new large run only when ``allow_new``; otherwise recover a sealed v3 run."""
+        from . import topic_conversion as conversion
+        from .topic_conversion_jobs import ConversionJobs, StepBlocked, bounded_flow, bounded_step
+        from store.topic_transfer import TransferRefused
+        from . import revstamp
+        durable = self._durable or self._conversion_durable
+        if not hasattr(self, "_conversion_jobs"):
+            # Called only on the sole writer. The measured probe has the same
+            # one-hour work budget; exceeding it requires an explicit resume.
+            self._conversion_jobs = ConversionJobs(self.jobs, work_seconds=3600)
+        pending = self._conversion_jobs.status(args["source"], args["run"])
+        if action == "status" and pending and pending["status"] in ("pending", "resume_required"):
+            return pending
+        if action in ("release", "cancel") and pending and pending["status"] == "pending":
+            raise TransferRefused("conversion_resume_required")
+
+        def invalidate():
+            for owner in (args["source"], args["target"]):
+                self._graph_results.clear_owner(owner)
+                self._graph_reads.invalidate_owner(owner)
+                getattr(self.store, "runtime_stamps", {}).pop(owner, None)
+                self.changes.bump(owner)
+
+        if action == "stage":
+            invalidate()
+
+            def advance():
+                try:
+                    return bounded_step(self.store, durable, **args, expected=expected,
+                                        stamp=revstamp.hlc_now(self.store), qualified_indexes=True,
+                                        allow_new=allow_new, conventions_policy=conventions_policy)
+                except TransferRefused as exc:
+                    # 저널이 없으면 아무것도 쓰지 않은 거절이다(낡은 지문·의존 차단·다른 이동 중).
+                    if conversion._get(self.store, args["run"]) is None:
+                        raise StepBlocked(str(exc).split(":", 1)[0]) from None
+                    raise
+                finally:
+                    invalidate()
+
+            return self._conversion_jobs.start(**args, expected=expected, advance=advance,
+                                               conventions_policy=conventions_policy)
+        # A pre-existing sealed indexed run passed initialize's index-policy
+        # gate. Resume keeps its original index set; no new run is admitted here.
+        flow = bounded_flow(self.store, durable, **args, qualified_indexes=True)
+        if action == "release":
+            result = flow.release(account_active=True)
+        elif action == "cancel":
+            result = flow.cancel()
+        else:
+            return flow.status()
+        invalidate()
+        self._conversion_jobs.forget(args["source"], args["run"])
+        return result
+
     def close(self):
         """clean shutdown(E6): 워커 드레인 → **마지막 스냅샷** → 공유 스토어 close.
 
@@ -838,6 +1042,8 @@ class VincApp:
         해야 스토어가 살아 있다. 이 한 번이 "정상 종료면 아무것도 안 잃는다"를
         만든다 — 주기 스냅샷은 급사에 대비한 것이고 이건 예고된 종료용이다.
         (SIGKILL·OOM 은 여기 못 온다. 그때 잃는 양의 상한이 스냅샷 주기다.)"""
+        if hasattr(self, "_conversion_jobs"):
+            self._conversion_jobs.close()
         self._graph_reads.close()
         self.roots.close()
         self.jobs.shutdown(drain=True)
@@ -845,6 +1051,13 @@ class VincApp:
             state = self._maybe_snapshot(force=True)
             if state and state != "off":
                 print(f"vinc: final snapshot — {state}", file=sys.stderr, flush=True)
+            if state == "ok":
+                # 마지막 스냅샷이 영속본에 올라간 **뒤에만** 넘긴다. 새 리비전은 이 표식을 보고서야
+                # 복원한다 — 넘김이 스냅샷보다 먼저 서면 새 리비전이 낡은 사본을 연다.
+                from store.handoff import mark_released
+                released = mark_released()
+                if released != "off":
+                    print(f"vinc: writer handoff — {released}", file=sys.stderr, flush=True)
             self.store.close()
             self.store = None
 
@@ -854,14 +1067,14 @@ class VincApp:
             p.get("query", ""), owner=p.get("owner"), domain=p.get("domain"),
             tenant=p.get("tenant"), workspace=p.get("workspace"),
             rank=p.get("rank", "recency"), tags=_csv(p.get("tags")),
-            limit=_int(p.get("limit"), 10), store=r, debug=_flag(p.get("debug")),
+            limit=_int(p.get("limit"), 10), store=r, debug=truthy(p.get("debug")),
             # 커서 페이징은 opt-in 이다 — `page`·`cursor` 없이 오는 호출(웹 op recall)은
             # 응답 모양이 그대로다. [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S3.
-            page=_flag(p.get("page")), cursor=p.get("cursor") or None))))
+            page=truthy(p.get("page")), cursor=p.get("cursor") or None))))
 
     def read_domains(self, p):
         return self._read(lambda r: q.domains(owner=p.get("owner"), store=r,
-                                              debug=_flag(p.get("debug"))))
+                                              debug=truthy(p.get("debug"))))
 
     def read_owner_stats(self, p):
         # 소유자 전체의 노드·문서 수(W1c). 허브의 계정 서명 경로 `/internal/usage` 만
@@ -907,7 +1120,9 @@ class VincApp:
 
     def read_graph_roots(self, p):
         """들고 있는 시간 가지 배치. 범위는 전체 그래프 하나다(주제를 고른 읽기는 화면이 직접 배치한다)."""
-        return self.roots.get(_req(p, "owner"), p.get("basis") or "recorded")
+        # `have`: 화면이 이미 그린 답의 digest. 같으면 본문 없이 상태만 간다(`api.layout_remote`).
+        return self.roots.get(_req(p, "owner"), p.get("basis") or "recorded",
+                              str(p.get("have") or "")[:64] or None)
 
     def _roots_graph(self, owner):
         # 화면의 시간 가지 읽기와 같은 인구다: hub 배치, 주제 선택 없음, 원뿔 1.
@@ -922,7 +1137,7 @@ class VincApp:
         # 읽기 **전에** 잡았으므로 응답은 그 표식 이상으로 새롭다: 읽기가 끝난 뒤에도 표식이
         # 같으면 그 사이에 쓰기가 없었다. 그래서 클라이언트는 먼저 표식을 묻고 기다리지 않고
         # 읽기를 바로 시작할 수 있다.
-        want = str(p.get("marker") or "").lower() in ("1", "true")
+        want = truthy(p.get("marker"))
         owner = _req(p, "owner") if (key or want) else None
         marker = self.changes.read(owner) if (key or want) else None
         if key:
@@ -1027,7 +1242,19 @@ class VincApp:
             return {"executed": False, "error": "invalid role pagination"}
         return self._read(lambda r: read(p.get("role"), owner=_req(p, "owner"), store=r,
             limit=limit, offset=offset,
-            roster=p.get("roster") == "1"))
+            roster=p.get("roster") == "1", detail=p.get("detail") == "procedures"))
+
+    def read_role_export(self, p):
+        """내 역할 하나를 호스트 파일로 낸다(skill·claude·gpt·agents-md·vincpack·mcp). 조회 전용."""
+        from . import packfile
+        from .roles import read
+        from vinc_mcp.roles import render_role_export
+        owner = _req(p, "owner")
+        code, got = self._read(lambda r: read(_req(p, "role"), owner=owner, store=r))
+        if code != 200:
+            return code, got
+        return 200, render_role_export(got, p.get("format") or "skill", owner=owner,
+                                       pack_encoder=packfile.to_bytes)
 
     def read_path(self, p):
         # E-G7/E-G8 최단 경로 증거 체인 — 두 개념 사이 경로(조회 전용).
@@ -1043,7 +1270,7 @@ class VincApp:
         return self._read(lambda r: q.suggest_merge_candidates(
             owner=_req(p, "owner"), min_score=float(p.get("min_score") or 0.6),
             limit=_int(p.get("limit"), 20),
-            include_structural=_flag(p.get("include_structural")), store=r))
+            include_structural=truthy(p.get("include_structural")), store=r))
 
     def read_merge_rejections(self, p):
         # F10-b 기각 목록(조회 전용) — 무엇을 되살릴 수 있는지 보여 준다.
@@ -1083,6 +1310,20 @@ class VincApp:
         return self._read(lambda r: q.component_diagnosis(
             owner=owner, store=r, member_limit=_int(p.get("member_limit"), 0) or None))
 
+    def read_decide_paths(self, p):
+        # 결정 문(조회 전용) — 바뀐 경로마다 그 경로를 다스리는 현재 기록·결정.
+        # 경로 목록은 JSON 배열 하나로 온다(`/node-edges` 의 nodes 와 같은 모양).
+        paths = p.get("paths")
+        if isinstance(paths, str):
+            try:
+                paths = json.loads(paths)
+            except ValueError:
+                return 400, {"kind": "decide_paths", "executed": False,
+                             "error": "invalid paths: expected a JSON array of repo:path strings"}
+        return self._read(lambda r: q.decide_paths(
+            paths, owner=_req(p, "owner"), store=r,
+            limit=_int(p.get("member_limit"), 0) or None))
+
     def read_share(self, p):
         # share pack(D19) — 조회 경로로 팩 본문을 반환(파일 저장은 호출자 몫).
         return self._read(lambda r: share.build_share_pack(
@@ -1101,12 +1342,18 @@ class VincApp:
         qvec, vnote = self._query_embedding(query)
         # SEC-1: owner 는 선택(로컬 단일 사용자는 미지정 = 전역). 호스티드 원격은
         # MCP 가 토큰에서 해석한 owner 를 항상 실어 보내 스코프를 강제한다.
+        # D13 — 기본 페이지 크기는 진입점마다 다르다. 이 라우트와 CLI(`vinc search
+        # --top-k`)는 5, MCP vinc_search 와 REST /v1/search 는 도구 핸들러가 20 을 실어
+        # 보낸다(`vinc_mcp.tools._t_search`). top_k 를 안 보내면 5 다. 바꾸면 화면과
+        # 스크립트의 페이지가 함께 바뀌므로 기본값은 그대로 둔다.
+        qcol = _ENCODER_RESPONSE_COLBERT.get() if qvec is not None else ""
         code, res = self._read(lambda r: _timed("search", p, r, q.search(
-            query, query_embedding=qvec,
+            query, query_embedding=qvec, query_colbert=qcol or None,
             query_runtime=(_ENCODER_RESPONSE_RUNTIME.get() if qvec is not None else None),
+            query_model=(_ENCODER_RESPONSE_MODEL.get() if qvec is not None else None),
             top_k=_int(p.get("top_k"), 5), filters=filters or None,
             cursor=p.get("cursor") or None, detail=p.get("detail") or "summary",
-            historical=_flag(p.get("historical")), as_of=p.get("as_of") or None,
+            historical=truthy(p.get("historical")), as_of=p.get("as_of") or None,
             mode=p.get("mode") or None, known_at=p.get("known_at") or None,
             owner=p.get("owner") or None, store=r)))
         # GM-14: 무효/실효 커서는 **명시적 클라이언트 오류**다 — 조용히 첫 페이지로
@@ -1125,6 +1372,12 @@ class VincApp:
             # 파싱이 아니라 이 필드를 본다(vector_note 의 영문 문장은 카피가 아니다).
             if self._mig_pending:
                 res["embed_migration"] = {"pending": self._mig_pending}
+        # 요약(기본) 응답의 행과 노드 후보는 시간 칸을 `temporal{}` 에만 싣는다. 같은 값을 평평한
+        # 칸에 한 번 더 실으면 에이전트 입력만 는다. 공개 표면(MCP·REST·CLI·앱)이 모두 이 라우트를
+        # 지나므로 여기서 걷는다. brief 와 평가 하네스가 부르는 `q.search` 의 꼴은 그대로다.
+        # 제거 조건: 0.9.9 태그 뒤 detail=full 에서도 걷는다. 그 판까지 full 은 두 꼴을 함께 싣는다고 도구 참조문이 예고한다.
+        if isinstance(res, dict) and str(p.get("detail") or "").strip().lower() != "full":
+            search_temporal.drop_flat(res)
         return code, res
 
     def _embed_migrating(self) -> str:
@@ -1176,6 +1429,7 @@ class VincApp:
         기다려 깨우는 게 맞다(`_QVEC_COLD_TIMEOUT`) — 깨고 나면 그 뒤가 전부 싸다.
         어느 쪽인지는 `_claim_cold_retry` 가 최근 성공 시각으로 가른다. 강등은 응답
         메타(`vector_note`)에 남으므로 조용하지 않다."""
+        _ENCODER_RESPONSE_COLBERT.set("")   # 앞 요청의 토큰이 이 스레드에 남지 않게
         _ENCODER_RESPONSE_RUNTIME.set("")
         _ENCODER_RESPONSE_MODEL.set("")
         url = os.environ.get("VINC_EMBED_ENCODE", "").strip()
@@ -1220,7 +1474,18 @@ class VincApp:
         모델을 `vinc-encode` 로 분리하면서 인증이 붙었다. 배치 워커만 고치고 이 경로를
         빠뜨려 **질의 임베딩이 전부 401** 이었다 — 배경 적재는 정상이라 겉으로는 다
         되는 것처럼 보였다. `vector_note` 에 사유가 남아 그나마 드러났다."""
-        vecs = _encode_post(url, [text], "query", timeout)
+        _ENCODER_RESPONSE_COLBERT.set("")
+        cb = _colbert() if _colbert_rescore_on() else None
+        if cb is not None:
+            # 재채점이 켜졌으면 같은 실행에서 토큰도 받는다(인코딩 한 번). 코드북이 다른 창구의
+            # 토큰은 쓰지 않는다 — 그 질의는 재채점 없이 간다.
+            out = _encode_call(url, [text], "query", timeout, colbert=True)
+            vecs = out.get("vectors") or []
+            toks = out.get("colbert") or []
+            if out.get("colbert_books") == cb.id and len(toks) == 1:
+                _ENCODER_RESPONSE_COLBERT.set(toks[0])
+        else:
+            vecs = _encode_post(url, [text], "query", timeout)
         self._qvec_ok = time.monotonic()  # 살아 있다 — 다음 초과는 '바쁨'으로 읽는다
         # 창구의 모델이 저장 벡터의 모델과 다르면 벡터 팔을 뺀다. 폭이 같으면 엔진은
         # 아무 오류 없이 다른 공간의 이웃을 낸다. 한쪽이라도 모르면(옛 창구·기록 없음)
@@ -1259,8 +1524,23 @@ class VincApp:
         if kind == "decide":
             return 200, q.decide_plan(p.get("topic", "")).to_dict()
         if kind == "search":
+            # D14 — 실제로 도는 것을 말한다. 청크 두 팔은 CHUNK_RRF_K 로 융합하고(60 이
+            # 아니다), 키워드 관문이 키워드 목록을 뺄 수 있다. 노드 후보는 별도 팔 셋을
+            # rrf_fuse 기본 k 로 융합한다. 값은 코드에서 읽는다 — 손으로 적으면 또 낡는다.
+            import inspect
+            from vinc_rag import retrieval as _r
+            node_k = inspect.signature(_r.rrf_fuse).parameters["k"].default
             return 200, {"kind": "search", "arms": ["fulltext(BM25)", "vector(주입 시)"],
-                         "fusion": "RRF(k=60)", "note": "store 메서드 경유 — 단일 Cypher 아님"}
+                         "fusion": f"RRF(k={_r.CHUNK_RRF_K})",
+                         "keyword_gate": {
+                             "threshold": _r.KEYWORD_GATE, "rows": _r.GATE_TOP,
+                             "note": "drops the keyword list from fusion when the vector arm "
+                                     "returned rows and the best of the top keyword rows "
+                                     "covers less of the query than the threshold"},
+                         "node_arms": ["title", "graph"]
+                         + (["semantic"] if _r._node_semantic_arm_on() else []),
+                         "node_fusion": f"RRF(k={node_k})",
+                         "note": "store 메서드 경유 — 단일 Cypher 아님"}
         return 400, {"error": f"unknown plan kind: {kind}"}
 
     # ── 쓰기 라우트(동기, 잡 큐 직렬화 R4) ─────────────────────────────────
@@ -1300,8 +1580,8 @@ class VincApp:
 
     def write_ingest(self, body):
         # 적재 단일화 — `/ingest` 는 fragment 단일 경로로 수렴한다. 개방층은 그 경로에
-        # 포팅돼 revstamp·SEC-3·dedupe 를 승계한다(`engines/fragment_ingest.py` 는
-        # 계보 참조용, 호출부 없음 · [[vinc.spec.dataplane §3]]).
+        # 포팅돼 revstamp·SEC-3·dedupe 를 승계한다(옛 `engines/fragment_ingest.py` 는
+        # VIN-553 에서 삭제 · [[vinc.spec.dataplane §3]]).
         cap = _pop_max_domains(body)
         res = self._run_mutation("ingest:fragment", body,
                                  lambda: frag.merge_fragment(body, store=self.store,
@@ -1387,10 +1667,15 @@ class VincApp:
         preview = body.get("dry_run", False)
         if type(preview) is not bool:
             raise ValueError("dry_run must be a boolean")
+        stray = body.get("stray_type")
+        if stray is not None and not isinstance(stray, str):
+            raise ValueError("stray_type must be a string")
         if preview and not owner:
-            return 200, q.delete_node(node, owner=owner, store=self.store, dry_run=True)
+            return 200, q.delete_node(node, owner=owner, store=self.store, dry_run=True,
+                                      stray_type=stray)
         res = self._run_mutation("delete", body,
-                                 lambda: q.delete_node(node, owner=owner, store=self.store))
+                                 lambda: q.delete_node(node, owner=owner, store=self.store,
+                                                       stray_type=stray))
         return 200, res
 
     def write_delete_edge(self, body):
@@ -1444,7 +1729,7 @@ class VincApp:
         return self._read(lambda r: q.node_context(
             owner=_req(p, "owner"), node=_req(p, "node"),
             limit=_int(p.get("limit"), 4),
-            with_evidence=_flag(p.get("evidence")),
+            with_evidence=truthy(p.get("evidence")),
             links_offset=_int(p.get("links_offset"), 0),
             sources_offset=_int(p.get("sources_offset"), 0), store=r))
 
@@ -1459,11 +1744,16 @@ class VincApp:
                        else self._query_embedding(query))
         # 유효구간 기본은 current 만이다(채택된 시간 정책 §4.2). `historical=true` 가
         # 명시적 요청 경로이고, 기본으로 켜 두면 정책이 막으려는 것을 그대로 낸다.
+        # 시간 인자는 넷 다 q.brief 가 적용한다(B1). `known_at` 을 여기서 빠뜨리면 brief 가
+        # 그것을 모른 채 해소한다.
+        qcol = _ENCODER_RESPONSE_COLBERT.get() if qvec is not None else ""
         code, res = self._read(lambda r: _timed("brief", p, r, q.brief(
-            query, owner=_req(p, "owner"), query_embedding=qvec,
+            query, owner=_req(p, "owner"), query_embedding=qvec, query_colbert=qcol or None,
             query_runtime=(_ENCODER_RESPONSE_RUNTIME.get() if qvec is not None else None),
+            query_model=(_ENCODER_RESPONSE_MODEL.get() if qvec is not None else None),
             max_excerpts=_int(p.get("max_excerpts"), 3),
-            historical=_flag(p.get("historical")), as_of=p.get("as_of") or None, mode=p.get("mode") or None, store=r)))
+            historical=truthy(p.get("historical")), as_of=p.get("as_of") or None,
+            mode=p.get("mode") or None, known_at=p.get("known_at") or None, store=r)))
         if isinstance(res, dict) and str(res.get("error") or "").startswith(
                 ("invalid_as_of", "invalid_time_scope", "invalid_temporal_mode")):
             code = 400
@@ -1584,18 +1874,22 @@ class VincApp:
             if got.get("executed") and (got.get("text") or "").strip():
                 # 마커가 깨진 문서는 교체하지 않는다(build 가 executed=False) — 그때는
                 # 저장본 그대로다. 추측해서 고쳐 쓰지 않는 것이 build 와 같은 태도다.
+                # 저장본에 Roles 절이 있었는지는 끼우기 전에 본다(응답의 roles_section 이 그것을 말한다).
+                roles_default = not any(graphmd._is_heading(ln, "roles")
+                                        for ln in got["text"].splitlines())
                 fresh = graphmd.build(r, owner=owner, themes=self.themes,
                                       existing=got["text"], restamp=False)
                 text = fresh["text"] if fresh.get("executed") else got["text"]
-                # Roles 절이 없는 파일이면 기본 절을 끼워 읽힌다(저장본은 그대로).
-                # 역할을 쓰는 어시스턴트가 계약을 보는 문이 여기 하나라서다.
-                # 근거: [[vinc.canon.agent-roles §5]]
-                text, roles_default = graphmd.with_roles_section(text)
+                # 스키마 절(노드 종류·관계·쓰기·문서·시간·역할)은 저장본이 무엇을 적었든 코드에서
+                # 다시 만들어 싣는다(저장본은 그대로). 마커가 깨져 build 가 거절한 문서에도 싣는다.
+                # 근거: [[vinc.canon.agent-roles §5]], [[vinc.canon.graph-conventions §5.1]]
+                text, _inserted = graphmd.with_schema_sections(text)
                 return {"kind": "conventions", "executed": True, "source": "doc",
                         "owner": owner or "", "scope": _owner_scope(owner),
                         "doc_id": doc_id, "text": text,
                         "generated_recomputed": bool(fresh.get("executed")),
                         "roles_section": "default" if roles_default else "own",
+                        "schema_sections": "generated",
                         "updated_at": got.get("updated_at") or ""}
             built = graphmd.build(r, owner=owner, themes=self.themes, lang=lang,
                                   day=_dt.date.today().isoformat())
@@ -1613,7 +1907,7 @@ class VincApp:
         # 것이 계약이라 여기에 "전부" 값은 없다 - 개수는 counts.kinds 가 따로 준다.
         # `domain=` 은 그 주제의 **하위 트리**로 좁힌다(목록·개수·문서가 같은 술어).
         return self._read(lambda r: q.nav_tree(
-            owner=_req(p, "owner"), nodes=_flag(p.get("nodes")),
+            owner=_req(p, "owner"), nodes=truthy(p.get("nodes")),
             kind=p.get("kind"), domain=p.get("domain"),
             domains=_domains(p.get("domains")), store=r))
 
@@ -1851,7 +2145,64 @@ class VincApp:
         return docstore.embed_model_state(r)
 
     def write_node_mirror_rebuild(self, body):
-        """POST /node-mirror/rebuild — 노드 미러의 색인을 통째로 다시 만든다(바뀐 행만
+        """POST /node-mirror/rebuild — dense 미러(:meth:`_node_mirror_dense`) 다음에 ColBERT
+        토큰 열을 채운다(:meth:`_node_mirror_colbert`). 토큰은 dense 가 성공했을 때만 간다 —
+        토큰은 미러 행에 실리므로 행이 먼저 있어야 한다. 토큰 단계의 실패는 dense 결과를
+        되돌리지 않고 `colbert` 칸에 사유로 남는다(재채점은 토큰이 다 있을 때만 켜진다)."""
+        code, res = self._node_mirror_dense(body)
+        if code == 200 and _colbert() is not None:
+            res = {**res, "colbert": self._node_mirror_colbert(body)}
+        return code, res
+
+    def _node_mirror_colbert(self, body) -> dict:
+        """미러 행 중 토큰 텍스트나 코드북이 바뀐 것만 인코더에 묻고(`colbert:true`), 배치마다
+        바로 싣는다. 2만 행의 코드를 한꺼번에 들면 수백 MB 라 이 컨테이너에서 OOM 이다.
+        중간에 죽어도 다음 재구축이 해시로 남은 것만 이어 한다.
+        근거: [[vinc.plan.vin845-colbert-node-rescoring-implementation-2026-10-30]]"""
+        url = os.environ.get("VINC_EMBED_ENCODE", "").strip()
+        cb = _colbert()
+        if not url or cb is None:
+            return {"executed": False, "error": "colbert not configured"}
+        if not self._mirror_lock.acquire(blocking=False):
+            return {"executed": False, "error": "미러 재구축이 이미 돌고 있다"}
+        try:
+            r = self._reader()
+            if r is None:
+                return {"executed": False, **store_unavailable()}
+            try:
+                owner = (body.get("owner") or "").strip() or None
+                rows, _ = node_mirror.collect(r, owner, with_tokens=True)
+                todo = node_mirror.colbert_todo(rows, node_mirror.colbert_state(r, owner), cb.id)
+            finally:
+                r.close()
+            del rows
+            left = max(0, len(todo) - _COLBERT_FILL_MAX) if _COLBERT_FILL_MAX > 0 else 0
+            if left:
+                todo = todo[:_COLBERT_FILL_MAX]
+            t0, done = time.monotonic(), 0
+            for i in range(0, len(todo), _COLBERT_BATCH):
+                batch = todo[i:i + _COLBERT_BATCH]
+                out = _encode_call(url, [b["ctext"] for b in batch], "passage",
+                                   _MIRROR_ENCODE_TIMEOUT, colbert=True)
+                codes = out.get("colbert")
+                if out.get("colbert_books") != cb.id or not isinstance(codes, list)                         or len(codes) != len(batch):
+                    # 코드북이 다르면 사이드카가 풀 수 없는 코드다. 싣지 않고 멈춘다.
+                    return {"executed": done > 0, "rows": len(todo), "done": done, "left": left,
+                            "error": out.get("colbert_error")
+                            or f"encoder books {out.get('colbert_books')} != sidecar {cb.id}"}
+                updates = [{"vid": node_mirror.vec_id(b.get("owner") or "", b["id"]), "codes": c,
+                            "hash": node_mirror.colbert_hash(b["ctext"])} for b, c in zip(batch, codes)]
+                self.jobs.run_sync("node-mirror.colbert",
+                                   lambda u=updates: {"set": node_mirror.set_colbert(self.store, u, cb.id)},
+                                   timeout=_MIRROR_REPLACE_TIMEOUT)
+                done += len(batch)
+            return {"executed": True, "rows": len(todo), "done": done, "left": left, "books": cb.id,
+                    "encode_s": round(time.monotonic() - t0, 1)}
+        finally:
+            self._mirror_lock.release()
+
+    def _node_mirror_dense(self, body):
+        """노드 미러의 색인을 통째로 다시 만든다(바뀐 행만
         인코딩하고, 바뀐 것도 색인도 멀쩡하면 아무것도 안 한다).
 
         **배포 경계에서만 부른다**(`packaging/docker-entrypoint.sh`). 증분 삽입은
@@ -1890,17 +2241,22 @@ class VincApp:
             try:
                 owner = (body.get("owner") or "").strip() or None
                 rows, collisions = node_mirror.collect(r, owner)
-                try:
-                    model = str((docstore.embed_model_state(r) or {}).get("stored") or "")
-                except Exception:
-                    model = ""    # 라벨일 뿐이다 — 못 읽었다고 재구축을 접지 않는다
+                # 라벨은 이 이미지의 인코더가 내는 모델(`VINC_EMBED_MODEL`)이다. 스토어 키는
+                # 워커의 첫 폴이 바꾸는데 재구축이 그보다 먼저 읽을 수 있다. 그러면 새 벡터에
+                # 이전 모델 이름이 붙고, `plan` 은 이전 모델의 벡터를 전부 "안 바뀜"으로 둔다.
+                model = os.environ.get("VINC_EMBED_MODEL", "").strip()
+                if not model:
+                    try:
+                        model = str((docstore.embed_model_state(r) or {}).get("stored") or "")
+                    except Exception:
+                        model = ""    # 라벨일 뿐이다 — 못 읽었다고 재구축을 접지 않는다
                 # 🔴 **바뀐 노드만 인코딩한다**(2026-10-02). 전량을 매번 인코딩하던 동안
                 # 미러가 5천에서 그 몇 배로 자라자 재구축이 25분을 넘겼고, 그 내내 질의
                 # 임베딩이 같은 인코더 뒤에 줄을 서서 검색 대부분이 의미 팔 없이 나갔으며,
                 # 교체 단계에서 사이드카가 OOM 으로 죽었다. 같은 글자·모델·런타임이면 같은
                 # 벡터이므로 그 행은 제자리에 둔다. 판을 증명할 길(런타임 지문·빌드·모델
                 # 라벨)이 하나라도 없으면 예전처럼 전부 다시 만든다.
-                # 근거: [[record:the-node-mirror-rebuild-oom-kills-the-sidecar-2026-10-02]]
+                # 근거: [[decision:the-node-mirror-keeps-unchanged-rows-and-rebuilds-its-index-whole-2026-10-02]]
                 stale = None
                 todo = rows
                 if _ENCODER_RUNTIME and _ENCODER_BUILD and model:
@@ -2114,7 +2470,7 @@ class VincApp:
         우회한다(허브는 "이 owner 의 전부를 서빙"이 맞는 의미 — 로컬쪽 도메인 선택은
         push 시 로컬 스토어에서 이미 적용됨, apply_delta 는 도메인 필터가 없다)."""
         owner = _req(p, "owner")
-        if _flag(p.get("all")):
+        if truthy(p.get("all")):
             # 모드 전환의 전량 받기(VIN-130). 아래 도메인 목록은 **주제가 빈 노드를 못
             # 잡는다**(`IN` 은 빈 값과 맞지 않는다) — 그대로 두면 계정에서 기기로 옮길 때
             # 주제 없는 노드가 조용히 남는다. 그래서 주제를 아예 안 가린다.
@@ -2141,7 +2497,7 @@ class VincApp:
         owner = _req(p, "owner")
         # `all` = 순번과 무관하게 전부(모드 전환의 전량 받기, VIN-130 · docsync 주석).
         return self._read(lambda r: docsync.export_docs(
-            r, owner=owner, since=_int(p.get("since"), 0), everything=_flag(p.get("all"))))
+            r, owner=owner, since=_int(p.get("since"), 0), everything=truthy(p.get("all"))))
 
     def write_sync_docs_apply(self, body):
         """문서 정본 delta 적용(D45 P3 — doc 단위 LWW, 로컬 재청킹). 쓰기 → 잡 직렬화.
@@ -2239,6 +2595,7 @@ class VincApp:
             "mode": mode if mode in ("account", "local") else None,
             # 사람이 고른 모드인가(VIN-131). 앱이 자동으로 정한 값과 가른다: 0.9.4·0.9.5 는
             # 이 기기에 데이터가 있으면 말없이 로컬로 정했고, 그 설치는 한 번 물어야 한다.
+            # 제거 조건: 없음(키가 없으면 '고르지 않음'인 규칙은 새 설치도 쓴다). 위 0.9.4·0.9.5 문장만 그 판의 업그레이드를 더 받지 않을 때 뺀다.
             "mode_chosen": conf.get("mode_chosen") is True,
             "data_path": conf.get("data_path") or None,
             "data_file": cur,
@@ -2293,7 +2650,7 @@ class VincApp:
                 info = localmode.inspect_folder(str(raw))
                 if not info["ok"]:
                     return 400, {"error": info["problem"], "inspect": info}
-                if info["risks"] and not _flag(body.get("accept_risk")):
+                if info["risks"] and not truthy(body.get("accept_risk")):
                     return 409, {"error": "risky_folder", "inspect": info}
                 try:
                     os.makedirs(info["path"], exist_ok=True)
@@ -2447,7 +2804,7 @@ def _int(val, default: int) -> int:
 
 def embed_apply_paused() -> bool:
     """`VINC_EMBED_APPLY_PAUSED` 가 켜졌는가(on/1/true/yes). 매번 env 를 읽는다."""
-    return _flag(os.environ.get("VINC_EMBED_APPLY_PAUSED"))
+    return truthy(os.environ.get("VINC_EMBED_APPLY_PAUSED"))
 
 
 #: 기동 수리 — (백엔드 메서드, 로그 이름). 셋은 서로 독립이다: 하나가 실패해도 나머지는 돈다.
@@ -2483,15 +2840,6 @@ def _heal_search_indexes(store, dim: int, *, quiet=False) -> None:
                   file=sys.stderr, flush=True)
 
 
-def _flag(val) -> bool:
-    """쿼리스트링·JSON 양쪽에서 오는 불리언. HTTP 로 오면 문자열 `"true"` 이고
-    MCP/CLI 로 오면 진짜 bool 이라 둘 다 받아야 한다 — `bool("false")` 가 True 인
-    것이 이 자리의 함정이다(F3 의 debug 옵트인이 항상 켜져 버린다)."""
-    if isinstance(val, bool):
-        return val
-    return str(val or "").strip().lower() in ("1", "true", "yes", "on")
-
-
 def _pop_max_domains(body) -> int | None:
     """요청 본문에서 주제 상한을 꺼낸다(있으면 제거).
 
@@ -2506,14 +2854,6 @@ def _pop_max_domains(body) -> int | None:
         return None
     v = ent.get("max_domains")
     return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None
-
-
-def _csv(val):
-    if not val:
-        return None
-    if isinstance(val, list):
-        return val
-    return [s.strip() for s in val.split(",") if s.strip()]
 
 
 # ── HTTP 핸들러 ──────────────────────────────────────────────────────────────
@@ -2540,17 +2880,20 @@ class _Handler(BaseHTTPRequestHandler):
         # 교차출처 → CORS 없으면 fetch 가 브라우저에 차단된다("Failed to fetch"). 루프백
         # 바인딩 + Bearer 토큰 인증이라 origin 은 * 로 허용해도 무단 접근은 토큰에서 막힌다.
         self.send_header("Access-Control-Allow-Origin", "*")
+        if self.close_connection:   # 본문을 다 읽지 못했다(상한 초과) — 닫는다고 알린다
+            self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
 
     def _body(self) -> dict:
-        length = int(self.headers.get("Content-Length") or 0)
-        if not length:
-            return {}
-        raw = self.rfile.read(length)
-        if not raw:
-            return {}
-        return json.loads(raw.decode("utf-8"))
+        try:
+            raw = httpbody.read_body(self.headers, self.rfile, MAX_BODY)
+        except httpbody.BodyTooLarge:
+            # 읽지 않은 바이트가 소켓에 남는다. 이 서버는 HTTP/1.1 keep-alive 라 연결을
+            # 닫지 않으면 그 잔여물이 다음 요청으로 파싱된다(요청 밀수).
+            self.close_connection = True
+            raise
+        return httpbody.parse_json(raw)
 
     def do_GET(self):
         self._dispatch("GET")
@@ -2623,7 +2966,7 @@ class _Handler(BaseHTTPRequestHandler):
                 # 종일 활성 요금 구간에 붙잡아 둔 원인 후보였다. 상태 판정(ok·degraded)과
                 # 스냅샷 상태는 메모리 값이라 그대로 싣는다.
                 # 근거: [[vinc.ops.container-apps-cost-rise-2026-09-25]] §4
-                if not migrating and not _flag(
+                if not migrating and not truthy(
                         urllib.parse.parse_qs(parsed.query).get("live", [""])[0]):
                     try:
                         body["embed"] = self.app.embed_health()
@@ -2647,6 +2990,12 @@ class _Handler(BaseHTTPRequestHandler):
                     body["durable_ack"] = durable.detail()
             if embed_apply_paused():
                 body["embed_apply_paused"] = True
+            # 검색 품질을 크게 떨어뜨리는 비상구가 열려 있으면 이름을 싣는다. 정상이면 키가 없다.
+            overrides = q.retrieval_overrides()
+            if overrides:
+                body["retrieval_overrides"] = overrides
+            # 노드 재채점과 brief 규칙의 실제 값은 늘 싣는다(켜진 것이 정상이라 위 목록에 넣지 않는다).
+            body["retrieval_switches"] = q.retrieval_switches()
             # 색인이 잔해로 막혔다 — 그 팔이 꺼져 있고 그 표의 쓰기가 거절된다(fts_index 면
             # 문서 저장·삭제가 전부다). 재기동이 고친다(`_heal_search_indexes`). 정상이면 키가 없다.
             for key, attr in (("vector_index", "vector_index_remnant"),
@@ -2666,6 +3015,8 @@ class _Handler(BaseHTTPRequestHandler):
                 code, obj = self.app.connect_callback(self._body(), self.headers.get("Origin"))
             except json.JSONDecodeError as exc:
                 code, obj = 400, {"error": f"invalid JSON body: {exc}"}
+            except httpbody.BodyTooLarge as exc:
+                code, obj = 413, {"error": str(exc)}
             return self._send(code, obj)
 
         # 인증(F4): Bearer 세션 토큰 필수.
@@ -2698,6 +3049,8 @@ class _Handler(BaseHTTPRequestHandler):
             code, obj = 400, {"error": f"missing field: {exc.args[0]}"}
         except json.JSONDecodeError as exc:
             code, obj = 400, {"error": f"invalid JSON body: {exc}"}
+        except httpbody.BodyTooLarge as exc:
+            code, obj = 413, {"error": str(exc)}
         except JobError as exc:
             code, obj = 500, {"error": str(exc)}
             if exc.write_may_have_applied:
@@ -2708,6 +3061,8 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(code, obj)
 
     # ── 라우트 표(CLI 1:1) ────────────────────────────────────────────────
+    # 라우트를 더하거나 빼면 `api/contract/sidecar.json` 도 같이 고친다(앱이 안 부르면
+    # `x-internal: true`). 두 쪽은 `tests/core/test_sidecar_contract.py` 가 대조한다.
     def _route_get(self, path: str, p: dict):
         app = self.app
         if app.store is not None and getattr(app.store, "_topic_conversion_guard", False):
@@ -2726,9 +3081,11 @@ class _Handler(BaseHTTPRequestHandler):
             "/neighbors": app.read_neighbors, "/path": app.read_path,
             "/node-edges": app.read_node_edges,
             "/roles": app.read_roles,
+            "/roles/export": app.read_role_export,
             "/learner": app.read_learner, "/graph": lambda p: app.read_graph(p, wire=True),
             "/graph/roots": app.read_graph_roots,   # 들고 있는 시간 가지 배치(`api.layout_remote`)
             "/search": app.read_search, "/decide": app.read_decide,
+            "/decide-paths": app.read_decide_paths,   # 결정 문
             "/themes": app.read_themes, "/types": app.read_types,
             # 문서 정본(D45 P4) — get(복원+검증) · list. + 노드 클릭 상세(D45-V).
             "/doc": app.read_doc, "/docs": app.read_docs,
@@ -2742,6 +3099,10 @@ class _Handler(BaseHTTPRequestHandler):
             "/node": app.read_node,
             "/node-context": app.read_node_context,
             "/operation-status": app.read_operation_status,
+            "/events": app.read_events,   # 변경 기록에서 계산한 이벤트 피드
+            "/runs": app.read_runs,   # 실행 기록 목록, 인용한 주장으로 거른다
+            "/agent-writes": app.read_agent_writes,   # 최근 쓰기를 출처별로 묶은 검토(A5)
+            "/eval-cards": app.read_eval_cards,   # 역할에 붙은 평가 카드
             "/community-agent/import-result": app.read_community_agent_result,
             "/brief": app.read_brief,   # W1 — 질문 하나로 답변 재료 조인
             "/edge-context": app.read_edge_context,   # 흐름 선 클릭(D45-V 1단계)
@@ -2813,11 +3174,9 @@ class _Handler(BaseHTTPRequestHandler):
             "/ingest": app.write_ingest,
             "/delete": app.write_delete, "/delete-edge": app.write_delete_edge,
             "/merge-nodes": app.write_merge,
-            # F10-b 병합 후보 기각(가역) — 비가역 병합의 안전한 반대편.
-            # TODO(vinc_mcp/tools.py): 이 경로를 부르는 MCP 도구가 아직 없다.
-            #   `vinc_merge_reject {a, b, note?, undo?}` → POST /merge-reject 와
-            #   `vinc_merge_candidates` 에 `include_structural: boolean` 을 추가해야
-            #   호스트가 기각하고 되열 수 있다(스키마 변경이라 이 작업 범위 밖).
+            # F10-b 병합 후보 기각(가역): 비가역 병합의 안전한 반대편. MCP 에서는
+            # `vinc_merge_reject`(기각·undo)와 `vinc_merge_rejections`(목록)가 부르고,
+            # 구조적으로 뺀 쌍은 `vinc_merge_candidates` 의 `include_structural` 로 되열린다.
             "/merge-reject": app.write_merge_reject,
             # 문서 정본(D45 P4) — put(적재/편집) · delete. 단일 writer 직렬화.
             "/doc/put": app.write_doc_put, "/doc/delete": app.write_doc_delete,
@@ -2875,20 +3234,10 @@ def make_server(app: VincApp, host: str = "127.0.0.1", port: int = 0) -> Threadi
     return httpd
 
 
-def _pid_alive(pid: int) -> bool:
-    """부모 PID 생존 확인 — **조회 전용, 대상을 죽이지 않는다.**
-
-    구현은 `store/procutil.py` 한 벌뿐이다. 여기 사본을 두지 않는 이유는 그 파일에
-    적어 뒀다 — 사본이 둘이던 시절 브리지 쪽만 `os.kill` 을 쓰다가 Windows 에서
-    앱을 죽였다(2026-08-18).
-    """
-    return pid_alive(pid)
-
-
 def _heartbeat(parent_pid: int, stop: threading.Event, interval: float = 1.0):
     """부모(셸) 프로세스 생존 감시. 사망 시 stop 을 세워 clean shutdown 유발(E6)."""
     while not stop.wait(interval):
-        if not _pid_alive(parent_pid):
+        if not pid_alive(parent_pid):
             stop.set()
             return
 
@@ -2958,8 +3307,8 @@ def serve(cfg=None, *, host: str = "127.0.0.1", port: int = 0, parent_pid: int |
         threading.Thread(target=_heartbeat, args=(parent_pid, stop), daemon=True).start()
     threading.Thread(target=_gc_tombstones_loop, args=(app, stop), daemon=True).start()
 
-    # 쓰기 자격은 HTTP 를 열기 **직전에** 가져온다. 이보다 늦으면 ACA 가 이 리비전을
-    # 준비됐다고 보고 구 리비전을 내리는 쪽이 먼저 올 수 있다(persistence.claim_writer).
+    # 쓰기 자격은 HTTP 를 열기 **직전에** 가져온다. 이 리비전이 쓰기를 받기 전에 표식이
+    # 서 있어야, 인계가 어긋나 늦게 오는 구 리비전의 스냅샷이 막힌다(persistence.claim_writer).
     writer = claim_writer()
     if writer != "off":
         print(f"vinc: store writer — {writer}", file=sys.stderr, flush=True)

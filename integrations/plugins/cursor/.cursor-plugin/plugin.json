@@ -1,0 +1,13 @@
+{
+  "name": "vinc",
+  "version": "0.1.0",
+  "description": "Your Vinc graph in Cursor and Grok Bot: the hosted Vinc MCP server, your Agent roles as skills, and routines started by Vinc events.",
+  "author": {
+    "name": "Vinc",
+    "email": "support@vincs.io"
+  },
+  "homepage": "https://vincs.io/docs/mcp/",
+  "repository": "https://github.com/Vinculums/Vinc",
+  "license": "Apache-2.0",
+  "keywords": ["vinc", "knowledge-graph", "memory", "agents", "mcp", "grok-bot"]
+}

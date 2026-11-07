@@ -19,8 +19,10 @@ import threading
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+try:
+    from scripts._root import ROOT
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT
 sys.path.insert(0, str(ROOT / "scripts"))
 
 #: 픽스처 스토어 위치. 임시 디렉터리로 두면 호출마다 새로 심어야 하고, 무엇보다

@@ -174,7 +174,8 @@ def _app(cap=5):
 def test_free_gets_the_number_and_paid_gets_nothing():
     app = _app(5)
     assert app.entitlements_for("free") == {"max_domains": 5}
-    assert app.entitlements_for("team") == {}
+    assert app.entitlements_for("genius") == {}
+    assert app.entitlements_for("team") == {}      # 옛 와이어 값도 유료 쪽으로 접힌다
 
 
 def test_cap_disabled_when_unset():

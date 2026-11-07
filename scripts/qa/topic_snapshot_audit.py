@@ -9,12 +9,14 @@ from collections import Counter
 import json
 import os
 from pathlib import Path
-import sys
 import tempfile
 import time
 from uuid import UUID
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+try:
+    from scripts._root import ROOT  # noqa: F401
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT  # noqa: F401
 
 from api import topic_conversion as conversion
 from store.scoped_topic_inventory import read_scoped_inventory
@@ -40,6 +42,8 @@ def audit(store, source, topic="vinc"):
                     labels_by_id.setdefault(key, set()).add(label)
                 for blocker in plan.blockers:
                     code, _, key = blocker.partition(":")
+                    if code == "external_attachments_not_supported":
+                        key = key.partition(":")[2]
                     if code in ("external_source_file_not_supported", "external_attachments_not_supported",
                                 "external_resource_reference_not_supported"):
                         for label in labels_by_id.get(key, ("unresolved",)):

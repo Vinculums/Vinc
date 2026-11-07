@@ -73,6 +73,18 @@ def _ring(node: dict, roster: list[dict]) -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
+class _PagedRoles:
+    """`GET /roles` 페이지를 거르지 않고 그대로 돌려주는 가짜. discover_roles 의 판정만 본다."""
+
+    def __init__(self, pages):
+        self.pages = pages
+
+    def request(self, method, path, params=None, body=None, timeout=60):
+        i = (params or {}).get("offset", 0)
+        nxt = i + 1 if i + 1 < len(self.pages) else None
+        return {"executed": True, "roles": self.pages[i], "next_offset": nxt}
+
+
 class _RosterBridge(Bridge):
     """로스터를 답하는 가짜 사이드카. 호출 궤적을 남긴다."""
 
@@ -160,7 +172,7 @@ class Capabilities(unittest.TestCase):
     def test_prompts_opened_and_resources_stayed_closed(self):
         """이 갈림이 W2 의 계약이다. 한쪽만 보면 다른 쪽이 조용히 따라 열린다."""
         for method in ("prompts/list", "prompts/get"):
-            r = self._rpc(method, {"name": "agent-dev-core"})
+            r = self._rpc(method, {"name": "agent-maker"})
             self.assertNotIn("error", r, method)
         for method in ("resources/list", "resources/templates/list",
                        "resources/read", "resources/subscribe"):
@@ -176,7 +188,7 @@ class ListPrompts(unittest.TestCase):
         got = roles.list_prompts(b)
         self.assertEqual([p["name"] for p in got["prompts"]],
                          [r["name"] for r in SNAPSHOT["roles"]])
-        self.assertEqual(len(got["prompts"]), 23)
+        self.assertEqual(len(got["prompts"]), 2)
 
     def test_only_role_concepts_survive_the_prefix_filter(self):
         b = _RosterBridge(roles_=[
@@ -200,28 +212,21 @@ class ListPrompts(unittest.TestCase):
         got = roles.list_prompts(_RosterBridge(nested=True))
         self.assertEqual([p["name"] for p in got["prompts"]],
                          [r["name"] for r in SNAPSHOT["roles"]])
-        self.assertEqual(len(got["prompts"]), 23)
+        self.assertEqual(len(got["prompts"]), 2)
 
     def test_a_role_seen_in_two_domains_is_listed_once(self):
-        rows = roles.roster_rows(lambda node: [
-            {"rel": "PARENT_OF", "id": "domain:vinc/agent/roles"},
-            {"rel": "IN_DOMAIN", "id": "concept:agent-x"}] if node == "domain:vinc/agent"
-            else [{"rel": "IN_DOMAIN", "id": "concept:agent-x"},
-                  {"rel": "IN_DOMAIN", "id": "concept:agent-a"},
-                  {"rel": "IN_DOMAIN", "id": "decision:agent-not-a-role"}])
+        rows = roles.discover_roles(_PagedRoles([
+            [{"id": "concept:agent-x"}],
+            [{"id": "concept:agent-x"}, {"id": "concept:agent-a"},
+             {"id": "decision:agent-not-a-role"}]]), "user:test")
         self.assertEqual([r["id"] for r in rows], ["concept:agent-a", "concept:agent-x"])
 
     def test_the_roster_concept_is_not_a_role(self):
         """concept:agent-orchestration 은 로스터를 정의하는 개념이라 역할과 접두가 같다.
         자식 도메인 vinc/agent/orchestration 으로 옮겨지자 열아홉째 프롬프트가 됐다
         (2026-09-12 라이브 prompts/list 실측). 목록에도 get 에도 없어야 한다."""
-        rows = roles.roster_rows(lambda node: [
-            {"rel": "PARENT_OF", "id": "domain:vinc/agent/orchestration"},
-            {"rel": "PARENT_OF", "id": "domain:vinc/agent/roles"}]
-            if node == "domain:vinc/agent"
-            else [{"rel": "IN_DOMAIN", "id": roles.ROSTER_CONCEPT}]
-            if node == "domain:vinc/agent/orchestration"
-            else [{"rel": "IN_DOMAIN", "id": "concept:agent-steward"}])
+        rows = roles.discover_roles(_PagedRoles([
+            [{"id": roles.ROSTER_CONCEPT}, {"id": "concept:agent-steward"}]]), "user:test")
         self.assertEqual([r["id"] for r in rows], ["concept:agent-steward"])
         with self.assertRaises(ValueError):
             roles.get_prompt("agent-orchestration", None, _RosterBridge())
@@ -238,7 +243,7 @@ class ListPrompts(unittest.TestCase):
 
 
 class GetPrompt(unittest.TestCase):
-    def _text(self, name="agent-dev-core", args=None, bridge=None):
+    def _text(self, name="agent-maker", args=None, bridge=None):
         b = bridge or _RosterBridge()
         got = roles.get_prompt(name, args or {}, b)
         return got, got["messages"][0]["content"]["text"], b
@@ -252,7 +257,7 @@ class GetPrompt(unittest.TestCase):
                 self.assertIn(roles.render_shell(role), _fenced(text)[0])
 
     def test_description_is_the_mission_on_one_line(self):
-        role = next(r for r in SNAPSHOT["roles"] if r["name"] == "agent-dev-core")
+        role = next(r for r in SNAPSHOT["roles"] if r["name"] == "agent-maker")
         got, _, _ = self._text()
         self.assertEqual(got["description"],
                          " ".join(role["props"]["mission"].split()))
@@ -275,7 +280,7 @@ class GetPrompt(unittest.TestCase):
     def test_a_role_absent_from_this_graph_is_a_value_error(self):
         b = _RosterBridge(roles_=[])
         with self.assertRaises(ValueError):
-            roles.get_prompt("agent-dev-core", {}, b)
+            roles.get_prompt("agent-maker", {}, b)
 
 
 class DataBoundary(unittest.TestCase):
@@ -315,7 +320,7 @@ class DataBoundary(unittest.TestCase):
 class Focus(unittest.TestCase):
     def _calls(self, focus):
         b = _RosterBridge()
-        roles.get_prompt("agent-dev-core", {"focus": focus}, b)
+        roles.get_prompt("agent-maker", {"focus": focus}, b)
         return [(c[0], c[1]) for c in b.calls]
 
     def test_a_node_id_is_read_one_hop(self):
@@ -334,7 +339,7 @@ class Focus(unittest.TestCase):
                     return {"executed": True, "node_hits": [], "rows": []}
                 return out
 
-        text = roles.get_prompt("agent-dev-core", {"focus": "nothing here"},
+        text = roles.get_prompt("agent-maker", {"focus": "nothing here"},
                                 _Empty())["messages"][0]["content"]["text"]
         self.assertIn("nothing in this graph matched", _fenced(text)[1])
 
@@ -350,14 +355,14 @@ class Tenancy(unittest.TestCase):
         return [c[2].get("owner") for c in b.calls]
 
     def test_the_forced_owner_is_the_only_owner_the_bridge_sees(self):
-        self.assertEqual(self._owners("user:alice", {"name": "agent-dev-core"}),
+        self.assertEqual(self._owners("user:alice", {"name": "agent-maker"}),
                          ["user:alice"])
 
     def test_a_client_supplied_owner_cannot_reach_the_bridge(self):
         """인자에 owner 슬롯이 없다는 사실을 실행 경로에서 확인한다 — 스키마에서
         빼는 것만으로는 부족했던 자리와 같은 종류다(위험 감사 5.5)."""
         owners = self._owners("user:alice", {
-            "name": "agent-dev-core",
+            "name": "agent-maker",
             "arguments": {"focus": "concept:x", "owner": "user:victim"}})
         self.assertEqual(set(owners), {"user:alice"})
 
@@ -397,7 +402,7 @@ class Quota(unittest.TestCase):
         b = _RosterBridge()
         r = Dispatcher(b).handle(
             {"jsonrpc": "2.0", "id": 1, "method": method,
-             "params": {"name": "agent-dev-core"}},
+             "params": {"name": "agent-maker"}},
             forced_owner=forced_owner, plan="free", quota=quota)
         return r, b
 

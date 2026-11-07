@@ -50,10 +50,10 @@
 껍데기가 아니라 꼬리 한 곳에 둔 것과 같다 — 사본이 둘이면 보편 규칙 하나를 고칠 때 한
 벌만 고쳐진다. 서버 쪽에 둔 이유는 동결 바이너리가 `scripts/` 를 안 싣기 때문이다.
 
-스냅샷이 **읽히는 필드만** 싣는 것이 이 파일의 불변식이다. 노드의 one_liner 는 쓸 수는
-있어도 어떤 MCP 도구도 돌려주지 않으므로([[record:one-liner-is-write-only-over-mcp]]),
-생성기가 재현해야 하는 것은 전부 `props` 에 있어야 한다. 임무 문장이 `props.mission`
-인 이유가 그것이다.
+스냅샷이 **읽히는 필드만** 싣는 것이 이 파일의 불변식이다. 생성기가 재현해야 하는 것은
+전부 `props` 에 둔다. 임무 문장이 `props.mission` 인 것은 one_liner 가 MCP 로 읽히지
+않던 때의 선택이고, 0.8.5 부터는 one_liner 도 `vinc_neighbors`·`vinc_graph` 로 돌아온다
+([[vinc.plan.mcp-agent-surface §2.6]]).
 """
 from __future__ import annotations
 
@@ -65,17 +65,20 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
 # 스크립트로 직접 부르는 경로(`python -X utf8 scripts/agents_sync.py --gen`)에서도
-# `vinc_mcp` 를 찾을 수 있어야 한다 — 임포트보다 **먼저** 넣는다.
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+# `vinc_mcp` 를 찾을 수 있어야 한다 — 임포트보다 **먼저** 루트를 올린다.
+try:
+    from scripts._root import ROOT
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT
 
 from vinc_mcp.roles import (TOPICS, ID_PREFIX, build_payload,  # noqa: E402
                             render_shell, works_with)
 
 SNAPSHOT = ROOT / "agents" / "roles.json"
 SHELL_DIR = ROOT / "agents" / "shells"
+#: 이 태그가 달린 역할은 모델 없이 CI 에서 도는 스크립트라 로스터에 넣지 않는다.
+MODEL_FREE_TAG = "model-free"
 HOOK_SRC = ROOT / "scripts" / "worktree_hook.py"
 #: `--install` 이 settings.json 에 거는 (하네스 사건, 훅 동사). 동사는 `worktree_hook.py` 의 인자다.
 HOOK_EVENTS = (("WorktreeCreate", "create"), ("WorktreeRemove", "remove"),
@@ -205,13 +208,8 @@ def cmd_pull() -> int:
         if isinstance(next_offset, bool) or not isinstance(next_offset, int) or next_offset <= offset:
             raise SystemExit("[agents] invalid role roster pagination")
         offset = next_offset
-    ids = sorted(found)
-    if not ids:
-        raise SystemExit("[agents] no active roles in this space")
-    print(f"[agents] 역할 {len(ids)}개")
-
-    roles = []
-    for rid in ids:
+    fetched = {}
+    for rid in sorted(found):
         got = remote.call("vinc_graph", {"seed_id": rid, "depth": 1})
         if got.get("isError") or not got.get("found"):
             # 상한 초과 같은 도구 오류는 `text` 에 온다 — `error` 만 보면 None 이 찍혀
@@ -224,6 +222,22 @@ def cmd_pull() -> int:
             # ([[record:isolated-seed-read-back-reported-empty-fields]]). 조용히 빈
             # 역할을 쓰느니 여기서 죽는 편이 낫다.
             raise SystemExit(f"[agents] {rid} 가 자기 응답의 nodes 에 없다")
+        fetched[rid] = (got, node)
+
+    # 모델 없는 역할(태그 model-free, CI 에서 도는 스크립트)은 하위 에이전트가 아니므로
+    # 껍데기를 만들지 않는다. 협업 상대에서도 빠진다.
+    for rid, (_, node) in list(fetched.items()):
+        if MODEL_FREE_TAG in (node.get("tags") or []):
+            del fetched[rid], found[rid]
+            print(f"[agents] {rid}: model-free, 껍데기 없음")
+    ids = sorted(fetched)
+    if not ids:
+        raise SystemExit("[agents] no active roles in this space")
+    print(f"[agents] 역할 {len(ids)}개")
+
+    roles = []
+    for rid in ids:
+        got, node = fetched[rid]
         # 계약 전문은 기존 그래프 응답에서 보존한다. 협업 상대는 발견된 활성 역할만 쓴다.
         peers = [n for n in got.get("nodes") or [] if n.get("id") in found]
         edges = [e for e in got.get("edges") or []

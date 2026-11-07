@@ -3,14 +3,15 @@
 
 **왜 있는가.** 노드 층에는 색인이 없었다. 제목 검색은 CONTAINS 전수 스캔이고 점수는 맞은
 토큰을 세는 것이라, 질문과 노드가 낱말을 안 나누면 그 노드는 어떤 팔로도 후보가 못 된다.
-실측(정답 66문항): 답 가능 60건 중 39건이 그 상태였고, 제목을 임베딩하니 22건이 상위 5에
-돌아왔다.
+실측(정답 66문항): 답 가능 60건 중 39건이 그 상태였고, 의미 팔을 켜니 후보 진입이 21건에서
+35건으로 늘었다.
 
 **이 파일이 지키는 것 셋**: 미러가 owner 를 새지 않는다 · 팔이 없거나 비어도 검색이 안
-죽는다 · 기본이 꺼져 있다. 마지막 것이 중요하다 — 이 세션에 후보 집합을 두 번 넓혔고
-두 번 다 정직성 지표가 따라 움직였다.
+죽는다 · 기본은 켜져 있고 끄는 길이 실재한다. 마지막 것이 중요하다 — 후보 집합을 넓힌
+두 번 모두 정직성 지표가 따라 움직였다.
 
-근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]
+근거: [[vinc.plan.retrieval-research-next-2026-09-09 §3.4]] ·
+[[decision:the-semantic-arm-ships-on-and-the-mirror-rebuilds-at-the-release-boundary]]
 """
 from __future__ import annotations
 
@@ -143,6 +144,23 @@ class FusionShape(unittest.TestCase):
         ids = [r["id"] for r in out]
         self.assertIn("c", ids, "의미 팔만 아는 것이 빠졌다")
         self.assertEqual(ids[0], "b", "두 팔이 함께 올린 것이 1위여야 한다")
+
+    def test_on_a_tie_the_semantic_arm_goes_before_the_graph_arm(self):
+        """세 팔의 같은 순위는 점수가 같다. 다섯 칸에서 잘리는 것은 그래프 팔 2위여야 한다."""
+        out = q._fuse_node_hits(self.rows("a", "b"), self.rows("c", "d"), top_k=5,
+                                vec_hits=self.rows("e", "f"))
+        self.assertEqual([r["id"] for r in out], ["a", "e", "c", "b", "f"])
+
+    def test_the_kept_row_is_title_then_graph_then_semantic(self):
+        """순서만 바뀌고 남는 행은 그대로다. 제목 팔의 토큰 수는 제목 행에만 있다."""
+        title = [{"id": "t", "src": "title"}]
+        graph = [{"id": "t", "src": "graph"}, {"id": "x", "src": "graph"}]
+        sem = [{"id": "x", "src": "semantic"}, {"id": "t", "src": "semantic"}]
+        out = {r["id"]: r for r in q._fuse_node_hits(title, graph, top_k=5, vec_hits=sem)}
+        self.assertEqual(out["t"]["src"], "title")
+        self.assertEqual(out["x"]["src"], "graph")
+        self.assertEqual(out["x"]["arms"], ["graph", "semantic"])
+        self.assertGreater(out["x"]["rrf_score"], 0)
 
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")

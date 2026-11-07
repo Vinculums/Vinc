@@ -24,7 +24,8 @@ import subprocess
 import sys
 import threading
 import time
-import urllib.request
+
+from vinc_mcp import hubhttp
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
@@ -33,6 +34,22 @@ def _free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
+
+
+def _stop(proc: subprocess.Popen) -> None:
+    """자식을 끝낸다. 윈도우에서는 **트리째**: venv 의 python.exe 는 실제 인터프리터를 자식으로
+    띄우는 껍데기라 `terminate()` 는 껍데기만 죽이고 사이드카·인코더를 고아로 남긴다."""
+    if proc.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                       capture_output=True, check=False)
+    else:
+        proc.terminate()
+    try:
+        proc.wait(timeout=30)
+    except subprocess.TimeoutExpired:
+        proc.kill()
 
 
 def _wait(check, what: str, proc: subprocess.Popen, timeout: float) -> None:
@@ -69,6 +86,15 @@ class LocalStack:
         return p
 
     def __enter__(self) -> "LocalStack":
+        # 기동 도중 실패하면 `with` 는 `__exit__` 을 부르지 않는다. 그러면 먼저 띄운 인코딩 창구가
+        # 고아로 남아 포트와 메모리를 쥔다. 여기서 거둔다.
+        try:
+            return self._start()
+        except BaseException:
+            self.__exit__(None, None, None)
+            raise
+
+    def _start(self) -> "LocalStack":
         # 1) 인코딩 창구 — 이 인터프리터의 onnxruntime 으로.
         self.encode_port = _free_port()
         enc_env = {**self.env, "VINC_EMBED_MODEL": self.model,
@@ -79,17 +105,15 @@ class LocalStack:
         url = f"http://127.0.0.1:{self.encode_port}"
 
         def encode_ok() -> bool:
-            req = urllib.request.Request(url + "/encode", data=json.dumps(
-                {"texts": ["warmup"], "kind": "query"}).encode(), headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.encode_token}"})
-            with urllib.request.urlopen(req, timeout=60) as r:
-                return bool(json.loads(r.read()).get("vectors"))
+            return bool(hubhttp.post_json(url + "/encode", token=self.encode_token, payload={
+                "texts": ["warmup"], "kind": "query"}, timeout=60).get("vectors"))
         _wait(encode_ok, "인코딩 창구", enc, 240)
 
         # 2) 사이드카 — 스토어 사본을 연다. 질의 임베딩은 위 창구에 묻는다.
         self.sidecar_port = _free_port()
-        side_env = {**self.env, "VINC_EMBED_ENCODE": url,
+        # 대상은 로컬로 못 박는다 — 이 기기의 앱이 계정 모드면 `serve` 가 "serve is local only"
+        # 로 exit 2 한다(`transports.Cli` 와 같은 사정).
+        side_env = {**self.env, "VINC_TARGET": "local", "VINC_EMBED_ENCODE": url,
                     "VINC_EMBED_ENCODE_TOKEN": self.encode_token,
                     # 콜드 판정 없이 늘 길게 기다린다 — 강등된 답을 재면 측정이 틀린다.
                     "VINC_EMBED_ENCODE_TIMEOUT": "60"}
@@ -101,6 +125,7 @@ class LocalStack:
         from vinc_mcp.bridge import Bridge            # noqa: PLC0415
         self.bridge = Bridge(base=base, token=self.sidecar_token, owner=self.owner)
         _wait(self.bridge.health, "사이드카", side, 180)
+        self._sidecar = (side, base)
         # CLI 가 붙을 세션 파일 — 스토어 사본 옆(MEMORY_DATA_DIR 의 부모)에만 쓴다.
         (pathlib.Path(self.data).parent / "session.json").write_text(json.dumps(
             {"port": self.sidecar_port, "token": self.sidecar_token, "pid": side.pid}),
@@ -124,12 +149,19 @@ class LocalStack:
         if self._http is not None:
             self._http.shutdown()
             self._http.server_close()
-        for p in reversed(self.procs):
-            p.terminate()
+        # 사이드카는 **부탁해서** 닫는다(`/shutdown`). 그 길은 스토어를 닫아 체크포인트를
+        # 남긴다. 강제로 끊으면 사본에 찢어진 WAL 이 남아 다음 열기가 "Corrupted wal file" 로
+        # 실패한다.
+        side, base = getattr(self, "_sidecar", (None, ""))
+        if side is not None and side.poll() is None:
             try:
-                p.wait(timeout=30)
-            except subprocess.TimeoutExpired:
-                p.kill()
+                hubhttp.post_json(base + "/shutdown", token=self.sidecar_token, payload={},
+                                  timeout=30)
+                side.wait(timeout=60)
+            except Exception:  # noqa: BLE001 — 아래에서 끊는다
+                pass
+        for p in reversed(self.procs):
+            _stop(p)
         try:
             (pathlib.Path(self.data).parent / "session.json").unlink()
         except FileNotFoundError:

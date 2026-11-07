@@ -21,8 +21,7 @@ from vinc_mcp import tools  # noqa: E402
 from vinc_mcp.bridge import Bridge  # noqa: E402
 from vinc_mcp.http_server import MCPHTTPApp, make_server  # noqa: E402
 from vinc_mcp.install import (  # noqa: E402
-    CLIENTS, client_label, install_desktop, install_json, manual_entry,
-    uninstall_desktop, uninstall_json,
+    CLIENTS, client_label, install_json, manual_entry, uninstall_json,
 )
 from vinc_mcp.oauth import OAuthGate, _s256  # noqa: E402
 from vinc_mcp.rpc import (  # noqa: E402
@@ -43,6 +42,10 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              "vinc_neighbors", "vinc_edges", "vinc_role", "vinc_path",
              # VIN-386 — 역할의 결정론 출력 게이트를 허브에서 돌린다(조회 전용, 쓰지 않음).
              "vinc_role_check",
+             # 내 역할을 호스트 파일(SKILL.md · 에이전트 · AGENTS.md · 팩)로 내보낸다(조회 전용).
+             "vinc_role_export",
+             # VIN-784 — 결정 문: 바뀐 경로를 다스리는 현재 기록·결정(조회 전용, 모델 없음).
+             "vinc_decide_paths",
              # D45 P4 — 문서 정본(Chunk=SSoT) 직접 CRUD: get/list(조회) · put/delete(쓰기).
              "vinc_doc_get", "vinc_doc_list", "vinc_doc_put", "vinc_doc_delete",
              # D45-V — 정본에서 개념을 파생한다. 이게 없으면 어시스턴트는 문서를
@@ -57,7 +60,15 @@ D11_TOOLS = {"vinc_search", "vinc_recall", "vinc_graph", "vinc_decide",
              "vinc_brief", "vinc_node",
              # 스페이스가 주소에서 **인자**로 내려오면서 생긴 자리(발주자 지시
              # 2026-08-31). `space` 에 실을 id 를 받을 곳이 없으면 그 인자는 못 쓴다.
-             "vinc_whoami", "vinc_operation_status", "vinc_community_write", "vinc_community_read"}
+             "vinc_whoami", "vinc_operation_status", "vinc_community_write", "vinc_community_read",
+             # 변경 기록에서 계산한 이벤트 피드(조회 전용). 근거: [[vinc.plan.mcp-events-and-webhooks]]
+             "vinc_events",
+             # 실행 기록 목록(조회 전용), 인용한 주장으로 거른다. 근거: [[vinc.plan.mcp-events-and-webhooks]]
+             "vinc_runs",
+             # 실행 프로토콜: 역할 하나를 단계마다 붙잡고 돌린다. 근거: [[vinc.research.agent-harness-and-eval-without-a-model-api-2026-10-25]]
+             "vinc_run_start", "vinc_run_submit",
+             # 역할에 붙은 평가 카드(조회 전용). 근거: [[vinc.research.agent-harness-and-eval-without-a-model-api-2026-10-25]]
+             "vinc_eval_cards"}
 
 
 class _StubBridge(Bridge):
@@ -74,18 +85,29 @@ class _StubBridge(Bridge):
 
 class ToolContractTests(unittest.TestCase):
     def test_tool_names_match_d11(self):
-        self.assertEqual({t["name"] for t in tools.specs()}, D11_TOOLS)
+        self.assertEqual({t["name"] for t in tools.TOOLS}, D11_TOOLS)
+        # 로컬 프로파일은 계정 전용 커뮤니티 도구 둘을 내보내지 않는다(늘 실패하므로).
+        self.assertEqual({t["name"] for t in tools.specs()},
+                         D11_TOOLS - set(tools._ACCOUNT_ONLY_TOOLS))
 
     def test_specs_have_schema_and_description(self):
         for t in tools.specs():
             self.assertTrue(t["description"], t["name"])
             self.assertEqual(t["inputSchema"]["type"], "object", t["name"])
 
+    def test_top_level_schemas_are_plain_objects_for_openai_hosts(self):
+        # OpenAI·Azure 함수 호출은 최상위에 이 키워드가 하나라도 있으면 도구 목록 전체를 400 으로
+        # 거절한다(VIN-866). 규칙은 핸들러와 설명에 둔다.
+        banned = {"oneOf", "anyOf", "allOf", "enum", "const", "not"}
+        for profile in (tools.specs(), tools.specs(hub=True)):
+            for t in profile:
+                self.assertFalse(banned & set(t["inputSchema"]), t["name"])
+
     def test_write_surfaces_are_explicit(self):
         # 쓰기 표면은 **명시된 것만**(ingest + 오염 정리 delete/merge + D45 P4 문서
         # 정본 put/delete + F10-b 기각 기억)이어야 한다 — 조회 도구가 몰래 쓰지 않는다.
         b = _StubBridge()
-        for t in tools.specs():
+        for t in tools.TOOLS:                   # 레지스트리 전부: 목록에서 빠진 도구도 호출 경로는 있다
             if t["name"] == "vinc_community_read":
                 with self.assertRaises(tools.InvalidArgument):
                     tools.call(t["name"], {"action": "agent_detail", "payload": {}}, b)
@@ -100,7 +122,8 @@ class ToolContractTests(unittest.TestCase):
                     "from_id": "concept:x", "to_id": "concept:y", "type": "relates_to",
                     "a": "concept:x", "b": "concept:y",   # E-G7 vinc_path 필수 인자
                     "text": "x", "doc_id": "d0",          # D45 P4 문서 정본 필수 인자
-                    "role": "concept:agent-x", "output": "x",
+                    "role": "concept:agent-x", "output": "x", "task": "x", "run": "r0",
+                    "paths": ["vinc:api/sync.py"],   # vinc_decide_paths 필수 인자
                     "operation_id": "00000000-0000-4000-8000-000000000488"}   # 필수 조회 인자
             if t["name"] == "vinc_edges":
                 args.pop("nodes")
@@ -142,7 +165,7 @@ class ToolContractTests(unittest.TestCase):
         self.assertNotIn("enum", edge_props["type"])
         self.assertIn("role", edge_props)
         self.assertIn("theme_id", schema["properties"])
-        desc = next(t for t in tools.specs() if t["name"] == "vinc_ingest")["description"]
+        desc = next(t for t in tools.TOOLS if t["name"] == "vinc_ingest")["reference"]
         self.assertIn("proposed_types", desc)          # 개방층 계약 안내
         self.assertNotIn("unknown type values are skipped", desc)
 
@@ -184,7 +207,8 @@ class DispatcherTests(unittest.TestCase):
 
     def test_tools_list_and_call(self):
         r = self._rpc("tools/list")
-        self.assertEqual({t["name"] for t in r["result"]["tools"]}, D11_TOOLS)
+        self.assertEqual({t["name"] for t in r["result"]["tools"]},
+                         D11_TOOLS - set(tools._ACCOUNT_ONLY_TOOLS))
         r = self._rpc("tools/call", {"name": "vinc_search", "arguments": {"query": "x"}})
         self.assertFalse(r["result"]["isError"])
         payload = json.loads(r["result"]["content"][0]["text"])
@@ -573,7 +597,7 @@ class InstallDesktopTests(unittest.TestCase):
             p = Path(tmp) / "claude_desktop_config.json"
             p.write_text(json.dumps({"mcpServers": {"other": {"command": "x"}},
                                      "theme": "dark"}), encoding="utf-8")
-            res = install_desktop(p)
+            res = install_json("desktop", p)
             cfg = json.loads(p.read_text(encoding="utf-8"))
             self.assertIn("other", cfg["mcpServers"])       # 기존 항목 보존
             self.assertIn("vinc", cfg["mcpServers"])
@@ -583,7 +607,7 @@ class InstallDesktopTests(unittest.TestCase):
     def test_fresh_config_created(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "claude_desktop_config.json"
-            res = install_desktop(p)
+            res = install_json("desktop", p)
             self.assertIsNone(res["backup"])
             cfg = json.loads(p.read_text(encoding="utf-8"))
             self.assertIn("vinc", cfg["mcpServers"])
@@ -593,8 +617,8 @@ class InstallDesktopTests(unittest.TestCase):
             p = Path(tmp) / "claude_desktop_config.json"
             p.write_text(json.dumps({"mcpServers": {"other": {"command": "x"}},
                                      "theme": "dark"}), encoding="utf-8")
-            install_desktop(p)
-            res = uninstall_desktop(p)
+            install_json("desktop", p)
+            res = uninstall_json("desktop", p)
             cfg = json.loads(p.read_text(encoding="utf-8"))
             self.assertTrue(res["removed"])
             self.assertNotIn("vinc", cfg["mcpServers"])      # vinc 제거
@@ -606,9 +630,9 @@ class InstallDesktopTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "claude_desktop_config.json"
             p.write_text(json.dumps({"mcpServers": {}}), encoding="utf-8")
-            self.assertFalse(uninstall_desktop(p)["removed"])   # 없으면 removed:False(에러 아님)
+            self.assertFalse(uninstall_json("desktop", p)["removed"])   # 없으면 removed:False(에러 아님)
             missing = Path(tmp) / "nope" / "claude_desktop_config.json"
-            self.assertFalse(uninstall_desktop(missing)["removed"])  # 파일 부재도 안전
+            self.assertFalse(uninstall_json("desktop", missing)["removed"])  # 파일 부재도 안전
 
 
 class HostNeutralInstallTests(unittest.TestCase):

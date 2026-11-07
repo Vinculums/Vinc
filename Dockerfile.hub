@@ -65,21 +65,36 @@ RUN pip install --no-cache-dir onnxruntime==1.30.0 tokenizers==0.23.2 numpy==2.5
 # 모델만 바꾸면 옛 모델의 아티팩트를 그대로 집어 무음으로 딴 벡터를 만들었다).
 # 모델을 바꿀 때는 **세 줄을 함께** 바꿀 것 — 어긋난 조합은 `tests/rag/test_embed_worker.py`
 # 와 `tests/rag/test_bake_declares_the_right_width.py` 가 CI 에서 잡는다.
-# bge-m3 로 가려면: BAAI/bge-m3 + …/bge-m3-int8-rr.onnx + 1024.
+# 현행 조합: dragonkue/BGE-m3-ko + …/bge-m3-ko-int8-rr.onnx + 1024. 이 모델은 리포에
+# ONNX 를 싣지 않으므로 굽기가 가중치에서 fp32 ONNX 를 내보낸 뒤 같은 레시피로 굽는다
+# (`packaging/bake_embed_model.py::export_fp32`). 직전 조합은 BAAI/bge-m3 + …/bge-m3-int8-rr.onnx.
 #
 # 세 번째 줄(폭)이 왜 필요한가. 모델 교체는 차원 교체다(e5 768 · bge-m3 1024). 굽기가
 # 확인하던 것은 파일 크기뿐이라, 로드는 되는데 폭이 틀린 아티팩트를 아무것도 안 잡았다.
 # 이제 굽기가 실제로 한 번 돌려 폭을 재고 이 값과 대조한다 — 어긋나면 **빌드가 선다.**
 # 그 검사가 없으면 어긋남은 재구축 도중, 옛 벡터를 이미 지운 뒤에 드러난다.
-ENV VINC_EMBED_MODEL=BAAI/bge-m3
-ENV VINC_EMBED_MODEL_PATH=/srv/vinc/models/bge-m3-int8-rr.onnx
+ENV VINC_EMBED_MODEL=dragonkue/BGE-m3-ko
+ENV VINC_EMBED_MODEL_PATH=/srv/vinc/models/bge-m3-ko-int8-rr.onnx
 ENV VINC_EMBED_DIM=1024
 #
-# 인코딩 배치 상한. 기본 8 은 e5-base(768) 시절 값이라 bge-m3(1024·24층)에서는
-# 2Gi 안에 안 들어간다 — `vinc-encode` 가 최대 1773MB/2048MB 까지 올라가 exit 137 로
-# 죽고, 그 사이 허브는 같은 문서에서 120초 타임아웃을 7분마다 반복한다.
-# 근거: [[record:the-encoder-is-oom-killed-on-the-largest-document-2026-09-12]]
-ENV VINC_EMBED_BATCH=2
+# 인코딩 배치 상한 = 1, 조각 하나씩이다(워커 기본값과 같다). int8 모델은 같이 실린 조각과
+# 패딩에 따라 벡터가 바뀌므로, 이 값을 올리면 저장 벡터가 배치 구성에 따라 달라진다.
+# 메모리도 배치에 선형이라 1이 가장 낮다(2였을 때도 8에서 인코더가 OOM 으로 죽어 내린 값이었다).
+# 근거: [[record:int8-batch-padding-moves-stored-vectors-and-costs-fused-ndcg-on-the-fixture-2026-10-21]]
+# · [[record:the-encoder-is-oom-killed-on-the-largest-document-2026-09-12]]
+ENV VINC_EMBED_BATCH=1
+#
+# ColBERT 노드 재채점의 투영과 pq64 코드북. 투영은 러너의 굽기가 고정 판으로 받아
+# models/ 에 두고, 코드북은 리포(`vinc_rag/data/`)에 있다. 둘 다 아래 `--check` 가 이미지 안에서
+# 실제로 올려 본다. 재채점·학습 규칙 스위치(`VINC_NODE_COLBERT`·`VINC_BRIEF_RULE`)는 여기서 켜지 않는다.
+# 근거: [[vinc.plan.vin845-colbert-node-rescoring-implementation-2026-10-30]]
+ENV VINC_COLBERT_LINEAR=/srv/vinc/models/colbert_linear.pt
+ENV VINC_COLBERT_BOOKS=/srv/vinc/vinc_rag/data/colbert-pq64-books.npy
+#
+# glibc 는 스레드마다 malloc 아레나를 새로 열어 코어 수의 8배까지 늘린다. 인코딩 창구는
+# 요청마다 스레드를 띄우므로(ThreadingHTTPServer) 큰 텐서를 잡았다 놓을 때마다 아레나가
+# 갈라져 RSS 가 순간적으로 부푼다. 둘로 묶는다 — 계산 결과는 바뀌지 않는다.
+ENV MALLOC_ARENA_MAX=2
 #
 # ── 굽기는 러너에서, 검증은 여기서 (2026-09-03) ──────────────────────────────
 #
@@ -110,6 +125,7 @@ COPY api ./api
 COPY store ./store
 COPY engines ./engines
 COPY vinc_rag ./vinc_rag
+RUN python -m vinc_rag.colbert --check
 COPY vinc_mcp ./vinc_mcp
 # 검색 품질 게이트(E2)를 **허브 안에서** 돌리기 위해 싣는다. 이 게이트는 3팔(FTS·
 # 벡터·RRF)을 갈라 재려고 스토어를 in-process 로 열어야 하는데, 사이드카가 물고 있는

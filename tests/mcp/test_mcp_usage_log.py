@@ -5,7 +5,7 @@
 400·401·404·405·502 였고 2xx 는 한 줄도 없었다. 성공한 요청이 실사용의 전부인데
 그것이 로그에 없으니, "이 계정이 얼마나 쓰고 있나"에 답할 수 있는 사람이 아무도
 없었다 — 쿼터 카운터는 현재 창만 들고 아무도 읽지 않는다.
-근거: [[record:per-account-usage-exists-only-as-the-quota-counter-and-nothing-reads-it]]
+근거: [[record:log-analytics-attributes-hub-mcp-requests-by-owner-hash-since-2026-09-02]]
 
 여기서 지키는 것 셋. 전부 조용히 깨지는 종류다:
   ① 인증된 성공은 owner 태그와 함께 남는다 (안 남기면 귀속이 다시 0 이 된다)

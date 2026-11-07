@@ -100,6 +100,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from store.encoder_runtime import fingerprint as _encoder_fingerprint  # noqa: E402
+from store.envflag import truthy  # noqa: E402
 ENCODER_RUNTIME = _encoder_fingerprint()
 ENCODER_BUILD = os.environ.get("VINC_ENCODER_BUILD", "").strip()
 ENCODER_BUILD_REQUIRED = os.environ.get("VINC_ENCODER_BUILD_REQUIRED") == "on"
@@ -121,12 +122,20 @@ MAX_TOKENS = int(os.environ.get("VINC_EMBED_MAX_TOKENS", "512"))
 # 토크나이저로 자를 때는 `chunk_doc` 의 수리 루프가 상한을 보장한다(실측 512 초과 0).
 # 추정기의 1.3배 여유는 산문만 흡수하고 코드·해시에서는 넘긴다(`_split_for_embed`).
 MAX_CONTENT = int(os.environ.get("VINC_EMBED_CONTENT_TOKENS", "500"))
-# 한 번의 세션 실행에 넣을 청크 수 상한. **없으면 안 된다** — 자세한 근거는
-# `_Embedder.encode` 주석. 8 인 이유: 실측상 청크는 대부분 512 토큰에 붙어 있어
-# (중앙 469 · p90 512) 배치당 출력 텐서가 8×512×768×fp32 = 12MB 로 잡히고, 어텐션
-# 중간 텐서(배치×헤드12×512²×fp32 ≈ 배치당 12.6MB)까지 더해도 100MB 대에 머문다.
-# 허브는 1024MiB 를 사이드카·MCP 와 나눠 쓰고 가중치만 이미 ~440MB 다.
-EMBED_BATCH = max(1, int(os.environ.get("VINC_EMBED_BATCH", "8")))
+# 한 번의 세션 실행에 넣을 조각 수 상한. **기본은 1, 즉 조각 하나씩이다.**
+# int8 모델은 활성값을 텐서 하나에 스케일 하나로 양자화하므로, 같은 세션 실행에 실린 다른
+# 조각과 패딩이 이 조각의 벡터를 바꾼다. 하나씩 넣으면 같은 글자는 늘 같은 벡터가 되고,
+# 패딩이 없어 1스레드에서 오히려 빠르다. 1보다 크게 두면 저장 벡터가 배치 구성에 따라
+# 달라지고 메모리도 배치에 선형으로 는다(`_Embedder.encode`).
+# 근거: [[record:int8-batch-padding-moves-stored-vectors-and-costs-fused-ndcg-on-the-fixture-2026-10-21]]
+EMBED_BATCH = max(1, int(os.environ.get("VINC_EMBED_BATCH", "1")))
+# 토큰화 **전에** 글자 수로 자르는 상한. 토크나이저의 512 자르기는 전체를 토큰화한
+# **뒤에** 일어나서, 아주 긴 텍스트 하나가 토큰 객체를 통째로 만들어 순간 메모리를 튀긴다.
+# 512 토큰이 32,768자를 넘을 수는 없으므로 이 자르기는 모델이 보는 토큰을 바꾸지 않는다.
+MAX_CHARS = max(1, int(os.environ.get("VINC_EMBED_MAX_CHARS", "32768")))
+# 잠금 밖에서 동시에 도는 질의 추론의 상한. 질의는 배치 잠금을 건너뛰므로
+# (`_encode_batch`) 상한이 없으면 몰린 질의 수만큼 활성값이 겹친다.
+QUERY_CONCURRENCY = max(1, int(os.environ.get("VINC_EMBED_QUERY_CONCURRENCY", "4")))
 # bge-*-v1.5 의 쿼리 지시 접두(저장 passage 에는 붙이지 않는다 — `_prefix` 주석).
 QUERY_PREFIX = os.environ.get(
     "VINC_EMBED_QUERY_PREFIX",
@@ -164,8 +173,7 @@ QUARANTINE_S = float(os.environ.get("VINC_EMBED_QUARANTINE_S", "21600"))
 def _apply_paused() -> bool:
     """`VINC_EMBED_APPLY_PAUSED` 가 켜졌는가. 사이드카 `api/server.py` 의
     `embed_apply_paused` 와 같은 판정이다(이 스크립트는 api 를 import 하지 않는다)."""
-    return os.environ.get("VINC_EMBED_APPLY_PAUSED", "").strip().lower() in (
-        "1", "true", "yes", "on")
+    return truthy(os.environ.get("VINC_EMBED_APPLY_PAUSED"))
 
 
 def _call(path: str, body: dict | None = None) -> dict:
@@ -185,6 +193,17 @@ def _mb(path: str) -> int:
         return os.path.getsize(path) >> 20
     except Exception:
         return 0
+
+
+#: 요청마다 시작·끝 한 줄씩 남기는가. 인코딩 전용 앱(`--serve-only`)에서만 켠다 — 허브 안의
+#: 루프백 창구까지 켜면 5분 루프 로그를 덮는다(`_start_encode` 의 `log_message`).
+_LOG_REQUESTS = False
+
+
+def _text_stats(texts: list[str]) -> str:
+    """요청의 크기만 적는다. 본문은 한 글자도 싣지 않는다 — 계정 데이터다."""
+    lens = [len(t) for t in texts] or [0]
+    return f"n={len(texts)} max_chars={max(lens)} total_chars={sum(lens)}"
 
 
 def _rss_mb() -> int:
@@ -303,9 +322,15 @@ def _no_artifact_msg(model: str, want: str, cache: str, exc: BaseException) -> s
 def artifact_name(model: str) -> str:
     """이 모델의 int8-rr 아티팩트 파일명(빌드·런타임 공용 규약).
 
+    `VINC_EMBED_QUANTIZE=off` 이면 미리 내보낸 fp32 아티팩트 이름 `<모델>-fp32.onnx` 다.
+    GPU 가 있는 로컬 설치(vincOS)는 fp32 를 CUDA 로 돌린다 — 그 기기의 질의와 문서가
+    같은 아티팩트를 쓰므로 벡터 공간은 기기 안에서 하나다. 허브 형상은 바뀌지 않는다.
+
     캐시 디렉터리 하나가 모델 여러 벌을 담을 수 있어야 한다. 이름이 모델과 무관하면
     (옛 `e5-int8-rr.onnx` 고정) 모델을 바꿔도 **옛 모델의 파일을 그대로 집는다** —
     차원이 우연히 같으면 아무 오류 없이 딴 모델로 색인이 만들어진다."""
+    if os.environ.get("VINC_EMBED_QUANTIZE", "on") != "on":
+        return f"{model.split('/')[-1].lower()}-fp32.onnx"
     return _ARTIFACT_NAMES.get(model) or f"{model.split('/')[-1].lower()}-int8-rr.onnx"
 
 
@@ -407,6 +432,7 @@ class _Embedder:
         # 한 벌 더 올린다(OOM). 잡는 단위는 **배치**다(`_encode_batch`): 문서 전체를 잡으면
         # 큰 문서가 끝날 때까지 질의가 기다리다 질의 상한에 걸려 FTS 로 떨어진다.
         self._lock = threading.Lock()
+        self._query_slots = threading.BoundedSemaphore(QUERY_CONCURRENCY)
 
     def _load(self) -> None:
         if self._sess is not None:
@@ -453,27 +479,32 @@ class _Embedder:
             counter = Tokenizer.from_file(tok_path)
             _SPLIT.tok = lambda s: len(counter.encode(s).ids)
         # 스레드 1개 — 허브는 0.5 vCPU 를 사이드카·MCP 와 나눠 쓴다. 배경 작업이
-        # 전경 응답을 굶기지 않게 명시적으로 묶는다.
+        # 전경 응답을 굶기지 않게 명시적으로 묶는다. 로컬 설치는 VINC_EMBED_THREADS 로 올린다.
         opts = ort.SessionOptions()
-        opts.intra_op_num_threads = 1
+        opts.intra_op_num_threads = int(os.environ.get("VINC_EMBED_THREADS", "1") or "1")
         opts.inter_op_num_threads = 1
         # 🔴 **메모리 고점을 깎는 두 스위치.** 이 컨테이너는 1GiB 를 사이드카·MCP 와
         # 나눠 쓰고(실측 정상 상태 136MB) 가중치만 279MB 다. ORT 기본값은 둘 다 속도를
         # 위해 메모리를 선점한다:
         #   · CPU 메모리 아레나는 요청보다 크게(kNextPowerOfTwo) 잡고 **돌려주지 않는다**.
         #   · mem_pattern 은 첫 실행의 텐서 배치를 미리 통째로 예약한다.
-        # 배치 8 · 스레드 1 인 이 워커는 둘 다 이득이 거의 없는데 고점만 키운다. 고점이
+        # 작은 배치 · 스레드 1 인 이 워커는 둘 다 이득이 거의 없는데 고점만 키운다. 고점이
         # 한도를 넘으면 cgroup OOM 킬러가 **가장 큰 프로세스인 이 워커를 조용히** 죽인다
         # (SIGKILL — 파이썬 예외도 로그도 없다. 컨테이너는 멀쩡하고 /health 는 200 이다).
         opts.enable_cpu_mem_arena = False
         opts.enable_mem_pattern = False
         print(f"[embed] loading onnx session … {onnx_path} ({_mb(onnx_path)}MB) "
               f"rss={_rss_mb()}MB", flush=True)
-        self._sess = ort.InferenceSession(
-            onnx_path, sess_options=opts, providers=["CPUExecutionProvider"])
+        # 실행 공급자: 기본 CPU(허브). GPU 가 있는 로컬 설치는
+        # VINC_EMBED_PROVIDERS=CUDAExecutionProvider,CPUExecutionProvider 로 GPU 를 먼저 쓴다.
+        providers = [p.strip() for p in os.environ.get(
+            "VINC_EMBED_PROVIDERS", "CPUExecutionProvider").split(",") if p.strip()]
+        if "CUDAExecutionProvider" in providers and hasattr(ort, "preload_dlls"):
+            ort.preload_dlls()   # pip 로 받은 CUDA·cuDNN 라이브러리를 찾게 한다
+        self._sess = ort.InferenceSession(onnx_path, sess_options=opts, providers=providers)
         self._names = [i.name for i in self._sess.get_inputs()]
         print(f"[embed] model ready ({MODEL}, onnx, cache={CACHE}, "
-              f"rss={_rss_mb()}MB)", flush=True)
+              f"providers={getattr(self._sess, 'get_providers', lambda: providers)()}, rss={_rss_mb()}MB)", flush=True)
 
     def encode(self, texts: list[str], *, query: bool = False) -> list[list[float]]:
         """청크 목록을 임베딩한다 — **반드시 나눠서** 세션에 넣는다. `query` 는 줄을
@@ -497,41 +528,55 @@ class _Embedder:
         배치 축은 열어 둔 셈이었다. Python `MemoryError` 로 잡히면 그 문서는
         needs_embed=1 로 남아 **5분마다 영원히 재시도**하며 매번 같은 고점을 친다.
 
-        나눠도 벡터는 사실상 달라지지 않는다. 각 청크의 출력은 attention_mask 때문에
-        같은 배치의 다른 청크에 의존하지 않는다(패딩 위치는 소프트맥스에서 제외된다).
-        fp32 에서는 배치 모양이 바뀌어도 코사인 1 - 1e-7 수준이라 순위를 바꿀 크기가
-        아니다.
-
-        ⚠ **단 int8 양자화 모델에서는 이 논증이 약해진다**(2026-08-01 실측). 동적
-        양자화는 배치의 활성값 분포로 스케일을 잡으므로 같은 문장이라도 **어떤 문장과
-        함께 실렸는지에 따라 벡터가 달라진다** — 단독 인코딩 대 동반 배치 코사인
-        0.9912 로, fp32 의 1-1e-7 과는 자릿수가 다르다. 배치 크기를 바꾸면 저장 벡터가
-        미묘하게 흔들린다는 뜻이라, int8 모델을 채택한다면 색인 일관성을 위해
-        `EMBED_BATCH` 를 고정하고 재임베딩은 같은 값으로 돌려야 한다.
-
-        길이순 정렬은 하지 않는다. 패딩 낭비를 줄이는 표준 기법이지만, 실측 분포가
-        중앙 469 · p90 512 라 이미 대부분 상한에 붙어 있어 얻을 게 거의 없고, 순서를
-        바꾸면 chunk_id 대응을 되돌리는 코드가 늘어 사고 여지만 커진다.
+        fp32 라면 나눠 넣어도 벡터는 사실상 같다(attention_mask 가 패딩과 다른 조각을
+        가린다). **운영 int8 모델에서는 다르다.** 동적 양자화가 세션 실행에 실린 텐서
+        전체로 스케일을 잡으므로, 같은 조각이라도 함께 실린 조각과 패딩에 따라 벡터가
+        바뀐다. 그래서 `EMBED_BATCH` 기본값이 1 이다. 문서 조각·노드 미러·질의가 모두 이
+        함수를 지나므로 셋 다 조각 하나씩 인코딩된다. 값을 올리면 저장 벡터가 배치 구성에
+        따라 달라지고, 그렇게 만든 벡터와 하나씩 만든 벡터는 서로 비교되지 않는다.
+        근거: [[record:int8-batch-padding-moves-stored-vectors-and-costs-fused-ndcg-on-the-fixture-2026-10-21]]
         """
         out: list[list[float]] = []
         for i in range(0, len(texts), EMBED_BATCH):
             out.extend(self._encode_batch(texts[i:i + EMBED_BATCH], query=query))
         return out
 
+    def encode_with_hidden(self, texts: list[str], *, query: bool = False):
+        """`encode` 와 같은 벡터에 더해, 텍스트마다 패딩을 뺀 `last_hidden_state`[n, dim] 를
+        준다(ColBERT 토큰의 재료). **한 번의 실행에서 둘 다 나온다** — 토큰 때문에 인코딩을
+        두 번 돌리지 않는다. 텍스트 하나씩 돈다: int8 은 배치가 벡터를 바꾸므로 연구가 잰
+        조건(한 줄씩)과 같아야 한다.
+        근거: [[vinc.plan.vin845-colbert-node-rescoring-implementation-2026-10-30]]"""
+        vecs: list[list[float]] = []
+        hiddens: list = []
+        for t in texts:
+            hidden, mask = self._forward([t], query=query)
+            vecs.extend(self._pooled(hidden, mask))
+            hiddens.append(hidden[0, :int(mask[0].sum())])
+        return vecs, hiddens
+
     def _encode_batch(self, texts: list[str], *, query: bool = False) -> list[list[float]]:
+        return self._pooled(*self._forward(texts, query=query))
+
+    def _forward(self, texts: list[str], *, query: bool = False):
         # 🔴 **질의는 줄을 서지 않는다**(적재가 끝난 뒤에만). 질의 경로의 상한은 1.5초인데
-        # 배치 하나(8조각 × 최대 512토큰)가 1코어에서 그보다 길 수 있다 — 잠금 뒤에 서면
+        # 배치 하나(최대 512토큰 조각)가 1코어에서 그보다 길 수 있다 — 잠금 뒤에 서면
         # 미러 재구축·워커 적재가 도는 내내 검색이 의미 팔 없이 나간다(2026-10-02 허브:
         # 120회 중 72·78회). 세션 실행은 스레드 안전하고, 질의 한 줄의 활성값은 배치의
         # 수십분의 일이라 잠금이 막으려던 고점(세션 두 벌 · 배치 두 개)이 아니다.
         # 적재 전에는 잠금으로 간다 — 첫 적재 중 질의가 세션을 한 벌 더 올리면 OOM 이다.
-        # 근거: [[record:the-node-mirror-rebuild-oom-kills-the-sidecar-2026-10-02]]
+        # 근거: [[vinc.ops.incident-2026-10-02-node-mirror-oom]]
         if query and self._sess is not None:
-            hidden, mask = self._run(texts)
+            with self._query_slots:                            # 동시 질의 상한(QUERY_CONCURRENCY)
+                hidden, mask = self._run(texts)
         else:
             with self._lock:                                   # 배치 하나만 잡는다(__init__)
                 self._load()
                 hidden, mask = self._run(texts)
+        return hidden, mask
+
+    @staticmethod
+    def _pooled(hidden, mask) -> list[list[float]]:
         import numpy as np
         pooled = _pool(hidden, mask, np)
         norm = np.linalg.norm(pooled, axis=1, keepdims=True)
@@ -539,8 +584,8 @@ class _Embedder:
         return (pooled / norm).astype(float).tolist()
 
     def _run(self, texts: list[str]):
+        enc = self._tok.encode_batch([t[:MAX_CHARS] for t in texts])
         import numpy as np
-        enc = self._tok.encode_batch(texts)
         mask = np.array([e.attention_mask for e in enc], dtype=np.int64)
         feed = {
             "input_ids": np.array([e.ids for e in enc], dtype=np.int64),
@@ -691,6 +736,45 @@ class _EncodeService:
         return stopped and pending == 0
 
 
+class _ColbertSlot:
+    """투영·코드북은 처음 요청에서 한 번 올린다. 설정이 없으면 None 으로 기억한다."""
+    lock = threading.Lock()
+    tried = False
+    value = None
+
+
+_COLBERT = _ColbertSlot()
+
+
+def _encode_colbert(emb: "_Embedder", texts: list[str], *, query: bool):
+    """`colbert:true` 요청 — dense 벡터와 같은 실행에서 ColBERT 토큰을 함께 낸다.
+
+    질의는 압축 없는 float32(base64), 문서는 pq64 코드(base64)다. 문서 토큰을 float 으로
+    보내면 512토큰 노드 하나가 JSON 으로 수 MB 가 된다. 투영·코드북이 설정되지 않았으면
+    dense 벡터만 주고 `colbert_error` 로 사유를 남긴다 — 부가 출력 때문에 질의 벡터까지
+    잃으면 검색이 FTS 로 강등된다.
+    근거: [[vinc.plan.vin845-colbert-node-rescoring-implementation-2026-10-30]]"""
+    with _COLBERT.lock:
+        if not _COLBERT.tried:
+            _COLBERT.tried = True
+            try:
+                from vinc_rag.colbert import from_env
+                _COLBERT.value = from_env()
+            except Exception as exc:                 # 파일·해시가 틀리면 그 사유로 남긴다
+                print(f"[embed] colbert 적재 실패: {type(exc).__name__}: {exc}", flush=True)
+    cb = _COLBERT.value
+    if cb is None:
+        vecs = emb.encode(texts, query=True) if query else emb.encode(texts)
+        return vecs, {"colbert_error": "colbert not configured"}
+    from vinc_rag.colbert import pack_codes, pack_query
+    vecs, hiddens = emb.encode_with_hidden(texts, query=query)
+    toks = [cb.project(h) for h in hiddens]
+    packed = ([pack_query(t) for t in toks] if query
+              else [pack_codes(cb.encode_codes(t)) for t in toks])
+    return vecs, {"colbert": packed, "colbert_format": "f32" if query else "pq64",
+                  "colbert_books": cb.id}
+
+
 def serve_encode(emb: "_Embedder", port: int) -> int:
     """배치 워커와 기존 호출자의 포트 반환 계약을 유지한다."""
     return _start_encode(emb, port).port
@@ -774,16 +858,28 @@ def _start_encode(emb: "_Embedder", port: int) -> _EncodeService:
                 # 틀린다 — 접두 유무의 코사인이 0.95~0.97 이라 눈에 안 띈다.
                 raw = bool(body.get("raw"))
                 texts = texts if raw else [_prefix(t, kind) for t in texts]
+                # cgroup OOM 은 SIGKILL 이라 파이썬이 한 줄도 못 남긴다. 그래서 **시작할 때**
+                # 찍는다 — 죽은 요청은 시작 줄만 남고 끝 줄이 없다.
+                t0, rss0 = time.monotonic(), _rss_mb()
+                if _LOG_REQUESTS:
+                    print(f"[embed] req> kind={kind} {_text_stats(texts)} rss={rss0}MB", flush=True)
                 # 요청 전체를 잠그지 않는다 — 직렬화는 `_Embedder` 가 **배치** 단위로 한다.
                 # 여기서 요청째 잠그면 미러 재구축의 32줄 요청(1코어에서 약 4초)이 끝날
                 # 때까지 질의가 서서 1.5초 상한을 넘긴다(2026-10-02 허브 실측).
-                vecs = emb.encode(texts, query=True) if kind == "query" else emb.encode(texts)
+                extra: dict = {}
+                if body.get("colbert"):
+                    vecs, extra = _encode_colbert(emb, texts, query=kind == "query")
+                else:
+                    vecs = emb.encode(texts, query=True) if kind == "query" else emb.encode(texts)
+                if _LOG_REQUESTS:
+                    print(f"[embed] req< kind={kind} n={len(texts)} rss={rss0}->{_rss_mb()}MB "
+                          f"{time.monotonic() - t0:.2f}s", flush=True)
                 # `model` 은 질의 경로가 저장 벡터의 모델과 대조한다 — 폭이 같은 다른
                 # 모델은 캐스팅 오류 없이 엉뚱한 이웃만 낸다(RV-06).
                 out = _json.dumps({"vectors": vecs, "model": MODEL,
                                    "encoder_runtime": ENCODER_RUNTIME,
                                    "encoder_build": ENCODER_BUILD,
-                                   "encoder_instance": instance_id}).encode("utf-8")
+                                   "encoder_instance": instance_id, **extra}).encode("utf-8")
             except Exception as exc:
                 # 사유를 삼키지 않는다 — 호출부가 로그에 남길 수 있게 본문으로 준다.
                 out = _json.dumps({"error": f"{type(exc).__name__}: {exc}"}).encode("utf-8")
@@ -822,6 +918,7 @@ def _start_encode(emb: "_Embedder", port: int) -> _EncodeService:
 def _serve_only(emb: "_Embedder", port: int) -> int:
     # PID 1은 기본 SIGTERM 동작에 기대면 안 된다. 신호 처리기에서는 잠금이나
     # 서버 종료를 실행하지 않고 메인 루프가 안전한 위치에서 처리하게 한다.
+    global _LOG_REQUESTS
     requested = False
 
     def request_stop(*_):
@@ -834,6 +931,7 @@ def _serve_only(emb: "_Embedder", port: int) -> int:
     try:
         for sig in (signal.SIGTERM, signal.SIGINT):
             previous[sig] = signal.signal(sig, request_stop)
+        _LOG_REQUESTS = True                       # 인코딩 전용 앱에서만 요청 줄을 남긴다
         service = _start_encode(emb, port)
         print("[embed] serve-only — 배치 작업 없이 인코딩 요청만 받는다", flush=True)
         try:
@@ -868,7 +966,7 @@ def prefix(text: str, kind: str, model: str) -> str:
     ⚠ `model` 을 인자로 받는 이유: `vinc_rag/embed/encoder.py` 가 이 함수를 그대로 가져다
     쓴다(같은 규약이 두 곳에 적히면 갈라진다 — 실제로 갈라졌다). 그쪽은 모델을
     바꿔 가며 비교해야 해서 모듈 전역 MODEL 로는 안 된다.
-    근거: [[record:embed-prefix-missing-m3-branch-2026-08-30]].
+    근거: [[vinc.plan.m3-rebuild-rehearsal]].
     """
     m = model.lower()
     if "bge-m3" in m:

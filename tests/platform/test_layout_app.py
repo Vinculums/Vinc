@@ -161,7 +161,7 @@ class ConnectionTests(unittest.TestCase):
 
     def test_az_failure_never_discloses_secret_arguments(self):
         from subprocess import CompletedProcess
-        with patch.object(la.shutil, "which", return_value="az"), patch.object(la.subprocess, "run",
+        with patch.object(la._azutil.shutil, "which", return_value="az"), patch.object(la._azutil.subprocess, "run",
                 return_value=CompletedProcess([], 1, "", "synthetic-secret in upstream error")):
             with self.assertRaises(la.DeploymentError) as caught:
                 la.az("containerapp", "secret", "set", "--secrets", "token=synthetic-secret")

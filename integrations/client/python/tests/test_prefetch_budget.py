@@ -60,7 +60,10 @@ def test_live_roster_sizes_allow_one_budget_correction(role, async_mode):
     assert f"required_size={size}" in error.message
     assert sum(path.startswith("/v1/documents/") for path in seen) == len(documents)
     assert all(path.startswith(("/v1/roles/", "/v1/documents/", "/v1/nodes/", "/v1/brief", "/v1/search")) for path in seen)
-    assert sorted(p for p in seen if p in ("/v1/brief", "/v1/search")) in ([], ["/v1/brief", "/v1/search"])
+    # 선택 읽기는 필수 검증 실패 때 취소된다. brief 는 먼저 떠서 이미 나갔을 수 있고, 뒤에 뜬 search 는
+    # 시작 전에 취소되면 나가지 않는다. 필수 문서는 위에서 전부 읽혔는지 따로 본다.
+    assert sorted(p for p in seen if p in ("/v1/brief", "/v1/search")) in (
+        [], ["/v1/brief"], ["/v1/brief", "/v1/search"])
 
     block = prefetch(max_chars=size)
     assert len(block) == size

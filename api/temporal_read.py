@@ -13,6 +13,9 @@ Episode 의 날짜)을 본다. `known_at` 은 **그래프 시간**이고 노드�
 에서 감추지 않고 `known_at_unknown` 으로 센다. Concept 은 유효구간이 없으므로 `as_of` 에서
 늘 남는다.
 
+search·brief 는 이 후처리를 타지 않는다. 둘 다 시간 인자를 자기 경로에서 적용하고,
+brief 는 관계를 거를 때 이 모듈의 `Gate` 를 그대로 쓴다(같은 요청이면 같은 결과).
+
 근거: [[vinc.plan.temporal-edges-point-in-time-document-validity-2026-09-28]] §1
 """
 from __future__ import annotations
@@ -135,8 +138,15 @@ class Gate:
         return res
 
 
+#: 이 후처리가 다루는 결과. search·brief 는 시간 인자를 자기 경로에서 전부 적용하므로
+#: 여기 없다(감사 B1). 여기서 다시 거르면 해소가 끝난 뒤에 거르는 셈이 된다.
+KINDS = ("neighbors", "graph", "path", "recall")
+
+
 def apply(kind: str, res, *, store, owner, as_of=None, known_at=None, seed=None):
     """``kind`` 별 결과 모양에 맞춰 거른다. 둘 다 없으면 결과를 그대로 돌려준다."""
+    if kind not in KINDS:
+        raise ValueError(f"temporal_read does not filter {kind!r} results")
     if not isinstance(res, dict) or not ((as_of or "").strip() or (known_at or "").strip()):
         return res
     try:
@@ -154,15 +164,8 @@ def apply(kind: str, res, *, store, owner, as_of=None, known_at=None, seed=None)
         ids = [i for p in res.get("paths") or [] for i in p.get("ids") or []]
     elif kind == "recall":
         ids = [r.get("id") for r in res.get("rows") or []]
-    elif kind in ("search", "brief"):
-        ids = [h.get("id") for h in res.get("node_hits") or []]
-        ids += [c.get("id") for c in res.get("candidates") or []]
-        ids += [i.get("id") for i in ((res.get("links") or {}).get("items") or [])]
-        if isinstance(res.get("node"), dict):
-            ids.append(res["node"].get("id"))
     gate = Gate(store, [i for i in ids if i and i != seed], owner=owner,
-                as_of_scope=a if kind not in ("search", "brief") else None,
-                known_scope=k)
+                as_of_scope=a, known_scope=k)
     keep = gate.keep
     if kind == "neighbors":
         kept = [n for n in res.get("neighbors") or [] if keep(n.get("id"))]
@@ -182,42 +185,4 @@ def apply(kind: str, res, *, store, owner, as_of=None, known_at=None, seed=None)
         res["found"] = bool(paths)
     elif kind == "recall":
         res["rows"] = [r for r in res.get("rows") or [] if keep(r.get("id"))]
-    else:
-        # search·brief 는 as_of 를 자기 경로에서 이미 처리한다. 여기서는 known_at 만.
-        if "node_hits" in res:
-            res["node_hits"] = [h for h in res["node_hits"] if keep(h.get("id"))]
-        if "candidates" in res:
-            res["candidates"] = [c for c in res["candidates"] if keep(c.get("id"))]
-        links = res.get("links")
-        if isinstance(links, dict) and isinstance(links.get("items"), list):
-            links["items"] = [i for i in links["items"] if keep(i.get("id"))]
-        node = res.get("node")
-        if isinstance(node, dict) and node.get("id") and not keep(node["id"]):
-            res["known_at_node_note"] = ("the resolved node was recorded after the known_at "
-                                         "period; the graph did not hold it then")
-        if "rows" in res and k is not None:
-            res["rows"] = _known_rows(res["rows"], store, owner, k, gate)
     return gate.stamp(res, info)
-
-
-def _known_rows(rows, store, owner, known_scope, gate):
-    """청크 행은 문서가 처음 저장된 시각(`_DocMeta.created_at`)으로 거른다."""
-    doc_ids = sorted({r.get("doc_id") for r in rows if r.get("doc_id")})
-    if not doc_ids:
-        return rows
-    scope = " AND m.owner_id = $owner" if owner else ""
-    created = {r.get("doc_id"): str(r.get("created_at") or "")[:10] for r in store.run(
-        f"MATCH (m:_DocMeta) WHERE m.doc_id IN $ids{scope} "
-        "RETURN m.doc_id AS doc_id, m.created_at AS created_at",
-        {"ids": doc_ids, "owner": owner or ""})}
-    out = []
-    for r in rows:
-        c = created.get(r.get("doc_id"), "")
-        if not c:
-            gate.unknown_known.add("doc:" + str(r.get("doc_id")))
-            out.append(r)
-        elif c < known_scope[1]:
-            out.append(r)
-        else:
-            gate.hidden_known += 1
-    return out

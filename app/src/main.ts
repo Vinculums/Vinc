@@ -2,6 +2,7 @@ import "./app.css";
 import { COPY } from "./copy";
 import { icon } from "./icons";
 import { renderView, repaintView, leaveView } from "./surfaces/view";
+import { renderHome, leaveHome, homeEditorOpen } from "./surfaces/home";
 import { renderSearch } from "./surfaces/search";
 import { openSettings } from "./surfaces/settings";
 import { connectSidecar, WEB, ensureWebAuth, cfg, IN_SHELL, decideDataMode,
@@ -10,29 +11,33 @@ import { checkForUpdate } from "./update";
 import { mountLiveRefresh, setLiveRefresher } from "./live";
 import { wireFileAssociations } from "./openfiles";
 import { installTooltip } from "./tooltip";
+import { loaderBlock } from "./vinc-loaders.js";
 import { mountTopbar, setViewHooks } from "./topbar";
 import { mountLnb, refreshLnb, setLnbNavigator, repaintLnb } from "./lnb";
-import { popIn, popOut, fadeIn, fadeOut } from "./motion";
-import { wireScrimDismiss, showNotice } from "./components";
+import { showNotice } from "./components";
 import { blocksSurfaceShortcuts } from "./keys";
 import { disposeEditorsIn, docEditorOpen } from "./doc-editor";
 import { mountAuthoringKeys, startNewDoc, startNewNode } from "./authoring";
 
-// 표면 2종: View / Search(+Records). Packs(+Intake)는 표면이 아니라 Tools 모달로
-// 갔다(P15) — 다섯 기능이 전부 거기 산다.
-type Surface = "view" | "search";
+// 표면 3종: Home(문서) / View(그래프) / Search(+Records). Packs(+Intake)는 표면이 아니라
+// Tools 모달로 갔다(P15) — 다섯 기능이 전부 거기 산다.
+// 첫 화면은 문서 홈이다. 그래프는 오른쪽 위의 전환 버튼이 연다. 그래프의
+// 코드명은 계속 `view`(해시·딥링크·모듈)이고 화면 이름도 View 다.
+// 근거: [[decision:the-desktop-shell-is-documents-first]]
+type Surface = "home" | "view" | "search";
 const SURFACES: Record<Surface, (el: HTMLElement) => void | Promise<void>> = {
+  home: renderHome,
   view: renderView,
   search: renderSearch,
 };
-const ORDER: Surface[] = ["view", "search"];
-// 화면 이름 ↔ 내부 코드명 분리. 첫 화면의 코드명은 계속 `view`(해시·딥링크·모듈)
-// 이고 화면 이름도 View 다(2026-09-22). D61 의 Home 노출은 이 지시가 덮는다.
+const ORDER: Surface[] = ["home", "view", "search"];
 const SURFACE_LABEL: Record<Surface, string> = {
-  view: COPY.ui.topbar.home, search: COPY.ui.topbar.search,
+  home: COPY.ui.home.nav, view: COPY.ui.topbar.home, search: COPY.ui.topbar.search,
 };
-// 구 표면 해시 → 통합 표면(딥링크·구 CTA 하위호환).
-// `atlas` 는 리네임 전 이 표면의 코드명이었다(F8, 2026-08-15) — 무기한 유지.
+// 구 표면 해시 → 통합 표면(딥링크·구 CTA 하위호환). 그래프를 가리키던 옛 주소는
+// 그래프로 간다 — 문서 홈이 첫 화면이 된 뒤에도 밖에 나간 지도 주소는 지도를 연다.
+// `atlas` 는 리네임 전 이 표면의 코드명이었다(F8, 2026-08-15).
+// 제거 조건: 없음. 밖에 나간 북마크와 CTA 주소를 받는 표라 무기한 둔다(gate_forbidden F8 이 이 항목을 예외로 둔다).
 const ALIAS: Record<string, Surface> = {
   intake: "view", packs: "view", records: "search", atlas: "view",
 };
@@ -92,7 +97,7 @@ function current(): Surface {
   const h = location.hash.replace(/^#/, "").split("/")[0];
   if (h in SURFACES) return h as Surface;
   if (h in ALIAS) return ALIAS[h];
-  return "view";   // 기본 첫 화면 = View(최상단)
+  return "home";   // 기본 첫 화면 = 문서 홈
 }
 
 let activeSurface: Surface | undefined;
@@ -115,6 +120,9 @@ async function route() {
   const resumeView = s === "view" && activeSurface === "search" && location.hash === "#view";
   activeSurface = s;
   leaveView();
+  leaveHome();
+  // 문서 홈은 편집기를 표면 안에 세운다 — 비우기 전에 확정·해제한다(아래 문서 열과 같은 이유).
+  disposeEditorsIn(surfaceEl);
   surfaceEl.innerHTML = "";
   // 문서 열은 셸의 것이지만 내용은 표면이 심는다(View 가 자기 상세를 옮겨 온다).
   // 표면이 사라질 때 그 내용도 함께 사라져야 한다 — 표면 컨테이너를 비우는 것만으로는
@@ -137,6 +145,7 @@ async function route() {
   // 좌측 트리의 착지 훅도 같이 끈다 — View 가 없으면 "그 노드로 날아가기"가
   // 성립하지 않으므로 문서 클릭은 해시 착지로 강등된다(lnb.openDoc).
   setLnbNavigator(null);
+  shellEl.dataset.surface = s;
   if (s === "view") await renderView(surfaceEl, resumeView);
   else await SURFACES[s](surfaceEl);
 }
@@ -144,12 +153,9 @@ async function route() {
 window.addEventListener("hashchange", route);
 document.title = `Vinc · ${COPY.tagline}`;
 
-// Settings — **시트다**(2026-09-09). 여태 자기 팝오버 + 자기 스크림 + 자기 개폐
-// 배선을 따로 갖고 있었고, 그래서 도구·GRAPH.md 와 상자·자리·딤·모션이 갈렸다.
-// 같은 토큰을 읽게 맞춰 놓았어도 **구현이 둘이면 다음에 또 갈린다** — 그래서 합쳤다.
-// 딸려 사라진 것: `#settings-popover` · `#settings-scrim` 요소와 그 CSS,
-// 여기 있던 popIn/popOut/fadeIn/fadeOut/wireScrimDismiss/Esc 배선 여섯 벌
-// (시트가 전부 갖고 있다: 트리거에서 자라는 모션 · 스크림 클릭 · Esc · 중첩 처리).
+// Settings 는 **시트다**. 도구·GRAPH.md 와 같은 상자·자리·딤·모션을 쓰고, 개폐 배선
+// (트리거에서 자라는 모션 · 스크림 클릭 · Esc · 중첩 처리)은 시트가 전부 갖는다. 여기에
+// 자기 팝오버나 개폐 배선을 다시 두지 않는다: 구현이 둘이면 같은 토큰을 읽어도 다시 갈린다.
 const settingsBtn = document.getElementById("settings-btn")!;
 settingsBtn.addEventListener("click", () => openSettings("general", undefined, true));
 
@@ -223,7 +229,6 @@ function openPalette() {
 }
 
 // ── Shortcut cheatsheet (`?`) ──────────────────────────────────────────────
-const cheatsheet = document.getElementById("cheatsheet")!;
 async function openCheatsheet() {
   // 단축키 표도 시트 규격을 쓴다(D63) — 화면 위에 뜨는 것은 전부 같은 구조·같은 닫힘.
   const { openSheet } = await import("./components");
@@ -247,7 +252,7 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault(); openPalette(); return;
   }
   // 문서 열이 떠 있으면 표면 단축키는 쉰다 — 판정은 keys.ts, DOM 은 doc-editor.ts.
-  if (blocksSurfaceShortcuts(e.target, document.activeElement, docEditorOpen())) return;
+  if (blocksSurfaceShortcuts(e.target, document.activeElement, docEditorOpen() || homeEditorOpen())) return;
   // 표면 **수만큼만** 받는다. 여기 `"1"`~`"3"` 리터럴이 박혀 있었는데, 그것은 ORDER 가
   // 줄어드는 순간 조용히 틀리는 종류다 — 3 을 누르면 `#undefined` 로 간다. 타입은
   // 문자열 비교라 아무 말도 안 하고, 게이트도 이 자리를 안 본다.
@@ -304,11 +309,21 @@ if (document.documentElement.dataset.skin === "web") {
 
 // ── Dark mode (D — desktop-shell §3-9): OS 추종 + Settings 수동 토글 ──────
 const THEME_KEY = "vinc.theme";   // "auto" | "light" | "dark"
+// 웹에서는 공홈과 같은 오리진이라 사이트의 테마 키도 함께 본다. 둘이 어긋나면 사이트와
+// 앱을 오갈 때마다 밝기가 뒤집혀 번쩍인다. 앱 값이 없으면 사이트 값을 따르고, 정한 밝기는
+// 사이트 키에도 적어 둔다(사이트 GNB 의 토글도 두 키를 함께 쓴다).
+const SITE_THEME_KEY = "vinc.site.theme.v2";
 export function applyTheme() {
-  const pref = localStorage.getItem(THEME_KEY) || "dark";   // D38 — 기본 = 다크
+  const web = document.documentElement.dataset.skin === "web";
+  let pref = "dark";   // D38 — 기본 = 다크
+  try {
+    pref = localStorage.getItem(THEME_KEY)
+      || (web ? localStorage.getItem(SITE_THEME_KEY) : "") || "dark";
+  } catch { /* 저장소가 막힌 창은 기본값으로 */ }
   const dark = pref === "dark" || (pref === "auto" &&
     window.matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.dataset.theme = dark ? "dark" : "light";
+  if (web) try { localStorage.setItem(SITE_THEME_KEY, dark ? "dark" : "light"); } catch {}
   // 좌측 트리의 주제 색은 paint 때 굳은 HEX 다(CSS 변수가 아니라 스스로 안 뒤집힌다).
   // 여기서 다시 그리지 않으면 뒤집힌 화면에 반대 모드의 색이 남아 도트가 배경에 묻는다.
   // ⚠ 설정 화면의 클릭 핸들러가 아니라 **여기**여야 한다: pref 가 "auto" 면 아래
@@ -321,6 +336,8 @@ export function applyTheme() {
   repaintView();
 }
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+// 웹 GNB 의 테마 토글(공홈 gnb.js)은 키만 쓰고 이 이벤트를 쏜다. 받아서 같은 길로 다시 칠한다.
+window.addEventListener("vinc:theme", applyTheme);
 applyTheme();
 // 화면 언어를 문서에도 적는다. index.html 은 lang="en" 으로 박혀 있어 한국어 화면을 화면
 // 읽기와 번역이 영어로 읽었다(VIN-294). 언어를 바꾸면 페이지를 다시 불러오므로 한 번이면 된다.
@@ -332,6 +349,11 @@ document.documentElement.lang = cfg.lang;
   // 자체 툴팁(D48-T)은 라우팅보다 먼저 건다 — 첫 화면의 마크도 곧바로 담당한다.
   // 위임 하나라 서피스가 다시 그려져도 재배선이 필요 없다.
   installTooltip();
+  // 사이드카·로그인·모드를 정하는 동안 첫 화면이 비지 않게 로고 모션을 둔다. 첫 route() 가
+  // 표면을 갈아 끼우면 사라진다(로그인 화면은 그 위를 덮는다).
+  const bootSurface = document.getElementById("surface");
+  if (bootSurface && !bootSurface.childElementCount)
+    bootSurface.innerHTML = loaderBlock("mark", COPY.ui.common.starting, { fill: true });
   // 셸이면 사이드카 접속(포트·토큰) 확보. 웹 Vinc(호스티드)는 로컬 사이드카가 없어
   // 스킵 — 데이터는 계정 프록시(/api/graph)로 간다. 브라우저 dev 는 connectSidecar 가
   // __TAURI__ 없음으로 즉시 반환(same-origin vite 프록시 유지).

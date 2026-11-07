@@ -26,29 +26,44 @@ const temporalLayout = async (...args) => {
 };
 const { routeAcrossTopics } = await source("../src/view-layout-avoid.ts");
 const { layoutInWorker } = await source("../src/view-layout-client.ts");
-const { LAYOUTS, normalizeLayout, layoutsFor, serverLayoutFor, isRootsLayout, loadPrefs, savePrefs } = await source("../src/view-prefs.ts");
+const { LAYOUTS, normalizeLayout, serverLayoutFor, isRootsLayout, loadPrefs, savePrefs } = await source("../src/view-prefs.ts");
 
-test("two layouts remain and retired saved values fold into time branches", () => {
+test("one layout remains and every saved layout folds into time branches", () => {
   const saved = new Map();
   globalThis.localStorage = { getItem: k => saved.get(k) ?? null, setItem: (k, v) => saved.set(k, v) };
   try {
-    assert.equal(loadPrefs().layout, "hub");
-    assert.deepEqual(LAYOUTS, ["hub", "temporalRoots"]);
-    for (const layout of LAYOUTS) {
-      savePrefs({ ...loadPrefs(), layout });
-      assert.equal(loadPrefs().layout, layout);
-      assert.equal(normalizeLayout(layout), layout);
-      assert.equal(serverLayoutFor(layout), "hub");
-      assert.equal(isRootsLayout(layout), layout === "temporalRoots");
+    // 첫 그림(판 4): 나침반 · 시간순 가지 · 선 상시 · 범례는 관계 선만.
+    assert.deepEqual([loadPrefs().view, loadPrefs().layout, loadPrefs().edges, loadPrefs().edgeOff],
+      ["compass", "temporalRoots", "always", ["directed", "cross", "bridge"]]);
+    assert.deepEqual(LAYOUTS, ["temporalRoots"]);
+    assert.equal(serverLayoutFor("temporalRoots"), "hub");
+    assert.equal(isRootsLayout(loadPrefs().layout), true);
+    // 보기는 나침반 하나다: 저장된 다른 관점(3d 포함)은 나침반으로 읽는다. 2D 전용이던 선 `focus` 는 `none` 이다.
+    for (const view of ["3d", "2d", "timeline", "bundle"]) {
+      saved.set("vinc.view.prefs", JSON.stringify({ view, edges: "focus", pv: 4 }));
+      assert.deepEqual([loadPrefs().view, loadPrefs().edges], ["compass", "none"]);
     }
-    for (const view of ["2d", "3d", "timeline", "bundle"]) assert.deepEqual(layoutsFor(view), LAYOUTS);
-    for (const retired of ["rank", "rankedRoots"]) {
+    // 저장된 배치는 무엇이든(걷은 `hub`, 0.9.7 의 `rank`·`rankedRoots`, 그 전 이름, 모르는 값) 시간순 가지다.
+    for (const retired of ["hub", "rank", "rankedRoots", "radial", "dendro", "toString", "unknown"]) {
       assert.equal(normalizeLayout(retired), "temporalRoots");
-      saved.set("vinc.view.prefs", JSON.stringify({ layout: retired }));
-      assert.equal(loadPrefs().layout, "temporalRoots");
+      for (const pv of [undefined, 2, 4]) {
+        saved.set("vinc.view.prefs", JSON.stringify({ layout: retired, pv }));
+        assert.equal(loadPrefs().layout, "temporalRoots");
+      }
     }
-    assert.equal(normalizeLayout("radial"), "hub");
-    assert.equal(normalizeLayout("unknown"), "hub");
+    // 판을 올려도 판 2 사용자가 고른 크기 1 은 기본값으로 되돌아가지 않는다.
+    saved.set("vinc.view.prefs", JSON.stringify({ nodeScale: 1, cone: 1, pv: 2 }));
+    assert.equal(loadPrefs().nodeScale, 1); assert.equal(loadPrefs().cone, 1);
+    saved.set("vinc.view.prefs", JSON.stringify({ nodeScale: 1, cone: 1 }));
+    assert.equal(loadPrefs().nodeScale, 0.7); assert.equal(loadPrefs().cone, 0.7);
+    // 판 4 이전 저장값은 첫 그림 넷만 한 번 새 기본으로 옮기고, 나머지 고른 값은 둔다.
+    saved.set("vinc.view.prefs", JSON.stringify({ view: "2d", layout: "hub", edges: "none", edgeOff: [],
+      nodeScale: 1.4, pv: 3 }));
+    assert.deepEqual([loadPrefs().view, loadPrefs().layout, loadPrefs().edges, loadPrefs().edgeOff, loadPrefs().nodeScale],
+      ["compass", "temporalRoots", "always", ["directed", "cross", "bridge"], 1.4]);
+    savePrefs({ ...loadPrefs(), edges: "particles", edgeOff: [] });
+    assert.equal(JSON.parse(saved.get("vinc.view.prefs")).pv, 4);
+    assert.deepEqual([loadPrefs().edges, loadPrefs().edgeOff], ["particles", []], "a choice made after the move stays");
   } finally { delete globalThis.localStorage; }
 });
 
@@ -99,6 +114,16 @@ test("temporal partitions preserve backwards edges, cycles, parallels, self loop
   assert.equal(result.nodes.filter(n => n.kind === "domain").length, 1);
 });
 
+test("undated items stand in their own column left of the first date", async () => {
+  const nodes = [n("early", "2020"), n("late", "2021"), n("nodate", "")];
+  const edges = [edge("early", "late"), edge("nodate", "late", "RELATED_TO")];
+  const result = await temporalLayout(nodes, edges, "content", elk, route);
+  check(result, edges);
+  const at = id => result.nodes.find(r => r.id === id).x;
+  assert.ok(at("nodate") < at("early"), "an undated item shared the first date's column");
+  assert.ok(at("early") < at("late"));
+});
+
 test("chronological backwards relations use facing ports without a gratuitous loop", async () => {
   for (const type of ["DERIVES_FROM", "INHERITS_FROM", "PREREQUISITE_OF", "RELATED_TO"]) {
     const nodes = [n("a", "2020"), n("b", "2021")];
@@ -119,36 +144,35 @@ test("recorded and content bases change ordering without inventing dates", async
   check(recorded, edges);
 });
 
-test("connected groups stay in one topic wing and disconnected roots surround the topic", async () => {
+test("disconnected groups stack as separate branches to the right of their topic", async () => {
   const result = await temporalLayout([n("a", "2020"), n("b", "2021"), n("c", "2020"), n("d", "2021")],
     [edge("a", "b"), edge("c", "d")], "content", elk, route);
   const map = new Map(result.nodes.map(n => [n.id, n]));
-  assert.ok(map.get("a").x * map.get("b").x > 0);
-  assert.ok(map.get("c").x * map.get("d").x > 0);
-  assert.ok(map.get("a").x * map.get("c").x < 0);
-  assert.equal(map.get("domain:topic").x, 0);
+  const topic = map.get("domain:topic");
+  for (const id of ["a", "b", "c", "d"]) assert.ok(map.get(id).x > topic.x, `${id} sits left of its topic`);
+  assert.ok(map.get("a").x < map.get("b").x && map.get("c").x < map.get("d").x, "dates run left to right");
+  assert.notEqual(map.get("a").y, map.get("c").y, "the two branches share a lane");
 });
 
-test("a small Topic with one connected chain keeps its Topic at the centre", async () => {
+test("a small Topic with one connected chain starts at its Topic and grows right", async () => {
   const nodes = Array.from({ length: 6 }, (_, i) => n(`c${i}`, `202${i}`));
   const edges = nodes.slice(1).map((x, i) => edge(nodes[i].id, x.id));
   const result = await temporalLayout(nodes, edges, "content", elk, route);
   check(result, edges);
-  const xs = result.nodes.filter(n => n.kind !== "domain").map(n => n.x);
-  assert.equal(result.nodes.find(n => n.kind === "domain").x, 0);
-  assert.ok(Math.min(...xs) < 0 && Math.max(...xs) > 0, "every branch sat on one side of its Topic");
+  const topic = result.nodes.find(n => n.kind === "domain");
+  const xs = nodes.map(m => result.nodes.find(r => r.id === m.id).x);
+  assert.ok(xs.every(x => x > topic.x), "a branch sat left of its Topic");
+  assert.deepEqual(xs, xs.toSorted((a, b) => a - b), "the chain does not read left to right");
 });
 
-test("ranked follows relationship stages when dates disagree, retaining cycles and original direction", async () => {
+test("time branches follow dates when relations disagree, retaining cycles and original direction", async () => {
   const nodes = [n("root", "2022"), n("middle", "2021"), n("leaf", "2020")];
   const edges = [edge("root", "middle"), edge("leaf", "middle", "DERIVES_FROM")];
   const temporal = await temporalLayout(nodes, edges, "content", elk, route);
-  const ranked = await temporalLayout(nodes, edges, "content", elk, route, "ranked");
-  check(temporal, edges); check(ranked, edges);
+  check(temporal, edges);
   assert.ok(temporal.nodes[0].x > temporal.nodes[1].x && temporal.nodes[1].x > temporal.nodes[2].x);
-  assert.ok(ranked.nodes[0].x < ranked.nodes[1].x && ranked.nodes[1].x < ranked.nodes[2].x);
   const cycles = [...edges, edge("leaf", "root"), edge("middle", "middle"), edge("root", "leaf", "RELATED_TO")];
-  check(await temporalLayout([...nodes, n("unknown", "")], cycles, "content", elk, route, "ranked"), cycles);
+  check(await temporalLayout([...nodes, n("unknown", "")], cycles, "content", elk, route), cycles);
 });
 
 test("explicit timestamp offsets compare as instants while invalid dates stay unknown", async () => {
@@ -254,7 +278,7 @@ test("many connectors in a modest Topic graph remain bounded and avoid every lab
 test("empty graph avoids worker allocation; singleton remains navigable", async () => {
   assert.deepEqual(await temporalLayout([], [], "content", elk, route), { nodes: [], edges: [], topicEdges: [] });
   assert.deepEqual(await layoutInWorker([], [], "content", new AbortController().signal,
-    "temporal", () => { throw new Error("must not create a worker"); }), { nodes: [], edges: [], topicEdges: [] });
+    () => { throw new Error("must not create a worker"); }), { nodes: [], edges: [], topicEdges: [] });
   const result = await temporalLayout([n("a", "")], [], "content", elk, route);
   assert.ok(Number.isFinite(result.nodes[0].x)); assert.equal(result.topicEdges.length, 1);
 });
@@ -265,8 +289,8 @@ test("layout jobs terminate on success, abort, worker error and invalid messages
     let posted;
     const worker = { terminate: () => terminated++, postMessage: value => { posted = value; } };
     const controller = new AbortController();
-    const job = layoutInWorker([n("a", "")], [], "content", controller.signal, "ranked", () => worker);
-    assert.equal(posted.ordering, "ranked");
+    const job = layoutInWorker([n("a", "")], [], "content", controller.signal, () => worker);
+    assert.equal(posted.basis, "content");
     if (outcome === "success") worker.onmessage({ data: { graph: { nodes: [], edges: [], topicEdges: [] } } });
     if (outcome === "abort") controller.abort();
     if (outcome === "error") worker.onerror({ message: "test failure" });
@@ -281,7 +305,7 @@ test("layout jobs terminate on success, abort, worker error and invalid messages
 test("content-free stage progress leaves the job alive until its actual graph arrives", async () => {
   let terminated = 0, settled = false;
   const worker = { terminate: () => terminated++, postMessage: () => {} };
-  const job = layoutInWorker([n("a", "")], [], "content", new AbortController().signal, "temporal", () => worker);
+  const job = layoutInWorker([n("a", "")], [], "content", new AbortController().signal, () => worker);
   job.then(() => { settled = true; });
   worker.onmessage({ data: { progress: { phase: "elk", callsDone: 4, activeNodes: 12, activeEdges: 18, elapsedMs: 5000 } } });
   worker.onmessage({ data: { progress: { phase: "routing", callsDone: 5, activeNodes: 30, activeEdges: 4, elapsedMs: 10000 } } });
@@ -296,7 +320,7 @@ test("the layout deadline follows progress and still has an overall cap", async 
   const run = (limits, beats) => {
     let terminated = 0;
     const worker = { terminate: () => terminated++, postMessage: () => {} };
-    const job = layoutInWorker([n("a", "")], [], "content", new AbortController().signal, "temporal", () => worker, 1.6, limits);
+    const job = layoutInWorker([n("a", "")], [], "content", new AbortController().signal, () => worker, 1.6, limits);
     const timer = setInterval(() => { if (beats-- > 0) worker.onmessage({ data: { progress: { phase: "elk", callsDone: 1,
       activeNodes: 1, activeEdges: 0, elapsedMs: 1 } } }); }, 20);
     return { job: job.finally(() => clearInterval(timer)), terminated: () => terminated };
@@ -404,7 +428,7 @@ test("large maps share Topic corridors while preserving parallel and reversed re
   }
 });
 
-test("a connected timeline with unique instants branches around its Topic without losing continuation edges", async () => {
+test("a connected timeline with unique instants stacks branches right of its Topic without losing continuation edges", async () => {
   const nodes = Array.from({ length: 180 }, (_, i) => n(`instant${i}`,
     new Date(Date.UTC(2020, 0, 1, 0, 0, i)).toISOString()));
   const edges = nodes.slice(1).map((node, i) => edge(nodes[i].id, node.id));
@@ -415,15 +439,16 @@ test("a connected timeline with unique instants branches around its Topic withou
       ids: new Set(graph.children.map(n => n.id)), direction: graph.layoutOptions["elk.direction"] });
     return elk.layout(graph);
   } };
-  const result = await temporalLayout(nodes, edges, "content", observedElk, route, "temporal", 1.6);
+  const result = await temporalLayout(nodes, edges, "content", observedElk, route, 1.6);
   check(result, edges);
   const topic = result.nodes.find(n => n.kind === "domain");
-  assert.ok(result.nodes.some(n => n.x < topic.x) && result.nodes.some(n => n.x > topic.x));
-  assert.ok(result.nodes.some(n => n.y < topic.y) && result.nodes.some(n => n.y > topic.y));
-  assert.deepEqual(new Set(branches.map(b => b.direction)), new Set(["RIGHT", "LEFT", "UP", "DOWN"]));
+  assert.ok(result.nodes.every(n => n === topic || n.x > topic.x), "a branch grew left of its Topic");
+  assert.ok(result.nodes.some(n => n.y < topic.y) && result.nodes.some(n => n.y > topic.y),
+    "the Topic is not at the vertical middle of its stacked branches");
+  assert.deepEqual(new Set(branches.map(b => b.direction)), new Set(["RIGHT"]));
   const width = Math.max(...result.nodes.map(n => n.x)) - Math.min(...result.nodes.map(n => n.x));
   const height = Math.max(...result.nodes.map(n => n.y)) - Math.min(...result.nodes.map(n => n.y));
-  assert.ok(width / height > .6 && width / height < 4, "connected timeline is still an elongated list");
+  assert.ok(width > height, "a connected timeline does not read left to right");
   assert.ok(result.edges.some(e => e.route.engine === "libavoid"), "continuation edges between branches were discarded");
   for (const e of result.edges.filter(e => e.route.engine === "elk" && e.type === "PREREQUISITE_OF")) {
     const a = result.nodes.find(n => n.id === e.source), b = result.nodes.find(n => n.id === e.target);
@@ -433,7 +458,7 @@ test("a connected timeline with unique instants branches around its Topic withou
   }
 });
 
-test("four Topic arms share a regular grid without rotating marks or cutting through their labels", async () => {
+test("stacked branches share a regular grid without rotating marks or cutting through their labels", async () => {
   const nodes = Array.from({ length: 16 }, (_, i) => n(`grid${i}`, `2020-${String(i + 1).padStart(2, "0")}-01`));
   const edges = nodes.slice(1).map((node, i) => edge(nodes[i].id, node.id));
   edges.push(edge("grid14", "grid1", "RELATED_TO"));
@@ -459,8 +484,8 @@ test("four Topic arms share a regular grid without rotating marks or cutting thr
 
 test("Topic composition uses both axes and responds to landscape and portrait aspect ratios", async () => {
   const nodes = Array.from({ length: 24 }, (_, i) => n(`map${i}`, "2020", `topic/${i}`));
-  const landscape = await temporalLayout(nodes, [], "content", elk, route, "temporal", 2.4);
-  const portrait = await temporalLayout(nodes, [], "content", elk, route, "temporal", .6);
+  const landscape = await temporalLayout(nodes, [], "content", elk, route, 2.4);
+  const portrait = await temporalLayout(nodes, [], "content", elk, route, .6);
   const extent = graph => {
     const ts = graph.nodes.filter(n => n.kind === "domain");
     assert.ok(new Set(ts.map(n => n.x)).size > 1 && new Set(ts.map(n => n.y)).size > 1);
@@ -471,20 +496,21 @@ test("Topic composition uses both axes and responds to landscape and portrait as
   for (const graph of [landscape, portrait]) check(graph, []);
 });
 
-test("spatial Topics have six outward arms, distinct depth and clear original directed routes", async () => {
-  for (const ordering of ["temporal", "ranked"]) {
+test("a spatial Topic grows one arm along +x with lanes across and in depth, and clear original directed routes", async () => {
+  {
     const nodes = Array.from({ length: 36 }, (_, i) => n(`space${i}`,
       new Date(Date.UTC(2020, 0, i + 1)).toISOString()));
     const edges = nodes.slice(1).map((node, i) => edge(nodes[i].id, node.id));
     edges.push(edge("space31", "space2", "RELATED_TO"), edge("space0", "space0"),
       edge("space8", "space7", "DERIVES_FROM"));
-    const graph = await spatialTemporalLayout(nodes, edges, "content", elk, route, ordering);
+    const graph = await spatialTemporalLayout(nodes, edges, "content", elk, route);
     check(graph, edges);
     const topic = graph.nodes.find(n => n.kind === "domain"), axes = ["x", "y", "z"];
-    const arm = node => { const axis = axes.toSorted((a, b) =>
-      Math.abs(node[b] - topic[b]) - Math.abs(node[a] - topic[a]))[0];
-      return `${axis}:${Math.sign(node[axis] - topic[axis])}`; };
-    assert.equal(new Set(graph.nodes.filter(n => n.kind !== "domain").map(arm)).size, 6);
+    // 팔은 하나(+x)다. 레인은 y 로 나란히 서고 깊이(z)로 물러난다.
+    const arm = () => "x:1";
+    const members = graph.nodes.filter(n => n.kind !== "domain");
+    assert.ok(members.every(m => m.x > topic.x), "a member sits left of its Topic");
+    assert.ok(new Set(members.map(n => n.y)).size > 1, "lanes do not sit side by side");
     for (const node of graph.nodes) for (const axis of axes)
       assert.ok(Math.abs((node[axis] - topic[axis]) / .33 - Math.round((node[axis] - topic[axis]) / .33)) < 1e-7);
     for (const e of graph.edges) {
@@ -494,7 +520,7 @@ test("spatial Topics have six outward arms, distinct depth and clear original di
       if (e.source !== e.target && e.type === "PREREQUISITE_OF" && arm(a) === arm(b) &&
           axes.filter(axis => axis !== arm(a)[0]).every(axis => Math.abs(a[axis] - b[axis]) < 1e-8)) {
         const axis = arm(a)[0], sign = Math.sign(a[axis] - topic[axis]);
-        assert.ok(sign * (b[axis] - a[axis]) > 0, `spatial branch reverses ${ordering} ${e.source}->${e.target} ${JSON.stringify([a,b])}`);
+        assert.ok(sign * (b[axis] - a[axis]) > 0, `spatial branch reverses ${e.source}->${e.target} ${JSON.stringify([a,b])}`);
       }
     }
     for (const e of [...graph.edges, ...graph.topicEdges]) for (const node of graph.nodes) {
@@ -508,12 +534,23 @@ test("spatial Topics have six outward arms, distinct depth and clear original di
   }
 });
 
-test("Topic centres fill depth as well as both planar axes without colliding", async () => {
-  const nodes = Array.from({ length: 24 }, (_, i) => n(`volume${i}`, "2020", `topic/${i}`));
-  const graph = await spatialTemporalLayout(nodes, [], "content", elk, route);
-  const topics = graph.nodes.filter(n => n.kind === "domain");
-  for (const axis of ["x", "y", "z"]) assert.ok(new Set(topics.map(n => n[axis])).size > 1);
-  assert.equal(new Set(graph.nodes.map(n => [n.x, n.y, n.z].join(":"))).size, graph.nodes.length);
+test("Topic cells flow left to right in time, main topic first, in 2D and 3D alike", async () => {
+  // 24 주제, 날짜를 이름과 어긋나게 준다. vinc 는 하위 주제를 거느린 메인 토픽이다.
+  const nodes = Array.from({ length: 24 }, (_, i) =>
+    n(`volume${i}`, `20${String(40 - i).padStart(2, "0")}`, `vinc/t${String(i).padStart(2, "0")}`));
+  nodes.push(n("root", "2090", "vinc"));
+  const spatial = await spatialTemporalLayout(structuredClone(nodes), [], "content", elk, route);
+  const planar = await temporalLayout(structuredClone(nodes), [], "content", elk, route);
+  for (const graph of [spatial, planar]) {
+    const topics = graph.nodes.filter(n => n.kind === "domain" && n.id !== "domain:vinc");
+    const main = graph.nodes.find(n => n.id === "domain:vinc");
+    assert.ok(topics.every(t => main.x <= t.x), "the main topic is not leftmost");
+    // 가장 이른 주제(t23, 2017)가 가장 늦은 주제(t00, 2040)보다 왼쪽이다.
+    const at = id => graph.nodes.find(n => n.id === `domain:vinc/${id}`).x;
+    assert.ok(at("t23") < at("t00"), "earlier topics do not come first from the left");
+    assert.ok(new Set(topics.map(n => n.x)).size > 1 && new Set(topics.map(n => n.y)).size > 1);
+  }
+  assert.equal(new Set(spatial.nodes.map(n => [n.x, n.y, n.z].join(":"))).size, spatial.nodes.length);
 });
 
 test("shortcuts remove empty detours but preserve required obstacle detours and self loops", () => {
@@ -540,7 +577,7 @@ test("stored topic pieces reproduce a full layout and only a changed topic is la
   const calls = [];
   const counted = { layout: input => { calls.push(input.id); return elk.layout(input); } };
   const run = (ns, es, pieces) => spatialTemporalLayout(structuredClone(ns), structuredClone(es), "content", counted, route,
-    "temporal", 1.6, pieces ? { pieces } : {});
+    1.6, pieces ? { pieces } : {});
   const store = new Map();
   const fresh = await run(nodes, edges);
   calls.length = 0;
@@ -573,10 +610,10 @@ test("a topic piece does not depend on how large the rest of the graph is", asyn
   const calls = [];
   const counted = { layout: input => { calls.push(input.id); return elk.layout(input); } };
   const store = new Map();
-  await spatialTemporalLayout(structuredClone(topic), structuredClone(inner), "content", counted, route, "temporal", 1.6, { pieces: store });
+  await spatialTemporalLayout(structuredClone(topic), structuredClone(inner), "content", counted, route, 1.6, { pieces: store });
   calls.length = 0;
   await spatialTemporalLayout(structuredClone([...topic, ...crowd]), structuredClone(inner), "content", counted, route,
-    "temporal", 1.6, { pieces: store });
+    1.6, { pieces: store });
   assert.equal(calls.filter(id => id.startsWith("topic:domain:vinc/a:")).length, 0, "the small topic is reused from the store");
 });
 
@@ -593,11 +630,11 @@ test("a previous placement keeps unchanged topic boxes and their corridors, and 
   const pieces = new Map(), routes = new Map();
   const run = async (ns, es, previous) => {
     const next = new Map();
-    const graph = await spatialTemporalLayout(structuredClone(ns), structuredClone(es), "content", engine, router, "temporal", 1.6,
+    const graph = await spatialTemporalLayout(structuredClone(ns), structuredClone(es), "content", engine, router, 1.6,
       { pieces, routes, placement: { previous, next } });
     return { graph, next };
   };
-  const fresh = await spatialTemporalLayout(structuredClone(nodes), structuredClone(edges), "content", elk, route, "temporal", 1.6);
+  const fresh = await spatialTemporalLayout(structuredClone(nodes), structuredClone(edges), "content", elk, route, 1.6);
   const first = await run(nodes, edges);
   assert.deepEqual(first.graph, fresh, "the first run equals a layout without any store");
   assert.equal(first.next.size, 8);
@@ -633,4 +670,90 @@ test("a previous placement keeps unchanged topic boxes and their corridors, and 
     }
   }
   t.diagnostic(JSON.stringify({ corridorsRouted: corridorEdges, corridorsStored: firstCorridors }));
+});
+
+test("many topics fill the 3D cross section instead of standing on one ring", async () => {
+  // 주제가 많으면 고리 하나의 반지름이 주제 수에 비례해 시간 축보다 길어진다(계정 그래프 174개).
+  const nodes = [];
+  for (let t = 0; t < 120; t++) for (let i = 0; i < 2; i++)
+    nodes.push(n(`t${t}n${i}`, `2026-${String(i + 1).padStart(2, "0")}`, `vinc/a${t % 6}/t${t}`));
+  const graph = await spatialTemporalLayout(nodes, [], "content", elk, route);
+  const topics = graph.nodes.filter(n => n.kind === "domain");
+  const radii = topics.map(n => Math.hypot(n.y, n.z));
+  const xs = graph.nodes.map(n => n.x);
+  assert.ok(Math.max(...radii) <= Math.max(...xs) - Math.min(...xs), "the topics stand on one wide ring");
+  // 안쪽도 찬다: 가장 바깥 반지름의 절반 안에 선 주제가 있다.
+  assert.ok(radii.filter(r => r > 0 && r < Math.max(...radii) / 2).length >= 6, "the cross section is hollow");
+});
+
+test("3D topic cells group by area and still start left to right in time across areas", async () => {
+  // 영역 셋, 영역마다 주제 여덟. 날짜는 영역을 가로질러 엇갈리게 준다(영역 순서와 시간 순서가 다르다).
+  const nodes = [];
+  const areas = ["design", "engineering", "ai"];
+  for (let t = 0; t < 24; t++) for (let i = 0; i < 3; i++)
+    nodes.push(n(`t${t}n${i}`, `20${String(10 + t).padStart(2, "0")}-0${i + 1}`, `vinc/${areas[t % 3]}/t${t}`));
+  const graph = await spatialTemporalLayout(nodes, [], "content", elk, route);
+  const topics = graph.nodes.filter(n => n.kind === "domain");
+  const areaOf = t => t.domain.split("/")[1];
+  const groups = new Map();
+  for (const t of topics) { if (!groups.has(areaOf(t))) groups.set(areaOf(t), []); groups.get(areaOf(t)).push(t); }
+  assert.equal(groups.size, 3);
+  const centre = list => ({ y: list.reduce((s, t) => s + t.y, 0) / list.length, z: list.reduce((s, t) => s + t.z, 0) / list.length });
+  const centres = new Map([...groups].map(([a, list]) => [a, centre(list)]));
+  // 모든 주제는 다른 영역의 중심보다 제 영역의 중심에 더 가깝다(영역마다 한 덩어리).
+  for (const t of topics) {
+    const d = c => Math.hypot(t.y - c.y, t.z - c.z), own = d(centres.get(areaOf(t)));
+    for (const [a, c] of centres) if (a !== areaOf(t)) assert.ok(own < d(c), `${t.id} sits nearer ${a} than its own area`);
+  }
+  // x 는 영역과 무관하게 시간 순서다: 가장 이른 주제(t0)가 가장 늦은 주제(t23)보다 왼쪽이다.
+  const at = id => topics.find(t => t.id.endsWith(`/${id}`)).x;
+  assert.ok(at("t0") < at("t23"), "time no longer runs left to right across areas");
+  assert.equal(new Set(graph.nodes.map(n => [n.x, n.y, n.z].join(":"))).size, graph.nodes.length);
+  // 그래서 영역 부피를 그린다: view3d 의 areaBox 와 같은 셈으로 상자를 지으면 서로 떨어져 있다.
+  // 반지름은 렌더 배율(140) 아래 가장 큰 노드(12)다.
+  const { areasApart } = await source("../src/area-key.ts");
+  const r = 12 / 140, shells = [];
+  for (const area of areas) {
+    const pts = graph.nodes.filter(n => (n.domain || "").split("/")[1] === area);
+    let x0 = Infinity, x1 = -Infinity, cy = 0, cz = 0;
+    for (const p of pts) { x0 = Math.min(x0, p.x - r); x1 = Math.max(x1, p.x + r); cy += p.y; cz += p.z; }
+    cy /= pts.length; cz /= pts.length;
+    let rc = 0;
+    for (const p of pts) rc = Math.max(rc, Math.hypot(p.y - cy, p.z - cz) + r);
+    shells.push({ cx: (x0 + x1) / 2, cy, cz, hx: Math.max((x1 - x0) / 2 * 1.1, rc), rc: rc * 1.18 });
+  }
+  assert.equal(areasApart(shells), true, "grouped areas must keep their volumes");
+});
+
+test("3D topic cells group by area when topic nodes carry their parent path, as the hub sends them", async () => {
+  // 허브의 주제 노드는 `domain` 열에 **부모** 경로를 싣는다(api/query.py 의 주제 마크:
+  // `domain:vinc/design/t0` 는 domain "vinc/design", `domain:vinc` 는 domain ""). 영역 열쇠를 그 열에서
+  // 읽으면 공통 접두가 비어 모든 주제가 "vinc" 한 영역이 되고, 칸이 영역별로 묶이지 않았다.
+  const areas = ["design", "engineering", "ai"];
+  const topicMark = (path) => ({ id: `domain:${path}`, label: path.split("/").at(-1), kind: "domain",
+    domain: path.split("/").slice(0, -1).join("/"), degree: 1 });
+  const nodes = [topicMark("vinc"), ...areas.map(a => topicMark(`vinc/${a}`))];
+  for (let t = 0; t < 24; t++) {
+    nodes.push(topicMark(`vinc/${areas[t % 3]}/t${t}`));
+    for (let i = 0; i < 3; i++) nodes.push(n(`t${t}n${i}`, `20${String(10 + t).padStart(2, "0")}-0${i + 1}`, `vinc/${areas[t % 3]}/t${t}`));
+  }
+  const graph = await spatialTemporalLayout(nodes, [], "content", elk, route);
+  const leaves = graph.nodes.filter(x => x.kind === "domain" && /\/t\d+$/.test(x.id));
+  const areaOf = t => t.id.split("/")[1];
+  const centres = new Map(areas.map(a => {
+    const list = leaves.filter(t => areaOf(t) === a);
+    return [a, { y: list.reduce((s, t) => s + t.y, 0) / list.length, z: list.reduce((s, t) => s + t.z, 0) / list.length }];
+  }));
+  for (const t of leaves) {
+    const d = c => Math.hypot(t.y - c.y, t.z - c.z), own = d(centres.get(areaOf(t)));
+    for (const [a, c] of centres) if (a !== areaOf(t)) assert.ok(own < d(c), `${t.id} sits nearer ${a} than its own area`);
+  }
+});
+
+test("area keys strip the common domain prefix and take the next step", async () => {
+  const { areaKeys } = await source("../src/view-layout-spatial.ts");
+  assert.deepEqual(areaKeys(["vinc/design/tokens", "vinc/ai", "vinc", "vinc/design"]), ["design", "ai", "", "design"]);
+  assert.deepEqual(areaKeys(["vinc/design/a", "vinc/design/b/c"]), ["a", "b"]);
+  assert.deepEqual(areaKeys(["", "notes"]), ["", "notes"]);
+  assert.deepEqual(areaKeys([]), []);
 });

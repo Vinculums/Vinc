@@ -21,13 +21,7 @@ from . import query as q
 from . import preference as pref
 from . import activate as act
 from . import cli_output
-
-
-def _csv(val: str | None) -> list[str] | None:
-    """Parse a comma-separated CLI value into a list (None/'' -> None)."""
-    if not val:
-        return None
-    return [s.strip() for s in val.split(",") if s.strip()]
+from store.querybase import split_csv as _csv
 
 
 #: `--owner` 가 무슨 값인지 아무것도 알려 주지 않아서, 사람 이름·계정 이름을 넣어
@@ -61,6 +55,23 @@ class _UsageError(Exception):
 class _Parser(argparse.ArgumentParser):
     def error(self, message: str) -> None:
         raise _UsageError(message)
+
+
+def _write_role_export(result: dict, out_dir: str) -> dict:
+    """내보낸 파일을 DIR 아래에 쓴다. skill 은 `<이름>/SKILL.md` 로 써서 호스트의 스킬 폴더에 그대로 놓인다."""
+    import base64
+    from pathlib import Path
+    rel = Path(result.get("path") or result["filename"])
+    if rel.is_absolute() or ".." in rel.parts:
+        return {"kind": "role_export", "executed": False, "error": "invalid export path"}
+    target = Path(out_dir) / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    data = (base64.b64decode(result["content"]) if result.get("encoding") == "base64"
+            else str(result["content"]).encode("utf-8"))
+    target.write_bytes(data)
+    return {"kind": "role_export", "executed": True, "id": result.get("id"), "format": result.get("format"),
+            "written": str(target), "bytes": len(data), "content_hash": result.get("content_hash"),
+            "rev": result.get("rev"), "hash": result.get("hash")}
 
 
 def _error_format(argv: list[str]) -> str | None:
@@ -289,6 +300,12 @@ def _main(argv: list[str] | None = None) -> int:
     ml.add_argument("--data", required=True, help='database file path of an offline copy')
     ml.add_argument("--batch", type=int, default=200, help='text index backfill batch size')
 
+    mb = sub.add_parser("migrate-body-mentions",
+                        help='maintenance: add body span columns to mentions (opt-in schema change)')
+    mb.add_argument("--data", required=True, help='database file path')
+    mb.add_argument("--approve", action="store_true",
+                    help='confirm the schema change; without it nothing is written')
+
     # `python -m store.migrate rebuild` 가 여기로 옮겨졌다(VIN-242): 재구축의 재큐 정책은
     # api 층(`docstore.switch_embed_model`)의 것이라 store 가 그것을 import 할 수 없다.
     sr = sub.add_parser("store-rebuild",
@@ -312,7 +329,9 @@ def _main(argv: list[str] | None = None) -> int:
     dp.add_argument("--id", default=None, help='doc_id (omit on create: returned; pass to edit)')
     dp.add_argument("--title", default=None,
                     help="document title (omit to preserve an existing title; pass --title '' to clear)")
-    dp.add_argument("--origin", default="", help='source label for display; not an identity key')
+    dp.add_argument("--origin", default=None,
+                    help="source label for display; not an identity key "
+                         "(omit to preserve; pass --origin '' to clear)")
     dp.add_argument("--topic", default=None, help="authored topic path; omit to preserve")
     dp.add_argument("--valid-from", default=None, help="effective start YYYY[-MM[-DD]]; omit to preserve")
     dp.add_argument("--valid-until", default=None, help="effective end (half-open); empty string clears")
@@ -321,7 +340,8 @@ def _main(argv: list[str] | None = None) -> int:
     dp.add_argument("--create-only", action="store_true", default=None, help="refuse an existing document id")
     dp.add_argument("--operation-id", default=None, help="UUID for result lookup and identical retry")
     dp.add_argument("--file", default=None,
-                    help='read .md/.txt/.rst/.pdf; title and origin default to the filename')
+                    help="read .md/.txt/.rst/.pdf; on create (no --id, or --create-only) "
+                         "title and origin default to the filename, on edit they are kept")
     dp.add_argument("--data", default=None, help="data home (default: MEMORY_DATA_DIR or ~/.vinc/db)")
     dg = dsub.add_parser("get", help="reconstruct a document from its chunks (+hash verify)")
     dg.add_argument("--id", required=True)
@@ -359,6 +379,142 @@ def _main(argv: list[str] | None = None) -> int:
             child.add_argument("--depth", type=int, default=2)
             child.add_argument("--review-mirror", action="store_true",
                                help="include read-only provenance for one document mirror")
+    eg = sub.add_parser("edges", help="read directed incident edges with evidence")
+    eg.add_argument("id", nargs="?", default=None, help="exact node id or domain:<name>")
+    eg.add_argument("--nodes", nargs="+", default=None, metavar="ID",
+                    help="read 1..100 exact ids in one call instead of one node")
+    eg.add_argument("--type", default=None, help="relation label or authored subtype")
+    eg.add_argument("--dir", choices=("in", "out", "both"), default=None,
+                    help="edge direction relative to the node (default both)")
+    eg.add_argument("--limit", type=int, default=None, help="max edges returned (default 500)")
+    eg.add_argument("--owner", default=None)
+    rl = sub.add_parser("role", help="read a role contract or check an output against it")
+    rls = rl.add_subparsers(dest="rolecmd", required=True)
+    rlg = rls.add_parser("get", help="read one role contract")
+    rlg.add_argument("id", help="role slug (agent-maker) or exact concept:agent- id")
+    rlg.add_argument("--compact", action="store_true", default=None,
+                     help="leave relation evidence sentences out (for a role over the read limit)")
+    rlg.add_argument("--owner", default=None)
+    rle = rls.add_parser("export", help="export one role as a file for an agent host")
+    rle.add_argument("id", help="role slug (agent-maker) or exact concept:agent- id")
+    rle.add_argument("--format", default="skill",
+                     choices=("skill", "claude", "gpt", "agents-md", "vincpack", "mcp"),
+                     help="skill (SKILL.md), claude, gpt, agents-md, vincpack or mcp (default skill)")
+    rle.add_argument("--out", default=None, metavar="DIR",
+                     help="write the file into DIR instead of printing the result")
+    rle.add_argument("--owner", default=None)
+    rlc = rls.add_parser("check", help="check one final output against the role's structured checks")
+    rlc.add_argument("id", help="role slug (agent-maker) or exact concept:agent- id")
+    rlc.add_argument("--output", required=True, metavar="FILE",
+                     help="file holding the complete output, or - for stdin")
+    rlc.add_argument("--person-only-requests", default=None, metavar="JSON",
+                     help='JSON array of {"action": ..., "reason": ...} requests for a person')
+    rlc.add_argument("--self-authored", action="store_true", default=None,
+                     help="the output is a diff this role wrote; removed lines are not proposals")
+    rlc.add_argument("--owner", default=None)
+    gt = sub.add_parser("gate", help="list recorded decisions that govern the files a change touches")
+    gts = gt.add_subparsers(dest="gatecmd", required=True)
+    gtc = gts.add_parser("check", help="decision gate over a diff or a list of paths (no model)")
+    gtc.add_argument("--diff", default=None, metavar="REF",
+                     help="read touched files with git diff --name-only REF...HEAD")
+    gtc.add_argument("--paths", nargs="+", default=None, metavar="PATH",
+                     help="touched files as repo:path or path, instead of --diff")
+    gtc.add_argument("--repo", default=None,
+                     help="repository for paths without one (default: the origin remote's name)")
+    gtc.add_argument("--member-limit", type=int, default=None, dest="member_limit",
+                     help="most items listed per path (default 50)")
+    gtc.add_argument("--summary", default=None, metavar="FILE",
+                     help="append a Markdown summary to FILE (for example $GITHUB_STEP_SUMMARY)")
+    gtc.add_argument("--trace", default=None, metavar="FILE",
+                     help="write the full result to FILE; a run record cites it by hash")
+    gtc.add_argument("--run-id", default=None, dest="run_id",
+                     help="record this verdict as one run of concept:agent-decision-gate "
+                          "(account target with a write key only)")
+    gtc.add_argument("--task-ref", default=None, dest="task_ref",
+                     help="what the run checked, for the run record (for example a PR URL)")
+    gtc.add_argument("--host", default=None, help="where the run ran, for the run record")
+    gtc.add_argument("--owner", default=None)
+    ev = sub.add_parser("events", help="read change events for roles, for hosts without MCP events")
+    evs = ev.add_subparsers(dest="eventscmd", required=True)
+    evt = evs.add_parser("tail", help="print one JSON line per event as changes arrive")
+    evt.add_argument("--since", default=None, metavar="CURSOR",
+                     help="cursor to resume from, or 0 for the beginning (default: from now)")
+    evt.add_argument("--role", default=None, help="only events for this role (slug or concept:agent- id)")
+    evt.add_argument("--kind", action="append", default=None, dest="kind",
+                     choices=("role.reading_changed", "run.citation_superseded", "role.lesson_added",
+                              "run.answered"),
+                     help="only this event name; repeat for more")
+    evt.add_argument("--limit", type=int, default=None, help="changed rows read per page (1..500)")
+    evt.add_argument("--interval", type=float, default=30.0,
+                     help="seconds between polls when nothing is pending (default 30, at least 5)")
+    evt.add_argument("--once", action="store_true",
+                     help="read one page, print it as one result and exit")
+    evt.add_argument("--cursor-file", default=None, metavar="FILE",
+                     help="start from the cursor in this file and write each new cursor to it")
+    evt.add_argument("--forward", default=None, metavar="URL",
+                     help="POST each event as JSON to this https URL (a Grok Bot routine webhook, "
+                          "for example); the bearer token is read from VINC_FORWARD_TOKEN")
+    evt.add_argument("--owner", default=None)
+    rn = sub.add_parser("run", help="run an Agent role step by step, or list recorded runs")
+    rns = rn.add_subparsers(dest="runcmd", required=True)
+    rnl = rns.add_parser("ls", help="list runs, newest first; --cited keeps the ones that cited a claim")
+    rnl.add_argument("--cited", default=None, metavar="ID",
+                     help="graph id with its type prefix (record:, decision: or doc:); the result "
+                          "says whether that claim was retired")
+    rnl.add_argument("--role", default=None, help="only runs of this role (slug or concept:agent- id)")
+    rnl.add_argument("--limit", type=int, default=None, help="most runs to list (1..200)")
+    rnl.add_argument("--owner", default=None)
+    rns_start = rns.add_parser("start", help="open a run of a role; prints the first step")
+    rns_start.add_argument("role", help="agent slug or concept:agent- id")
+    rns_start.add_argument("--task", required=True, help="what this run is for")
+    rns_start.add_argument("--subject", default=None, help="what it works on, such as a PR URL")
+    rns_start.add_argument("--run-id", default=None, dest="run_id",
+                           help="your own id; a retry with the same id returns the same run")
+    rns_start.add_argument("--host", default=None,
+                           help="the agent host that runs the role, with its version")
+    rns_start.add_argument("--owner", default=None)
+    rns_sub = rns.add_parser("submit", help="submit one step: output, an answer, or abandon")
+    rns_sub.add_argument("run", help="the run id `vinc run start` printed")
+    rns_sub.add_argument("--output", default=None, metavar="FILE",
+                         help="the step's output; - reads stdin")
+    rns_sub.add_argument("--answer", default=None, choices=("approve", "decline"),
+                         help="answer the question of a waiting run")
+    rns_sub.add_argument("--abandon", action="store_true", help="end the run as abandoned")
+    rns_sub.add_argument("--person-only-requests", default=None, metavar="JSON",
+                         dest="person_only_requests",
+                         help='JSON array of {"action","reason"} you are about to take')
+    rns_sub.add_argument("--cited", action="append", default=None, dest="cited",
+                         metavar="ID", help="a graph id the output rests on; repeat for more")
+    rns_sub.add_argument("--usage", default=None, metavar="JSON",
+                         help='JSON like {"tool_calls":3,"tokens_in":900,"cost_usd":0.02}')
+    rns_sub.add_argument("--owner", default=None)
+    rns_show = rns.add_parser("show", help="print one run with its state and question")
+    rns_show.add_argument("run", help="episode id or the run id")
+    rns_show.add_argument("--owner", default=None)
+    evc = sub.add_parser("eval", help="read the evaluation cards of an Agent role")
+    evcs = evc.add_subparsers(dest="evalcmd", required=True)
+    evcc = evcs.add_parser("cards", help="print a role's evaluation cards, newest first")
+    evcc.add_argument("role", help="agent slug or concept:agent- id")
+    evcc.add_argument("--limit", type=int, default=None, help="most cards to list (1..100)")
+    evcc.add_argument("--owner", default=None)
+    sh = sub.add_parser("shim", help="list harness shims or draft the retirement of ones that stopped firing")
+    shs = sh.add_subparsers(dest="shimcmd", required=True)
+    shl = shs.add_parser("ls", help="list current shims with their mechanism and reason")
+    shl.add_argument("--role", default=None, help="one role slug or concept:agent- id (default every role)")
+    shl.add_argument("--model-family", dest="model_family", default=None,
+                     help="keep only shims that apply to this model family")
+    shw = shs.add_parser("watch", help="draft retirement decisions for shims with no firings in a window")
+    shw.add_argument("--window-days", dest="window_days", type=int, required=True,
+                     help="read runs from this many days back")
+    shw.add_argument("--min-runs", dest="min_runs", type=int, required=True,
+                     help="runs needed on every model family before a shim is proposed")
+    shw.add_argument("--families", default=None,
+                     help="comma separated model families in use (default the families in the window)")
+    shw.add_argument("--write", action="store_true",
+                     help="write the drafts (needs a full-access key); without it nothing is written")
+    for child in (shl, shw):
+        child.add_argument("--today", default=None, help="evaluate on this day, YYYY-MM-DD (default today, UTC)")
+        child.add_argument("--owner", default=None)
     pa = sub.add_parser("path", help="find a graph path")
     pa.add_argument("a")
     pa.add_argument("b")
@@ -493,8 +649,7 @@ def _main(argv: list[str] | None = None) -> int:
                        ("uninstall", "remove this server from a local MCP host")):
         mx = msub.add_parser(name, help=hint)
         mx.add_argument("--client", choices=list(_MCP_CLIENTS), required=True)
-        # --desktop-config 는 구 이름(하위호환) — 같은 dest 로 받는다.
-        mx.add_argument("--config-path", "--desktop-config", dest="config_path",
+        mx.add_argument("--config-path", dest="config_path",
                         default=None,
                         help="override the host config path (tests/portable installs)")
     msub.add_parser("repair",
@@ -505,7 +660,8 @@ def _main(argv: list[str] | None = None) -> int:
     _add_output_options(ap, root=True)
     args = ap.parse_args(argv)
     command = args.cmd
-    for name in ("doccmd", "gmcmd", "mcpcmd", "nodecmd", "edgecmd", "mergecmd", "refscmd"):
+    for name in ("doccmd", "gmcmd", "mcpcmd", "nodecmd", "edgecmd", "mergecmd", "refscmd", "rolecmd",
+                 "gatecmd", "shimcmd"):
         if getattr(args, name, None):
             command += " " + getattr(args, name)
     cli_output.configure(args.console_format, command)
@@ -554,7 +710,7 @@ def _main(argv: list[str] | None = None) -> int:
                     manifest=manifest, root=roots[0],
                     scan=lambda: refs.scan_roots(roots),
                     fetch=lambda: refs.fetch_docs(call=account_call),
-                    verify=lambda ids: refs.verify_nodes(ids, call=account_call))
+                    verify=lambda ids, **kw: refs.verify_nodes(ids, call=account_call, **kw))
             if cli_output.chosen_format() == "human" and status == 0:
                 sys.stderr.write(progress.getvalue())
             elif diagnostics.enabled():
@@ -587,7 +743,25 @@ def _main(argv: list[str] | None = None) -> int:
         if target == "local" and args.space and args.space.strip().lower() != "personal":
             return cli_output.usage_error("--space requires --target account")
         space = cli_target.resolve_space(args.space) if target == "account" else "personal"
-        if target == "account":
+        if args.cmd == "events":
+            from .cli_events import tail
+
+            def _call():
+                if target == "account":
+                    from .cli_account import run as run_account
+                    return run_account(args, space=space)
+                from .cli_tools import run as run_local
+                return run_local(args)
+            return tail(args, _call, _emit)
+        if args.cmd == "gate":
+            # 결정 문은 경로를 나눠 보내고 합친다. 한 도구 호출로 끝나는 동사와 길이 다르다.
+            from .cli_gate import run as run_gate
+            result, exit_code = run_gate(args, target=target, space=space)
+        elif args.cmd == "shim":
+            # 도구 하나로 끝나지 않는 동사라 여러 도구를 같은 대상에 잇는다.
+            from .cli_shims import run as run_shim
+            result, exit_code = run_shim(args, target=target, space=space)
+        elif target == "account":
             from .cli_account import run as run_tool
             result, exit_code = run_tool(args, space=space)
         else:
@@ -595,10 +769,16 @@ def _main(argv: list[str] | None = None) -> int:
             result, exit_code = run_tool(args)
         if result is None:
             return exit_code or 2
-        if (args.cmd == "node" and args.nodecmd == "get"
+        if (args.cmd == "role" and args.rolecmd == "export" and getattr(args, "out", None)
+                and isinstance(result, dict) and result.get("executed") and result.get("content") is not None):
+            result = _write_role_export(result, args.out)
+        exact = ("Node" if args.cmd == "node" and args.nodecmd == "get" else
+                 "Node" if args.cmd == "edges" and args.id is not None else
+                 "Role" if args.cmd == "role" else None)
+        if (exact and isinstance(result, dict)
                 and result.get("executed") is not False and result.get("found") is False):
             result = {**result, "error": {"code": "not_found",
-                                         "message": f"Node not found: {args.id}"}}
+                                         "message": f"{exact} not found: {args.id}"}}
         if args.cmd == "whoami" and isinstance(result, dict) and not result.get("error"):
             from .remote_client import api_key
             key = api_key() or ""
@@ -753,6 +933,23 @@ def _main(argv: list[str] | None = None) -> int:
         print(json.dumps(out, ensure_ascii=False), flush=True)
         ok = out["lex_ready"] and out["vectors_before"] == out["vectors_after"]             and out["chunks_without_lex"] == 0
         return 0 if ok else 3
+    if args.cmd == "migrate-body-mentions":
+        # 본문 스팬 열은 자동 provision 에 넣지 않는 opt-in DDL 이다. 승인은 함수가
+        # 판정한다(`--approve` 없으면 ValueError → 쓰지 않고 사용 오류).
+        from store import embedded_schema
+        from store.backend import open_store
+        from store.config import load_config
+        store = open_store(load_config({"data_dir": args.data}))
+        if store is None:
+            return _emit({"kind": "migrate-body-mentions", "executed": False,
+                          "error": "no reachable store"})
+        try:
+            out = embedded_schema.migrate_body_mentions(store, approved=args.approve)
+        except ValueError as exc:
+            return cli_output.usage_error(str(exc))
+        finally:
+            store.close()
+        return _emit({"kind": "migrate-body-mentions", **out})
     if args.cmd == "store-rebuild":
         from store import migrate
         from store.backend import open_store
@@ -929,94 +1126,23 @@ def _main(argv: list[str] | None = None) -> int:
                                     or keychain.read(keychain.MCP_KEY) or "")
         from vinc_mcp.bridge import Bridge
         bridge = Bridge(base=args.base, token=args.token, owner=args.owner)
-        bridge.ensure(spawn=not args.no_spawn)
+        # 붙잡기 모드(허브 인계): 사이드카보다 먼저 떠서 포트를 연다. 사이드카 확보는 조립 때 한다.
+        from store.envflag import truthy
+        held = args.mcpcmd == "serve-http" and truthy(os.environ.get("VINC_MCP_HOLD"))
+        if not held:
+            bridge.ensure(spawn=not args.no_spawn)
         if args.mcpcmd == "serve":
             from vinc_mcp.stdio import serve as serve_stdio
             return serve_stdio(bridge)
         if args.mcpcmd == "serve-http":
-            from vinc_mcp.http_server import serve_http
-            from vinc_mcp.oauth import OAuthGate
-            static = args.auth_token or os.environ.get("VINC_MCP_TOKEN") or None
-            gate = None
-            if args.oauth:
-                from vinc_mcp.store import Store, resolve_state_dir
-                issuer = args.issuer or f"http://{args.host}:{args.port}"
-                # 상태는 디스크 SQLite 로 영속(재기동에도 커넥터 유지). 작업본은
-                # **로컬이어야 하고**(SMB 위 SQLite 는 `database is locked`), 영속은
-                # VINC_MCP_STATE_SNAPSHOT 파일 복사다.
-                # ⚠ **fail-soft** — 못 열면 인메모리로 강등해 살아서 답한다(재시작 시
-                # 재인가). 죽이면 허브 전체가 404 다:
-                # [[record:mcp-state-store-is-fail-soft-and-must-be-local]].
-                try:
-                    store = Store(os.path.join(resolve_state_dir(), "oauth.db"))
-                except Exception as exc:   # noqa: BLE001 — 강등이 요점
-                    print(f"[mcp] 상태 저장소를 열지 못했다 — 인메모리로 강등한다: "
-                          f"{type(exc).__name__}: {exc}", file=sys.stderr)
-                    print("[mcp] 재시작하면 커넥터 재인가가 필요하다. "
-                          "경로가 네트워크 마운트가 아닌지 확인할 것.", file=sys.stderr)
-                    store = Store(":memory:", snapshot=None)
-                st = store.health()
-                print(f"[mcp] oauth state: {st['path']} · journal={st['journal_mode']} "
-                      f"· snapshot={st['snapshot'] or '(none)'} [{st['snapshot_state']}]"
-                      + (f" — {st['snapshot_error']}" if st.get("snapshot_error") else ""),
-                      file=sys.stderr)
-                # 관리 키는 서버 env 로만(D36 — 번들·레포 반입 금지).
-                gate = OAuthGate(issuer, os.environ.get("VINC_OAUTH_ADMIN_KEY"), store=store)
-            # 회원 API 키(vinc_sk_*) 검증(B-B1) — VINC_MCP_ED25519_SEED 설정 시 활성.
-            from vinc_mcp import entitlement
-            vk = entitlement.verify_key if entitlement.enabled() else None
-            # OAuth 커넥터의 팀 주소 접근(#120). 같은 어서션 시드를 쓰므로 활성 조건도
-            # 같다 — 키 검증이 되는 배포면 이것도 된다. 꺼지면 팀 주소의 OAuth 만
-            # 닫히고(404) 키 경로와 개인 OAuth 는 그대로다.
-            vm = entitlement.verify_member if entitlement.enabled() else None
-            from vinc_mcp import community
-            vc = community.resolve if entitlement.enabled() else None
-            cw = community.write if entitlement.enabled() else None
-            cr = community.read if entitlement.enabled() else None
-            # 티어 쿼터(B-D2) — 인증된 회원(owner) 의 tools/call 만 소비. 미설정 시
-            # 무제한(로컬·파일럿 프로파일 무영향). free 초과 → LOCK_HOURS 잠금.
-            quota_cfg = None
-            if os.environ.get("VINC_QUOTA") == "on":
-                quota_cfg = {
-                    # 등급이 Free·Team 둘뿐이 되면서(2026-09-19) 차별축이 다시
-                    # **호출 횟수**로 돌아왔다: Free 2,000 · Team 6,000. 주제 개수는
-                    # 더 이상 축이 아니다(아래 주석 참조). 기본값을 정책값으로 둬야
-                    # env 를 빠뜨렸을 때 구 정책이 조용히 살아나지 않는다.
-                    # 근거: [[decision:the-plans-are-free-and-team-and-the-axis-is-the-call-limit]]
-                    "free_limit": int(os.environ.get("VINC_FREE_DAILY_LIMIT", "2000")),
-                    "team_limit": int(os.environ.get("VINC_TEAM_DAILY_LIMIT", "6000")),
-                    "window_s": float(os.environ.get("VINC_QUOTA_WINDOW_HOURS", "24")) * 3600,
-                    "lock_s": float(os.environ.get("VINC_QUOTA_LOCK_HOURS", "12")) * 3600,
-                    # 면제 owner(쉼표 구분, `user:<public_id>`): 도그푸딩 계정처럼 그래프를
-                    # 대량으로 재는 계정이 하루 한도에 스스로 막히지 않게 한다. 면제는
-                    # quota_check 를 통째로 건너뛰므로 이미 걸린 잠금도 보지 않는다.
-                    # 값은 hub-deploy 가 리포 변수 VINC_QUOTA_EXEMPT_OWNERS 에서 싣는다.
-                    "exempt_owners": frozenset(
-                        o.strip() for o in
-                        os.environ.get("VINC_QUOTA_EXEMPT_OWNERS", "").split(",") if o.strip()),
-                }
-            # 무료 등급 주제 상한은 **없다**(2026-09-19). Pro 를 없애면서 개인이
-            # 주제를 더 쓸 길이 사라졌으므로 상한을 함께 걷었다 — 유일한 개인 유료
-            # 등급이 없는데 개인을 5개에 가두면 올라갈 자리가 없다.
-            # `free_max_domains` 배선과 `api/fragment.py` 의 `max_domains` 가드는
-            # 남겨 둔다(일반 장치이고 기본 None = 무제한이다). 정책이 여기서 끝난다:
-            # env 로 되살릴 수 없고, 되살리려면 이 줄을 고쳐야 한다.
-            # 근거: [[decision:the-plans-are-free-and-team-and-the-axis-is-the-call-limit]]
-            free_cap = None
-            # 회원 승인 흐름(B-B3) — 우리 서명키 + 계정 공개키 핀 + 공홈 동의 URL.
-            # 셋 다 있어야 활성(없으면 관리 키 경로만). 공개키만 교환 → B2 준수.
-            from vinc_mcp import edverify as _ev
-            seed_raw = os.environ.get("VINC_MCP_ED25519_SEED")
-            acct_raw = os.environ.get("VINC_ACCOUNT_PUBLIC_KEY")
-            return serve_http(
-                bridge, host=args.host, port=args.port,
-                static_token=static, oauth=gate, verify_key=vk, verify_member=vm,
-                verify_community=vc, community_write=cw, community_read=cr,
-                quota_config=quota_cfg,
-                mcp_seed=_ev.load_seed(seed_raw) if seed_raw else None,
-                account_public=_ev.load_public(acct_raw) if acct_raw else None,
-                connect_url=os.environ.get("VINC_CONNECT_URL") or "https://vincs.io/connect",
-                free_max_domains=free_cap)
+            from vinc_mcp.http_server import serve_http, serve_http_held
+            if held:
+                # 포트를 먼저 열고 요청을 붙잡는다. 앱은 사이드카가 뜬 뒤에 조립한다.
+                def _build():
+                    bridge.ensure(spawn=False, wait=5.0)
+                    return _serve_http_kwargs(args)
+                return serve_http_held(bridge, _build, host=args.host, port=args.port)
+            return serve_http(bridge, host=args.host, port=args.port, **_serve_http_kwargs(args))
         return 2
     if args.cmd == "onboard":
         from . import auth
@@ -1063,6 +1189,95 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         diagnostics.configure(False)
         emit_open_failure.reset(diagnostic_token)
+
+
+
+def _serve_http_kwargs(args) -> dict:
+    """`mcp serve-http` 의 앱 조립(OAuth 상태 복원·키 검증·할당량). 붙잡기 모드에서는
+    사이드카가 준비된 **뒤에** 부른다 — OAuth 상태를 이 시점에 복원해야 구 리비전이 마지막으로
+    쓴 상태를 받는다."""
+    from vinc_mcp.oauth import OAuthGate
+    static = args.auth_token or os.environ.get("VINC_MCP_TOKEN") or None
+    gate = None
+    if args.oauth:
+        from vinc_mcp.store import Store, resolve_state_dir
+        issuer = args.issuer or f"http://{args.host}:{args.port}"
+        # 상태는 디스크 SQLite 로 영속(재기동에도 커넥터 유지). 작업본은
+        # **로컬이어야 하고**(SMB 위 SQLite 는 `database is locked`), 영속은
+        # VINC_MCP_STATE_SNAPSHOT 파일 복사다.
+        # ⚠ **fail-soft** — 못 열면 인메모리로 강등해 살아서 답한다(재시작 시
+        # 재인가). 죽이면 허브 전체가 404 다:
+        # [[record:mcp-state-store-is-fail-soft-and-must-be-local]].
+        try:
+            store = Store(os.path.join(resolve_state_dir(), "oauth.db"))
+        except Exception as exc:   # noqa: BLE001 — 강등이 요점
+            print(f"[mcp] 상태 저장소를 열지 못했다 — 인메모리로 강등한다: "
+                  f"{type(exc).__name__}: {exc}", file=sys.stderr)
+            print("[mcp] 재시작하면 커넥터 재인가가 필요하다. "
+                  "경로가 네트워크 마운트가 아닌지 확인할 것.", file=sys.stderr)
+            store = Store(":memory:", snapshot=None)
+        st = store.health()
+        print(f"[mcp] oauth state: {st['path']} · journal={st['journal_mode']} "
+              f"· snapshot={st['snapshot'] or '(none)'} [{st['snapshot_state']}]"
+              + (f" — {st['snapshot_error']}" if st.get("snapshot_error") else ""),
+              file=sys.stderr)
+        # 관리 키는 서버 env 로만(D36 — 번들·레포 반입 금지).
+        gate = OAuthGate(issuer, os.environ.get("VINC_OAUTH_ADMIN_KEY"), store=store)
+    # 회원 API 키(vinc_sk_*) 검증(B-B1) — VINC_MCP_ED25519_SEED 설정 시 활성.
+    from vinc_mcp import entitlement
+    vk = entitlement.verify_key if entitlement.enabled() else None
+    # OAuth 커넥터의 팀 주소 접근(#120). 같은 어서션 시드를 쓰므로 활성 조건도
+    # 같다 — 키 검증이 되는 배포면 이것도 된다. 꺼지면 팀 주소의 OAuth 만
+    # 닫히고(404) 키 경로와 개인 OAuth 는 그대로다.
+    vm = entitlement.verify_member if entitlement.enabled() else None
+    from vinc_mcp import community
+    vc = community.resolve if entitlement.enabled() else None
+    cw = community.write if entitlement.enabled() else None
+    cr = community.read if entitlement.enabled() else None
+    # 티어 쿼터(B-D2) — 인증된 회원(owner) 의 tools/call 만 소비. 미설정 시
+    # 무제한(로컬·파일럿 프로파일 무영향).
+    quota_cfg = None
+    if os.environ.get("VINC_QUOTA") == "on":
+        quota_cfg = {
+            # Curious(free) 만 센다: 스페이스당 하루 이만큼, 00:00 UTC 리셋, 잠금 없음.
+            # Genius 는 세지 않는다. 창 길이와 잠금은 정책이라 env 로 열지 않는다.
+            # 비준된 값 300 이다. 허브는 이 env 를 싣지 않으므로 이 기본값이 곧 운영
+            # 한도다. 사이트(요금·약관·계정 화면)가 300 을 말하고 있어 같은 값으로 맞췄다.
+            # 근거: [[vinc.canon.account-policy §8]]
+            "free_limit": int(os.environ.get("VINC_FREE_DAILY_LIMIT", "300")),
+            # 스페이스당 분당 상한. 모든 플랜에 같고(유료가 더 빠르다고 하지 않는다)
+            # 0 이면 끈다. 값은 hub-deploy 가 리포 변수 VINC_BURST_PER_MINUTE 에서
+            # 싣고, 비어 있으면 60 이다.
+            # 근거: [[vinc.plan.plans-and-limits-redesign-2026-10-17 §2.5]]
+            "burst_per_minute": int(os.environ.get("VINC_BURST_PER_MINUTE", "60")),
+            # 면제 owner(쉼표 구분, `user:<public_id>`): 도그푸딩 계정처럼 그래프를
+            # 대량으로 재는 계정이 하루 한도에 스스로 막히지 않게 한다. 면제는
+            # quota_check 를 통째로 건너뛰므로 이미 걸린 잠금도 보지 않는다.
+            # 값은 hub-deploy 가 리포 변수 VINC_QUOTA_EXEMPT_OWNERS 에서 싣는다.
+            "exempt_owners": frozenset(
+                o.strip() for o in
+                os.environ.get("VINC_QUOTA_EXEMPT_OWNERS", "").split(",") if o.strip()),
+        }
+    # 무료 등급 주제 상한은 **없다**. Curious 의 경계는 하루 호출 수와 스페이스
+    # 수이지 주제 수가 아니다.
+    # `free_max_domains` 배선과 `api/fragment.py` 의 `max_domains` 가드는
+    # 남겨 둔다(일반 장치이고 기본 None = 무제한이다). 정책이 여기서 끝난다:
+    # env 로 되살릴 수 없고, 되살리려면 이 줄을 고쳐야 한다.
+    # 근거: [[decision:the-plans-are-curious-genius-and-enterprise-2026-10-17]]
+    free_cap = None
+    # 회원 승인 흐름(B-B3) — 우리 서명키 + 계정 공개키 핀 + 공홈 동의 URL.
+    # 셋 다 있어야 활성(없으면 관리 키 경로만). 공개키만 교환 → B2 준수.
+    from vinc_mcp import edverify as _ev
+    seed_raw = os.environ.get("VINC_MCP_ED25519_SEED")
+    acct_raw = os.environ.get("VINC_ACCOUNT_PUBLIC_KEY")
+    return dict(
+        static_token=static, oauth=gate, verify_key=vk, verify_member=vm,
+        verify_community=vc, community_write=cw, community_read=cr,
+        quota_config=quota_cfg,
+        mcp_seed=_ev.load_seed(seed_raw) if seed_raw else None,
+        account_public=_ev.load_public(acct_raw) if acct_raw else None,
+        connect_url=os.environ.get("VINC_CONNECT_URL") or "https://vincs.io/connect",
+        free_max_domains=free_cap)
 
 
 if __name__ == "__main__":

@@ -166,7 +166,7 @@ class HubRoutingTests(unittest.TestCase):
         self.assertEqual(self.bridge.owners(), [f"team:{TEAM}"])
 
 
-class DesktopConnectorTests(unittest.TestCase):
+class LocalProfileTests(unittest.TestCase):
     def setUp(self):
         self.bridge = _RecordingBridge()
 
@@ -175,7 +175,7 @@ class DesktopConnectorTests(unittest.TestCase):
             tools.call("vinc_graph",
                        {"url": f"https://vincs.io/app/?space={TEAM}#view/trace/concept:x"},
                        self.bridge)
-        self.assertIn("target:'remote'", str(cm.exception))
+        self.assertIn("local mode", str(cm.exception))
         self.assertEqual(self.bridge.calls, [])
 
     def test_local_주소와_구_주소는_로컬에서_읽는다(self):

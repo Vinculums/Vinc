@@ -1,9 +1,10 @@
 /** Shared surface chrome — Figma first-draft visual grammar (nodes 5:2/5:71/
  *  6:57/7:2/7:78) carried over with approved deltas (D18 English copy). */
-import { icon, stateDot } from "./icons";
+import { stateDot } from "./icons";
 import { COPY } from "./copy";
 import { temporalEntries } from "./search-temporal";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
+import { loaderTrack } from "./vinc-loaders.js";
 
 /** ── 바깥 클릭으로 닫기 ────────────────────────────────────────────────────
  *
@@ -88,15 +89,19 @@ export type SheetHandle = {
   readonly closed?: boolean;
 };
 
-/** HTML 이스케이프 한 벌. 여태 이 네 글자짜리 함수가 세 벌 복제돼 있었고, 복제는
- *  **빠뜨리기 좋은 형태**다 — 그래프 유래 문자열이 esc 없이 innerHTML 로 가는 자리가
- *  다섯 곳 있었다(감사 2026-08-18 M9). 한 벌이면 빠뜨린 자리를 찾을 때 여기서 시작한다.
+/** HTML 이스케이프 한 벌. 앱 전체가 이것을 import 한다(예외는 `renderMarkdown` 안의
+ *  지역 사본 하나 — 테스트가 그 자리를 요구한다). 복제는 **빠뜨리기 좋은 형태**다 —
+ *  그래프 유래 문자열이 esc 없이 innerHTML 로 가는 자리가 다섯 곳 있었다(감사
+ *  2026-08-18 M9). 한 벌이면 빠뜨린 자리를 찾을 때 여기서 시작한다.
+ *
+ *  아무 값이나 받는다. `null`·`undefined` 는 빈 문자열이 된다("undefined" 가 화면에
+ *  새지 않는다).
  *
  *  ⚠ `"` 까지 escape 하므로 **속성값에도 그대로 쓸 수 있다.** 실제로 뚫려 있던 것 중
  *  하나가 `data-tip="${...}"` 속성 탈출이었다. `'` 는 escape 하지 않으니 속성은 반드시
  *  큰따옴표로 감쌀 것.
  *  근거: [[decision:escape-once-at-the-boundary]] */
-export const esc = (s: string): string => String(s).replace(/[&<>"]/g, (c) =>
+export const esc = (s: unknown): string => String(s ?? "").replace(/[&<>"]/g, (c) =>
   c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
 export function openSheet(opts: {
@@ -187,7 +192,7 @@ export function openSheet(opts: {
 
 /**
  * 진행 표시 — **공유·백업 동선의 기다림은 이 한 벌**을 쓴다. 다섯 자리다:
- * 시트 셋(팩 준비 · 파일로 받기 · 커뮤니티 게시)과 Tools 둘(공유 탭 진입 · 전체
+ * 시트 셋(팩 준비 · 파일로 받기 · 커뮤니티 공유로 넘기기)과 Tools 둘(공유 탭 진입 · 전체
  * 백업). 전에는 자리마다 `<p class="hint">` 한 줄이라, 같은 동선에서 같은 일을
  * 기다리는데 모양이 자리마다 달랐다. **스페이스로 보내기는 여기서 빠졌다** — 조각
  * 단위로 가서 셀 단계가 생겼으므로 확정 막대 셋을 쓴다(`sheets.ts` `mountGauges`).
@@ -211,7 +216,7 @@ export function openSheet(opts: {
  *      `api.domains`(공유 탭 진입)이 지난다. `fetch` 하나와 `res.json()` 하나뿐이라
  *      중간 보고가 물리적으로 없다. (`api.importPack` 도 이것을 지나지만 조각마다
  *      한 번씩이라 조각 수만큼 보고가 생긴다 — 그래서 위의 확정 막대로 갔다.)
- *   2. `communityPost()`(`api.ts:465`) — `community.publish` 는 `call()` 을 **안
+ *   2. `publishToCommunity` 의 목적지 조회(`sheets.ts`) — `call()` 을 **안
  *      지난다**. 별개의 `fetch` 다. 다른 함수지만 역시 요청 하나 · 응답 하나다.
  *   3. `teamsApi.list()`(`api.ts:490`) — 이것도 자기 `fetch` 를 따로 연다. 공유 탭
  *      진입은 이것과 1번의 `api.domains` **둘**을 이어 기다리므로 셀 수 있는 단계가
@@ -234,9 +239,9 @@ export function openSheet(opts: {
  *
  * **`role="status"` 는 이 마크업에 없다.** 라이브 영역은 내용이 바뀌기 **전에** DOM 에
  * 서 있어야 읽히는데 이것은 내용과 함께 삽입되므로, 자기 자신에 달면 아무것도 알리지
- * 못한다. 붙일 상주 자리가 있는 곳에만 붙인다 — 커뮤니티 게시(`#pub-progress` 가 폼과
- * 함께 먼저 선다)와 전체 백업(`#tl-backup-msg` 가 공유 탭과 함께 먼저 선다) 둘이다.
- * 나머지 넷은 담는 자리를 통째로 갈아치우므로 **알리는 것이 없다.** 상주 자리를
+ * 못한다. 붙일 상주 자리가 있는 곳에만 붙인다 — 전체 백업(`#tl-backup-msg` 가 공유
+ * 탭과 함께 먼저 선다) 하나다. 나머지는 담는 자리를 통째로 갈아치우므로 **알리는 것이
+ * 없다.** 상주 자리를
  * 만들려면 `openSheet` 를 고쳐야 하는데(시트 20 곳 공용) 그쪽엔 더 앞선 결함이 있다 —
  * 시트를 열 때 초점을 시트 안으로 옮기지 않는다. 초점이 뒤의 버튼에 남아 있는 채로
  * 알림만 먼저 다는 것은 순서가 거꾸로다.
@@ -245,29 +250,13 @@ export function openSheet(opts: {
  * `aria-label` 에 같은 문구를 한 벌 더 실어 두 번 읽혔다. `aria-valuenow` 는 없다.
  * 그것이 불확정의 정의다.
  *
- * 옮겨 온 것은 **모양**이다(4px · radius 2px · `--muted` 트랙 위 `--primary` 채움).
- * 움직임은 지도의 `.view-busy` 에서 가져왔다 — 앱 안에서 "바쁨"이 두 가지 모양으로
- * 읽히지 않게. 색·간격은 토큰에서만 온다(하드코딩 색은 표면 게이트가 막는다).
- *
- * ⚠ **id 는 호출마다 새로 만든다.** 전에는 고정이었고 "두 벌이 동시에 설 수 없다"고
- * 적어 두었는데 거짓이었다 — `openSheet` 의 `close()` 는 퇴장 애니메이션을 **기다린
- * 뒤에** 시트를 지우므로(위 `close`), 닫히는 중인 시트가 아직 DOM 에 있는 채로 다음
- * 시트가 선다. 실제 경로가 있다: 전체 백업이 도는 동안 `공유 시작`을 누르면
- * `sheet.close()` 직후 `openShareSheet` 가 곧바로 자기 막대를 세운다. 그러면 id 가
- * 겹치고 `aria-labelledby` 는 **문서 순서상 앞의 것**, 즉 사라지는 중인 시트의 라벨을
- * 가리킨다. 겹침을 막는 것보다 이름을 안 겹치게 하는 쪽이 짧다. */
-let progressSeq = 0;
+ * 모양은 로딩 모션의 track 이다(scripts/design/assets/motion, 근거 [[vinc.design.loading-motions]]).
+ * 개수를 모르니 머리가 선 위를 왕복한다. 라벨 id 는 그 모듈이 호출마다 새로 만든다 —
+ * 닫히는 중인 시트와 새 시트가 잠깐 함께 DOM 에 서므로 id 가 겹치면 안 된다. */
 
 export function sheetProgress(label: string): string {
-  const id = `sheet-progress-label-${++progressSeq}`;
-  return `
-    <div class="sheet-progress">
-      <p class="hint" id="${id}">${esc(label)}</p>
-      <div class="sheet-progress-track" role="progressbar"
-           aria-labelledby="${id}">
-        <span></span>
-      </div>
-    </div>`;
+  // 개수를 모르는 동안의 진행(로딩 모션 track, 머리가 왕복한다). 라벨은 track 이 같이 그린다.
+  return `<div class="sheet-progress">${loaderTrack(label)}</div>`;
 }
 
 /** 시트 발의 액션 행 — 주 액션은 언제나 오른쪽 끝. 순서가 시트마다 다르면
@@ -289,7 +278,7 @@ export function sheetActions(primary: { id: string; label: string; danger?: bool
  *
  *  시트도 패널도 아닌 **세 번째 층**이다: 딤 없음, 포인터 좌표에 붙음, 한 번 고르면
  *  사라짐. 화면 밖으로 나가지 않도록 좌표를 접어 넣는다. */
-export type MenuItem = { label: string; run: () => void; danger?: boolean };
+type MenuItem = { label: string; run: () => void; danger?: boolean };
 
 export function openContextMenu(x: number, y: number, items: MenuItem[]) {
   document.querySelectorAll(".ctx-menu").forEach((m) => m.remove());
@@ -444,11 +433,6 @@ export function promptText(title: string, initial: string, confirmLabel: string,
     input.focus();
     input.select();
   });
-}
-
-/** Top-right primary CTA (Figma: 포인트색 필 버튼, 화면당 1개). */
-export function headerCta(id: string, iconName: string, label: string): string {
-  return `<button class="btn btn-primary header-cta" id="${id}">${icon(iconName, 16)} ${label}</button>`;
 }
 
 /** 벡터(의미) 팔이 빠진 검색을 화면이 말할 말. **정상이면 null** 이다.

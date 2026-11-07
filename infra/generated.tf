@@ -50,7 +50,7 @@ resource "azurerm_mysql_flexible_server" "vinc_mysql01" {
   zone                              = jsonencode(3)
   storage {
     auto_grow_enabled   = true
-    io_scaling_enabled  = true
+    io_scaling_enabled  = false # 쓰는 IOPS 가 기본 360 의 4% 미만인데 Paid IO 가 매일 약 730원이었다(2026-10-17)
     iops                = 360
     log_on_disk_enabled = false
     size_gb             = 20
@@ -119,74 +119,6 @@ resource "azurerm_log_analytics_workspace" "vincs" {
   sku                                     = "PerGB2018"
   tags                                    = {}
 }
-# __generated__ by Terraform
-# Please review these resources and move them into your main configuration files.
-
-# __generated__ by Terraform from "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.Insights/webTests/vinc-hub-health"
-resource "azurerm_application_insights_standard_web_test" "vinc_hub_health" {
-  application_insights_id = "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.Insights/components/vinc-uptime"
-  description             = null
-  enabled                 = true
-  frequency               = 300
-  geo_locations           = ["apac-jp-kaw-edge", "apac-sg-sin-azr", "us-ca-sjc-azr"]
-  location                = "koreacentral"
-  name                    = "vinc-hub-health"
-  resource_group_name     = "vincsRG"
-  retry_enabled           = true
-  tags                    = {}
-  timeout                 = 30
-  request {
-    body                             = null
-    follow_redirects_enabled         = false
-    http_verb                        = "GET"
-    parse_dependent_requests_enabled = false
-    url                              = "https://mcp.vincs.io/health"
-  }
-  validation_rules {
-    expected_status_code        = 0
-    ssl_cert_remaining_lifetime = 30
-    ssl_check_enabled           = true
-  }
-}
-
-# __generated__ by Terraform
-resource "azurerm_monitor_metric_alert" "hub_health_down" {
-  auto_mitigate            = false
-  description              = "허브 /health 가 실패 - 사람이 우연히 발견하지 않게"
-  enabled                  = true
-  frequency                = "PT5M"
-  name                     = "hub-health-down"
-  resource_group_name      = "vincsRG"
-  scopes                   = ["/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/microsoft.insights/components/vinc-uptime"]
-  severity                 = 1
-  tags                     = {}
-  target_resource_location = null
-  target_resource_type     = null
-  window_size              = "PT15M"
-  action {
-    action_group_id    = "/subscriptions/5D3DBBFD-9770-460A-AEDE-0F13C0E1683C/resourceGroups/vincsRG/providers/microsoft.insights/actionGroups/vinc-alerts"
-    webhook_properties = {}
-  }
-  criteria {
-    aggregation            = "Average"
-    metric_name            = "availabilityResults/availabilityPercentage"
-    metric_namespace       = "microsoft.insights/components"
-    operator               = "LessThan"
-    skip_metric_validation = false
-    threshold              = 100
-
-    # 차원이 없으면 이 경보는 이 Application Insights 구성요소의 **모든** 가용성
-    # 테스트에 대해 울린다. alerts.tf 가 프로브 셋을 더하면서 이 규칙이 그 셋에도
-    # 울리게 되고, 그러면 이름이 거짓말이 된다(허브가 멀쩡한데 hub-health-down 이
-    # 뜬다). 자기 프로브만 보게 좁힌다.
-    # ⚠ 차원 이름은 단수 Result 다 — availabilityResult/name.
-    dimension {
-      name     = "availabilityResult/name"
-      operator = "Include"
-      values   = ["vinc-hub-health"]
-    }
-  }
-}
 
 # __generated__ by Terraform from "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.Insights/actionGroups/vinc-alerts"
 resource "azurerm_monitor_action_group" "vinc_alerts" {
@@ -197,7 +129,8 @@ resource "azurerm_monitor_action_group" "vinc_alerts" {
   short_name          = "vincalert"
   tags                = {}
   email_receiver {
-    email_address           = "weg1456@gmail.com"
+    # 기계가 보내는 메일의 받는 주소다. Cloudflare 가 운영자 Gmail 로 넘긴다.
+    email_address           = "infra@vincs.io"
     name                    = "owner"
     use_common_alert_schema = false
   }

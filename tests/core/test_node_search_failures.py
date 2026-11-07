@@ -59,9 +59,9 @@ def test_validation_without_owner_does_not_guess_a_cross_owner_source():
 def test_validation_preserves_indexed_prefix_policy_and_exact_kind(monkeypatch):
     from store.node_mirror_state import validate, mirror_text
     monkeypatch.setenv("VINC_PK_NAMESPACED", "0")
-    source = {"id": "episode:synthetic", "title": "Episode", "extra": "a" * 300 + "new tail"}
+    source = {"id": "episode:synthetic", "title": "Episode", "extra": "a" * 600 + "new tail"}
     hits = [{"id": source["id"], "kind": "episode", "title": "Episode",
-             "text": mirror_text("Episode", "a" * 300 + "old tail")},
+             "text": mirror_text("Episode", "a" * 600 + "old tail", "episode")},
             {"id": source["id"], "kind": "record", "title": "Episode", "text": "Episode"}]
     def read(query, params):
         assert "owner_id=$owner" in query and params["owner"] == "user:synthetic"

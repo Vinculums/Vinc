@@ -19,6 +19,8 @@ from __future__ import annotations
 import datetime
 import time
 
+from .syncmerge import _norm
+
 # 라벨별 **추적필드**(동기화되는 콘텐츠). owner_id(스코프)·created·source_file,
 # 그리고 추적열 자신(updated_at/rev/sync_seq)과 preference 신호(access_count/
 # last_access)는 제외 — recall 때마다 델타가 생기는 것을 막는다.
@@ -31,7 +33,9 @@ import time
 TRACKED: dict[str, tuple[str, ...]] = {
     "Concept": ("title", "domain", "tags", "props", "topic", "one_liner", "status", "stem",
                 "content_time"),
-    "Episode": ("title", "date", "domain", "summary", "tags", "pinned"),
+    # props 도 추적한다. 동기화가 Episode props 를 나르므로, 안 세면 props 만 고친
+    # 편집이 sync_seq 를 못 올려 이 기기를 못 떠난다.
+    "Episode": ("title", "date", "domain", "summary", "tags", "pinned", "props"),
     # v15(W13) — 유효구간 둘도 추적한다. content_time 과 같은 이유다: 구간만 고친
     # 편집(무효화가 정확히 그 모양이다)도 변경이고, 안 세면 그 무효화가 기기를 못 떠난다.
     "Record": ("title", "domain", "tags", "props", "content_time",
@@ -127,14 +131,13 @@ def make_stamp(store, current: dict) -> dict:
             "sync_seq": next_seq(store, owner)}
 
 
-def _norm(v):
-    # STRING[] 는 드라이버가 list 로 돌려줌 → 순서보존 비교(tuple). 그 외는 그대로.
-    return tuple(v) if isinstance(v, list) else v
-
-
 def differs(current: dict, incoming: dict) -> bool:
     """incoming(쓰려는 추적필드 값)이 current(현재 DB 값)와 하나라도 다르면 True.
-    incoming 에 실린 키만 비교 — 부분 쓰기라 미기재 필드는 '변경 아님'으로 본다."""
+    incoming 에 실린 키만 비교 — 부분 쓰기라 미기재 필드는 '변경 아님'으로 본다.
+
+    값 비교는 동기화 병합과 **같은 정규화**(`syncmerge._norm`)를 쓴다: props 키 순서만
+    바뀐 쓰기나 None 과 '' 의 교체는 변경이 아니다. 둘이 갈리면 sync 가 "변경 없음"으로
+    보는 쓰기가 여기서는 rev 를 올려 `expected_rev` 가 헛되이 어긋난다."""
     for k, v in incoming.items():
         if _norm(current.get(k)) != _norm(v):
             return True

@@ -23,8 +23,6 @@ from __future__ import annotations
 
 import json
 
-from . import revstamp
-
 
 def _norm(v):
     """비교용 정규화. list(STRING[])→순서보존 tuple, dict(props)→정렬 JSON(키 순서
@@ -51,11 +49,6 @@ def parse_base(fields_json: str | None) -> dict:
 
 def dump_base(fields: dict) -> str:
     return json.dumps(fields, ensure_ascii=False, sort_keys=True)
-
-
-def tracked_of(label: str, node: dict) -> dict:
-    """노드에서 라벨의 추적필드만 뽑는다(base 스냅샷·비교 단위)."""
-    return {f: node.get(f) for f in revstamp.tracked_fields(label) if f in node}
 
 
 def three_way(base: dict, local: dict, remote: dict, *,

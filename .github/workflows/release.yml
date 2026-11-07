@@ -84,12 +84,12 @@ jobs:
       # 부터 여기서 태그를 막았지만, 막는 값은 디자이너가 옛 화면을 보는 것뿐이었고 치르는
       # 값은 릴리스마다 사이드카·실데이터로 60장을 다시 찍는 일이었다. PR 과 같은 경고다.
       # 보드를 새로 하고 싶을 때의 길은 그대로 있다:
-      #   cd design-hub && npm install
-      #   node scripts/capture_app.mjs --app <vite> --sidecar <sidecar> --token <token>
+      #   cd scripts/design && npm install
+      #   node capture_app.mjs --app <vite> --sidecar <sidecar> --token <token>
       # 근거: [[decision:figma-app-boards-no-longer-gate-a-release-2026-09-26]]
       - name: Figma app board copy gate (advisory)
         continue-on-error: true
-        run: python -X utf8 design-hub/scripts/figma_app_copy.py
+        run: python -X utf8 scripts/design/figma_app_copy.py
 
   # Linux는 ubuntu-22.04에서 직접 빌드해 glibc 2.35 실행 바닥을 지킨다.
   # 근거: [[vinc.ops.ci-runner-diagnosis]]
@@ -455,6 +455,12 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: app/src-tauri
+      # 서드파티 고지를 이 레그가 실제로 싣는 판으로 다시 만든다: npm(node_modules) · 크레이트
+      # (cargo metadata) · 위에서 깐 사이드카 파이썬 패키지와 이 인터프리터. 파일은 app/public 에
+      # 있어서 tauri-action 의 프런트 빌드가 설치본에 함께 싣는다(scripts/third_party_notices.py 머리 주석).
+      - name: Third-party notices for this build
+        shell: bash
+        run: python -X utf8 scripts/third_party_notices.py
       # 릴리스 생성 없이 번들만 빌드(tagName/releaseId 미지정 → build-only).
       # 서명 키가 env 에 있으면 tauri-action 이 업데이터 번들에 .sig 를 붙인다.
       - name: Build Tauri bundles

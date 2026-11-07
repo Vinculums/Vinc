@@ -25,13 +25,14 @@ import base64
 import hashlib
 import json
 import secrets
+import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
 from . import __version__
-from .store import Store
+from .store import REFRESH_REUSE_GRACE_S, Store
 
 CODE_TTL = 300
 TOKEN_TTL = 3600
@@ -47,16 +48,31 @@ _CIMD_MAX_BYTES = 64 * 1024
 _CIMD_UA = f"Vinc-MCP/{__version__} (+https://vincs.io)"
 
 
+def _check_cimd_url(url: str) -> None:
+    """CIMD `client_id` 의 모양만 본다(가져오기 전). https · 경로 있음 · 조각·userinfo 없음.
+
+    MCP 인가 스펙이 클라이언트에게 요구하는 모양이다. 경로 없는 주소(`https://host`)나
+    조각이 붙은 주소는 문서의 `client_id` 와 글자 그대로 같을 수 없으므로 여기서 먼저 막는다.
+    """
+    if not isinstance(url, str) or not url.startswith("https://"):
+        raise ValueError("CIMD client_id must be an https URL")
+    parts = urllib.parse.urlsplit(url)
+    if parts.path in ("", "/") or parts.fragment or "@" in parts.netloc:
+        raise ValueError("CIMD client_id must be an https URL with a path, "
+                         "and no fragment or user info")
+
+
 def fetch_cimd(url: str) -> dict:
     """CIMD 문서를 가져온다. https 만, 크기·시간 상한.
 
     ChatGPT 는 `client_id` 자리에 이 URL 을 넣고 DCR 을 건너뛴다
     (`client_id_metadata_document_supported`). 디렉터리 트래픽이
     연결마다 클라이언트를 늘리지 않게 하려는 자리다.
+    문서 안의 `client_id` 대조는 여기가 아니라 `OAuthGate._client_of` 가 한다 —
+    가져오는 함수를 갈아끼워도(테스트·캐시) 대조가 빠지지 않게.
     근거: [[vinc.spec.remote-profile]]
     """
-    if not isinstance(url, str) or not url.startswith("https://"):
-        raise ValueError("CIMD client_id must be an https URL")
+    _check_cimd_url(url)
     req = urllib.request.Request(url, method="GET",
                                  headers={"Accept": "application/json",
                                           "User-Agent": _CIMD_UA})
@@ -147,6 +163,9 @@ class OAuthGate:
             # 이 플래그가 없으면 연결마다 /register 가 클라이언트를 늘리고
             # MAX_CLIENTS 프루닝이 옛 등록을 밀어낸다.
             "client_id_metadata_document_supported": True,
+            # RFC 9207. 이것을 참으로 적으면 클라이언트는 `iss` 없는 인가 응답을 **거절한다**.
+            # 그래서 인가 응답을 만드는 자리는 `_redirect_with` 하나여야 한다.
+            "authorization_response_iss_parameter_supported": True,
         }
 
     # ── 동적 등록(RFC 7591) ─────────────────────────────────────────────────
@@ -179,18 +198,28 @@ class OAuthGate:
 
         CIMD 클라이언트는 표에 안 남긴다 — 인가 때 문서를 다시 읽으면 되고,
         남기면 무인증 DCR 과 같은 표 증가가 다시 열린다.
+
+        문서의 `client_id` 는 그 문서의 주소와 **글자 그대로** 같아야 한다(MCP 인가 스펙의
+        MUST). 다르면 남의 문서를 제 이름으로 내미는 것이라 거절한다. 정규화(끝 슬래시·대소문자)
+        는 하지 않는다 — 스펙이 단순 문자열 비교를 요구한다.
         """
         rec = self.store.get_client(client_id)
         if rec is not None:
             return rec
         if client_id.startswith("https://"):
+            _check_cimd_url(client_id)
             doc = self._cimd_fetch(client_id)
+            if doc.get("client_id") != client_id:
+                raise ValueError("CIMD document client_id does not match its URL")
             return {"redirect_uris": list(doc["redirect_uris"]),
                     "name": doc.get("client_name") or ""}
         return None
 
-    def _validate_authorize(self, params: dict) -> tuple[str, str, str]:
-        """(client_id, redirect_uri, challenge) 반환 — 검증 실패 시 예외."""
+    def _validate_authorize(self, params: dict) -> tuple[str, str, str, dict]:
+        """(client_id, redirect_uri, challenge, client) 반환 — 검증 실패 시 예외.
+
+        client 를 함께 돌려주는 이유: 회원 경로가 이름을 얻으려고 `_client_of` 를 한 번 더
+        부르면 CIMD 문서를 **두 번** 가져온다(가져오기 실패 확률도 두 배)."""
         client_id = params.get("client_id") or ""
         client = self._client_of(client_id)
         if client is None:
@@ -203,7 +232,7 @@ class OAuthGate:
         challenge = params.get("code_challenge") or ""
         if not challenge or params.get("code_challenge_method") != "S256":
             raise ValueError("PKCE S256 code_challenge is required")
-        return client_id, redirect, challenge
+        return client_id, redirect, challenge, client
 
     @staticmethod
     def _resource_of(params: dict) -> str:
@@ -217,7 +246,7 @@ class OAuthGate:
             raise PermissionError("authorization disabled: no admin key configured")
         if params.get("key") != self.admin_key:
             raise PermissionError("wrong or missing admin key")
-        client_id, redirect, challenge = self._validate_authorize(params)
+        client_id, redirect, challenge, _ = self._validate_authorize(params)
         code = secrets.token_urlsafe(24)
         # 관리 키 경로 = 단일 테넌트 하위호환 → owner/plan 미지정(None).
         self.store.add_code(code, client_id, redirect, challenge,
@@ -232,13 +261,12 @@ class OAuthGate:
         http_server 가 이를 CRA 로 서명해 공홈 /connect 로 리다이렉트한다.
         승인은 계정 서비스가 하고, complete() 로 코드가 발급된다.
         """
-        client_id, redirect, challenge = self._validate_authorize(params)
-        client = self._client_of(client_id)
+        client_id, redirect, challenge, client = self._validate_authorize(params)
         req_id = secrets.token_urlsafe(18)
         self.store.add_connect_request(req_id, client_id, redirect, challenge,
                                        params.get("state"), exp=time.time() + CONNECT_TTL,
                                        resource=self._resource_of(params))
-        return req_id, {"client_id": client_id, "client_name": (client or {}).get("name", ""),
+        return req_id, {"client_id": client_id, "client_name": client.get("name", ""),
                         "redirect_uri": redirect}
 
     def complete_connect(self, req_id: str, owner: str, plan: str) -> str:
@@ -256,10 +284,16 @@ class OAuthGate:
         self.store.set_owner_plan(owner, plan)
         return self._redirect_with(rec["redirect_uri"], {"code": code}, rec.get("state"))
 
-    @staticmethod
-    def _redirect_with(redirect: str, qs: dict, state: str | None) -> str:
+    def _redirect_with(self, redirect: str, qs: dict, state: str | None) -> str:
+        """인가 응답(클라이언트 redirect)을 만드는 **유일한** 자리.
+
+        `iss`(RFC 9207)는 메타데이터의 `issuer` 와 글자 그대로 같은 값이다. 클라이언트는
+        정규화 없이 비교하므로 여기서도 `self.issuer` 를 그대로 싣는다. 메타데이터가
+        `authorization_response_iss_parameter_supported` 를 참으로 적고 있어서, 이 함수를
+        거치지 않는 인가 응답이 생기면 그 응답은 클라이언트에서 거절된다."""
         if state:
             qs = {**qs, "state": state}
+        qs = {**qs, "iss": self.issuer}
         sep = "&" if "?" in redirect else "?"
         return redirect + sep + urllib.parse.urlencode(qs)
 
@@ -280,13 +314,34 @@ class OAuthGate:
             return self._issue(rec["client_id"], rec.get("owner"), rec.get("plan"),
                                resource=resource)
         if grant == "refresh_token":
-            rec = self.store.pop_refresh(form.get("refresh_token") or "")
-            if rec is None:
-                raise ValueError("invalid refresh_token")
-            resource = self._bound_resource(form, rec)
-            return self._issue(rec["client_id"], rec.get("owner"), rec.get("plan"),
-                               resource=resource)
+            return self._refresh(form)
         raise ValueError(f"unsupported grant_type: {grant}")
+
+    def _refresh(self, form: dict) -> dict:
+        """갱신 토큰 회전. 검증을 **소비 전에** 하고, 회전은 스토어의 트랜잭션 하나로 한다.
+
+        같은 갱신 토큰이 `REFRESH_REUSE_GRACE_S` 안에 다시 오면 방금 발급한 쌍을 그대로
+        돌려준다(새 쌍을 만들지 않으므로 갈래가 생기지 않는다). 여러 작업자가 토큰 만료 뒤
+        동시에 갱신하는 호스트가 둘째 요청의 `invalid_grant` 를 보고 자격을 버리던 자리다.
+        근거: [[concept:refresh-token-reuse-window]]
+        """
+        presented = form.get("refresh_token") or ""
+        rec = self.store.get_refresh(presented)
+        if rec is None:
+            raise ValueError("invalid refresh_token")
+        resource = self._bound_resource(form, rec)   # 불일치면 여기서 끝 — 토큰은 그대로 산다
+        now = time.time()
+        out = self.store.rotate_refresh(presented, access=secrets.token_urlsafe(32),
+                                        refresh=secrets.token_urlsafe(32),
+                                        exp=now + self.token_ttl, resource=resource, now=now)
+        if out is None:
+            raise ValueError("invalid refresh_token")
+        if out["replayed"]:
+            # 값이 아니라 사건만 남긴다. 호스트가 실제로 동시 갱신을 하는지 이 줄로 본다.
+            sys.stdout.write("[oauth] refresh token reused within %ds: answered with the "
+                             "pair it was rotated to\n" % REFRESH_REUSE_GRACE_S)
+        return self._token_body(out["access_token"], out["refresh_token"],
+                                max(1, int(out["exp"] - now)), out["resource"])
 
     def _bound_resource(self, form: dict, rec: dict) -> str:
         """인가·토큰 요청의 `resource` 를 코드에 묶인 값과 맞춘다.
@@ -308,8 +363,12 @@ class OAuthGate:
         self.store.add_token(access, client_id, owner, plan, time.time() + self.token_ttl,
                              resource=resource)
         self.store.add_refresh(refresh, client_id, owner, plan, resource=resource)
+        return self._token_body(access, refresh, self.token_ttl, resource)
+
+    @staticmethod
+    def _token_body(access: str, refresh: str, expires_in: int, resource: str) -> dict:
         out = {"access_token": access, "token_type": "Bearer",
-               "expires_in": self.token_ttl, "refresh_token": refresh}
+               "expires_in": expires_in, "refresh_token": refresh}
         if resource:
             out["resource"] = resource
         return out

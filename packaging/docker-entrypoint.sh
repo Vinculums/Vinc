@@ -190,6 +190,76 @@ wait_for_sidecar_health() {
   return 1
 }
 
+MCP_ARGS="--host 0.0.0.0 --port 8790 --base http://127.0.0.1:8787 --token $VINC_SIDECAR_TOKEN --no-spawn"
+if [ -n "$VINC_MCP_TOKEN" ]; then
+  MCP_ARGS="$MCP_ARGS --auth-token $VINC_MCP_TOKEN"
+fi
+if [ -n "$VINC_MCP_ISSUER" ]; then
+  MCP_ARGS="$MCP_ARGS --oauth --issuer $VINC_MCP_ISSUER"
+fi
+
+# 종료 절차는 **MCP 를 띄우기 전에** 정의하고 건다. MCP 가 기동 맨 앞에 뜨므로, 기동 도중에
+# 온 SIGTERM 도 사이드카를 닫을 때까지 기다려야 한다. 아직 안 뜬 것(워치독·워커·미러)의
+# pid 는 비어 있고, `kill` 은 그것을 조용히 넘긴다.
+# 순서가 의미다.
+#   ① 워치독 먼저 — 안 그러면 종료 중인 사이드카를 "죽었다"고 보고 되살린다
+#   ② MCP — 새 요청을 끊는다. 사이드카를 먼저 닫으면 처리 중인 요청이 닫힌 스토어를 만난다
+#   ③ 사이드카 — **닫을 때까지 기다린다.** 이 기다림이 이 함수의 존재 이유다
+# 사이드카 대기 상한은 `VINC_SIDECAR_STOP_WAIT_S`(기본 40초)다. 마지막 스냅샷 복사가 이 안에
+# 끝나야 넘김 표식이 선다. 플랫폼의 종료 유예가 이보다 길어야 한다(배포가 60초로 둔다).
+shutdown() {
+  trap '' TERM INT                      # 두 번째 신호가 이 절차를 자르지 않게
+  # 미러 재구축이 **가장 먼저** 나간다. 이것이 사이드카에 건 요청을 놓지 않으면 아래
+  # 대기가 통째로 헛돌고 SIGKILL 로 끝난다(그 자리 주석 참조). curl 을 먼저
+  # 죽여야 연결이 실제로 풀린다 — 서브셸만 죽이면 curl 이 고아로 남는다.
+  kill "$(cat "$MIRROR_PIDFILE" 2>/dev/null)" 2>/dev/null || true
+  kill "$MIRROR_SUP_PID" 2>/dev/null || true
+  kill "$WATCHDOG_PID" 2>/dev/null || true
+  kill "$EMBED_SUP_PID" 2>/dev/null || true
+  kill "$(cat "$EMBED_PIDFILE" 2>/dev/null)" 2>/dev/null || true
+  kill "$MCP_PID" 2>/dev/null || true
+  sc=$(cat "$SIDECAR_PIDFILE" 2>/dev/null)
+  if [ -n "$sc" ]; then
+    kill "$sc" 2>/dev/null || true
+    i=0
+    while [ "$i" -lt "${VINC_SIDECAR_STOP_WAIT_S:-40}" ] && kill -0 "$sc" 2>/dev/null; do
+      i=$((i + 1))
+      sleep 1
+    done
+    if kill -0 "$sc" 2>/dev/null; then
+      # 여기서 침묵하면 다음 기동의 유실 원인을 또 못 찾는다.
+      echo "[entrypoint] ⚠ 사이드카가 ${VINC_SIDECAR_STOP_WAIT_S:-40}초 안에 닫히지 않았다 — WAL 이 미완결로" \
+           "남을 수 있다(다음 기동에서 최근 쓰기 유실)" >&2
+    else
+      echo "[entrypoint] 사이드카 정상 종료 — 스토어 close 완료(${i}s)"
+    fi
+  fi
+  exit 0
+}
+
+# ── writer 인계: MCP 먼저, 스토어는 이전 writer 가 넘긴 뒤 ────────────────────────
+# 배포는 구 리비전을 먼저 멈추지 않는다. 플랫폼은 이 리비전의 포트가 열려야 트래픽을
+# 넘기고 구 리비전에 SIGTERM 을 보내므로, MCP 가 **먼저** 포트를 열고 요청을 붙잡는다
+# (VINC_MCP_HOLD — 앱은 사이드카가 뜬 뒤에 조립한다). 그동안 아래 판정이 구 리비전의
+# 넘김 표식(마지막 스냅샷이 영속본에 올라간 뒤에만 쓰인다)을 기다린다. 복원은 그 뒤다 —
+# 그래야 새 리비전이 구 리비전의 마지막 쓰기를 담은 사본을 연다.
+# 근거: [[vinc.plan.hub-writer-handoff-2026-10-17]]
+# shellcheck disable=SC2086
+VINC_MCP_HOLD=1 python -m api.cli mcp serve-http $MCP_ARGS &
+MCP_PID=$!
+trap shutdown TERM INT
+hrc=0
+python -m store.handoff wait || hrc=$?
+if [ "$hrc" = "3" ]; then
+  # 더 새 리비전이 이미 writer 다. 스토어를 열지도, 자격을 주장하지도 않는다 — 플랫폼이
+  # 이 리비전을 내릴 때까지 붙잡은 채로 둔다.
+  echo "[entrypoint] 낡은 리비전 — 스토어를 열지 않고 종료를 기다린다" >&2
+  wait "$MCP_PID" || true
+  exit 0
+elif [ "$hrc" != "0" ]; then
+  echo "[entrypoint] ⚠ writer 인계 판정 실패(rc=$hrc) — 그대로 기동한다" >&2
+fi
+
 # ── 벡터 차원 이행 (2026-09-11) ──────────────────────────────────────────────
 # 이 이미지의 모델(Dockerfile ENV)이 스토어의 벡터 열과 차원이 다르면, 사이드카를 띄우기
 # **전에** 새 스토어로 재구축해 갈아 끼운다. 사이드카 뒤에는 아무도 스토어를 두 번째로
@@ -215,7 +285,7 @@ start_sidecar
 # 사이드카가 죽으면 컨테이너 전체를 내린다(둘 중 하나만 죽어 반쪽 상태로
 # 떠 있는 것을 방지 — Container Apps 가 재시작을 판단할 신호가 된다). pidfile 로
 # 읽으므로 아래 워치독이 재기동시킨 뒤에도 항상 **현재** 사이드카를 겨눈다.
-trap 'kill "$(cat "$SIDECAR_PIDFILE" 2>/dev/null)" 2>/dev/null' TERM INT
+# (종료 신호는 MCP 를 띄울 때 건 `shutdown` 이 처리한다 — 사이드카를 닫을 때까지 기다린다.)
 
 # 첫 기동 대기는 **길어야 한다**. 30초는 "정상 기동"에는 넉넉하지만 **WAL 재생**에는
 # 턱없이 짧다. 2026-08-08 사고: 대량 쓰기로 WAL 이 11.9MB 까지 자란 상태에서 사이드카가
@@ -268,7 +338,7 @@ fi
 # 거절하고 로그에 남는다 — 조용히 넘어가지 않는다.
 #
 # 🔴 **종료 때 이것부터 걷어낸다.** 도는 중에 컨테이너가 내려가면 이 요청이 닫으려는
-# 사이드카를 붙든다 — 그러면 `shutdown()` 의 20초 대기를 넘기고, Container Apps 의
+# 사이드카를 붙든다 — 그러면 `shutdown()` 의 사이드카 대기를 넘기고, Container Apps 의
 # 유예(30초)도 넘겨 SIGKILL 이 된다. 그 끝은 체크포인트 안 된 WAL 이고 다음 기동이
 # 미완결 꼬리를 버린다(2026-08-07 문서 66건 유실의 그 사슬 그대로).
 # 그래서 `curl` 의 pid 를 **파일로** 남긴다 — 서브셸만 죽이면 curl 은 고아로 살아남아
@@ -310,7 +380,10 @@ if [ "${VINC_NODE_MIRROR_REBUILD:-on}" = "on" ]; then
     # 0 이다. 그래서 2026-09-10 에 네 번 연속 실패한 재구축이 전부 `done` 으로 찍혔고,
     # 사유가 본문에 실려 있었는데도 성공으로 읽혔다. `-f` 는 못 쓴다 — 그러면 본문을
     # 버려서 사유가 사라진다. 본문은 파일로, 상태는 `-w` 로 받는다.
-    curl -sS -m "${VINC_NODE_MIRROR_MAX_S:-3600}" -X POST \
+    # 상한은 4시간이다. 모델을 바꾼 배포는 노드 전부를 다시 인코딩하고, 그 일이 같은
+    # 인코더에서 청크 전량 재임베딩과 나란히 돌아 한 시간을 넘긴다. 이 상한은 curl 만
+    # 끊는다(사이드카는 끝까지 돈다). 짧으면 진행 중인 재구축이 헬스에 failed 로 찍힌다.
+    curl -sS -m "${VINC_NODE_MIRROR_MAX_S:-14400}" -X POST \
       -H "Authorization: Bearer $VINC_SIDECAR_TOKEN" \
       -H "Content-Type: application/json" -d '{}' \
       -o "$MIRROR_PIDFILE.out" -w '%{http_code}' \
@@ -385,10 +458,17 @@ if [ "${VINC_EMBED:-on}" = "on" ]; then
       else
         w_port="$EMBED_PORT"; w_where="127.0.0.1:$EMBED_PORT"
       fi
+      # 메모리가 모자라면 커널이 **워커를 먼저** 고르게 한다(oom_score_adj 1000). 모델을
+      # 컨테이너 안에 들면 워커가 가장 큰 프로세스라 대개 그렇게 되지만, 사이드카가 미러
+      # 재구축으로 커진 순간에는 사이드카가 골라진다 — 그건 단일 writer 를 잃는 것이다.
+      # 값을 올리는 것은 권한 없이 된다. 우선순위도 낮춘다(nice): 배경 임베딩이 전경
+      # 질의를 굶기지 않게. 둘 다 exec 로 이어지므로 pid 는 그대로 파이썬이다.
       VINC_SIDECAR="http://127.0.0.1:8787" \
-        python -m vinc_rag.embed.worker --interval "${VINC_EMBED_INTERVAL:-300}" \
-          --encode-port "$w_port" &
+        nice -n "${VINC_EMBED_NICE:-5}" sh -c \
+          '{ echo 1000 > /proc/self/oom_score_adj; } 2>/dev/null || true; exec python -m vinc_rag.embed.worker "$@"' \
+          embed-worker --interval "${VINC_EMBED_INTERVAL:-300}" --encode-port "$w_port" &
       cpid=$!
+      wstart=$(date +%s)
       echo "$cpid" > "$EMBED_PIDFILE"
       echo "[entrypoint] embed worker started (pid=$cpid, interval=${VINC_EMBED_INTERVAL:-300}s," \
            "encode=$w_where, attempt=$((attempt + 1)))"
@@ -397,6 +477,12 @@ if [ "${VINC_EMBED:-on}" = "on" ]; then
       # 받아 온다 — 0 이면 대입이 일어나지 않으므로 초기값 0 이 남는다.
       rc=0
       wait "$cpid" || rc=$?
+      # 오래 건강하게 돌다 죽은 것은 연쇄 실패가 아니다 — 상한을 처음부터 다시 센다.
+      # 상한은 뜨자마자 죽는 루프를 끊으려는 것이고, 하루 몇 번의 죽음으로 벡터 검색을
+      # 영영 끄려는 것이 아니다.
+      if [ $(( $(date +%s) - wstart )) -ge "${VINC_EMBED_STABLE_S:-600}" ]; then
+        attempt=0
+      fi
       attempt=$((attempt + 1))
       case "$rc" in
         0) why="종료코드 0(루프가 스스로 끝났다 — 상주 모드에서는 비정상)" ;;
@@ -421,8 +507,9 @@ if [ "${VINC_EMBED:-on}" = "on" ]; then
   EMBED_SUP_PID=$!
   # 워커는 **죽어도 컨테이너를 내리지 않는다** — 부가 기능이고, 여기서 컨테이너를
   # 재시작시키면 단일 writer 락 회수까지 얽혀 MCP 가용성이 배경 작업에 인질이 된다.
-  trap 'kill "$(cat "$SIDECAR_PIDFILE" 2>/dev/null)" "$(cat "$EMBED_PIDFILE" 2>/dev/null)" \
-        "$(cat "$MIRROR_PIDFILE" 2>/dev/null)" "$EMBED_SUP_PID" 2>/dev/null' TERM INT
+  # ⚠ 여기서 trap 을 다시 걸지 않는다. 종료는 MCP 를 띄울 때 건 `shutdown` 하나가 맡고
+  # (워커·감독·미러도 거기서 죽인다), 다시 걸면 그것이 덮여 사이드카를 기다리지 않는다 —
+  # 최종 스냅샷도 넘김 표식도 안 남는다. tests/platform/test_entrypoint_shutdown.py 가 막는다.
 fi
 
 # ── 사이드카 워치독 (2026-08-03 사고 대응) ───────────────────────────────────
@@ -457,7 +544,7 @@ fi
 #    멈춘 사이드카를 **죽여서 되살리지는 않는다.** 그것은 단일 writer 락을 쥔 채 쓰기
 #    중일 수 있는 프로세스를 강제 종료하는 새로운 의미이고, 이 리포가 그 자리에서 이미
 #    여러 번 다쳤다. 대신 재기동 상한과 **같은 escalation** 으로 보낸다: 컨테이너를
-#    내리면 `shutdown()` 이 TERM 을 보내고 최대 20초 닫히기를 기다린 뒤 플랫폼이 새
+#    내리면 `shutdown()` 이 TERM 을 보내고 닫히기를 기다린 뒤(VINC_SIDECAR_STOP_WAIT_S) 플랫폼이 새
 #    레플리카를 세운다. 이미 있는 정상 종료 경로라 새 위험이 없다.
 SIDECAR_STABLE_S="${VINC_SIDECAR_STABLE_S:-300}"   # 이만큼 건강하면 회복으로 친다
 SIDECAR_MAX_RESTARTS="${VINC_SIDECAR_MAX_RESTARTS:-5}"
@@ -526,14 +613,6 @@ give_up_and_recycle() {
 ) &
 WATCHDOG_PID=$!
 
-MCP_ARGS="--host 0.0.0.0 --port 8790 --base http://127.0.0.1:8787 --token $VINC_SIDECAR_TOKEN --no-spawn"
-if [ -n "$VINC_MCP_TOKEN" ]; then
-  MCP_ARGS="$MCP_ARGS --auth-token $VINC_MCP_TOKEN"
-fi
-if [ -n "$VINC_MCP_ISSUER" ]; then
-  MCP_ARGS="$MCP_ARGS --oauth --issuer $VINC_MCP_ISSUER"
-fi
-
 # ⚠ **`exec` 를 쓰지 않는다**(2026-08-07 실측 사고). 예전에는 마지막 줄이
 # `exec python -m api.cli mcp serve-http` 였는데, `exec` 는 셸 프로세스를 통째로
 # 대체하므로 **그 순간 위의 trap 이 사라진다.** 그러면 컨테이너 종료 시 SIGTERM 이
@@ -549,45 +628,7 @@ fi
 #
 # 사이드카 쪽은 이미 옳다(`api/server.py` `serve()`: SIGTERM → stop → finally
 # `app.close()`). 신호를 전달할 사람이 없었을 뿐이라, 고칠 곳은 여기 하나다.
-# shellcheck disable=SC2086
-python -m api.cli mcp serve-http $MCP_ARGS &
-MCP_PID=$!
-
-# 순서가 의미다.
-#   ① 워치독 먼저 — 안 그러면 종료 중인 사이드카를 "죽었다"고 보고 되살린다
-#   ② MCP — 새 요청을 끊는다. 사이드카를 먼저 닫으면 처리 중인 요청이 닫힌 스토어를 만난다
-#   ③ 사이드카 — **닫을 때까지 기다린다.** 이 기다림이 이 함수의 존재 이유다
-# Container Apps 의 종료 유예는 기본 30초라 상한 20초는 그 안에 든다.
-shutdown() {
-  trap '' TERM INT                      # 두 번째 신호가 이 절차를 자르지 않게
-  # 미러 재구축이 **가장 먼저** 나간다. 이것이 사이드카에 건 요청을 놓지 않으면 아래
-  # 20초 대기가 통째로 헛돌고 SIGKILL 로 끝난다(그 자리 주석 참조). curl 을 먼저
-  # 죽여야 연결이 실제로 풀린다 — 서브셸만 죽이면 curl 이 고아로 남는다.
-  kill "$(cat "$MIRROR_PIDFILE" 2>/dev/null)" 2>/dev/null || true
-  kill "$MIRROR_SUP_PID" 2>/dev/null || true
-  kill "$WATCHDOG_PID" 2>/dev/null || true
-  kill "$EMBED_SUP_PID" 2>/dev/null || true
-  kill "$(cat "$EMBED_PIDFILE" 2>/dev/null)" 2>/dev/null || true
-  kill "$MCP_PID" 2>/dev/null || true
-  sc=$(cat "$SIDECAR_PIDFILE" 2>/dev/null)
-  if [ -n "$sc" ]; then
-    kill "$sc" 2>/dev/null || true
-    i=0
-    while [ "$i" -lt 20 ] && kill -0 "$sc" 2>/dev/null; do
-      i=$((i + 1))
-      sleep 1
-    done
-    if kill -0 "$sc" 2>/dev/null; then
-      # 여기서 침묵하면 다음 기동의 유실 원인을 또 못 찾는다.
-      echo "[entrypoint] ⚠ 사이드카가 20초 안에 닫히지 않았다 — WAL 이 미완결로" \
-           "남을 수 있다(다음 기동에서 최근 쓰기 유실)" >&2
-    else
-      echo "[entrypoint] 사이드카 정상 종료 — 스토어 close 완료(${i}s)"
-    fi
-  fi
-  exit 0
-}
-trap shutdown TERM INT
+# MCP 는 위(벡터 차원 이행 앞)에서 붙잡기 모드로 이미 떴다. 여기서는 그 pid 를 기다린다.
 
 # `wait` 는 신호가 오면 트랩을 돌리고 돌아온다. MCP 가 스스로 죽은 경우(신호 없이)는
 # 그 종료코드를 그대로 물려준다 — 컨테이너 재시작 판단의 근거가 된다.

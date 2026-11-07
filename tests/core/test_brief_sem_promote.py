@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """의미 우위 승격(VIN-232) — 되묻기 1위가 의미 팔에서 나머지보다 `_SEM_PROMOTE` 이상
-가까우면 확정한다. 플래그(`VINC_BRIEF_SEM_PROMOTE`) 뒤에 두고 기본은 꺼 둔다.
+가까우면 확정한다. 플래그(`VINC_BRIEF_SEM_PROMOTE`)는 기본 켜짐이고 `off` 가 비상구다.
 
-이 파일이 지키는 것: 꺼져 있으면 brief 가 한 바이트도 안 바뀐다 · 켜면 문턱에서 정확히
+이 파일이 지키는 것: 끄면 brief 가 토큰 규칙만 쓰던 때와 한 바이트도 안 바뀐다 · 켜면 문턱에서 정확히
 갈린다 · 이름 댄 갈래·단독 후보·유효구간 동점 가드·답변 가능성 게이트를 못 넘는다.
-근거: [[decision:gate-d-reopens-on-the-semantic-arms-own-lead-behind-a-flag-left-off-2026-09-29]]
+근거: [[decision:brief-semantic-promotion-is-0-10-and-0-06-without-hangul-on-either-side-2026-10-26]]
 """
 from __future__ import annotations
 
@@ -47,35 +47,38 @@ class PromoteRule(unittest.TestCase):
         if self._prev is not None:
             os.environ[FLAG] = self._prev
 
-    def test_the_flag_is_off_unless_switched_on(self):
-        self.assertFalse(q._brief_sem_promote_on())
-        for v in ("on", "1", "true", "yes", " ON "):
+    def test_the_flag_is_on_unless_switched_off(self):
+        self.assertTrue(q._brief_sem_promote_on())
+        for v in ("on", "1", "true", "yes", " ON ", ""):
             os.environ[FLAG] = v
             self.assertTrue(q._brief_sem_promote_on(), v)
-        for v in ("off", "0", "false", ""):
+        for v in ("off", "0", "false", "no", " OFF "):
             os.environ[FLAG] = v
             self.assertFalse(q._brief_sem_promote_on(), v)
 
     def test_the_bar_is_where_it_was_decided(self):
-        """옮기려면 다시 잴 것 — 0.025 에서는 답 불가 확정이 21 중 7 로 는다."""
-        self.assertEqual(q._SEM_PROMOTE, 0.049)
+        """옮기려면 다시 잴 것 — 내리면 틀린 노드 확정이 는다([[vinc.spec.retrieval-knobs]] §2)."""
+        self.assertEqual(q._SEM_PROMOTE, 0.10)
 
     def test_off_a_lead_changes_nothing(self):
+        os.environ[FLAG] = "off"
         self.assertEqual(q._brief_resolve("cache policy", _tie(0.5))[0], "choose")
 
     def test_on_it_promotes_at_the_bar_and_not_below(self):
         os.environ[FLAG] = "on"
-        status, picked = q._brief_resolve("cache policy", _tie(0.049))
+        # 확정 문턱 `_SEM_PROMOTE` 는 한글 질문 + 한국어 1위에 남아 있다(영어 질문은 VIN-811 부터 더 낮다).
+        ko = {"title": "캐시 정책 문서"}
+        status, picked = q._brief_resolve("캐시 정책", _tie(q._SEM_PROMOTE, **ko))
         # 폴스루를 위해 순위 전체를 넘긴다 — 엄격 확정과 같은 꼴이다.
         self.assertEqual((status, [h["id"] for h in picked]),
                          ("resolved", ["concept:a", "concept:b"]))
-        self.assertEqual(q._brief_resolve("cache policy", _tie(0.048999))[0], "choose")
-        self.assertEqual(q._brief_resolve("cache policy", _tie())[0], "choose")
+        self.assertEqual(q._brief_resolve("캐시 정책", _tie(q._SEM_PROMOTE - 1e-6, **ko))[0], "choose")
+        self.assertEqual(q._brief_resolve("캐시 정책", _tie(**ko))[0], "choose")
 
     def test_a_token_less_first_can_be_promoted_in_the_ranking_branch(self):
         """결정은 choose 1위 전부를 대상으로 쟀다(X3 모의). 토큰이 0 인 의미 1위도 든다."""
         os.environ[FLAG] = "on"
-        hits = _tie(0.08, hit_tokens=0, title_tokens=0, arms=["semantic"])
+        hits = _tie(0.2, hit_tokens=0, title_tokens=0, arms=["semantic"])
         hits[1].update(hit_tokens=0, title_tokens=0, arms=["graph"])
         self.assertEqual(q._brief_resolve("무엇이든", hits)[0], "resolved")
 
@@ -103,6 +106,103 @@ class PromoteRule(unittest.TestCase):
         hits = _tie(0.5, title="alpha")
         hits[1]["title"] = "Alpha"
         self.assertEqual(q._brief_resolve("alpha", hits)[0], "choose")
+
+
+class XlangPromoteRule(unittest.TestCase):
+    """질문과 1위 노드의 언어가 다를 때의 낮은 문턱(VIN-806, 반대 방향은 VIN-809). 스토어 없이 도는 판정.
+    근거: [[vinc.plan.brief-xlang-promotion-sealed9-2026-10-25 §5]]"""
+
+    def setUp(self):
+        self._prev = os.environ.pop(FLAG, None)
+
+    def tearDown(self):
+        os.environ.pop(FLAG, None)
+        if self._prev is not None:
+            os.environ[FLAG] = self._prev
+
+    def _status(self, query, lead, title="캐시 정책 문서", mirror_text=None, **top):
+        hits = _tie(lead, title=title, **top)
+        return q._brief_resolve(query, hits, mirror_text=mirror_text)[0]
+
+    def test_the_bar_is_where_it_was_decided(self):
+        self.assertEqual(q._SEM_PROMOTE_XLANG, 0.06)
+        self.assertLess(q._SEM_PROMOTE_XLANG, q._SEM_PROMOTE)
+
+    def test_an_english_question_on_a_korean_first_promotes_at_the_lower_bar(self):
+        self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG), "resolved")
+        self.assertEqual(self._status("cache policy", q._SEM_PROMOTE - 1e-6), "resolved")
+        self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG - 1e-6), "choose")
+
+    def test_a_korean_question_on_a_korean_first_keeps_the_shipped_bar(self):
+        self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE_XLANG), "choose")
+        self.assertEqual(self._status("캐시 policy", q._SEM_PROMOTE - 1e-6), "choose")
+        self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE), "resolved")
+
+    def test_an_english_question_on_an_english_first_promotes_at_the_lower_bar(self):
+        """VIN-811: 한글 없는 질문은 노드의 언어와 상관없이 낮은 문턱을 쓴다.
+        근거: [[vinc.plan.brief-english-promotion-0-06-sealed12-2026-10-26 §5]]"""
+        en = "cache policy live"
+        self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG, title=en), "resolved")
+        self.assertEqual(self._status("cache policy", q._SEM_PROMOTE - 1e-6, title=en), "resolved")
+        self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG - 1e-6, title=en), "choose")
+
+    def test_a_korean_question_on_an_english_first_promotes_at_the_lower_bar(self):
+        """반대 방향(VIN-809): 한글로 물었는데 승격될 1위에 한글이 없다.
+        근거: [[vinc.plan.brief-xlang-ko2en-sealed10-2026-10-26 §5]]"""
+        en = "cache policy live"
+        self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE_XLANG, title=en), "resolved")
+        self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE - 1e-6, title=en), "resolved")
+        self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE_XLANG - 1e-6, title=en), "choose")
+        # 한글 한 글자만 섞여도 한글로 물은 것이다.
+        self.assertEqual(self._status("캐시 policy", q._SEM_PROMOTE_XLANG, title=en), "resolved")
+
+    def test_the_mirror_text_decides_the_language_of_the_first_for_a_korean_question(self):
+        """한글 질문에서는 미러 텍스트(제목 + 본문)가 노드의 언어를 정한다. 제목이 한국어여도 미러
+        텍스트가 영어뿐이면 영어 노드다. 한글 없는 질문은 미러 텍스트를 보지 않는다(VIN-811)."""
+        ko = lambda h: "cache policy live. 캐시 정책을 정한다"
+        en = lambda h: "cache policy live. how the cache is kept"
+        self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE_XLANG,
+                                      title="캐시 정책 문서", mirror_text=en), "resolved")
+        self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE_XLANG,
+                                      title="cache policy live", mirror_text=ko), "choose")
+        for lookup in (ko, en):
+            self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG,
+                                          title="cache policy live", mirror_text=lookup), "resolved")
+
+    def test_a_missing_or_failing_mirror_falls_back_to_the_title(self):
+        def boom(h):
+            raise RuntimeError("store gone")
+        for lookup in (None, boom, lambda h: None):
+            # 한글 질문: 제목이 영어면 건넌 것이고, 한국어면 같은 언어다.
+            self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE_XLANG,
+                                          title="cache policy live", mirror_text=lookup), "resolved")
+            self.assertEqual(self._status("캐시 정책", q._SEM_PROMOTE_XLANG,
+                                          mirror_text=lookup), "choose")
+
+    def test_the_mirror_is_read_only_for_a_korean_question_inside_the_band(self):
+        """미러 조회는 한글 질문이 두 문턱 사이에 있을 때만 한다. 한글 없는 질문과 문턱 밖에서는
+        스토어를 건드리지 않는다."""
+        seen = []
+
+        def spy(h):
+            seen.append(h["id"])
+            return h["title"]
+        for lead in (q._SEM_PROMOTE_XLANG - 1e-6, q._SEM_PROMOTE):
+            self._status("캐시 정책", lead, mirror_text=spy)
+        self.assertEqual(seen, [])
+        self._status("캐시 정책", q._SEM_PROMOTE_XLANG, mirror_text=spy)
+        self.assertEqual(seen, ["concept:a"])
+        self._status("cache policy", q._SEM_PROMOTE_XLANG, mirror_text=spy)
+        self.assertEqual(seen, ["concept:a"])
+
+    def test_off_the_lower_bar_goes_with_the_flag(self):
+        os.environ[FLAG] = "off"
+        self.assertEqual(self._status("cache policy", q._SEM_PROMOTE_XLANG), "choose")
+
+    def test_a_lone_candidate_still_asks_back(self):
+        hits = [{"id": "concept:a", "title": "캐시 정책 문서", "hit_tokens": 0, "title_tokens": 0,
+                 "arms": ["semantic"], "sem_lead": q._SEM_PROMOTE_XLANG}]
+        self.assertEqual(q._brief_resolve("cache policy", hits)[0], "choose")
 
 
 DIM = 4
@@ -151,18 +251,21 @@ class PromoteOnTheEngine(unittest.TestCase):
             else:
                 os.environ[k] = v
 
-    def _mirror(self, gap):
-        """live 는 0.05, notes 는 0.05+gap 거리에 둔다."""
+    def _mirror(self, gap, extra=(), live_text=None):
+        """live 는 0.05, notes 는 0.05+gap 거리에 둔다. ``extra`` 는 (id, 제목, 거리).
+        ``live_text`` 가 있으면 live 의 미러 텍스트(제목은 그대로)를 그것으로 둔다."""
         self.store.drop_node_vector_index()
         self.store.run(
             "UNWIND $rows AS r CREATE (:NodeVec {vec_id: r.v, node_id: r.id, "
-            "kind: 'concept', owner_id: $o, title: r.t, text: r.t, model: 'test', "
+            "kind: r.k, owner_id: $o, title: r.t, text: r.x, model: 'test', "
             "embedding: r.emb})",
             {"o": self.OWNER, "rows": [
-                {"v": node_mirror.vec_id(self.OWNER, nid), "id": nid, "t": t, "emb": _at(d)}
+                {"v": node_mirror.vec_id(self.OWNER, nid), "id": nid, "t": t, "emb": _at(d),
+                 "x": live_text if (live_text and nid == "concept:cache-policy-live") else t,
+                 "k": nid.split(":", 1)[0]}
                 for nid, t, d in (("concept:cache-policy-live", "cache policy live", 0.05),
                                   ("concept:cache-policy-notes", "cache policy notes",
-                                   0.05 + gap))]})
+                                   0.05 + gap)) + tuple(extra)]})
         self.store.create_node_vector_index()
 
     def _brief(self, query="cache policy", **env):
@@ -183,9 +286,9 @@ class PromoteOnTheEngine(unittest.TestCase):
         self.assertNotIn("sem_lead", rows["concept:cache-policy-notes"])
 
     def test_off_the_brief_is_what_it_was_without_the_new_fields(self):
-        """플래그가 꺼져 있으면 search 가 새로 다는 값(`distance`·`sem_lead`)을 brief 가
-        읽지 않는다. 승격이 일어날 스토어에서 두 값을 걷어 낸 답과 글자 그대로 같다."""
-        self._mirror(0.06)
+        """플래그를 끄면 search 가 새로 다는 값(`distance`·`sem_lead`)을 brief 가 읽지
+        않는다. 승격이 일어날 스토어에서 두 값을 걷어 낸 답과 글자 그대로 같다."""
+        self._mirror(0.15)
         real = q.search
 
         def without_new_fields(*a, **kw):
@@ -195,48 +298,130 @@ class PromoteOnTheEngine(unittest.TestCase):
                 h.pop("distance", None)
             return res
 
-        unset = self._brief()
         off = self._brief(**{FLAG: "off"})
         with mock.patch.object(q, "search", without_new_fields):
-            stripped = self._brief()
-        self.assertEqual(unset["status"], "choose")
-        self.assertEqual(unset, off)
-        self.assertEqual(unset, stripped)
-        # 같은 스토어에서 켜면 승격된다 — 위 동일성이 빈 단언이 아니라는 확인이다.
-        self.assertEqual(self._brief(**{FLAG: "on"})["status"], "resolved")
+            stripped = self._brief(**{FLAG: "off"})
+        self.assertEqual(off["status"], "choose")
+        self.assertEqual(off, stripped)
+        # 같은 스토어에서 기본값(켜짐)이면 승격된다 — 위 동일성이 빈 단언이 아니라는 확인이다.
+        unset = self._brief()
+        self.assertEqual(unset["status"], "resolved")
+        self.assertEqual(unset, self._brief(**{FLAG: "on"}))
 
     def test_on_it_promotes_when_the_lead_clears_the_bar(self):
-        self._mirror(0.06)
+        self._mirror(0.15)
         out = self._brief(**{FLAG: "on"})
         self.assertEqual(out["status"], "resolved")
         self.assertEqual(out["node"]["id"], "concept:cache-policy-live")
 
     def test_on_it_asks_back_below_the_bar(self):
-        """0.04 는 `_SEM_GAP` 을 넘어 순서는 바꾸지만 확정 문턱에는 못 미친다."""
-        self._mirror(0.04)
+        """0.05 는 `_SEM_GAP` 을 넘어 순서는 바꾸지만 영어 질문의 확정 문턱(`_SEM_PROMOTE_XLANG`)에는
+        못 미친다. 0.07 은 넘는다(VIN-811)."""
+        self._mirror(0.05)
         out = self._brief(**{FLAG: "on"})
         self.assertEqual(out["status"], "choose")
         self.assertEqual(out["candidates"][0]["id"], "concept:cache-policy-live")
+        self.tearDown()
+        self.setUp()
+        self._mirror(0.07)
+        self.assertEqual(self._brief(**{FLAG: "on"})["status"], "resolved")
 
-    def test_the_validity_tie_guard_still_demotes_a_promotion(self):
-        """폐기된 기록이 1위와 토큰으로 비겼다면 원래 '모르겠다'였다. 승격도 그 가드를 지난다."""
+    def test_a_korean_mirror_text_lowers_the_bar_for_an_english_question(self):
+        """우위 0.07 은 `_SEM_PROMOTE` 밑이다. 영어 질문은 1위의 미러 텍스트에 한글이 있든 없든 확정한다."""
+        # 검색은 미러 텍스트가 원본과 다르면 그 행을 낡았다고 버린다. 원본에 한 줄 설명을 달아 맞춘다.
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "concept:cache-policy-live", "type": "concept",
+             "title": "cache policy live", "domain": "eng", "one_liner": "캐시 정책을 정한다"},
+        ]}, store=self.store)
+        self._mirror(0.07, live_text=node_mirror.mirror_text("cache policy live",
+                                                             "캐시 정책을 정한다"))
+        out = self._brief()
+        self.assertEqual(out["status"], "resolved")
+        self.assertEqual(out["node"]["id"], "concept:cache-policy-live")
+        # 같은 거리에서 미러 텍스트가 영어뿐이어도 영어 질문은 확정한다(VIN-811).
+        self.tearDown()
+        self.setUp()
+        self._mirror(0.07)
+        self.assertEqual(self._brief()["status"], "resolved")
+
+    def test_a_korean_question_on_an_english_mirror_text_lowers_the_bar(self):
+        """VIN-809: 한글로 물었고 1위의 미러 텍스트에 한글이 없으면 우위 0.07 로 확정한다.
+        1위의 미러 텍스트에 한글이 있으면(같은 언어) 지금 그대로 되묻는다. 질문은 한 줄 설명과 낱말을
+        하나도 나누지 않아야 토큰이 승부를 가르지 않는다."""
+        self._mirror(0.07)
+        out = self._brief("알림 설정")
+        self.assertEqual(out["status"], "resolved")
+        self.assertEqual(out["node"]["id"], "concept:cache-policy-live")
+        self.tearDown()
+        self.setUp()
+        frag.merge_fragment({"owner": self.OWNER, "nodes": [
+            {"id": "concept:cache-policy-live", "type": "concept",
+             "title": "cache policy live", "domain": "eng", "one_liner": "캐시 정책을 정한다"},
+        ]}, store=self.store)
+        self._mirror(0.07, live_text=node_mirror.mirror_text("cache policy live",
+                                                             "캐시 정책을 정한다"))
+        self.assertEqual(self._brief("알림 설정")["status"], "choose")
+
+    def test_the_mirror_text_reader_returns_the_stored_text(self):
+        self._mirror(0.07, live_text="cache policy live. 캐시")
+        got = q._brief_mirror_text(self.store, self.OWNER, {"id": "concept:cache-policy-live"})
+        self.assertEqual(got, "cache policy live. 캐시")
+        self.assertIsNone(q._brief_mirror_text(self.store, self.OWNER, {"id": "concept:nope"}))
+
+    def _retired_record(self):
         frag.merge_fragment({"owner": self.OWNER, "nodes": [
             {"id": "record:cache-policy-old", "type": "record", "title": "cache policy old",
              "domain": "eng", "valid_from": "2025-01-01", "valid_until": "2026-01-01"},
         ]}, store=self.store)
-        self._mirror(0.06)
+
+    def test_the_validity_tie_guard_still_demotes_a_promotion(self):
+        """폐기된 기록이 의미 1위였다면 남은 1위의 우위는 필터가 만든 것이다. 승격은 의미
+        거리로 견주는 가드를 지나며, 거기서 되돌려진다."""
+        self._retired_record()
+        self._mirror(0.15, extra=[("record:cache-policy-old", "cache policy old", 0.03)])
         out = self._brief(**{FLAG: "on"})
         self.assertEqual(out["status"], "choose", out.get("node"))
         # 이 문구는 가드가 **확정을** 강등할 때만 붙는다. 꺼 두면 원래 choose 라 안 붙으므로
         # 승격이 일어났고 가드가 되돌렸다는 뜻이다(검색의 필터 공개 문구와 다르다).
         self.assertIn("tied with the leading candidate", out.get("validity_note") or "")
-        self.assertNotIn("tied with", self._brief().get("validity_note") or "")
+        self.assertNotIn("tied with", self._brief(**{FLAG: "off"}).get("validity_note") or "")
         self.assertEqual(out["candidates"][0]["id"], "concept:cache-policy-live")
+
+    def test_a_retired_row_far_on_the_semantic_arm_does_not_undo_a_promotion(self):
+        """토큰으로 비긴 폐기 행이라도 의미로 멀면 우위를 만들지 않았다. 옛 가드는 토큰만 견줘
+        이런 승격을 전부 되돌렸다(토큰 없는 승격은 (0,0) 이라 항상 비긴다)."""
+        self._retired_record()
+        self._mirror(0.15, extra=[("record:cache-policy-old", "cache policy old", 0.40)])
+        out = self._brief(**{FLAG: "on"})
+        self.assertEqual(out["status"], "resolved", out.get("candidates"))
+        self.assertEqual(out["node"]["id"], "concept:cache-policy-live")
+        self.assertNotIn("tied with", out.get("validity_note") or "")
+
+    def test_a_retired_row_absent_from_the_semantic_arm_does_not_undo_a_promotion(self):
+        self._retired_record()
+        self._mirror(0.15)
+        self.assertEqual(self._brief(**{FLAG: "on"})["status"], "resolved")
+
+    def test_a_token_decided_resolution_keeps_the_token_tie_guard(self):
+        """토큰으로 가른 확정은 그대로 토큰 점수로 견준다(승격이 아니므로)."""
+        rows = [{"id": "a", "hit_tokens": 4, "title_tokens": 3, "distance": 0.1},
+                {"id": "b", "hit_tokens": 1, "title_tokens": 1, "distance": 0.5}]
+        self.assertFalse(q._brief_semantic_tie_clear(rows, {"validity_best_dropped_distance": 0.9}))
+
+    def test_the_semantic_tie_check_reads_the_distance_gap(self):
+        rows = [{"id": "a", "hit_tokens": 2, "title_tokens": 2, "distance": 0.10},
+                {"id": "b", "hit_tokens": 2, "title_tokens": 2, "distance": 0.30}]
+        clear = q._brief_semantic_tie_clear
+        self.assertTrue(clear(rows, {}))                                        # 의미 팔이 지운 것 없음
+        self.assertTrue(clear(rows, {"validity_best_dropped_distance": 0.10 + q._SEM_PROMOTE}))
+        self.assertFalse(clear(rows, {"validity_best_dropped_distance": 0.12}))   # 우위 안쪽
+        self.assertFalse(clear(rows[:1], {}))                                   # 단독·이름 확정
+        self.assertFalse(clear([dict(rows[0], distance=None), rows[1]], {}))    # 거리를 모르면 옛 비교
 
     def test_the_answerability_gate_still_demotes_a_promotion(self):
         """주제는 맞는데 질문의 나머지가 아무 데도 없으면 확정하지 않는다. 같은 플래그로
         그 나머지가 없는 질문은 승격되므로, 강등은 게이트가 한 것이다."""
-        self._mirror(0.06)
+        self._mirror(0.15)
         both = {FLAG: "on", "VINC_BRIEF_ANSWERABILITY": "on"}
         self.assertEqual(self._brief(**both)["status"], "resolved")
         out = self._brief("cache policy zebra walrus quantum", **both)

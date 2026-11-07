@@ -2,7 +2,7 @@
 """스페이스는 **인자로도** 정해진다(발주자 지시 2026-08-31, A안).
 
 종전 불변식은 "주소 = 스페이스"였다
-([[decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right]]).
+(지금은 [[decision:the-space-is-an-argument-and-the-default-is-personal]] 가 그것을 대체했다).
 그 결정이 실제로 막던 것은 **무음 오배송**이지 주소 자체가 아니다 — 지금도 개인 키
 하나가 주소만 알면 자기가 멤버인 모든 팀에 닿으므로(`verify_key(raw, team)`) 주소는
 라우팅이지 권한이 아니었다. 그래서 인자를 열되 **판정은 한 줄도 안 옮긴다**: 같은
@@ -127,35 +127,15 @@ class RoutingTests(_SpaceServer):
 
 
 
-class DesktopSpaceTests(unittest.TestCase):
-    """데스크탑 프로파일에서 `space` 가 어디로 가는가.
+class ProfileSpaceTests(unittest.TestCase):
+    """두 프로파일에서 `space` 가 어디로 가는가.
 
-    ⚠ 이 검사를 **사이드카 쪽에 두면 공허하다**(실제로 그렇게 썼다가 변이로 걸렀다):
-    사이드카 핸들러는 params 를 명시로 조립하므로 모르는 키가 흘러갈 길이 애초에 없다.
-    무는 자리는 **원격 전달**이다 — `remote.call` 은 `owner`·`target` 만 빼고 전부
-    넘긴다.
-
-    계약이 셋으로 갈린다. 스페이스는 **계정 그래프에만** 있으므로:
-      ① `target:"remote"` + space → 그대로 넘긴다(허브가 판정한다)
-      ② `target:"local"` + space → **거절**한다. 조용히 무시하면 팀에 쓰려던 것이
-         로컬에 쌓이고, 그것이 이 표면 전체가 막으려는 고장이다
-      ③ 허브 자신(`allow_target=False`)에서는 벗긴다 — HTTP 층이 이미 읽었다"""
-
-    def _forwarded(self, args, **kw):
-        from vinc_mcp import remote, tools
-        seen = {}
-        old = remote.call
-        remote.call = lambda name, a, **k: seen.update(a) or {"ok": True}
-        try:
-            tools.call("vinc_search", args, _RecordingBridge(), **kw)
-        finally:
-            remote.call = old
-        return seen
-
-    def test_원격으로는_그대로_넘어간다(self):
-        seen = self._forwarded({"query": "x", "space": TEAM, "target": "remote"})
-        self.assertEqual(seen.get("query"), "x")
-        self.assertEqual(seen.get("space"), TEAM)
+    스페이스는 **계정 그래프에만** 있으므로:
+      ① 로컬 프로파일(stdio·CLI 로컬 경로) + space → **거절**한다. 조용히 무시하면 팀에
+         쓰려던 것이 로컬에 쌓이고, 그것이 이 표면 전체가 막으려는 고장이다
+      ② 허브(`hub=True`)에서는 벗긴다 — HTTP 층이 이미 읽었다
+    `target:"remote"` 로 계정 그래프에 가던 데스크탑 프로파일은 VIN-132 뒤 생산 경로가
+    없어져 걷어냈다(VIN-550)."""
 
     def test_로컬에_스페이스를_실으면_거절한다(self):
         """조용한 로컬 쓰기보다 오류가 낫다."""
@@ -163,10 +143,21 @@ class DesktopSpaceTests(unittest.TestCase):
         with self.assertRaises(ValueError) as e:
             tools.call("vinc_search", {"query": "x", "space": TEAM},
                        _RecordingBridge())
-        self.assertIn("target:'remote'", str(e.exception))
+        self.assertIn("no spaces", str(e.exception))
+
+    def test_로컬은_target_remote_를_받지_않는다(self):
+        """`remote` 는 더 이상 target 값이 아니다. 계정 그래프로 새는 길이 없다."""
+        from vinc_mcp import remote, tools
+        old = remote.call
+        remote.call = lambda *a, **k: self.fail("remote.call 이 불렸다")
+        try:
+            with self.assertRaises(ValueError):
+                tools.call("vinc_search", {"query": "x", "target": "remote"},
+                           _RecordingBridge())
+        finally:
+            remote.call = old
 
     def test_스페이스_없는_로컬은_그대로다(self):
-        """기존 데스크탑 호출이 한 줄도 안 바뀐다는 것."""
         from vinc_mcp import tools
         b = _RecordingBridge()
         tools.call("vinc_search", {"query": "x"}, b)
@@ -180,22 +171,19 @@ class DesktopSpaceTests(unittest.TestCase):
         여기서 거절하면 인자 경로가 통째로 죽는다."""
         from vinc_mcp import tools
         b = _RecordingBridge()
-        tools.call("vinc_search", {"query": "x", "space": TEAM}, b, allow_target=False)
+        tools.call("vinc_search", {"query": "x", "space": TEAM}, b, hub=True)
         for _m, _p, params, body in b.calls:
             self.assertNotIn("space", params or {})
 
     def test_스키마가_두_프로파일에_다르게_싣는다(self):
-        """데스크탑에는 `target` 과의 조합을 말하는 문장이 붙어야 한다 — 안 붙으면
-        에이전트가 local + space 를 시도하고 오류로만 배운다."""
+        """허브에만 `space` 가 있고, 어느 쪽에도 `target` 은 없다."""
         from vinc_mcp import tools
-        desk = {t["name"]: t for t in tools.specs(allow_target=True)}["vinc_search"]
-        hub = {t["name"]: t for t in tools.specs(allow_target=False)}["vinc_search"]
-        for spec in (desk, hub):
-            self.assertIn("space", spec["inputSchema"]["properties"], spec["name"])
-        self.assertIn("target", desk["inputSchema"]["properties"])
-        self.assertNotIn("target", hub["inputSchema"]["properties"])
-        self.assertIn("target:'remote'",
-                      desk["inputSchema"]["properties"]["space"]["description"])
+        local = {t["name"]: t for t in tools.specs()}["vinc_search"]
+        hub = {t["name"]: t for t in tools.specs(hub=True)}["vinc_search"]
+        self.assertIn("space", hub["inputSchema"]["properties"])
+        self.assertNotIn("space", local["inputSchema"]["properties"])
+        for spec in (local, hub):
+            self.assertNotIn("target", spec["inputSchema"]["properties"])
         self.assertNotIn("target",
                          hub["inputSchema"]["properties"]["space"]["description"])
 
@@ -367,16 +355,16 @@ class ListSpacesShapeTests(unittest.TestCase):
             def __exit__(self, *a):
                 return False
 
-        old_open = E.urllib.request.urlopen
+        old_open = E.hubhttp.urlopen
         old_seed, old_sign = E._seed, E._sign_assertion
         E._seed = lambda: b"\x00" * 32
         E._sign_assertion = lambda seed: "assertion"
-        E.urllib.request.urlopen = lambda req, timeout=None: _Resp(
+        E.hubhttp.urlopen = lambda req, timeout=None: _Resp(
             json.dumps(payload).encode())
         try:
             return E.list_spaces("u1")
         finally:
-            E.urllib.request.urlopen = old_open
+            E.hubhttp.urlopen = old_open
             E._seed, E._sign_assertion = old_seed, old_sign
             E._spaces_cache.clear()
 
@@ -390,6 +378,13 @@ class ListSpacesShapeTests(unittest.TestCase):
         ]})
         self.assertEqual(rows, [{"id": TEAM, "name": "Acme", "role": "editor"},
                                 {"id": OTHER, "name": "", "role": "viewer"}])
+
+    def test_팀_등급은_계정이_실었을_때만_정규화해_담는다(self):
+        rows = self._with_account({"spaces": [
+            {"id": TEAM, "name": "Acme", "role": "editor", "plan": "team"},
+            {"id": OTHER, "name": "B", "role": "viewer"}]})
+        self.assertEqual(rows, [{"id": TEAM, "name": "Acme", "role": "editor", "plan": "genius"},
+                                {"id": OTHER, "name": "B", "role": "viewer"}])
 
     def test_빈_목록과_못_물었다를_가른다(self):
         """뭉개면 호출자가 "팀이 없다"로 읽고 사람에게 그렇게 말한다."""

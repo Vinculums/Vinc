@@ -112,14 +112,14 @@ jobs:
         run: python scripts/gate_contrast.py
       - name: Design sync gate
         run: python scripts/gate_design_sync.py
-      - name: Design hub drift gate
-        run: python -X utf8 design-hub/scripts/sync_out.py --check
+      - name: Design token drift gate
+        run: python -X utf8 scripts/design/sync_out.py --check
       - name: Design surface gate (app)
-        run: python -X utf8 design-hub/scripts/gate_surface.py app/src
+        run: python -X utf8 scripts/design/gate_surface.py app/src
       - name: Figma token drift gate
-        run: python -X utf8 design-hub/scripts/figma_diff.py
+        run: python -X utf8 scripts/design/figma_diff.py
       - name: Figma inventory gate (screens · modals · icons)
-        run: python -X utf8 design-hub/scripts/figma_inventory.py
+        run: python -X utf8 scripts/design/figma_inventory.py
       - name: Agent roster gate
         run: python -X utf8 scripts/agents_sync.py --check
 
@@ -198,8 +198,7 @@ jobs:
   #
   # ⚠ 캐시를 안 건다. `swatinem/rust-cache` 는 호스티드용이 맞지만, 이 워크플로는
   # 자주 도는 것이 아니라 캐시가 더워질 일이 없다. 매번 찬 컴파일이고 그 값은
-  # 정직하게 분으로 낸다. 셀프호스티드에서 캐시를 뺀 이유는 다르다(영속 디스크가
-  # 이미 들고 있다) — [[record:the-rust-cache-action-costs-nineteen-minutes-to-save-four]].
+  # 정직하게 분으로 낸다.
   rust-linux:
     name: rust (hosted ubuntu, cargo check)
     if: inputs.rust_linux

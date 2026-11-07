@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>Community graph · Vinc</title>
+    <!-- 읽기 전용 커뮤니티 그래프. 진입점은 main.ts 이고 빌드는
+         vite.community-view.config.ts 가 따로 한다. 데스크톱·웹 앱 빌드와 섞지 않는다. -->
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; }
+      body { font: 14px/1.5 system-ui, sans-serif; }
+      #graph { position: fixed; inset: 0; }
+      #msg { position: fixed; inset: 0; display: grid; place-items: center; padding: 0 16px;
+        text-align: center; pointer-events: none; }
+      #msg[hidden] { display: none; }
+    </style>
+  </head>
+  <body>
+    <div id="graph"></div>
+    <div id="msg" role="status" hidden></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

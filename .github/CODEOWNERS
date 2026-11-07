@@ -17,8 +17,9 @@
 /vinc_rag/                                       @Vinculums/rag
 /app/                                            @Vinculums/app
 /LICENSE                                         @Vinculums/design-content
+/LICENSING.md                                    @Vinculums/design-content
+/NOTICE                                          @Vinculums/design-content
 /README.md                                       @Vinculums/design-content
-/design-hub/                                     @Vinculums/design-content
 /emails/                                         @Vinculums/design-content
 /starter-packs/                                  @Vinculums/design-content
 /.dockerignore                                   @Vinculums/platform
@@ -32,7 +33,6 @@
 /agents/                                         @Vinculums/platform
 /infra/                                          @Vinculums/platform
 /packaging/                                      @Vinculums/platform
-/engines/embed_pipeline.py                       @Vinculums/rag
 /engines/recall_ingest.py                        @Vinculums/rag
 /packaging/bake_embed_model.py                   @Vinculums/rag
 /scripts/assert_m3_dim.py                        @Vinculums/rag
@@ -48,17 +48,24 @@
 /scripts/tooluse_shell.py                        @Vinculums/rag
 /tests/rag/                                      @Vinculums/rag
 /tests/app/                                      @Vinculums/app
+/scripts/design/                                 @Vinculums/design-content
 /tests/design/                                   @Vinculums/design-content
+/scripts/_azutil.py                              @Vinculums/platform
+/scripts/_gitutil.py                             @Vinculums/platform
+/scripts/_root.py                                @Vinculums/platform
 /scripts/age_status_lines.py                     @Vinculums/platform
 /scripts/agents_sync.py                          @Vinculums/platform
 /scripts/app-config-baseline.json                @Vinculums/platform
 /scripts/check_hub_env.py                        @Vinculums/platform
+/scripts/comment-history-baseline.json           @Vinculums/platform
 /scripts/gate_app_config.py                      @Vinculums/platform
+/scripts/gate_comment_history.py                 @Vinculums/platform
 /scripts/gate_contrast.py                        @Vinculums/platform
 /scripts/gate_design_sync.py                     @Vinculums/platform
 /scripts/gate_escape.py                          @Vinculums/platform
 /scripts/gate_forbidden.py                       @Vinculums/platform
 /scripts/gate_graph_refs.py                      @Vinculums/platform
+/scripts/gate_homepage_drift.py                  @Vinculums/platform
 /scripts/gate_ownership.py                       @Vinculums/platform
 /scripts/gate_pr_title.py                        @Vinculums/platform
 /scripts/gate_runner_move.py                     @Vinculums/platform
@@ -74,6 +81,7 @@
 /scripts/roster_probe.py                         @Vinculums/platform
 /scripts/runner-tools.txt                        @Vinculums/platform
 /scripts/setup_runner.sh                         @Vinculums/platform
+/scripts/third_party_notices.py                  @Vinculums/platform
 /scripts/version_sync.py                         @Vinculums/platform
 /scripts/worktree_hook.py                        @Vinculums/platform
 /tests/platform/                                 @Vinculums/platform
@@ -89,4 +97,5 @@
 /api/packfile.py                                 @Vinculums/core @Vinculums/platform
 /api/sync.py                                     @Vinculums/core @Vinculums/platform
 /vinc_mcp/oauth.py                               @Vinculums/core @Vinculums/platform
+/api/contract/sidecar.json                       @Vinculums/core @Vinculums/app
 /app/src/copy.ts                                 @Vinculums/app @Vinculums/design-content

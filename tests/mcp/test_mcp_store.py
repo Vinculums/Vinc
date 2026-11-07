@@ -38,31 +38,36 @@ def test_tokens_expiry(store):
     assert store.get_token("t1", now=500) is None         # 만료 시 삭제됨
 
 
-def test_refresh_single_consume(store):
+def test_refresh_rotates_once_and_answers_again_only_inside_the_window(store):
+    """회전은 한 번만 새 쌍을 만든다. 창 안의 재요청은 **같은 쌍**, 창 밖은 None(VIN-796)."""
     store.add_refresh("r1", "c1", "user:u1", "pro")
-    assert store.pop_refresh("r1")["owner"] == "user:u1"
-    assert store.pop_refresh("r1") is None
+    assert store.get_refresh("r1")["owner"] == "user:u1"
+    first = store.rotate_refresh("r1", access="a2", refresh="r2", exp=5000, now=1000)
+    assert first["replayed"] is False and first["owner"] == "user:u1" and first["plan"] == "pro"
+    again = store.rotate_refresh("r1", access="a3", refresh="r3", exp=5000, now=1030)
+    assert again["replayed"] is True
+    assert (again["access_token"], again["refresh_token"]) == ("a2", "r2")
+    assert store.get_refresh("r3") is None                       # 새 쌍을 만들지 않았다
+    assert store.rotate_refresh("r1", access="a4", refresh="r4", exp=9e9, now=1061) is None
+    assert store.rotate_refresh("nope", access="a5", refresh="r5", exp=9e9, now=1000) is None
 
 
 def test_connect_request_consume(store):
     store.add_connect_request("req1", "c1", "https://a/cb", "chal", "st", exp=9e9)
-    assert store.get_connect_request("req1")["client_id"] == "c1"
     rec = store.consume_connect_request("req1")
-    assert rec and rec["redirect_uri"] == "https://a/cb"
+    assert rec and rec["client_id"] == "c1" and rec["redirect_uri"] == "https://a/cb"
     assert store.consume_connect_request("req1") is None   # 단일 소비
-    assert store.get_connect_request("req1") is None       # 소비 후 조회 불가
 
 
 def test_connect_request_expiry(store):
     store.add_connect_request("req2", "c1", "https://a/cb", "chal", None, exp=1000)
-    assert store.get_connect_request("req2", now=2000) is None
     assert store.consume_connect_request("req2", now=2000) is None
 
 
 def test_owner_plan(store):
-    assert store.get_owner_plan("user:u1") is None
+    assert store.get_owner_plan_age("user:u1") == (None, None)
     store.set_owner_plan("user:u1", "pro")
-    assert store.get_owner_plan("user:u1") == "pro"
+    assert store.get_owner_plan_age("user:u1")[0] == "pro"
 
 
 def test_quota_allows_then_locks(store):
@@ -96,6 +101,22 @@ def test_quota_resets_after_window(store):
     assert store.quota_check(o, now=0, **kw)["allowed"]
     # 창(1000s) 경과 → 리셋
     r = store.quota_check(o, now=1001, **kw)
+    assert r["allowed"] and r["count"] == 1
+
+
+def test_quota_aligned_day_resets_at_utc_midnight_without_a_lock(store):
+    """Curious 의 하루 창: 00:00 UTC 경계에서 시작하고, 한도 뒤에는 잠그지 않고 그날
+    끝까지만 거부한다. 23:00 에 처음 쓴 사람도 한 시간 뒤 자정에 다시 열린다."""
+    day = 86400 * 20_000                       # 어느 날의 00:00 UTC
+    o, kw = "user:u1", dict(limit=2, window_s=86400, lock_s=0, aligned=True)
+    for _ in range(2):
+        assert store.quota_check(o, now=day + 23 * 3600, **kw)["allowed"]
+    r = store.quota_check(o, now=day + 23 * 3600, **kw)
+    assert not r["allowed"] and r["reason"] == "exceeded"
+    assert r["retry_after_s"] == 3600 and r["locked_until"] is None
+    assert r["resets_at"] == day + 86400
+    assert store.usage_rows()[0]["locked_until"] == 0     # 잠금을 기록하지 않는다
+    r = store.quota_check(o, now=day + 86400 + 1, **kw)   # 다음 날 00:00:01
     assert r["allowed"] and r["count"] == 1
 
 

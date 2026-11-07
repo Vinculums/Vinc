@@ -30,6 +30,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
@@ -39,10 +40,17 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import community, edverify, entitlement, toolcall, tools, viewurl
+from store import httpbody
+from store.envflag import truthy
+
+from . import burst, community, edverify, entitlement, modern, toolcall, tools, viewurl
+
 from .bridge import Bridge
 from .oauth import CONNECT_TTL, OAuthGate
 from .rpc import PROTOCOL_VERSIONS, Dispatcher
+
+#: 역할 계약을 읽는 비도구 메서드. 스페이스·역할·읽기 키 게이트를 tools/call 과 같이 탄다.
+_ROLE_READS = ("prompts/", "skills/", "resources/")
 
 MAX_BODY = 4 * 1024 * 1024
 
@@ -72,6 +80,9 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     "operation-status": ("GET", "/operation-status"),
     "node-edges": ("GET", "/node-edges"),
     "roles": ("GET", "/roles"),
+    "eval-cards": ("GET", "/eval-cards"),   # 역할 편집 면의 평가 카드(조회 전용, owner 는 프록시가 강제)
+    # 에이전트 쓰기 검토(A5) — 최근 쓰기를 출처별로 묶은 조회. owner 는 프록시가 강제한다.
+    "agent-writes": ("GET", "/agent-writes"),
     "community-agent-export": ("POST", "/community-agent/export"),
     "community-pack-inspect": ("POST", "/community-pack/inspect"),
     "community-agent-import-preview": ("POST", "/community-agent/import-preview"),
@@ -138,7 +149,8 @@ _COMMUNITY_READ_OPS = frozenset({
 _COMMUNITY_PROJECT_OPS = frozenset({
     "ingest-fragment", "doc-put", "conventions-build", "delete", "doc-delete", "delete-edge",
 })
-_COMMUNITY_PAGE_NODE_RE = re.compile(r"concept:[a-z0-9][a-z0-9-]{0,79}")
+# 위키 페이지 노드. 종류가 접두를 정한다(사건 episode·결과 record·결정 decision, 나머지 concept).
+_COMMUNITY_PAGE_NODE_RE = re.compile(r"(?:concept|episode|record|decision):[a-z0-9][a-z0-9-]{0,79}")
 _COMMUNITY_WIKI_RELS = frozenset({
     "relates_to", "related_to", "prerequisite_of", "derives_from", "inherits_from",
 })
@@ -154,6 +166,14 @@ _COMMUNITY_AGENT_DOC_RE = re.compile(r"agent\.(" + _COMMUNITY_OBJECT_UUID + r")\
 _COMMUNITY_PACK_NODE_RE = re.compile(r"concept:pack-" + _COMMUNITY_OBJECT_UUID)
 _COMMUNITY_PACK_DOC_RE = re.compile(r"pack\.(" + _COMMUNITY_OBJECT_UUID + r")\." + _COMMUNITY_OBJECT_UUID)
 
+
+def _community_page_node(node) -> bool:
+    """반영된 위키 페이지 노드 id 인가. 끝·이중 하이픈과 Talk/Lounge 노드는 아니다."""
+    return (isinstance(node, str) and bool(_COMMUNITY_PAGE_NODE_RE.fullmatch(node))
+            and not node.endswith("-") and "--" not in node
+            and not _COMMUNITY_SOCIAL_NODE_RE.fullmatch(node))
+
+
 # ── 팀 역할별 op 등급(AP-1 §4.4) ──────────────────────────────────────────────
 # 세밀한 주제별·노드별 권한은 전 질의 플랜 개작이 필요해 v1 범위 밖이다. 대신 **이미
 # 이름이 붙어 있는** op 목록을 등급으로 가른다. 판정은 여기(우회 불가 지점)에서 하고,
@@ -166,28 +186,98 @@ _EDITOR_OPS = frozenset({
     "doc-put", "doc-put-file", "doc-extract", "doc-reembed",
     "topic-description",
     "evidence-backfill", "conventions-build",
-    "community-agent-import",
 })
 _PURE_POST_OPS = frozenset({"community-agent-export", "community-agent-import-preview", "community-pack-inspect"})
+#: 팀 그래프에서는 **어느 역할로도** 못 하는 op. 공유 Agent 가져오기·미리보기·내보내기와
+#: 팩 검사는 개인 그래프(`typ=proxy`) 전용이다(2026-10-16 소유자 판정: 팀 관리에서
+#: 커뮤니티 기능을 뺀다). 등급표 밖에 두는 것이 요점이다 — editor 에서 빼기만 하면
+#: 나머지 op 처럼 조회로 분류돼 열람자에게 열린다.
+#: 근거: [[vinc.audit.code-cleanup-community-alignment-2026-10-16]] §2.2
+_TEAM_REFUSED_OPS = frozenset(
+    op for op in _PROXY_OPS if op.startswith("community-agent-") or op == "community-pack-inspect")
 _ADMIN_OPS = frozenset({
     # 되돌릴 수 없는 것들 — 남의 작업을 지우거나 합치는 연산이다.
     "delete", "delete-edge", "merge-nodes", "doc-delete", "domain-rename",
 })
 _TEAM_ROLES = ("viewer", "editor", "admin")
 
-#: 팀 그래프에서 일하면 등급은 **Team** 이다 — 사람이 아니라 **공간**이 등급을 정한다.
-#: 전에는 팀 주소로 들어와도 계정이 준 개인 등급이 그대로 쓰였고, 그래서 와이어 값
-#: `team` 을 실제로 내는 곳이 **한 군데도 없었다**. 두 등급의 한도가 같던 동안에는
-#: 아무 증상이 없었지만(Free·Pro 둘 다 2,000), Team 이 6,000 이 되는 순간 그것은
-#: "팀이 팀 한도를 못 받는다"가 된다. 소유자가 이미 `team:` 으로 확인된 자리라
-#: 여기서 단정해도 틀릴 수 없다. 카운터도 owner 단위라 6,000 은 **팀이 나눠 쓴다**.
-#: 근거: [[decision:the-plans-are-free-and-team-and-the-axis-is-the-call-limit]]
-_TEAM_PLAN = "team"
+#: 팀 그래프의 등급은 **그 팀 소유자의 등급**이다 — 사람이 아니라 공간이 등급을 정한다는
+#: 규칙을 넓힌 것이다. 멤버의 개인 등급(`plan`)을 쓰면 안 된다: Curious 멤버가 Genius 팀에서
+#: 일하면 Genius 한도를 받아야 한다. 카운터는 owner 단위라 팀 한도는 **팀이 나눠 쓴다**.
+#: 계정이 `team_plan` 을 싣지 않으면 Genius 로 읽는다: 지금 활성인 팀은 전부 체험
+#: (`TRIAL_UNTIL`) 중이고 Team 의 후속이 Genius 다.
+#: 근거: [[vinc.canon.account-policy §8]]
+_LEGACY_TEAM_PLAN = "genius"
+
+
+def _team_plan(resp: dict) -> str:
+    """팀 멤버십 응답(verify-key·verify-member) → 그 팀 스페이스의 등급."""
+    raw = resp.get("team_plan")
+    if raw is None:
+        return _LEGACY_TEAM_PLAN
+    return entitlement.normalize_plan(raw, source="team-plan")
+
+
+#: 하루 창은 00:00 UTC 에 리셋되고 한도 뒤에 잠그지 않는다(약관의 "다음 날까지"와 같은 규칙).
+_DAY_S = 86400.0
+#: 한도 표시(`quota_view`)가 창을 부르는 이름. 굴러가는 24시간이 아니라 UTC 달력의 하루다.
+#: 창 길이나 정렬을 바꾸면 이 값과 도구 참조문(`vinc_whoami`)을 같이 바꾼다.
+_WINDOW = "utc_day"
+
+
+def _current_plan(plan: str | None) -> str | None:
+    """폐기된 와이어 값(`team`·`pro`)을 지금 등급으로 접는다. 웹 프록시 어서션은 팀에 아직
+    `team` 을 싣고 정규화를 거치지 않으므로, 여기서 안 접으면 무료 쪽으로 떨어진다."""
+    return entitlement.RETIRED_PLANS.get(plan, plan) if plan is not None else None
+
+
+#: `/internal/quota` 한 번에 묻는 스페이스 수의 상한(개인 하나와 팀 몇 개면 충분하다).
+_QUOTA_VIEW_MAX = 32
+_QUOTA_OWNER_RE = re.compile(r"(user|team):[A-Za-z0-9_-]+")
+
+#: 하루 사용량이 이 비율에 닿으면 응답에 경고 한 줄과 플랜 주소를 싣는다.
+#: 근거: [[vinc.plan.plans-and-limits-redesign-2026-10-17 §10.6]]
+_WARN_RATIO = 0.8
+_PLANS_URL = "https://vincs.io/pricing"
+
+
+def _reset_phrase(resets_at: float, now: float) -> str:
+    """리셋 시각을 문장 조각으로. 시각은 상수로 쓰지 않는다: 00:00 UTC 정렬보다 먼저 열린
+    카운터는 그 창이 끝날 때까지(하루 안) 다른 시각에 리셋된다."""
+    secs = max(0, int(math.ceil(resets_at - now)))
+    hh, mm = secs // 3600, (secs % 3600) // 60
+    return f"at {time.strftime('%H:%M', time.gmtime(resets_at))} UTC, in {hh}h {mm:02d}m"
+
+
+def _burst_denial(limit: int, window_s: float, wait: float) -> dict:
+    """분당 상한 거절. 하루 한도 거절과 같은 tools/call 결과 봉투이고 `_meta` 키만 다르다
+    (`vinc_rate`): REST 가 이 키를 보고 `rate_limited` 로 낸다."""
+    secs = max(1, int(math.ceil(wait)))
+    text = (f"Too many calls in a short time: each space allows {limit} tool calls a minute "
+            f"on every plan. Try again in {secs}s.")
+    return {"content": [{"type": "text", "text": text}], "isError": True,
+            "_meta": {"vinc_rate": {"limit": limit, "window_s": int(window_s),
+                                    "retry_after_s": secs}}}
+
+
+def _with_quota_meta(reply: dict | None, meta: dict | None) -> dict | None:
+    """성공한 tools/call 응답에 남은 호출 수를 싣는다. 경고가 있으면 본문에도 한 줄을 더한다:
+    `_meta` 는 호스트가 모델에게 안 보여 주는 경우가 많아, 사람에게 전할 문장은 본문에 있어야
+    한다. 오류 결과·다른 메서드·세지 않은 스페이스는 그대로 둔다. 인용 쌍(`structuredContent`
+    를 싣는 search·fetch)은 본문 모양이 계약이라 `_meta` 에만 싣는다."""
+    result = reply.get("result") if isinstance(reply, dict) else None
+    if not meta or not isinstance(result, dict) or result.get("isError"):
+        return reply
+    result.setdefault("_meta", {})["vinc_quota"] = meta
+    if (meta.get("warning") and isinstance(result.get("content"), list)
+            and "structuredContent" not in result):
+        result["content"].append({"type": "text", "text": meta["warning"]})
+    return reply
 
 
 def _role_allows(role: str, op: str) -> bool:
     """팀 역할이 이 op 를 할 수 있는가. 모르는 역할은 **거부**(fail-closed)."""
-    if role not in _TEAM_ROLES:
+    if role not in _TEAM_ROLES or op in _TEAM_REFUSED_OPS:
         return False
     if op in _ADMIN_OPS:
         return role == "admin"
@@ -201,7 +291,7 @@ def _role_allows(role: str, op: str) -> bool:
 #: **URL 은 의도, 자격증명은 권한.** 주소가 어느 그래프인지 말하고, 키가 들어갈 수
 #: 있는지와 어떤 역할인지를 증명한다. 그래서 팀 id 를 안다는 것만으로는 아무것도
 #: 못 하고, 키 하나로 모든 스페이스를 쓸 수 있다(스페이스마다 키를 발급할 필요가 없다).
-#: 근거: [[decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right]]
+#: 근거: [[decision:the-space-is-an-argument-and-the-default-is-personal]]
 #: 스페이스 id 의 모양. 주소(`/t/<uuid>/mcp`)와 인자(`space`) **양쪽이 같은 것을
 #: 쓴다** — 두 벌로 두면 한쪽만 조여도 다른 쪽이 뚫린 채 남는다.
 _UUID = (r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
@@ -233,26 +323,26 @@ def team_role_tiers() -> dict[str, frozenset[str]]:
 
     새 op 를 추가하면서 역할을 안 정하면 조회로 조용히 분류된다 — 쓰기 op 가 열람자에게
     열리는 사고가 그렇게 난다. 테스트가 그 침묵을 깨는 역할을 한다."""
-    viewer = frozenset(_PROXY_OPS) - _EDITOR_OPS - _ADMIN_OPS
+    viewer = frozenset(_PROXY_OPS) - _EDITOR_OPS - _ADMIN_OPS - _TEAM_REFUSED_OPS
     return {"viewer": viewer, "editor": _EDITOR_OPS, "admin": _ADMIN_OPS}
 
 
 # 커넥터 아이콘 래스터 — 정본: app/src-tauri/icons/128x128.png(앱 아이콘과 동일 파일,
-# design-hub 의 링 플레이트에서 `tauri icon` 이 뽑는다).
+# scripts/design/assets/logo 의 링 플레이트에서 `tauri icon` 이 뽑는다).
 # base64 로 심는 이유는 SVG 와 같다: 사이드카/MCP 는 단일 바이너리라 외부 자산 경로가
 # 없다. **이 리포에서 로고를 인라인해도 되는 유일한 자리다.**
 # ⚠ 그래서 사본이 조용히 낡는 것을 주석이 아니라 테스트가 막는다 —
 # tests/mcp/test_mcp_icons.py 의 EmbeddedIconMatchesCanon 이 이 둘을 정본과 바이트로 대조한다.
-# 다시 뽑는 법: design-hub에서 npm run logo:build → python -X utf8 scripts/sync_out.py --apply
+# 다시 뽑는 법: scripts/design 에서 npm run logo:build → python -X utf8 scripts/design/sync_out.py --apply
 _FAVICON_PNG = base64.b64decode(
     "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"
 )
 
-# 커넥터/브라우저 아이콘 — 정본: design-hub/assets/logo/vinc-ring-favicon.svg
+# 커넥터/브라우저 아이콘 — 정본: scripts/design/assets/logo/vinc-ring-favicon.svg
 # (판 없는 링. 밝은 바탕엔 검정, 어두운 바탕엔 `prefers-color-scheme` 으로 흰색.
-# 판은 2026-09-24 에 폐기됐다. 근거: design-hub/assets/logo/README.md)
+# 판은 2026-09-24 에 폐기됐다. 근거: [[vinc.design.logo]])
 # 임베드 이유와 드리프트 방지는 위 _FAVICON_PNG 주석과 같다.
-_FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="42 38 436 604"><style>@media (prefers-color-scheme: dark){path,circle{fill:#FFFFFF}}</style><path fill-rule="evenodd" fill="#000000" d="M328.4 155.7L420.5 284.7Q460.0 340.0 420.5 395.3L328.4 524.3Q260.0 620.0 191.6 524.3L99.5 395.3Q60.0 340.0 99.5 284.7L191.6 155.7Q260.0 60.0 328.4 155.7Z M312.2 203.4L383.9 297.8Q416.0 340.0 383.9 382.2L312.2 476.6Q260.0 545.2 207.8 476.6L136.1 382.2Q104.0 340.0 136.1 297.8L207.8 203.4Q260.0 134.8 312.2 203.4Z"></path><circle cx="260" cy="340" r="52" fill="#000000"></circle></svg>"""
+_FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="-42 38 604 604"><style>@media (prefers-color-scheme: dark){path,circle{fill:#FFFFFF}}</style><path fill-rule="evenodd" fill="#000000" d="M328.4 155.7L420.5 284.7Q460.0 340.0 420.5 395.3L328.4 524.3Q260.0 620.0 191.6 524.3L99.5 395.3Q60.0 340.0 99.5 284.7L191.6 155.7Q260.0 60.0 328.4 155.7Z M312.2 203.4L383.9 297.8Q416.0 340.0 383.9 382.2L312.2 476.6Q260.0 545.2 207.8 476.6L136.1 382.2Q104.0 340.0 136.1 297.8L207.8 203.4Q260.0 134.8 312.2 203.4Z"></path><circle cx="260" cy="340" r="52" fill="#000000"></circle></svg>"""
 
 
 class MCPHTTPApp:
@@ -287,6 +377,9 @@ class MCPHTTPApp:
         # (기존 테스트·로컬 프로파일 무영향) — cli 가 env 로 명시 활성화한다.
         self.store = store if store is not None else (oauth.store if oauth else None)
         self.quota_config = quota_config
+        # 분당 상한은 플랜과 무관하게 스페이스마다 같다. 0 이거나 없으면 끈다.
+        per_minute = (quota_config or {}).get("burst_per_minute") or 0
+        self.burst = burst.BurstLimiter(per_minute) if per_minute > 0 else None
         # 무료 등급 주제 상한(AP-1 §3.4). None = 기능 꺼짐. 등급→숫자 변환이 **여기**
         # 한 곳에서만 일어나고 사이드카는 숫자만 받는다(정책 무지 유지).
         self.free_max_domains = free_max_domains
@@ -296,10 +389,16 @@ class MCPHTTPApp:
         # 레플리카가 둘 이상이라는 것을 볼 것 — 프로세스 로컬이라 같은 세션 id 가
         # 레플리카를 넘나든다([[vinc.plan.mcp-second-pass]]).
         # 허브는 **이미 원격 그래프 자신**이라 `target` 을 내보내지도 받지도 않는다.
-        self._dispatcher = Dispatcher(self.bridge, allow_target=False)
+        self._dispatcher = Dispatcher(self.bridge, hub=True)
+        # 웹훅 전달은 스위치가 켜진 프로세스에서만 만든다. 배경 스레드는 첫 구독에서 뜬다.
+        # 근거: [[vinc.plan.mcp-events-and-webhooks]]
+        from . import events
+        if events.webhook_enabled():
+            self._dispatcher.events = events.Runtime(self.bridge)
 
     def quota_snapshot(self, owner: str, plan: str | None) -> dict | None:
-        """내부 사용량 읽기. 공개 whoami 연결·소비·잠금 생성은 하지 않는다.
+        """사용량 읽기(`quota_view` 를 거쳐 whoami·`_meta`·계정 화면이 쓴다). 소비·리셋·
+        잠금 생성은 하지 않고, 세는 스페이스면 카운터 한 줄(owner 기본키)만 읽는다.
 
         계정 정책의 그래프 owner 기준을 사용한다. 미설정·면제는 유한 잔여량으로
         꾸미지 않는다. 호출자는 인증으로 결정한 owner만 전달해야 한다.
@@ -309,61 +408,114 @@ class MCPHTTPApp:
         cfg = self.quota_config
         if owner in cfg.get("exempt_owners", ()):
             return {"count": 0, "remaining": None, "exempt": True}
-        limit = cfg["team_limit"] if plan in entitlement.PAID_PLANS else cfg["free_limit"]
-        return {**self.store.quota_snapshot(owner, limit=limit,
-                                           window_s=cfg["window_s"]),
+        if _current_plan(plan) in entitlement.PAID_PLANS:
+            # 유료는 세지 않는다. 남은 수를 지어내지 않고 "계량 안 함"이라고 말한다.
+            return {"count": 0, "remaining": None, "limit": None, "exempt": False,
+                    "unmetered": True}
+        limit = cfg["free_limit"]
+        return {**self.store.quota_snapshot(owner, limit=limit, window_s=_DAY_S, aligned=True),
                 "limit": limit, "exempt": False}
 
+    def quota_view(self, owner: str, plan: str | None) -> dict | None:
+        """한 스페이스의 한도 표시. `/v1/me`·MCP `_meta`·계정 화면이 같은 모양을 읽는다.
+
+        세지 않는 스페이스는 `metered: False` 로 말하고 수를 지어내지 않는다. 그 이유가
+        면제(`exempt: True`)인지 등급(`plan`)인지는 갈라 말한다. 세는 스페이스는 창 이름
+        (`window`)·한도·쓴 수·남은 수·리셋 시각을 싣는다.
+        ⚠ 싣는 것은 인자로 받은 owner 의 숫자뿐이고 owner id·이메일은 싣지 않는다. 호출자는
+        인증으로 정한 owner(또는 계정이 그 사람의 멤버십으로 준 팀)만 넘겨야 한다.
+        팀 owner 의 plan 이 None 이면 계정이 팀 등급을 아직 안 실은 것이라 `_team_plan` 과
+        같이 읽는다. 쿼터가 꺼져 있으면(로컬·미설정) None.
+        """
+        if plan is None and owner.startswith("team:"):
+            plan = _LEGACY_TEAM_PLAN
+        snap = self.quota_snapshot(owner, plan)
+        if snap is None:
+            return None
+        if snap.get("exempt"):
+            return {"metered": False, "exempt": True}
+        if snap.get("limit") is None:
+            return {"metered": False, "exempt": False, "plan": _current_plan(plan)}
+        limit, used, left, resets_at = (snap["limit"], snap["count"], snap["remaining"],
+                                        snap["resets_at"])
+        view = {"metered": True, "exempt": False, "plan": "free", "window": _WINDOW,
+                "limit": limit, "used": used, "remaining": left,
+                "resets_at": _utc_iso(resets_at) if resets_at else None}
+        if used >= limit * _WARN_RATIO:
+            when = f" They reset {_reset_phrase(resets_at, time.time())}." if resets_at else ""
+            view["warning"] = (f"You have used {used:,} of {limit:,} tool calls today on the "
+                               f"Curious (free) plan, {left:,} left.{when} Plans: {_PLANS_URL}")
+            view["upgrade_url"] = _PLANS_URL
+        return view
+
+    def quota_meta(self, spent: dict) -> dict | None:
+        """이번 메시지가 센 스페이스의 표시. 안 셌거나 세지 않는 스페이스면 None."""
+        if not spent:
+            return None
+        view = self.quota_view(spent["owner"], spent["plan"])
+        return view if view and view.get("metered") else None
+
     def quota_check(self, owner: str, plan: str | None) -> dict | None:
-        """소비 1회 시도. 허용이면 None, 초과·잠금이면 **tools/call 결과 dict**.
+        """소비 1회 시도. 허용이면 None, 초과면 **tools/call 결과 dict**.
 
         카운터는 owner(public_id) 단위 — 키를 여러 개 만들어도 합산된다(우회 불가).
-        `exempt_owners` 에 든 owner 는 세지 않는다(잠금도 보지 않는다).
+        `exempt_owners` 에 든 owner 와 유료(Genius) 스페이스는 세지 않는다.
+        Curious 는 하루 `free_limit` 회이고 00:00 UTC 에 리셋된다(잠금 없음).
+        면제가 아니면 플랜과 무관하게 먼저 분당 상한(`self.burst`)을 거친다.
         """
         if not self.quota_config or self.store is None or not owner:
             return None                              # 미설정/로컬 = 무제한
         cfg = self.quota_config
         if owner in cfg.get("exempt_owners", ()):
             return None                              # 면제 owner — 도그푸딩 계정
-        paid = plan in entitlement.PAID_PLANS
-        limit = cfg["team_limit"] if paid else cfg["free_limit"]
-        r = self.store.quota_check(owner, limit=limit, window_s=cfg["window_s"],
-                                   lock_s=cfg["lock_s"])
+        if self.burst is not None:                   # 모든 플랜에 같다. 하루 한도보다 먼저 본다
+            wait = self.burst.take(owner)
+            if wait:
+                return _burst_denial(self.burst.limit, self.burst.window_s, wait)
+        if _current_plan(plan) in entitlement.PAID_PLANS:
+            return None                              # Genius: 하루 상한 없음(공정 사용)
+        limit = cfg["free_limit"]
+        r = self.store.quota_check(owner, limit=limit, window_s=_DAY_S, lock_s=0,
+                                   aligned=True)
         if r["allowed"]:
             return None
         secs = r["retry_after_s"]
-        hh, mm = secs // 3600, (secs % 3600) // 60
-        tier = "Team" if plan == "team" else "Free"
-        # 업셀 문구는 **무료와 유료의 한도가 실제로 다를 때만** 쓴다. 2026-09-19 에
-        # 차별축이 다시 호출 횟수가 되어(Free 2,000 · Team 6,000) 대개 다르지만, 두
-        # 값을 같게 설정한 배포에서는 "더 높은 한도"가 거짓말이 되므로 입을 다문다.
-        # 그때 댈 다른 근거도 없다 — 주제 상한이 사라져 Free 와 Team 이 개인 기능에서
-        # 같아졌기 때문이다.
-        if paid or cfg["free_limit"] >= cfg["team_limit"]:
-            upsell = ""
-        else:
-            upsell = " A team raises the limit: https://vincs.io/pricing"
-        text = (f"{tier} tier limit reached ({limit} tool calls per "
-                f"{int(cfg['window_s'] // 3600)}h). Access resumes in ~{hh}h{mm:02d}m."
-                + upsell)
+        now = time.time()
+        resets_at = r.get("resets_at") or now + secs
+        # 업셀은 "Genius 는 상한이 없다"가 아니라 플랜 페이지만 가리킨다: 이 코드는 사이트가
+        # Genius 를 팔기 전에 배포되므로, 아직 살 수 없는 것을 약속하면 거짓 문구가 된다.
+        text = (f"Daily limit reached on the Curious (free) plan: {limit} tool calls a day "
+                f"across MCP, CLI and API. It resets {_reset_phrase(resets_at, now)}. "
+                f"Plans: {_PLANS_URL}")
         return {"content": [{"type": "text", "text": text}], "isError": True,
-                "_meta": {"vinc_quota": {"limit": limit, "retry_after_s": secs,
-                                         "upgrade_url": "https://vincs.io/account"}}}
+                "_meta": {"vinc_quota": {
+                    "limit": limit, "retry_after_s": secs,
+                    "resets_at": _utc_iso(resets_at) if resets_at else None,
+                    "upgrade_url": "https://vincs.io/account"}}}
 
     def entitlements_for(self, plan: str | None) -> dict:
         """등급 → 사이드카가 받을 **숫자**. 정책 해석은 여기서 끝난다(AP-1 §3.4).
 
         유료 등급이거나 상한이 미설정이면 빈 dict = 무제한이다.
         """
-        if self.free_max_domains is None or plan in entitlement.PAID_PLANS:
+        if self.free_max_domains is None or _current_plan(plan) in entitlement.PAID_PLANS:
             return {}
         return {"max_domains": self.free_max_domains}
 
-    def quota_for(self, auth: dict):
+    def quota_for(self, auth: dict, spent: dict | None = None):
+        """메시지 하나의 한도 소비 함수. 허용된 소비는 센 owner·plan 을 `spent` 에 남겨서
+        응답이 남은 수를 실을 수 있게 한다(`quota_meta`)."""
         # 공개 커뮤니티는 공동 쿼터를 소비하지 않는다. 인증된 사람의 기존 한도를 쓴다.
-        if community.is_space(auth.get("owner")):
-            return lambda _owner, _plan: self.quota_check(auth.get("member"), auth.get("plan"))
-        return self.quota_check
+        in_community = community.is_space(auth.get("owner"))
+
+        def spend(owner, plan):
+            if in_community:
+                owner, plan = auth.get("member"), auth.get("plan")
+            denial = self.quota_check(owner, plan)
+            if denial is None and spent is not None and owner:
+                spent.update(owner=owner, plan=plan)
+            return denial
+        return spend
 
     def dispatcher(self) -> Dispatcher:
         """공유 Dispatcher. 세션별 인스턴스가 없어졌으므로 인자도 없다(위 __init__ 참조)."""
@@ -433,7 +585,7 @@ class MCPHTTPApp:
                 ent = self.verify_key(tok, space)
                 if not ent or not str(ent.get("owner") or "").startswith("team:"):
                     return miss
-                return {"ok": True, "owner": ent["owner"], "plan": _TEAM_PLAN,
+                return {"ok": True, "owner": ent["owner"], "plan": _team_plan(ent),
                         "scope": ent.get("scope") or "read",
                         "source": "apikey", "role": ent.get("role"),
                         "member": ent.get("member")}
@@ -458,7 +610,7 @@ class MCPHTTPApp:
             # scope 가 'full' 인 것은 OAuth 가 스코프 개념 이전의 신원이라서다(개인
             # 경로와 같다). 팀에서 무엇을 할 수 있는지는 scope 가 아니라 **role** 이
             # 정한다 — 그 게이트는 do_POST 에 있다.
-            return {"ok": True, "owner": mem["owner"], "plan": _TEAM_PLAN,
+            return {"ok": True, "owner": mem["owner"], "plan": _team_plan(mem),
                     "scope": "full", "source": "oauth", "role": mem["role"],
                     "member": mem.get("member")}
         token = header[len("Bearer "):].strip()
@@ -651,6 +803,38 @@ class MCPHTTPApp:
         out = self.bridge.request("POST", "/sync/purge-owner", body={"owner": graph_owner})
         return self._purge_oauth_state(out, graph_owner)
 
+    # ── 계정 화면의 남은 호출 수 ──────────────────────────────────────────────────
+    def quota_request(self, assertion: str, raw_body: bytes | None = None) -> dict:
+        """계정 서명 어서션(typ=quota)을 검증하고 본문의 스페이스마다 `quota_view` 를 낸다.
+
+        본문은 `{"spaces": [{"owner": "user:<id>"|"team:<id>", "plan": ...}]}` 이다. 등급의
+        정본은 계정이라 계정이 싣는다. 검증은 계정 서명 · 만료 ≤2분 · 본문 지문까지이고
+        jti 는 소비하지 않는다: 읽기라 재생해도 바뀌는 것이 없고, 소비하면 화면을 열 때마다
+        스토어에 쓴다. 지문이 본문을 묶으므로 잡은 어서션으로 다른 owner 를 물을 수는 없다."""
+        if not self.account_public:
+            raise PermissionError("quota view is not configured")
+        payload = edverify.verify_assertion(self.account_public, assertion or "", max_age=120)
+        if not payload or payload.get("typ") != "quota" \
+                or payload.get("iss") != "account" or payload.get("aud") != "mcp":
+            raise PermissionError("invalid or expired quota request")
+        if not self._body_matches(payload, raw_body):
+            raise PermissionError("request body does not match the signed digest")
+        try:
+            spaces = json.loads(raw_body or b"{}").get("spaces")
+        except (ValueError, AttributeError):
+            raise ValueError("the body must be a JSON object") from None
+        if not isinstance(spaces, list) or len(spaces) > _QUOTA_VIEW_MAX:
+            raise ValueError(f"spaces must be a list of at most {_QUOTA_VIEW_MAX}")
+        out = []
+        for space in spaces:
+            owner = space.get("owner") if isinstance(space, dict) else None
+            if not isinstance(owner, str) or not _QUOTA_OWNER_RE.fullmatch(owner):
+                raise ValueError("each space needs an owner of the form user:<id> or team:<id>")
+            raw = space.get("plan")
+            plan = None if raw is None else entitlement.normalize_plan(raw, source="quota-view")
+            out.append({"owner": owner, "quota": self.quota_view(owner, plan)})
+        return {"kind": "quota.view", "executed": True, "spaces": out}
+
     # ── 운영자 사용량 덤프(W1c) ─────────────────────────────────────────────────
     def usage_request(self, assertion: str, raw_body: bytes | None = None,
                       *, now: float | None = None) -> dict:
@@ -686,7 +870,9 @@ class MCPHTTPApp:
                                or "owner stats unavailable")
         t = time.time() if now is None else now
         cfg = self.quota_config or {}
-        window_s = float(cfg.get("window_s") or 0)
+        # 창 길이는 설정이 아니라 정책 상수다. cfg 에서 읽으면 키가 없어 0 이 되고,
+        # 그러면 모든 owner 의 호출 수가 조용히 0 으로 찍힌다.
+        window_s = _DAY_S if self.quota_config else 0.0
         calls: dict[str, dict] = {}
         rows = self.store.usage_rows() if self.store is not None else []
         for row in rows:
@@ -706,7 +892,8 @@ class MCPHTTPApp:
                 "quota": {"enabled": bool(self.quota_config),
                           "window_s": window_s or None,
                           "free_limit": cfg.get("free_limit"),
-                          "team_limit": cfg.get("team_limit"),
+                          # 계정 백오피스가 읽는 키라 남긴다. 유료(Genius)는 세지 않으므로 null.
+                          "team_limit": None,
                           "exempt_owners": sorted(cfg.get("exempt_owners") or ())},
                 "owners": owners}
 
@@ -845,10 +1032,15 @@ class MCPHTTPApp:
             if role == "projector":
                 if sub != _COMMUNITY_PROJECTOR_SUB or op not in _COMMUNITY_PROJECT_OPS:
                     raise PermissionError("invalid community projection capability")
-                # 위키는 퇴역으로 남긴다. 삭제는 반영된 Talk/Lounge 항목만 허용한다.
-                if op == "delete" and not any(p.fullmatch(str(args.get("node") or ""))
-                        for p in (_COMMUNITY_SOCIAL_NODE_RE, _COMMUNITY_AGENT_NODE_RE, _COMMUNITY_PACK_NODE_RE)):
-                    raise PermissionError("only projected social or Agent metadata nodes may be deleted")
+                # 위키 페이지는 퇴역으로 남긴다. 페이지 노드를 지우는 것은 종류가 바뀌어 접두가
+                # 달라진 옛 노드를 걷을 때뿐이다(그 판단은 계정 반영기 몫이다).
+                if op == "delete":
+                    node = str(args.get("node") or "")
+                    if not any(p.fullmatch(node) for p in (
+                            _COMMUNITY_SOCIAL_NODE_RE, _COMMUNITY_AGENT_NODE_RE, _COMMUNITY_PACK_NODE_RE)):
+                        if not _community_page_node(node) or args.get("stray_type") is not None:
+                            raise PermissionError(
+                                "only projected social, Agent metadata or wiki page nodes may be deleted")
                 if op == "doc-delete":
                     ident = str(args.get("id") or "")
                     agent = _COMMUNITY_AGENT_DOC_RE.fullmatch(ident) or _COMMUNITY_PACK_DOC_RE.fullmatch(ident)
@@ -857,9 +1049,12 @@ class MCPHTTPApp:
                         raise PermissionError("only projected social or owned Agent metadata documents may be deleted")
                 if op == "delete-edge":
                     ends = (args.get("from"), args.get("to"))
-                    if (any(not isinstance(n, str) or not _COMMUNITY_PAGE_NODE_RE.fullmatch(n)
-                            or n.endswith("-") or "--" in n for n in ends)
-                            or str(args.get("type") or "").strip().lower() not in _COMMUNITY_WIKI_RELS):
+                    rel = str(args.get("type") or "").strip().lower()
+                    # 결과(record) 페이지에서 나가는 ATTACHES_TO 도 위키 관계다. 위키 소유자의 기록 출발
+                    # 관계는 rel 표에 쓰므로, 남은 ATTACHES_TO 는 같은 쌍 RELATED_TO 의 사본이다.
+                    attach = rel == "attaches_to" and str(ends[0] or "").startswith("record:")
+                    if (any(not _community_page_node(n) for n in ends)
+                            or (rel not in _COMMUNITY_WIKI_RELS and not attach)):
                         raise PermissionError("only projected wiki page relations may be deleted")
             elif op not in _COMMUNITY_READ_OPS:
                 raise PermissionError("community mutations must go through account revisions")
@@ -868,6 +1063,9 @@ class MCPHTTPApp:
             graph_owner = payload.get("graph_owner")
             if not isinstance(graph_owner, str) or not _TEAM_OWNER_RE.fullmatch(graph_owner):
                 raise ValueError("team proxy request has an invalid graph owner")
+            if op in _TEAM_REFUSED_OPS:
+                # 역할과 무관한 거부다. 공유 Agent 는 개인 그래프로만 가져온다.
+                raise PermissionError(f"{op!r} is not available in a team graph")
             role = payload.get("role")
             if not isinstance(role, str) or not _role_allows(role, op):
                 # 역할이 모자란 것도, 역할이 이상한 것도 같은 거부다(fail-closed).
@@ -920,6 +1118,10 @@ READ_TIMEOUT = max(1, int(os.environ.get("VINC_MCP_READ_TIMEOUT") or 30))
 #: 하나로 공유 그래프 전체를 서비스하므로(단일 라이터), 스레드 무제한은 곧 메모리
 #: 무제한이고 그 끝은 OOM 이다 — 이 리포가 이미 네 번 겪은 고장의 형태다.
 MAX_CONNECTIONS = max(1, int(os.environ.get("VINC_MCP_MAX_CONNECTIONS") or 64))
+#: 붙잡기 모드에서 요청 하나가 준비를 기다리는 상한(초). 넘으면 503 과 Retry-After 로 답한다 —
+#: 실패를 숨기지 않고 재시도할 때를 알려 준다. 허브 writer 인계(구 리비전의 마지막 스냅샷 →
+#: 새 리비전의 복원·자격)가 이 안에 끝나야 배포가 지연으로만 보인다.
+HOLD_S = max(1.0, float(os.environ.get("VINC_MCP_HOLD_S") or 90))
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -937,6 +1139,23 @@ class _Handler(BaseHTTPRequestHandler):
     @property
     def app(self) -> MCPHTTPApp:
         return self.server.app  # type: ignore[attr-defined]
+
+    def _held(self) -> bool:
+        """붙잡기 모드(`serve_http_held`)에서 앱이 서기 전 요청을 기다리게 한다.
+
+        True 면 이미 답했다는 뜻이다. `/health` 는 기다리지 않고 `starting` 을 답한다 —
+        살아 있음은 바로 알려야 하고, 준비됐는지는 본문으로 구분한다."""
+        ready = getattr(self.server, "ready", None)
+        if ready is None or ready.is_set():
+            return False
+        if urllib.parse.urlparse(self.path).path == "/health":
+            self._json(200, {"status": "starting", "hold": True})
+            return True
+        if ready.wait(getattr(self.server, "hold_s", HOLD_S)):
+            return False
+        self._json(503, {"error": "starting", "retryable": True, "retry_after_s": 5},
+                   {"Retry-After": "5"})
+        return True
 
     # ── CORS ────────────────────────────────────────────────────────────────
     # 브라우저 클라이언트 지원(원격 MCP 요건). 대상은 브라우저에서 도는 MCP 호스트
@@ -958,7 +1177,8 @@ class _Handler(BaseHTTPRequestHandler):
                 "Vary": "Origin",
                 "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
                 "Access-Control-Allow-Headers":
-                    "Authorization, Content-Type, Mcp-Session-Id, Mcp-Protocol-Version",
+                    "Authorization, Content-Type, Mcp-Session-Id, Mcp-Protocol-Version, "
+                    "Mcp-Method, Mcp-Name",
                 "Access-Control-Expose-Headers": "Mcp-Session-Id, WWW-Authenticate",
                 "Access-Control-Max-Age": "86400"}
 
@@ -976,8 +1196,12 @@ class _Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin")
         return bool(origin) and origin not in self._CORS_ORIGINS
 
-    def _protocol_version_rejected(self) -> str | None:
-        """`MCP-Protocol-Version` 검증. 문제 없으면 None, 있으면 오류 문자열.
+    def _protocol_version_rejected(self) -> dict | None:
+        """`MCP-Protocol-Version` 검증. 문제 없으면 None, 있으면 400 에 실을 JSON-RPC 오류.
+
+        모던 리비전도 받는다. 거절 본문은 UnsupportedProtocolVersion(-32022)이다: 두 세대를
+        다 아는 클라이언트는 400 본문을 읽고, 이 오류면 `supported` 로 다시 보내고 아니면
+        `initialize` 로 물러난다. 본문을 아직 안 읽은 자리라 `id` 는 null 이다.
 
         2025-06-18 스펙: 초기화 뒤 클라이언트는 이 헤더를 실어야 하고, 서버는 지원
         하지 않는 값에 400 을 준다. 헤더가 없으면 2025-03-26 으로 가정한다(하위호환).
@@ -988,13 +1212,14 @@ class _Handler(BaseHTTPRequestHandler):
         참조). 제대로 동작하는 클라이언트는 협상 결과를 그대로 실으므로 정의상 이
         목록 안이다."""
         want = self.headers.get("MCP-Protocol-Version")
-        if want is None or want in PROTOCOL_VERSIONS:
+        if want is None or want in PROTOCOL_VERSIONS or want in modern.MODERN_VERSIONS:
             return None
-        return (f"unsupported MCP-Protocol-Version: {want!r} "
-                f"(supported: {', '.join(PROTOCOL_VERSIONS)})")
+        return modern.unsupported(want, PROTOCOL_VERSIONS).reply(None)
 
     def do_OPTIONS(self):  # noqa: N802
         """프리플라이트 — 허용 오리진에만 CORS 를 붙여 204."""
+        if self._held():
+            return
         from . import rest_api
         if rest_api.handle(self, "OPTIONS"):
             return
@@ -1084,37 +1309,35 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _body(self) -> dict:
         self._raw_body = b""
-        n = int(self.headers.get("Content-Length") or 0)
-        if n <= 0 or n > MAX_BODY:
-            # 상한 초과는 본문을 **읽지 않고** 빈 dict 를 돌려준다(읽으면 그게 메모리 공격
-            # 통로다). 상태 코드는 이 함수가 정하지 않는다 — 초과를 오류로 알려야 하는
-            # 라우트는 부르기 전에 스스로 본다(`_internal_graph`). 미수신 바이트가 남지만 무해하다 — `protocol_version` 이
-            # HTTP/1.0(기본)이라 매 응답 뒤 커넥션이 닫히기 때문이다.
+        try:
+            rawb = httpbody.read_body(self.headers, self.rfile, MAX_BODY)
+        except httpbody.BodyTooLarge:
+            # 상한 초과는 본문을 **읽지 않고** 빈 dict 를 돌려준다. 상태 코드는 이 함수가 정하지
+            # 않는다 — 초과를 오류로 알려야 하는 라우트는 부르기 전에 스스로 본다(`_internal_graph`).
+            # 미수신 바이트가 남지만 무해하다 — `protocol_version` 이 HTTP/1.0(기본)이라 매 응답 뒤
+            # 커넥션이 닫히기 때문이다.
             # ⚠ `protocol_version = "HTTP/1.1"` 로 올리면 keep-alive 가 살아나 이 잔여물이
             # 다음 요청으로 파싱된다(요청 밀수). 그때는 여기서 `close_connection = True`.
             return {}
-        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip()
-        # UTF-8 이 아닌 본문은 **JSON 파싱 실패와 같은 자리로 강등**한다(아래 except 와 동일).
-        # 그냥 두면 do_POST 가 UnicodeDecodeError 로 죽어 커넥션이 리셋되고, 프록시 뒤에서는
-        # 클라이언트가 400 대신 **503** 을 본다(로그엔 매 요청 스택트레이스). 실제로 호스트가
-        # CP949 로 인코딩한 질의를 보내 라이브 허브가 이 경로를 밟았다(2026-08-04).
-        rawb = self.rfile.read(n)
         # 지문 대조는 **받은 바이트**로 한다(감사 M2). 파싱된 dict 를 다시 직렬화하면
         # 키 순서·공백이 달라져 보낸 쪽과 다른 값이 나온다.
         self._raw_body = rawb
+        ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip()
+        # UTF-8 이 아닌 본문은 **JSON 파싱 실패와 같은 자리로 강등**한다(둘 다 ValueError).
+        # 그냥 두면 do_POST 가 UnicodeDecodeError 로 죽어 커넥션이 리셋되고, 프록시 뒤에서는
+        # 클라이언트가 400 대신 **503** 을 본다(로그엔 매 요청 스택트레이스). 실제로 호스트가
+        # CP949 로 인코딩한 질의를 보내 라이브 허브가 이 경로를 밟았다(2026-08-04).
         try:
-            raw = rawb.decode("utf-8")
-        except UnicodeDecodeError:
-            return {}
-        if ctype == "application/x-www-form-urlencoded":
-            return {k: v[0] for k, v in urllib.parse.parse_qs(raw).items()}
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
+            if ctype == "application/x-www-form-urlencoded":
+                return {k: v[0] for k, v in urllib.parse.parse_qs(rawb.decode("utf-8")).items()}
+            return httpbody.parse_json(rawb)
+        except ValueError:
             return {}
 
     # ── 라우팅 ──────────────────────────────────────────────────────────────
     def do_GET(self):  # noqa: N802
+        if self._held():
+            return
         from . import rest_api
         if rest_api.handle(self, "GET"):
             return
@@ -1238,7 +1461,15 @@ class _Handler(BaseHTTPRequestHandler):
                 # 본문까지 받아 온다 — 도달성 bool 만 보면 사이드카가 싣는 진단이
                 # 통째로 버려진다. 그 진단 중 하나가 임베딩 백로그이고, 그게 안
                 # 보여서 워커의 죽음을 38시간 몰랐다(2026-08-05~07).
-                detail = bridge.health_detail() if hasattr(bridge, "health_detail") else None
+                # `?live=1` 은 사이드카에도 `live=1` 로 넘겨 스토어를 읽지 않게 한다. 1분마다
+                # 찌르는 장애 감시용이고, 빠지는 것은 `embed` 하나다. 없으면 예전 그대로다.
+                # 근거: [[vinc.plan.incident-mail-automation-2026-10-18]] §8.1
+                if not hasattr(bridge, "health_detail"):
+                    detail = None
+                elif truthy(urllib.parse.parse_qs(url.query).get("live", [""])[0]):
+                    detail = bridge.health_detail(live=True)
+                else:
+                    detail = bridge.health_detail()
                 body["sidecar"] = {"reachable": detail is not None,
                                    "check_ms": round((time.time() - t0) * 1000)}
                 if detail:
@@ -1266,6 +1497,8 @@ class _Handler(BaseHTTPRequestHandler):
         return self._json(404, {"error": f"no such route: GET {url.path}"})
 
     def do_POST(self):  # noqa: N802
+        if self._held():
+            return
         from . import rest_api
         if rest_api.handle(self, "POST"):
             return
@@ -1305,7 +1538,7 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._json(403, {"error": "origin not allowed"})
             bad = self._protocol_version_rejected()
             if bad:
-                return self._json(400, {"error": bad})
+                return self._json(400, bad)
             # 주소로 온 팀이다. 토큰은 **이 주소**에 묶여 있어야 한다.
             try:
                 auth = self._auth(space, presented_at=f"/t/{space}/mcp" if space else "/mcp")
@@ -1329,6 +1562,15 @@ class _Handler(BaseHTTPRequestHandler):
             msgs = msg if batch else [msg]
             if not msgs or any(not isinstance(m, dict) or not m for m in msgs):
                 return self._json(400, {"error": "expected a JSON-RPC message"})
+            # 모던 요청은 버전·능력이 본문 `_meta` 에 있고 헤더가 그것을 비춘다. 어긋나거나
+            # 모자라면 스펙대로 400 과 JSON-RPC 오류다. `_meta` 가 없는 요청(핸드셰이크
+            # 세대)은 여기를 그냥 지난다. 배치는 모던 세대에 없으므로 메시지마다 디스패처가 본다.
+            modern_version = None
+            if not batch:
+                modern_version, rej = modern.classify(msg, PROTOCOL_VERSIONS)
+                rej = rej or modern.check_headers(self.headers, msg, modern_version)
+                if rej is not None:
+                    return self._json(rej.status, rej.reply(msg.get("id")))
             session = self.headers.get("Mcp-Session-Id") or "default"
             # forced_owner: 원격 인증경로가 해석한 소유자 → tools 가 args.owner 를
             # 무시하고 강제 스탬핑(멀티테넌트 봉쇄, B-B2). static/None 이면 하위호환.
@@ -1356,7 +1598,17 @@ class _Handler(BaseHTTPRequestHandler):
             # 근거: [[decision:a-node-address-names-its-space]]
             def _gate_for(m):
                 method = m.get("method")
-                if method != "tools/call" and not str(method or "").startswith("prompts/"):
+                if str(method or "").startswith("events/"):
+                    # Events 의 스페이스는 구독 인자(`arguments.space`)가 고른다. 스페이스 확인은
+                    # 조회 도구 vinc_events 와 같은 줄을 탄다.
+                    params = m.get("params") or {}
+                    args = params.get("arguments") if isinstance(params, dict) else None
+                    return toolcall.preflight(
+                        "vinc_events", args if isinstance(args, dict) else {}, base_auth=auth,
+                        address_space=space,
+                        authenticate=lambda want: self._auth(want, presented_at="/mcp"),
+                        valid_space=lambda want: bool(_UUID_RE.fullmatch(want)) or community.is_space(want))
+                if method != "tools/call" and not str(method or "").startswith(_ROLE_READS):
                     return toolcall.Outcome("ok", auth=auth)
                 params = m.get("params") or {}
                 args = params.get("arguments") or (params if method != "tools/call" else {})
@@ -1375,10 +1627,13 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._verification_unavailable()
 
             def _tool_error(m, message):
-                return self._json(200, {
-                    "jsonrpc": "2.0", "id": m.get("id"),
-                    "result": {"isError": True,
-                               "content": [{"type": "text", "text": message}]}})
+                if str(m.get("method") or "").startswith("events/"):
+                    return self._json(200, {"jsonrpc": "2.0", "id": m.get("id"), "error": {
+                        "code": -32024, "message": message}})
+                result = {"isError": True, "content": [{"type": "text", "text": message}]}
+                if modern.classify(m, PROTOCOL_VERSIONS)[0]:
+                    result = modern.complete(result)
+                return self._json(200, {"jsonrpc": "2.0", "id": m.get("id"), "result": result})
 
             for kind in ("on_device", "space_not_found", "role_denied"):
                 denied = next(((m, g) for m, g in gated if g.kind == kind), None)
@@ -1387,10 +1642,10 @@ class _Handler(BaseHTTPRequestHandler):
             if space:
                 # prompts 는 도구 봉투가 아니라 프로토콜 오류로 거절한다.
                 role = auth.get("role") or ""
-                if any(str(m.get("method") or "").startswith("prompts/") for m in msgs) \
+                if any(str(m.get("method") or "").startswith(_ROLE_READS) for m in msgs) \
                         and not tools.role_allows(role, "vinc_neighbors"):
                     first = next(m for m in msgs
-                                 if str(m.get("method") or "").startswith("prompts/"))
+                                 if str(m.get("method") or "").startswith(_ROLE_READS))
                     return self._json(200, {
                         "jsonrpc": "2.0", "id": first.get("id"),
                         "error": {"code": -32603,
@@ -1406,13 +1661,19 @@ class _Handler(BaseHTTPRequestHandler):
                 # 멤버 신원은 권한 검증에만 쓰고 소비는 해석된 그래프 owner로 센다.
                 # 팀은 매번 계정 멤버십 검증을 거치며 등급도 TEAM으로 해석된다.
                 ents = (self.app.entitlements_for(a["plan"]) if a["owner"] else None)
-                return d.handle(m, forced_owner=a["owner"], plan=a["plan"],
-                                quota=self.app.quota_for(a),
-                                entitlements=ents,
-                                community_write=(lambda args: self.app.community_write(a, args))
-                                if self.app.community_write is not None else None,
-                                community_read=(lambda args: self.app.community_read(a, args))
-                                if self.app.community_read is not None else None)
+                spent: dict = {}
+                reply = d.handle(m, forced_owner=a["owner"], plan=a["plan"],
+                                 quota=self.app.quota_for(a, spent),
+                                 quota_view=self.app.quota_view,
+                                 entitlements=ents,
+                                 community_write=(lambda args: self.app.community_write(a, args))
+                                 if self.app.community_write is not None else None,
+                                 community_read=(lambda args: self.app.community_read(a, args))
+                                 if self.app.community_read is not None else None,
+                                 events_auth=_events_auth(a))
+                if m.get("method") != "tools/call":
+                    return reply
+                return _with_quota_meta(reply, self.app.quota_meta(spent))
 
             replies = [r for r in (_run(m, a) for m, a in pairs) if r is not None]
             # 전부 notification 이면 본문 없이 202 — 배치도 같다(스펙).
@@ -1424,6 +1685,11 @@ class _Handler(BaseHTTPRequestHandler):
             # `Mcp-Session-Id` 는 **클라이언트가 준 값을 되돌려 줄 뿐**이다. 우리는
             # 세션을 발급하지도 추적하지도 않는다. 그래도 되돌리는 이유는 지금 붙어
             # 있는 호스트의 관측 동작을 바꾸지 않기 위해서다 — 없앨 이득이 없다.
+            # 모던 요청은 세션 id 를 되돌리지 않고(스펙: 발급도 반사도 하지 않는다), 모르는
+            # 메서드는 404 다. 핸드셰이크 세대는 지금처럼 200 과 반사.
+            if modern_version:
+                code = (replies[0].get("error") or {}).get("code")
+                return self._json(404 if code == -32601 else 200, replies[0])
             return self._json(200, replies if batch else replies[0],
                               {"Mcp-Session-Id": session})
         if url.path in ("/sync/push", "/sync/pull", "/sync/docs-push", "/sync/docs-pull"):
@@ -1436,20 +1702,18 @@ class _Handler(BaseHTTPRequestHandler):
             return self._internal_graph()
         if url.path == "/internal/usage":
             return self._internal_usage()
+        if url.path == "/internal/quota":
+            return self._internal_quota()
         return self._json(404, {"error": f"no such route: POST {url.path}"})
 
     def do_PUT(self):  # noqa: N802
+        if self._held():
+            return
         from . import rest_api
         if rest_api.handle(self, "PUT"):
             return
         # /v1 밖의 PUT 은 전과 같이 표준 라이브러리의 501 이다(CORS 헤더 없음).
         self.send_error(501, "Unsupported method ('PUT')")
-
-    def do_PATCH(self):  # noqa: N802
-        from . import rest_api
-        if rest_api.handle(self, "PATCH"):
-            return
-        self.send_error(501, "Unsupported method ('PATCH')")
 
     def do_DELETE(self):  # noqa: N802
         """`DELETE /mcp` — 클라이언트 세션 종료. 스펙상 선택이지만 종료를 보내는
@@ -1460,6 +1724,8 @@ class _Handler(BaseHTTPRequestHandler):
         **성공을 뜻하는 204 를 돌려주는 것 말고 하는 일이 없다.** 스펙상 정당하다:
         세션을 쓰지 않는 서버에게 종료는 no-op 이다. 라우트를 지우지 않는 이유는
         그대로다 — 종료를 보내는 호스트가 405/501 을 오류로 취급하지 않게."""
+        if self._held():
+            return
         from . import rest_api
         if rest_api.handle(self, "DELETE"):
             return
@@ -1556,6 +1822,20 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(502, {"error": f"sidecar unreachable: {type(e).__name__}"})
         return self._json(200, out)
 
+    def _internal_quota(self):
+        """`POST /internal/quota` — 계정 서명 → 스페이스마다 남은 호출 수(`quota_request`)."""
+        if not self.app.account_public:
+            return self._json(503, {"error": "quota_view_disabled"})
+        assertion = self.headers.get("X-Vinc-Assertion") or ""
+        self._body()   # 지문 대조가 받은 바이트를 쓴다 — `_internal_purge` 와 같은 이유
+        try:
+            out = self.app.quota_request(assertion, raw_body=self._raw_body)
+        except PermissionError:
+            return self._json(401, {"error": "unauthorized"})
+        except ValueError as e:
+            return self._json(400, {"error": str(e)})
+        return self._json(200, out)
+
     def _internal_usage(self):
         """`POST /internal/usage` — 계정 서명 → 소유자 전체의 노드·문서·호출 수(W1c).
 
@@ -1642,7 +1922,7 @@ class _Handler(BaseHTTPRequestHandler):
         호출부 셋이 각자 `self.app.resolve_auth(...)` 를 부르는데 owner 를 기억하는
         자리가 없어서, 성공한 요청을 계정에 귀속할 방법이 아무 데도 없었다. 쿼터
         카운터는 현재 창만 들고 아무도 읽지 않고, 로그는 실패만 남았다. 근거:
-        [[record:per-account-usage-exists-only-as-the-quota-counter-and-nothing-reads-it]]
+        [[record:log-analytics-attributes-hub-mcp-requests-by-owner-hash-since-2026-09-02]]
         """
         # ⚠ `presented_at` 을 `space` 에서 **유도하지 않는다.** 2026-09-22 에 이 자리에서
         # `f"/t/{space}/mcp" if space else "/mcp"` 로 유도했다가 같은 결함을 한 층 아래로
@@ -1681,6 +1961,16 @@ class _Handler(BaseHTTPRequestHandler):
         line = (self.requestline or "").split("?")[0]
         self.log_message('"%s" %s %s%s', line, code, size,
                          f" owner={tag}" if tag else "")
+
+
+def _events_auth(a: dict) -> dict:
+    """웹훅 구독의 주체와 구독 기록을 쓸 수 있는가. 주체는 팀이면 멤버, 개인이면 그 사람."""
+    owner = a.get("owner") or ""
+    team = owner.startswith("team:")
+    principal = a.get("member") if team else (owner or None)
+    can_write = a.get("scope") == "full" and (
+        not team or tools.role_allows(a.get("role") or "", "vinc_ingest"))
+    return {"principal": principal, "can_write": bool(principal and can_write)}
 
 
 def _utc_iso(ts: float) -> str:
@@ -1753,6 +2043,80 @@ def make_server(app: MCPHTTPApp, host: str = "127.0.0.1", port: int = 8790,
     httpd = BoundedHTTPServer((host, port), _Handler, max_connections=max_connections)
     httpd.app = app  # type: ignore[attr-defined]
     return httpd
+
+
+class _HeldHTTPServer(BoundedHTTPServer):
+    """붙잡기 모드 서버. 내려가면(`shutdown`·`server_close`) 조립 재시도도 멈춘다."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.app = None
+        self.ready = threading.Event()
+        self.stopping = threading.Event()
+        self.hold_s = HOLD_S
+
+    def shutdown(self):
+        self.stopping.set()
+        super().shutdown()
+
+    def server_close(self):
+        self.stopping.set()
+        super().server_close()
+
+
+def make_held_server(bridge: Bridge, build, *, host: str = "127.0.0.1", port: int = 8790,
+                     hold_s: float | None = None, retry_s: float = 1.0) -> _HeldHTTPServer:
+    """포트를 **먼저** 열고, 사이드카가 준비되면 앱을 조립해 붙잡아 둔 요청을 푸는 서버.
+
+    허브 writer 인계용이다. 새 리비전은 구 리비전이 마지막 스냅샷을 올릴 때까지 스토어를
+    열지 않는데, 그동안 포트가 닫혀 있으면 플랫폼이 트래픽을 넘기지 않고 구 리비전도
+    내리지 않는다(교착). 그래서 포트는 열고 요청은 붙잡는다.
+
+    ``build()`` 는 사이드카가 아직이면 예외를 내고, 준비되면 `MCPHTTPApp` 인자 dict 를
+    돌려준다. OAuth 상태 복원도 그 안에서 한다 — 구 리비전의 MCP 가 멈춘 뒤라야 마지막
+    상태를 받는다. 조립은 배경 스레드에서 하므로 반환된 서버는 곧장 받을 수 있다."""
+    httpd = _HeldHTTPServer((host, port), _Handler, max_connections=MAX_CONNECTIONS)
+    if hold_s is not None:
+        httpd.hold_s = hold_s
+    started = time.monotonic()
+
+    def assemble() -> None:
+        last = None
+        while True:
+            try:
+                kwargs = build()
+                break
+            except Exception as exc:                          # noqa: BLE001 — 준비될 때까지 다시
+                # 같은 이유는 한 번만 적는다. 복원이 몇 분 걸리면 초마다 한 줄이 쌓인다.
+                why = f"{type(exc).__name__}: {exc}"
+                if why != last:
+                    print(f"[mcp] hold — not ready: {why}", file=sys.stderr, flush=True)
+                    last = why
+                if httpd.stopping.wait(retry_s):
+                    return
+        httpd.app = MCPHTTPApp(bridge, **kwargs)
+        httpd.ready.set()
+        print(json.dumps({"host": host, "port": httpd.server_address[1], "hold": True,
+                          "ready_after_s": round(time.monotonic() - started, 1)}), flush=True)
+
+    threading.Thread(target=assemble, name="vinc-mcp-hold", daemon=True).start()
+    return httpd
+
+
+def serve_http_held(bridge: Bridge, build, *, host: str = "127.0.0.1", port: int = 8790,
+                    hold_s: float | None = None) -> int:
+    """`make_held_server` 를 종료 신호까지 돌린다."""
+    httpd = make_held_server(bridge, build, host=host, port=port, hold_s=hold_s)
+    print(json.dumps({"host": host, "port": httpd.server_address[1], "hold": True,
+                      "hold_s": httpd.hold_s}), flush=True)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        httpd.shutdown()
+        bridge.close()
+    return 0
 
 
 def serve_http(bridge: Bridge, *, host: str = "127.0.0.1", port: int = 8790,

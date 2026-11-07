@@ -39,6 +39,14 @@ class VincInvalidArgument(VincError):
     """The request was malformed, or the graph refused it (for example a topic limit)."""
 
 
+class VincRoleChanged(VincInvalidArgument):
+    """A pinned role changed since its hash was taken, so no contract was returned.
+
+    ``details`` holds the role's current ``id``, ``rev`` and ``hash``. Read the role
+    without a pin, review what changed, and pin the new hash to run on it.
+    """
+
+
 class VincQuotaExceeded(VincError):
     """The daily call limit was reached. ``retry_after`` is in seconds when known."""
 
@@ -70,8 +78,10 @@ _BY_STATUS: dict[int, type[VincError]] = {
 }
 
 
-def error_class(status: int) -> type[VincError]:
-    """The class for an HTTP status; every 5xx is ``VincUnavailable``."""
+def error_class(status: int, code: str | None = None) -> type[VincError]:
+    """The class for an HTTP status (and code); every 5xx is ``VincUnavailable``."""
     if status >= 500:
         return VincUnavailable
+    if status == 409 and code == "role_changed":
+        return VincRoleChanged
     return _BY_STATUS.get(status, VincError)

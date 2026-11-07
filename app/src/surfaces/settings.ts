@@ -1,4 +1,4 @@
-import { accountMode, buildId, cfg, forgetMemberKey, remote, teamsApi, WEB, shellInvoke } from "../api";
+import { accountMode, api, buildId, cfg, communitiesApi, forgetMemberKey, isCommunitySpace, messageOf, remote, teamsApi, WEB, shellInvoke } from "../api";
 import { accountKey, accountWho, connectAccount, forgetAccount, hasAccount, keyIsOnDisk,
          mcpKeyPresent,
          setAccountKey } from "../account-connect";
@@ -9,6 +9,7 @@ import { loadPrefs, savePrefs, RAIL_MIN, RAIL_MAX } from "../view-prefs";
 import { disposeEditorsIn } from "../doc-editor";
 import { mountStorage } from "../storage-mode";
 import { mountTopicConversion } from "../topic-conversion";
+import { mountSpacePicker } from "../space-picker";
 import { ensureTeamCredential } from "../team-key";
 
 /** Settings — 왼쪽 분류 레일 + 본문(2026-09-22).
@@ -16,10 +17,10 @@ import { ensureTeamCredential } from "../team-key";
  *  를 한 상자에 담는다. 시트 머리의 ✕ 가 닫기이고, 여기 안에 닫기를 하나 더 두지 않는다.
  *  웹 Vinc 는 셸 전용 분류(AI 연결 · 고급)와 계정연결·동기화 섹션을 숨긴다. */
 
-export type SettingsCat =
+type SettingsCat =
   | "general" | "reading" | "account" | "ai"
   | "data" | "graphmd" | "advanced" | "about";
-export type DataTab = "create" | "import" | "share";
+export type DataTab = "import" | "share";
 
 type Live = {
   go: (cat: SettingsCat, dataTab?: DataTab) => void;
@@ -36,7 +37,7 @@ export function openSettings(start: SettingsCat = "general", dataTab?: DataTab, 
   }
   // 시트 이름은 설정 버튼과 같은 말이다(`설정`). `settingsUi.title` 은 한국어 덱에서도
   // "Settings" 라 머리만 영어가 된다.
-  // ⚠ `title:` 을 여는 괄호 바로 다음 줄에 둔다 — design-hub `figma_inventory.py` 가
+  // ⚠ `title:` 을 여는 괄호 바로 다음 줄에 둔다 — `scripts/design/figma_inventory.py` 가
   // 이 자리의 제목식으로 모달을 센다(사이에 주석이 끼면 제목 없는 호출로 읽는다).
   const sheet: SheetHandle = openSheet({
     title: COPY.ui.topbar.settings,
@@ -57,7 +58,7 @@ export function openSettings(start: SettingsCat = "general", dataTab?: DataTab, 
   });
 }
 
-export async function renderSettings(
+async function renderSettings(
   el: HTMLElement,
   sheet: SheetHandle,
   start: SettingsCat = "general",
@@ -78,7 +79,7 @@ export async function renderSettings(
   const CATS = ALL_CATS.filter((c) => !c.desktop || !WEB);
 
   let active: SettingsCat = CATS.some((c) => c.id === start) ? start : "general";
-  let toolsTab: DataTab = dataTab ?? "create";
+  let toolsTab: DataTab = dataTab ?? "import";
   let cleanup: (() => void) | null = null;
 
   function shell() {
@@ -194,32 +195,13 @@ export async function renderSettings(
           <span>px</span>
         </label>
       </div>
-      <hr class="settings-sep" />
-      <div class="settings-row">
-        <div class="settings-row-copy">
-          <strong>${esc(U.readingOpenOpts)}</strong>
-          <p class="hint">${esc(U.readingOpenOptsHint)}</p>
-        </div>
-        <button class="btn" type="button" id="s-open-lens">${esc(U.readingOpenOpts)}</button>
-      </div>
-      <p class="hint" id="s-lens-note" hidden></p>`;
+`;   // 그래프의 '보기 옵션 열기' 줄은 걷었다: 옵션·범례 단추가 없어지고 그 손잡이는 LNB 의 나침반 칸으로 갔다
     body.querySelector<HTMLInputElement>("#s-rail-w")!.addEventListener("change", (e) => {
       const n = Number((e.target as HTMLInputElement).value);
       const next = Math.min(RAIL_MAX, Math.max(RAIL_MIN, n / 16));
       savePrefs({ ...loadPrefs(), railW: next });
       document.getElementById("shell")?.style.setProperty("--rail-size", `${next}rem`);
       (e.target as HTMLInputElement).value = String(Math.round(next * 16));
-    });
-    body.querySelector("#s-open-lens")!.addEventListener("click", () => {
-      const lens = document.getElementById("view-lens");
-      if (!lens) {
-        const note = body.querySelector<HTMLElement>("#s-lens-note")!;
-        note.hidden = false;
-        note.textContent = U.readingOpenOptsNeedView;
-        return;
-      }
-      sheet.close();
-      lens.click();
     });
   }
 
@@ -281,8 +263,7 @@ export async function renderSettings(
       <div id="web-acct" class="hint" style="font-size:.85rem">…</div>
       <label>${U.space}</label>
       <p class="hint">${U.spaceHint}</p>
-      <p><select id="space-pick"><option value="">${U.spacePersonal}</option></select></p>
-      <div id="space-note" class="hint" style="font-size:.8rem"></div>
+      <div id="space-pick" class="space-pick"></div>
       ${!cfg.team ? '<div id="topic-conversion"></div>' : ""}` : ""}
       ${!remote() ? `
       <label>${U.account}</label>
@@ -308,7 +289,7 @@ export async function renderSettings(
           location.reload();
         });
       } else if (box) {
-        fetch("/api/me", { credentials: "include" })
+        api.me()
           .then((r) => (r.ok ? r.json() : null))
           .then((d) => {
             const u = d && d.user;
@@ -321,41 +302,10 @@ export async function renderSettings(
       // 스페이스 전환 — 개인 그래프와 팀 그래프는 별개 네임스페이스다. 여기서 고른
       // 것이 View·Search·Records 전부에 걸리므로, 표면 하나가 아니라 계정 설정에 둔다.
       // 활성화 대기·중지 팀은 상태만 보이고 선택하지 못한다.
-      const pick = body.querySelector<HTMLSelectElement>("#space-pick");
-      const note = body.querySelector<HTMLElement>("#space-note");
-      if (pick) {
-        void teamsApi.list({ throwOnError: true }).then((rows) => {
-          const visible = rows.filter((t) => ["active", "pending", "suspended"].includes(t.status));
-          for (const t of visible) {
-            const o = document.createElement("option");
-            const active = t.status === "active";
-            o.value = t.id; o.disabled = !active;
-            o.textContent = active ? t.name : `${t.name} (${t.status === "pending" ? U.spacePending : U.spaceSuspended})`;
-            if (active && t.id === cfg.team) o.selected = true;
-            pick.appendChild(o);
-          }
-          if (note) note.textContent = visible.some(t => t.status !== "active") ? U.spaceActivationHint
-            : visible.length ? "" : U.spaceNone;
-        }).catch(() => { if (note) note.textContent = U.spaceListFailed; });
-        pick.addEventListener("change", async () => {
-          if (pick.selectedOptions[0]?.disabled) return;
-          const next = pick.value;
-          pick.disabled = true;   // 보관하는 동안 두 번째 선택이 끼어 다른 스페이스로 열리지 않게
-          if (accountMode() && next) {
-            if (!await ensureTeamCredential(next, pick.selectedOptions[0]?.textContent || "")) {
-              pick.value = cfg.team; pick.disabled = false; return;
-            }
-            if (!pick.isConnected) return;
-          }
-          // 떠나는 스페이스의 완료 항목을 잠깐 보관한다: 돌아왔을 때 다시 읽지 않도록.
-          // 최선 노력이고 오래 걸리면 기다리지 않는다. 쓰는 때는 이 한 번뿐이다.
-          await retainBeforeSwitch().catch(() => false);
-          cfg.team = next;
-          // 스페이스는 전역이라 부분 갱신하지 않는다 — 어떤 표면이 옛 스코프의
-          // 데이터를 들고 남으면 지금 어느 그래프를 보는지 알 수 없게 된다.
-          location.reload();
-        });
-      }
+      // 종류(개인 · 팀 · 커뮤니티)를 탭으로 보고, 그 안의 하나를 줄로 고른다(`space-picker.ts`).
+      const pick = body.querySelector<HTMLElement>("#space-pick");
+      if (pick) mountSpacePicker(pick, { cfg, teamsApi, communitiesApi, isCommunitySpace, retainBeforeSwitch,
+        ensureTeam: ensureTeamCredential, reload: () => location.reload(), copy: U, esc });
       return;
     }
     if (WEB) return;
@@ -438,8 +388,12 @@ export async function renderSettings(
   // 원격 MCP 엔드포인트(허브). `vinc_mcp/http_server.py` 의 `/mcp` 와 짝이고, 같은
   // 호스트가 OAuth 디스커버리(`/.well-known/*`)도 낸다 — 커넥터는 이 주소 하나만 받는다.
   const REMOTE_MCP_URL = "https://mcp.vincs.io/mcp";
-  // 여기서 확인한 등록만 기억한다. 파일을 읽지 않고 기존 등록 상태를 짐작하지 않는다.
-  const registeredHosts = new Set<string>();
+  // 이 기기에서 연결에 성공한 호스트만 기억한다(해제하면 지운다). 호스트 설정 파일을 읽지 않으므로
+  // 다른 길로 등록한 것은 모른다. 기억한 호스트는 상태와 해제만, 나머지는 연결만 보인다.
+  const MCP_KEY = "vinc.mcp.connected";
+  const registeredHosts = new Set<string>(
+    (() => { try { const v = JSON.parse(localStorage.getItem(MCP_KEY) || "[]"); return Array.isArray(v) ? v.filter((x) => typeof x === "string") : []; } catch { return []; } })());
+  const keepHosts = () => { try { localStorage.setItem(MCP_KEY, JSON.stringify([...registeredHosts])); } catch { /* 기억만 못 한다 */ } };
   const busyHosts = new Set<string>();
   const hostResults = new Map<string, string>();
   let paintConnections = () => {};
@@ -474,7 +428,7 @@ export async function renderSettings(
       <!-- 원격 호스트. 위의 넷은 앱 모드를 따르지만 여기는 계정 그래프에 붙으므로 계정이
            있어야 한다(루프백은 구조적으로 원격에 노출할 수 없다). 여태 이 경로는
            화면에 아예 없어서, 계정이 도움이 될 사람조차 존재를 몰랐다.
-           근거: [[decision:account-is-a-path-not-a-wall]] -->
+           근거: [[decision:the-desktop-signs-in-and-shows-the-account-graph-live-and-local-mode-is-a-setting]] -->
       <label>${U.mcpRemote}</label><p class="hint">${U.mcpRemoteHint}</p>
       <ul class="rowlist">
         <li class="row">
@@ -504,10 +458,12 @@ export async function renderSettings(
       const add = body.querySelector<HTMLButtonElement>(`#mcp-add-${client}`)!;
       const remove = body.querySelector<HTMLButtonElement>(`#mcp-rm-${client}`)!;
       if (!add || !remove) return;
-      add.disabled = busyHosts.has(client) || !keyReady || registeredHosts.has(client);
+      const linked = registeredHosts.has(client);
+      add.hidden = linked; remove.hidden = !linked;
+      add.disabled = busyHosts.has(client) || !keyReady;
       remove.disabled = busyHosts.has(client);
       const result = rowResult(client);
-      result.textContent = !keyReady ? U.mcpNoKey : hostResults.get(client) || "";
+      result.textContent = !keyReady ? U.mcpNoKey : hostResults.get(client) || (linked ? U.mcpConnectedHere : "");
     }
     function rowResult(client: string): HTMLElement {
       return body.querySelector<HTMLElement>(`#mcp-result-${client}`)!;
@@ -560,15 +516,18 @@ export async function renderSettings(
           // 사람이 손으로 이을 수 있게 **실행할 줄을 그대로** 보여 준다.
           say(`${U.mcpNeedsCli(host)} ${res.command}`);
         } else if (!ok) {
-          say(action === "uninstall" && res?.removed === false
-            ? U.mcpNothing(host) : `${U.mcpFail}: ${res?.note || ""}`.trim());
+          const nothing = action === "uninstall" && res?.removed === false;
+          // 지울 것이 없었다면 연결된 것이 아니다 — 기억도 지운다.
+          if (nothing) { registeredHosts.delete(client); keepHosts(); }
+          say(nothing ? U.mcpNothing(host) : `${U.mcpFail}: ${res?.note || ""}`.trim());
         } else {
           if (action === "install") registeredHosts.add(client);
           else registeredHosts.delete(client);
+          keepHosts();
           say(action === "install" ? U.mcpDone(host) : U.mcpRemoved(host));
         }
       } catch (e: any) {
-        say(`${U.mcpFail}: ${(e && e.message) || e}`);
+        say(`${U.mcpFail}: ${messageOf(e)}`);
       } finally {
         busyHosts.delete(client);
         paintConnections();
@@ -630,7 +589,7 @@ export async function renderSettings(
       const invoke = await shellInvoke();
       if (!invoke) { paintCli(null); return; }   // 웹 Vinc — 행 자체가 의미 없다
       try { paintCli(await invoke(cmd) as any); }
-      catch (e: any) { paintCli(null, (e && e.message) || String(e)); }
+      catch (e: any) { paintCli(null, messageOf(e)); }
     }
     cliAdd.addEventListener("click", () => cliAction("cli_link_install"));
     cliRm.addEventListener("click", () => cliAction("cli_link_remove"));
@@ -642,9 +601,12 @@ export async function renderSettings(
     body.innerHTML = `
       <h2>${esc(U.navAdvanced)}</h2>
       <p class="hint">${esc(U.advancedIntro)}</p>
+      <!-- 작업 공간(owner)은 로컬 모드에서만 뜻이 있다. 계정 모드에서는 허브가 키로 소유자를
+           정하므로 바꿔도 아무 일도 안 일어나고, 힌트가 말하는 샘플도 계정 모드에는 없다. -->
+      ${accountMode() ? "" : `
       <label for="s-owner">${U.workspace}</label>
       <p class="hint">${U.workspaceHint}</p>
-      <input id="s-owner" value="${cfg.owner}" />
+      <input id="s-owner" value="${esc(cfg.owner)}" />`}
       <label for="s-sync-key">${U.syncKey}</label>
       <p class="hint">${U.syncKeyHint}</p>
       <p class="s-keyrow"><input id="s-sync-key" type="password" placeholder="vinc_sk_…"
@@ -669,7 +631,7 @@ export async function renderSettings(
       cfg.token = v;
       tokenInput.value = "";
     });
-    body.querySelector<HTMLInputElement>("#s-owner")!.addEventListener("change", (e) =>
+    body.querySelector<HTMLInputElement>("#s-owner")?.addEventListener("change", (e) =>
       (cfg.owner = (e.target as HTMLInputElement).value));
     // 수동 키(폴백 경로). **값을 다시 그리지 않는다** — 여기 두면 키가 DOM 에 눕고,
     // 그것을 없애자는 것이 이 변경의 목적이다(감사 M8). 비어 있으면 "안 바꿈"이다.

@@ -1,5 +1,6 @@
 import http from "node:http";
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import ELK from "elkjs/lib/elk.bundled.js";
 import { AvoidLib } from "libavoid-js";
@@ -12,6 +13,10 @@ const token = process.env.VINC_LAYOUT_TOKEN || "";
 const port = Number(process.env.PORT || 8080);
 const maxBody = 64 * 1024 * 1024;
 if (!token) { console.error("VINC_LAYOUT_TOKEN is not set"); process.exit(1); }
+// 배치 코드의 판. 배포본은 한 파일로 묶여 있으므로(service/build.mjs) 이 파일의 해시가 곧
+// 배치 규칙 전체의 판이다. 허브는 이 값이 바뀌면 들고 있던 배치를 낡은 것으로 보고 다시 맡긴다.
+const version = createHash("sha256").update(readFileSync(fileURLToPath(import.meta.url)))
+  .digest("hex").slice(0, 16);
 
 await AvoidLib.load(process.env.VINC_LAYOUT_WASM || fileURLToPath(new URL("./libavoid.wasm", import.meta.url)));
 const elk = new ELK();
@@ -29,7 +34,7 @@ const send = (res, status, body) => {
 };
 
 http.createServer((req, res) => {
-  if (req.method === "GET" && req.url === "/health") return send(res, 200, { ok: true, ...service.health() });
+  if (req.method === "GET" && req.url === "/health") return send(res, 200, { ok: true, version, ...service.health() });
   if (req.method !== "POST" || req.url !== "/v1/layout") return send(res, 404, { error: "not found" });
   if (!authorised(req.headers.authorization)) return send(res, 401, { error: "unauthorised" });
   const chunks = [];
@@ -48,10 +53,10 @@ http.createServer((req, res) => {
       const { answer, stats } = await service.layout(body);
       // 로그에는 크기와 시간만 남긴다. id 는 남기지 않는다.
       console.log(JSON.stringify({ event: "layout", nodes: body.nodes.length, edges: body.edges.length, ...stats }));
-      send(res, 200, { answer, stats });
+      send(res, 200, { answer, stats, version });
     } catch (error) {
       console.error(JSON.stringify({ event: "layout_failed", nodes: body.nodes.length, error: String(error).slice(0, 300) }));
       send(res, 500, { error: "layout failed" });
     }
   });
-}).listen(port, () => console.log(JSON.stringify({ event: "listening", port })));
+}).listen(port, () => console.log(JSON.stringify({ event: "listening", port, version })));

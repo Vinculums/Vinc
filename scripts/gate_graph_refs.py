@@ -19,8 +19,9 @@ load_manifest = refs.load_manifest
 
 
 def main() -> int:
-    return refs.offline_check(manifest=MANIFEST, roots=[ROOT],
-                              scan=scan_repo, load=load_manifest)
+    # scan 을 주지 않는다 — 기본 경로(_walk)가 스캔과 함께 '스캔 안 된 확장자의 인용'을
+    # 모아 NOTE 로 알린다(조용한 통과 방지). scan_repo 를 주면 그 보고가 꺼진다.
+    return refs.offline_check(manifest=MANIFEST, roots=[ROOT], load=load_manifest)
 
 
 if __name__ == "__main__":

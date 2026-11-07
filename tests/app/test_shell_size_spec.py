@@ -30,8 +30,8 @@ CSS_PATH = Path(__file__).resolve().parents[2] / "app" / "src" / "app.css"
 CSS = re.sub(r"/\*.*?\*/", "", CSS_PATH.read_text(encoding="utf-8"), flags=re.S)
 
 #: 규격의 이름들. 값은 전부 .25rem(4px)의 배수여야 한다.
-SPEC_VARS = ("--ctl-h", "--row-h", "--rail-btn-h", "--titlebar-h", "--topbar-h",
-             "--shell-gap", "--kind-rail-w", "--lnb-w")
+SPEC_VARS = ("--ctl-h", "--row-h", "--titlebar-h", "--topbar-h",
+             "--shell-gap", "--lnb-mini-w", "--lnb-w")
 
 #: 목록의 한 줄. 넷이 **같은 변수**를 써야 한다 — 그것이 "한 줄은 한 높이"다.
 ROW_RULES = (".lnb-navrow", ".lnb-sec", ".lnb-group", ".lnb-doc")
@@ -134,7 +134,7 @@ class ShellSizeSpecTests(unittest.TestCase):
         (2026-09-10, `주제 N` 줄을 스크롤 밖으로 뺐다). 재는 대상은 **첫 줄을 담은
         상자**이지 특정 이름이 아니다 — 본문은 이제 머리 아래에서 시작하므로 위
         여백을 두 번 주지 않는다."""
-        for sel in ("#lnb-rail", ".lnb-head"):
+        for sel in (".lnb-top", ".lnb-head"):
             body = decl(sel)
             self.assertTrue(body, f"{sel} 규칙이 없다")
             self.assertRegex(
@@ -160,37 +160,47 @@ class ShellSizeSpecTests(unittest.TestCase):
             "#settings-popover 규칙이 되살아났다 — 설정은 시트다(구현이 둘이면 "
             "상자·자리·딤이 다음에 또 갈린다)")
 
-    def test_사이드바_둘이_천장까지_서고_바는_지도_위에만_얹힌다(self):
-        """셸의 골격(발주자 지시 2026-09-09).
+    def test_사이드바가_천장까지_서고_바는_내용_위에만_얹힌다(self):
+        """셸의 골격(2026-10-22): LNB 한 장(1열)이 1행부터 서고 상단 바는 2열 1행이다.
 
-        층 1(레일)과 층 2(트리)가 1행부터 서고 상단 바는 3열 1행이다 — 그래서 바에는
-        검색만 남고 손잡이·앱 버튼 넷은 레일로, 관점 세그는 트리로 갔다. 이 셋이
-        한 배치의 세 조각이라 하나만 되돌리면 화면이 깨지므로 함께 지킨다.
-        그리고 **레일은 접히지 않는다**: 앱의 유일한 손잡이 넷과 홈이 여기 살아서,
-        접으면 그것들이 화면에서 사라지고 다시 펼 손잡이도 함께 없어진다."""
-        for sel, want in (("#lnb-rail", "grid-row: 1 / -1"),
-                          ("#lnb", "grid-row: 1 / -1"),
-                          ("#topbar", "grid-column: 3")):
+        그리고 **접어도 LNB 는 띠로 남는다**: 다시 펼 손잡이와 홈 · Agent 가 그 띠에 산다.
+        폭 0 으로 접으면 그것들이 화면에서 사라진다.
+        근거: [[decision:the-desktop-shell-is-documents-first]]"""
+        for sel, want in (("#lnb", "grid-row: 1 / -1"), ("#lnb", "grid-column: 1"),
+                          ("#topbar", "grid-column: 2")):
             body = decl(sel)
             self.assertIn(want, body, f"{sel} 가 `{want}` 를 안 쓴다 — 셸 골격이 되돌려졌다")
         closed = decl('#shell[data-lnb="closed"]')
         self.assertIn(
-            "var(--kind-rail-w) 0", closed,
-            "접힘이 레일까지 접는다 — 다시 펼 손잡이와 홈이 함께 사라진다")
+            "var(--lnb-mini-w) minmax(0, 1fr)", closed,
+            "접힘이 LNB 를 폭 0 으로 접는다 — 다시 펼 손잡이와 홈이 함께 사라진다")
 
-    def test_바가_지도와_같은_칸에_겹친다(self):
-        """상단 바는 지도 위에 **떠 있다**(발주자 지시 2026-09-09: "나누지 않고 gnb 가
-        view 위에 떠 있도록"). 열을 나누면 지도가 그만큼 짧아지고 바는 카드가 된다.
+    def test_머리는_내용_카드의_윗줄이다(self):
+        """뷰 머리는 떠 있지 않다(2026-10-23). 머리가 2열 1행, 내용 카드가 2열 2행에 서고 행
+        사이가 0 이라 둘이 한 장의 카드가 된다. 그래서 아래 것들은 머리를 비켜설 값을 재지
+        않는다(`--chrome-top` 은 0 이다). 하나만 되돌리면 본문이 머리 밑으로 지나가거나,
+        머리와 카드 사이에 틈이 생긴다.
+        근거: [[decision:documents-and-graph-share-one-lnb-tree-2026-11-06]]"""
+        self.assertIn("row-gap: 0", decl("#shell"), "머리와 내용 카드 사이에 틈이 있다")
+        self.assertIn("grid-row: 2", decl("#surface"), "내용 카드가 머리 칸까지 올라온다")
+        self.assertIn("grid-row: 2", decl("#docpane-slot"), "문서 열이 머리 칸까지 올라온다")
+        self.assertIn("var(--shell-gap)", decl("#docpane"), "문서 열이 아직 머리를 비켜서는 값을 쓴다")
 
-        셋이 한 몸이다: 지도가 두 행을 걸치고 · 바가 그 첫 행에 겹치고 · 지도 안에서
-        위쪽에 서는 것들이 `--chrome-top` 만큼 비켜선다. 하나만 되돌리면 바가 지도를
-        가리거나 지도가 다시 잘린다."""
-        self.assertIn("grid-row: 1 / -1", decl("#surface"),
-                      "지도가 두 행을 걸치지 않는다 — 바와 열을 나눠 쓰고 있다")
-        self.assertIn("--chrome-top", decl("#docpane"),
-                      "읽는 면이 떠 있는 바를 비켜서지 않는다 — 바 밑에 깔린다")
-        self.assertIn("--chrome-top", decl("#view-tools"),
-                      "인캔버스 크롬이 떠 있는 바를 비켜서지 않는다")
+    def test_넓은_열은_머리_아래에서_선다(self):
+        """LNB 에서 고른 것은 지도 칸 전체 폭으로 열린다. 머리가 붙박이가 된 뒤로 넓은 열은
+        머리 아래 행에서 시작하고, 머리를 나눠 쓰거나 비울 일이 없다."""
+        full = '#shell[data-doc-size="full"] '
+        self.assertIn("calc(100% - var(--shell-gap) * 2)", decl(full + "#docpane"),
+                      "넓은 열이 지도 칸을 다 쓰지 않는다")
+        self.assertNotIn("tb-line", CSS, "두 줄짜리 떠 있는 바의 규칙이 남았다")
+
+    def test_지도_상태_줄이_열_밑으로_지나가지_않는다(self):
+        """하단 상태 줄(노드 수 · 연결률)은 지도를 센다. 넓은 열이 지도를 덮으면 숨고, 옆
+        카드가 열리면 카드 왼쪽에서 끝난다. 둘 다 없을 때 수치가 열 본문 위에 겹쳤다(0.9.8 점검)."""
+        self.assertIn("visibility: hidden", decl('#shell[data-doc-size="full"] #view-chrome'),
+                      "넓은 열 위에 지도 상태 줄이 남는다")
+        self.assertIn("--rail-size", decl('#shell[data-doc="open"][data-doc-size="side"] #view-chrome'),
+                      "옆 카드 아래로 상태 줄이 지나간다")
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@
 
 - 노드 6종(record|concept|domain|bridge|episode|decision) + 자유 props{} → JSON 열.
   **의미층 = concept | decision** 이라 엣지 규칙에서 서로 바꿔 쓸 수 있다. 예외 하나:
-  `relates_to` 는 개념↔개념에만 남는다([[record:louvain-projects-one-node-table]]).
+  `relates_to` 는 개념↔개념에만 남는다([[vinc.spec.dataplane]]).
 - 엣지: 의미층 4종 · connects_via(Bridge→) · about(Episode|Decision→) ·
   Record→의미층은 ATTACHES_TO{type} 로 원 타입을 보존해 수용.
 - **개방층**: 6종 밖 타입은 스킵되지 않고 `Entity` 캐리어로, 양 끝이 개방 타입인 엣지는
@@ -19,13 +19,16 @@
 - **partial**: warnings 가 하나라도 있으면 `partial:True` 를 얹는다 — `executed:True` 만
   보고 전량 성공으로 오인하는 것을 막는다.
 - **RELATED_TO 무방향 dedupe**: 역방향이 이미 있으면 새로 만들지 않는다(양방향 재적재로
-  degree 가 부풀지 않게). 방향성 있는 엣지에는 적용하지 않고, ATTACHES_TO 는 끝점 타입이
-  비대칭이라 구조적으로 불필요하며, TYPED 는 사용자 저작 타입이라 방향을 추론할 수 없어
-  exact 방향 dedupe 만 한다.
+  degree 가 부풀지 않게). 그 재전송이 실어 온 근거·신뢰도는 저장된 엣지에 쓴다.
+  방향성 있는 엣지에는 적용하지 않고, ATTACHES_TO 는 끝점 타입이 비대칭이라 구조적으로
+  불필요하며(원 타입별로 따로 MERGE 한다), TYPED 는 사용자 저작 타입이라 방향을 추론할
+  수 없어 exact 방향 dedupe 만 한다.
 """
 from __future__ import annotations
 
+import datetime
 import json
+import re
 
 from engines import domain_hierarchy
 
@@ -33,7 +36,7 @@ from . import revstamp
 from . import role_contract
 from store import pkns
 # 근거 열을 가진 rel 의 정본 — 스키마가 표를 갖고 여기서는 읽기만 한다.
-from store.embedded_schema import EDGE_EVIDENCE_RELS
+from store.embedded_schema import EDGE_EVIDENCE_RELS, wiki_pairs_open
 
 _NODE_MAP = {   # fragment type → (label, pk column)
     "record": ("Record", "record_id"),
@@ -63,6 +66,10 @@ _CC_EDGES = {   # Concept→Concept fragment 엣지 → rel 테이블
 # Episode 참여 엣지 — _CC_EDGES 에 넣지 않는다: sync 의 _REL_TO_FRAGMENT 가
 # _CC_EDGES 를 역맵으로 파생하므로(Concept 엣지 export 전용) 섞이면 오염된다.
 _EC_EDGES = {"about": "ABOUT"}
+#: v23 — 공개 위키 쪽. 커뮤니티 소유자에서는 이 네 종이 페이지 노드 넷(`_PAGE_TYPES`)
+#: 어느 쌍에나 서고, ABOUT 은 사건·기록 페이지도 대상으로 받는다(`wiki_pairs_open`).
+_WIKI_EDGES = ("relates_to", "prerequisite_of", "derives_from", "inherits_from")
+_PAGE_TYPES = ("concept", "decision", "record", "episode")
 #: 대체 관계 — 새 것 → 옛 것. 같은 종류끼리만이고 근거가 필수다. 쓰기 경로는
 #: 유효구간을 **판정하지 않는다**: 옛 것의 `valid_until` 이 비었거나 새 것의 시작과
 #: 다르면 경고만 하고 어느 값도 대신 쓰지 않는다.
@@ -80,6 +87,15 @@ DEFAULT_OWNER = "tenant:local"
 def _is_open(ntype: str) -> bool:
     """개방층 타입 판별 — 비어있지 않고 레거시 6종 밖이면 Entity 캐리어 대상."""
     return bool(ntype) and ntype not in _NODE_MAP
+
+
+def prefix_mismatch(ntype: str, nid: str) -> str:
+    """id 접두사가 전용 테이블 타입을 가리키는데 타입이 다르면 그 접두사를 돌려준다.
+
+    접두사는 삭제·끝점 해석이 테이블을 고르는 기준이다. 타입이 다르면 같은 id 의 두 번째
+    행이 다른 테이블에 생기고, 묘비 키(`node_id` 하나)가 겹쳐 토픽 이동이 멈춘다."""
+    prefix = nid.split(":", 1)[0] if ":" in nid else ""
+    return prefix if prefix in _NODE_MAP and prefix != ntype else ""
 
 
 #: 스토어 바인딩용 물리 키(PK 네임스페이싱 design A). 정의는 `store/pkns.py` 한 벌 —
@@ -148,7 +164,9 @@ _KEPT_FIELDS: dict[str, frozenset[str]] = {
                            "valid_from", "valid_until"}),
     "Decision": frozenset({"title", "domain", "tags", "props"}),
     "Episode":  frozenset({"title", "domain", "tags", "props", "date", "summary"}),
-    "Bridge":   frozenset({"title", "tags", "props"}),
+    # Bridge 에는 tags 열이 없다. 여기 tags 를 두면 SET 이 Binder 로 죽어 노드와
+    # 엣지가 함께 떨어지고, 되읽기도 없는 열을 투영해 실패한다.
+    "Bridge":   frozenset({"title", "props"}),
     "Domain":   frozenset(),          # 열이 `name` 하나뿐이다
     "Entity":   frozenset({"title", "tags"}),
 }
@@ -160,6 +178,64 @@ _CONTRACT_FIELDS = frozenset({"title", "domain", "tags", "props", "one_liner",
                               "valid_from", "valid_until"})   # v15(W13)
 #: 이미 자기 문장으로 경고하는 조합 — 두 번 말하지 않는다.
 _ALREADY_WARNED = {("Entity", "domain"), ("Entity", "props"), ("Bridge", "domain")}
+#: 열은 없지만 같은 값을 둘 자리가 따로 있는 조합 — 버렸다는 말 뒤에 그 자리를 덧붙인다.
+#: 결정의 유효구간은 props 에 산다(`_decision_interval`).
+_KEPT_ELSEWHERE = {("Decision", "valid_from"): "props.valid_from",
+                   ("Decision", "valid_until"): "props.valid_until"}
+
+
+#: 출생(`created`)으로 받는 형식: ISO 날짜 또는 날짜+시각. `known_at` 이 앞 10자를
+#: 사전식으로 비교하므로 이 형식이 아니면 그 노드가 시점 읽기에서 엉뚱하게 숨는다.
+_ISO_INSTANT_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})?)?$")
+
+
+def _iso_instant(v) -> str:
+    """ISO 날짜·시각이면 그 문자열을, 아니면 빈 문자열을 돌려준다(달력상 없는 날도 거절)."""
+    s = v.strip() if isinstance(v, str) else ""
+    if not _ISO_INSTANT_RE.match(s):
+        return ""
+    try:
+        datetime.datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    return s
+
+
+def _decision_interval(props: dict, stored_raw, nid: str, warnings: list[str]) -> dict:
+    """결정의 유효구간(props.valid_from·valid_until)을 Record 열과 같은 규칙으로 검사한다.
+
+    형식이 틀린 값은 쓰지 않고 저장된 값을 남긴다(없으면 키를 뺀다). 빈 문자열은
+    명시적 지우기다. 뒤집힌 구간은 저장하되 경고한다. 넘겨받은 dict 는 고치지 않는다."""
+    from . import docstore as _ds      # 지연 import — 날짜 검증기 1벌 유지
+    out, stored = props, None
+    for key in ("valid_from", "valid_until"):
+        raw = props.get(key)
+        if raw is None:
+            continue
+        norm = _ds._norm_content_time(str(raw))
+        if norm or not str(raw).strip():
+            if norm != raw:
+                out = {**out, key: norm}
+            continue
+        if stored is None:
+            from store.querybase import _props_to_obj
+            stored = _props_to_obj(stored_raw)
+        out = dict(out)
+        if stored.get(key) is not None:
+            out[key] = stored[key]
+        else:
+            out.pop(key, None)
+        warnings.append(
+            f"props.{key} '{raw}' is not YYYY[-MM[-DD]] (id={nid}) — kept the stored "
+            f"value; a malformed date is not stored as a validity interval")
+    vf, vu = str(out.get("valid_from") or ""), str(out.get("valid_until") or "")
+    if vf and vu and vu < vf:
+        warnings.append(
+            f"validity interval inverted — props.valid_until '{vu}' precedes "
+            f"props.valid_from '{vf}' (id={nid}); stored as sent, but no instant "
+            f"falls inside it")
+    return out
 
 
 def _warn_unkept_fields(node: dict, label: str, nid: str,
@@ -175,9 +251,11 @@ def _warn_unkept_fields(node: dict, label: str, nid: str,
     for f in sorted(_CONTRACT_FIELDS - kept):
         if node.get(f) is None or (label, f) in _ALREADY_WARNED:
             continue
+        where = _KEPT_ELSEWHERE.get((label, f))
         warnings.append(
             f"node.{f} not persisted on {label} (id={nid}) — no such column; "
-            f"the value was dropped, not stored")
+            f"the value was dropped, not stored"
+            + (f"; a {label} keeps it in {where}" if where else ""))
 
 
 #: owner_id 열을 가진 라벨 — Bridge(v2)·Entity(F1) 편입으로 SEC-3 가드·스탬프 규칙
@@ -198,11 +276,41 @@ _READBACK_BUDGET = 256 * 1024
 _CLAIM_PROPS = ("subject_path", "measured_at", "measured_ref")
 
 
-#: 이 그래프가 기록을 갖는 리포. 오타 난 한정자는 **조용히 새 네임스페이스를 만든다**
-#: (`vnic:` 는 어떤 것과도 안 맞고 아무 오류도 안 난다). 거부하지 않고 경고만 하는
-#: 이유는 리포가 늘 수 있고 목록이 낡을 수 있어서다 — 막는 것보다 말하는 것이 맞다.
-#: 정본은 역할 스냅샷의 `repos`(`agents/roles.json`).
-_KNOWN_REPOS = frozenset({"vinc", "vinc-homepage", "vincs-app"})
+#: 리포 이름은 **형식만** 검사한다(`repo:path`). 어느 리포를 아는지는 그래프마다 다르다 — 코드에
+#: 박은 목록은 이 제품을 쓰는 다른 사람에게 늘 틀렸고 vincos 같은 새 리포에도 틀렸다. 대신 그래프에
+#: 이미 있는 기록의 리포를 모아, **처음 보는 이름**이면 오타일 수 있다고 말한다(막지 않는다).
+#: 근거: [[vinc.canon.graph-conventions §5.1]]
+_REPO_CACHE: dict[tuple[int, str], tuple[float, set[str]]] = {}
+_REPO_CACHE_TTL = 300.0
+
+
+def _known_repos(store, owner: str) -> set[str]:
+    """이 소유자의 Record·Decision 이 `subject_path` 에 쓴 리포 이름들. 몇 분 캐시한다(적재마다 훑지 않게)."""
+    import time as _time
+    key = (id(store), owner or "")
+    hit = _REPO_CACHE.get(key)
+    now = _time.monotonic()
+    if hit and hit[0] > now:
+        return hit[1]
+    repos: set[str] = set()
+    for label in ("Record", "Decision"):
+        try:
+            rows = store.run(f"MATCH (n:{label}) WHERE n.owner_id = $o AND n.props CONTAINS 'subject_path' "
+                             "RETURN n.props AS p", {"o": owner}) or []
+        except Exception:
+            rows = []
+        for r in rows:
+            try:
+                sp = (json.loads(r.get("p") or "{}") or {}).get("subject_path")
+            except (TypeError, ValueError):
+                continue
+            for v in (sp if isinstance(sp, list) else [sp]):
+                if isinstance(v, str):
+                    repo, _path = _split_subject(_norm_subject_path(v))
+                    if repo:
+                        repos.add(repo)
+    _REPO_CACHE[key] = (now + _REPO_CACHE_TTL, repos)
+    return repos
 
 
 def _split_subject(v: str) -> tuple[str, str]:
@@ -237,7 +345,26 @@ def _norm_subject_path(v) -> str:
     return f"{repo}:{path}" if repo and path else path
 
 
-def _claim_props(props, label: str, nid: str, warnings: list[str]):
+def _subject_repo_warnings(norm: str, nid: str, warnings: list[str], known_repos=None) -> None:
+    """접은 `subject_path` 가 리포를 안 담았으면, 또는 그래프가 처음 보는 리포면 경고한다(지우지 않는다).
+
+    `known_repos` 는 그래프의 기존 리포 집합을 돌려주는 함수다. 없거나 그래프가 아직 아무 리포도
+    모르면(첫 기록) 이름은 묻지 않는다."""
+    repo, path = _split_subject(norm)
+    if path and not repo:
+        warnings.append(
+            f"props.subject_path '{norm}' names no repository (id={nid}) — stored, "
+            f"but a bare path cannot be compared across repositories; write it as repo:path")
+    elif repo and known_repos is not None:
+        known = known_repos()
+        if known and repo not in known:
+            warnings.append(
+                f"props.subject_path repository '{repo}' is new to this graph (id={nid}) — stored; "
+                f"if it is a typo it makes a namespace of its own (known: {', '.join(sorted(known)[:8])})")
+            known.add(repo)          # 같은 적재 안에서 같은 이름을 거듭 말하지 않는다
+
+
+def _claim_props(props, label: str, nid: str, warnings: list[str], known_repos=None):
     """예약 주장 필드를 정규화한다. props 원본은 건드리지 않는다(부분 재전송 함정).
 
     형식 위반은 **지우지 않고 경고한다**: props 는 자유 속성이라 서버가 값을 버리면
@@ -249,6 +376,14 @@ def _claim_props(props, label: str, nid: str, warnings: list[str]):
     if label != "Record":
         for k in _CLAIM_PROPS:
             if k in props:
+                # 결정의 subject_path 는 결정 문(`query.decide_paths`)이 읽는다(읽을 때 접는다,
+                # 저장값은 보낸 그대로). 그래서 그 하나는 리포 경고만 받는다. 진단(claims)은
+                # 여전히 기록만 본다.
+                if label == "Decision" and k == "subject_path":
+                    for raw in (props[k] if isinstance(props[k], list) else [props[k]]):
+                        if isinstance(raw, str):
+                            _subject_repo_warnings(_norm_subject_path(raw), nid, warnings, known_repos)
+                    continue
                 warnings.append(
                     f"props.{k} is a claim field carried by Record only (id={nid}) — "
                     f"stored on {label}, but the claim review will not read it there")
@@ -258,16 +393,7 @@ def _claim_props(props, label: str, nid: str, warnings: list[str]):
         norm = _norm_subject_path(raw)
         if norm != raw:
             out = {**props, "subject_path": norm}
-        repo, path = _split_subject(norm)
-        if path and not repo:
-            warnings.append(
-                f"props.subject_path '{norm}' names no repository (id={nid}) — stored, "
-                f"but a bare path cannot be compared across repositories; "
-                f"use one of {', '.join(sorted(_KNOWN_REPOS))}")
-        elif repo and repo not in _KNOWN_REPOS:
-            warnings.append(
-                f"props.subject_path repository '{repo}' is not one this graph knows "
-                f"(id={nid}) — stored, but a typo here makes a namespace of its own")
+        _subject_repo_warnings(norm, nid, warnings, known_repos)
     at = props.get("measured_at")
     if at is not None:
         from . import docstore as _ds      # 지연 import — 날짜 검증기 1벌 유지
@@ -359,6 +485,7 @@ def _stored_nodes(store, types: dict[str, str], owner: str,
 
 def _merge_node(store, node: dict, owner: str, warnings: list[str],
                 *, owner_explicit: bool = False, theme_id: str = "",
+                theme_explicit: bool = False,
                 conflicts: list[str] | None = None) -> str | None:
     """단일 노드 MERGE. 반환 = 'created' | 'matched' | None(스킵).
 
@@ -368,7 +495,9 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
 
     개방층(F1): 레거시 6종 밖 타입은 스킵이 아니라 Entity 캐리어로 라우팅된다 —
     스킵은 형태 오류(id 부재, Entity 는 title 부재)뿐. ``theme_id`` 는 Entity 행에
-    각인되는 주제 귀속(THEME-DEEP §6) — 호출부(_ThemeFold)가 해석해 넘긴다."""
+    각인되는 주제 귀속(THEME-DEEP §6) — 호출부(_ThemeFold)가 해석해 넘긴다.
+    ``theme_explicit`` 은 fragment 가 theme_id 를 직접 실었는가다. 실었을 때만 기존
+    Entity 의 주제를 바꾼다."""
     ntype = (node.get("type") or "").strip()
     nid = (node.get("id") or "").strip()
     if getattr(store, "_topic_conversion_guard", False):
@@ -387,6 +516,13 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         # 근거: [[vinc.plan.node-pk-namespacing]] §7
         warnings.append(
             f"node contains U+001F (reserved for PK namespacing) — skipped (id={nid})")
+        return None
+    mismatch = prefix_mismatch(ntype, nid)
+    if mismatch:
+        warnings.append(
+            f"node type {ntype!r} disagrees with its id prefix {mismatch!r}: skipped "
+            f"(id={nid}). The prefix names the table, so this would store a second row "
+            f"under the same id. Send type {mismatch!r} or use an id without that prefix.")
         return None
     is_entity = _is_open(ntype)
     if is_entity and not (node.get("title") or "").strip():
@@ -485,8 +621,15 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         # 는 열이 없어 미보존(휴면 엔진 동형 — warnings 로 통지, 조용한 유실 금지).
         _set("type", ntype)
         _set("title", str(node.get("title")).strip())
-        _set("tags", [str(t) for t in (node.get("tags") or [])])
-        _set("theme_id", theme_id)
+        # tags 는 다른 라벨과 같다: 실으면 쓰고 안 실으면 보존한다. 신규만 빈 목록으로 연다.
+        if node.get("tags") is not None:
+            _set("tags", [str(t) for t in (node.get("tags") or [])])
+        elif not matched:
+            _set("tags", [])
+        # 주제 귀속은 신규이거나 fragment 가 값을 직접 실었을 때만 쓴다. 활성 테마나
+        # themes 없는 호출부("")가 기존 행의 귀속을 덮으면 안 된다.
+        if not matched or (theme_explicit and theme_id):
+            _set("theme_id", theme_id)
         if node.get("domain") is not None:
             warnings.append(f"node.domain not persisted on Entity (id={nid}); fold into tags/theme")
         if node.get("props"):
@@ -535,38 +678,63 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
                 # 같아야 IN_DOMAIN 이 그 열의 그래프 표현일 수 있다(engines/
                 # domain_hierarchy.normalize 주석). 잘 쓴 값에는 항등이다.
                 _set("domain", domain_hierarchy.normalize(node["domain"]))
-        if node.get("tags") is not None:
+        # 열이 없는 라벨(Bridge)에 SET 하면 Binder 로 노드가 통째로 떨어진다. 경고는
+        # 위 `_warn_unkept_fields` 가 이미 냈다.
+        if node.get("tags") is not None and "tags" in _KEPT_FIELDS[label]:
             _set("tags", [str(t) for t in (node.get("tags") or [])])
         if node.get("props") is not None:
-            _set("props", json.dumps(_claim_props(node["props"], label, nid, warnings),
+            _pv = node["props"]
+            if label == "Decision" and isinstance(_pv, dict):
+                # 결정의 유효구간은 props 에 산다. 형식 검사는 Record 열과 같다.
+                _pv = _decision_interval(_pv, current.get("props"), nid, warnings)
+            _set("props", json.dumps(_claim_props(_pv, label, nid, warnings,
+                                                   known_repos=lambda: _known_repos(store, owner)),
                                      ensure_ascii=False, sort_keys=True))
+
+        def _promote(col: str, val: str, source: str) -> None:
+            # props 승격은 신규이거나 열이 비었을 때만 한다. 저작된 열을 props 만 실은
+            # 재전송이 덮으면 안 된다. 값이 다르면 열을 지키고 말한다.
+            held = str(current.get(col) or "")
+            if not matched or not held:
+                _set(col, val)
+            elif held != val:
+                warnings.append(
+                    f"{source} not promoted — {col} already holds a value and was kept "
+                    f"(id={nid}); send {col} at the top level to change it")
+
         if label == "Concept":
-            # date/summary 승격(위 Episode)과 같은 규칙: top-level 이 오면 그것이
+            # date/summary 승격(아래 Episode)과 같은 규칙: top-level 이 오면 그것이
             # 이기고, 없으면 props.one_liner 또는 props.note 를 승격한다(키가 아예
-            # 없을 때만). 왜 되살렸나: [[vinc.research.no-llm-chat]] Q5.
+            # 없을 때만, 그리고 열이 비었을 때만). 왜 되살렸나: [[vinc.research.no-llm-chat]] Q5.
             _props = node.get("props") if isinstance(node.get("props"), dict) else {}
             if node.get("one_liner") is not None:
                 _set("one_liner", str(node["one_liner"]))
             elif "one_liner" not in node:
-                cand = _props.get("one_liner") or _props.get("note")
+                _src = "one_liner" if _props.get("one_liner") else "note"
+                cand = _props.get(_src)
                 if isinstance(cand, str) and cand.strip():
-                    _set("one_liner", cand.strip())
+                    _promote("one_liner", cand.strip(), f"props.{_src}")
         if label in ("Concept", "Record"):
             # v7(D72) — **내용 시점**(`content_time`). 규칙은 앞의 셋과 같다:
             # top-level 이 이기고, 키가 **아예 없을 때만** props 를 승격한다(F9).
             # ⚠ 형식 위반은 **쓰지 않고 경고한다** — SET 하면 오타 한 번이 저장된
             # 시점을 지운다. 빈 문자열은 명시적 지우기로 존중한다. 문서 경로
-            # (`put_doc`)가 위반값을 ''로 내려앉히는 것과 **의도적으로 다르다**:
-            # [[record:content-time-writable-through-ingest]].
+            # (`put_doc`)도 이제 같은 규칙이다: [[record:content-time-writable-through-ingest]].
             from . import docstore as _ds      # 지연 import(순환 없음) — 검증기 1벌 유지
             _cp = node.get("props") if isinstance(node.get("props"), dict) else {}
             _raw = node.get("content_time")
+            _promoted = False
             if _raw is None and "content_time" not in node:
                 _cand = _cp.get("content_time")
                 _raw = _cand if isinstance(_cand, str) else None
+                _promoted = _raw is not None
             if _raw is not None:
                 _norm = _ds._norm_content_time(str(_raw))
-                if _norm or not str(_raw).strip():
+                if _promoted and _norm:
+                    _promote("content_time", _norm, "props.content_time")
+                elif _promoted and not str(_raw).strip():
+                    pass      # 빈 props 값은 승격할 것이 없다. 지우기는 top-level 로만 한다
+                elif _norm or not str(_raw).strip():
                     _set("content_time", _norm)
                 else:
                     warnings.append(
@@ -614,9 +782,11 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
             # top-level 이 이기고(빈 문자열로 지우는 것 포함) props 폴백은 키가 아예
             # 없을 때만. props 원본은 지우지 않는다(부분 재전송이 원본을 깎는다).
             # 선언 누락의 계보: [[vinc.canon.mcp-contract]] §5.1.
+            from . import docstore as _dse     # 지연 import — 날짜 검증기 1벌 유지
             _props = node.get("props") if isinstance(node.get("props"), dict) else {}
             for _col in ("date", "summary"):
                 _val = node.get(_col)
+                _promoted = False
                 if _val is None:
                     # 문자열만 승격한다 — props 는 자유 형태라 dict/list 가 올 수
                     # 있는데 그걸 str() 로 뭉개면 날짜가 아닌 것이 날짜 열에 앉는다.
@@ -624,24 +794,43 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
                     _cand = _props.get(_col)
                     if not isinstance(_cand, str) or not _cand.strip():
                         continue
-                    _val = _cand.strip()
-                _set(_col, str(_val))
+                    _val, _promoted = _cand.strip(), True
+                _val = str(_val)
+                if _col == "date":
+                    # 날짜는 content_time 과 같은 형식 계약이다. 틀리면 쓰지 않고 저장된
+                    # 값을 남긴다 — 정렬·시점 읽기가 이 열을 사전식으로 비교한다.
+                    _dn = _dse._norm_content_time(_val)
+                    if not _dn and _val.strip():
+                        _src = "props.date" if _promoted else "date"
+                        warnings.append(
+                            f"{_src} '{_val}' is not YYYY[-MM[-DD]] — kept the stored "
+                            f"value (id={nid})")
+                        continue
+                    _val = _dn
+                if _promoted:
+                    _promote(_col, _val, f"props.{_col}")
+                else:
+                    _set(_col, _val)
         # 출생(`created`) = **어느 공간에서든 처음 기록된 때**. 규칙이 둘로 갈린다 —
         #   신규 : 상류가 실은 값, 없으면 지금(HLC).
         #   기존 : **절대 안 덮는다**(팩 재적재가 남의 값으로 생일을 바꾸는 것을 막는다).
         # 동기화의 min 과 다른 이유는 신뢰다: 같은 계정의 두 기기는 한 공간이지만 팩은
         # 미신뢰 외부 입력이라 min 대신 쓰기 자체를 안 한다(동기화 쪽은
-        # api/sync._reconcile_birth · [[record:sync-drops-node-created-pack-keeps-it]]).
-        if label in ("Concept", "Record", "Decision") and not matched:
-            _set("created", str(node["created"]) if node.get("created")
-                 else revstamp.hlc_now(store))
+        # api/sync._reconcile_birth · [[decision:created-is-earliest-known-recording]]).
+        if label in ("Concept", "Record", "Decision", "Bridge") and not matched:
+            # 상류 값은 ISO 날짜·시각일 때만 받는다. 아니면 버리고 지금을 찍는다.
+            _born = _iso_instant(node.get("created"))
+            if node.get("created") and not _born:
+                warnings.append(
+                    f"created '{node['created']}' is not an ISO date or timestamp — "
+                    f"ignored, the write time was stamped instead (id={nid})")
+            _set("created", _born or revstamp.hlc_now(store))
         if label in ("Record", "Concept", "Episode", "Bridge", "Decision") \
                 and (owner_explicit or not matched):
             _set("owner_id", owner)
         if label == "Record":
             _set("tenant_id", "tenant:local")
-    elif node.get("props") is not None:
-        warnings.append(f"domain node '{nid}' — props{{}} 미보존(열 없음)")
+    # Domain 의 props·title 은 `_warn_unkept_fields` 가 한 번 말한다. 두 번 말하지 않는다.
 
     # 변경감지 스탬핑(S0): 신규이거나 추적필드가 실제로 달라졌을 때만 rev/updated_at/
     # sync_seq 를 찍는다 — 멱등 재적재는 무스탬프(가짜 충돌 방지). 원격에서 apply 되는
@@ -767,10 +956,44 @@ def _edge_exists(store, rel: str, ends: _Ends, src: str, dst: str,
     return bool(r and r[0].get("c"))
 
 
+def _edge_values(store, rel: str, ends: _Ends, src: str, dst: str,
+                 *, owner: str | None = None, osc: bool = False) -> dict | None:
+    """저장된 엣지의 근거·신뢰도. 엣지가 없으면 None — `_edge_exists` 와 같은 스코프다.
+
+    근거 열이 없는 rel 은 존재만 본다(빈 dict). 값 비교는 `_edge_values_change` 가 한다."""
+    if rel not in EDGE_EVIDENCE_RELS:
+        return {} if _edge_exists(store, rel, ends, src, dst, owner=owner, osc=osc) else None
+    (sl, sp), (dl, dp) = ends
+    own = f" AND a.owner_id = $owner AND b.owner_id = $owner" if osc else ""
+    rows = store.run(f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
+                     f"WHERE a.{sp} = $s AND b.{dp} = $d{own} "
+                     "RETURN r.evidence AS ev, r.confidence AS conf",
+                     {"s": src, "d": dst, **({"owner": owner} if osc else {})})
+    if not rows:
+        return None
+    return {"evid": rows[0].get("ev"), "conf": rows[0].get("conf")}
+
+
+def _edge_values_change(stored: dict | None, ev_p: dict) -> bool:
+    """이번 쓰기가 끝점 스탬프를 받아야 하나: 새 엣지이거나 근거·신뢰도가 **실제로** 바뀔 때.
+
+    같은 값의 재전송은 바꾸지 않는다 — 스탬프하면 재전송마다 다음 델타에 메아리가 실린다.
+    ``ev_p`` 는 `_ev_set` 이 SET 할 값(`evid`·`conf`)이고, 실리지 않은 키는 바뀌지 않는다.
+    근거의 빈 문자열과 없음(NULL)은 같은 값으로 본다."""
+    if stored is None:
+        return True
+    if "evid" in ev_p and (ev_p["evid"] or "") != (stored.get("evid") or ""):
+        return True
+    if "conf" in ev_p:
+        held = stored.get("conf")
+        return held is None or float(held) != ev_p["conf"]
+    return False
+
+
 def _stamp_edge_endpoints(store, rel: str, ends: _Ends, src: str, dst: str,
                           owner: str, *, osc: bool = False,
                           warnings: list[str] | None = None) -> None:
-    """엣지 **신규 생성** 시 양 끝 노드에 revstamp — 엣지 자체는 추적열이 없어,
+    """엣지 **신규 생성**(또는 근거·신뢰도 변경) 시 양 끝 노드에 revstamp — 엣지 자체는 추적열이 없어,
     끝점 스탬프가 없으면 '기존 노드 사이 신규/재생성 엣지'가 증분 동기화에 영영 안
     실린다(delta 번들의 엣지는 양끝 노드가 델타에 있을 때만 동봉). 엣지 활동 =
     끝점 활동으로 간주한다 — 부수 효과로 '편집이 삭제를 이긴다' 가드에서도 엣지
@@ -928,13 +1151,10 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
     # GRAPH.md 는 record 엣지에 근거를 요구하는데 이 표면은 그것을 받지 않으므로,
     # 규율을 지킨 저작자가 아무 신호도 못 받고 문장을 잃었다. R1(미보관 필드는 버리지
     # 말고 경고)이 노드 경로에서만 닫혀 있었다:
-    # [[record:graph-md-requires-evidence-that-ingest-refuses-to-store]]
+    # [[record:attaches-to-carries-evidence-since-v16]]
     # (record 엣지는 v16 이 열을 줘서 경고 대상에서 저장 대상으로 옮겨 갔다 —
     # 남는 무열 rel 은 CONNECTS·TYPED 둘이다.)
-    #
-    # ``prefix``: 쿼리에 이미 SET 절이 있는 분기(ATTACHES_TO 의 `SET r.type`)는
-    # ", " 를 넘겨 그 절에 잇는다 — SET 절 두 개를 이어 붙이는 방언 도박을 피한다.
-    def _ev_set(rel_var: str, rel: str, prefix: str = " SET ") -> tuple[str, dict]:
+    def _ev_set(rel_var: str, rel: str) -> tuple[str, dict]:
         ev, conf = edge.get("evidence"), edge.get("confidence")
         if rel not in EDGE_EVIDENCE_RELS:
             unkept = [n for n, v in (("evidence", ev), ("confidence", conf))
@@ -953,7 +1173,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
                 p["conf"] = float(conf); sets.append(f"{rel_var}.confidence = $conf")
             except (TypeError, ValueError):
                 warnings.append(f"edge confidence not a number — ignored ({src}→{dst})")
-        return ((prefix + ", ".join(sets)) if sets else ""), p
+        return ((" SET " + ", ".join(sets)) if sets else ""), p
 
     # 개방층 우선(F1): 양 끝이 Entity 라우팅이면 알려진 타입명(relates_to 등)이어도
     # TYPED 로 간다 — Entity 테이블 간에는 레거시 rel 테이블이 존재하지 않는다.
@@ -1046,7 +1266,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             return None
         ends = (_end(st), _end(dt))
         (sl, sp), (dl, dp) = ends
-        was = _edge_exists(store, _SUPERSEDES_REL, ends, ksrc, kdst, owner=owner, osc=osc)
+        was = _edge_values(store, _SUPERSEDES_REL, ends, ksrc, kdst, owner=owner, osc=osc)
         ev_set, ev_p = _ev_set("r", _SUPERSEDES_REL)
         b_set, b_p = _birth_set("r")
         store.run(
@@ -1054,7 +1274,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
             f"MERGE (a)-[r:{_SUPERSEDES_REL}]->(b){b_set}{ev_set}",
             {"s": ksrc, "d": kdst, **op, **ev_p, **b_p})
-        if not was and stamp_edges:
+        if _edge_values_change(was, ev_p) and stamp_edges:
             _stamp_edge_endpoints(store, _SUPERSEDES_REL, ends, ksrc, kdst, eowner,
                                   osc=osc, warnings=warnings)
         _warn_supersede_interval(store, st, ends, ksrc, kdst, src, dst, warnings)
@@ -1065,14 +1285,15 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         #
         # v12 — 출발점에 decision 이 붙는다. `about` 은 "X 는 Y 에 관한 것"이고,
         # 결정이 어떤 개념을 두고 내려졌다는 말이 정확히 그 형태다.
-        if st not in ("episode", "decision") or dt not in _SEMANTIC_TYPES:
+        targets = _PAGE_TYPES if wiki_pairs_open(owner) else _SEMANTIC_TYPES
+        if st not in ("episode", "decision") or dt not in targets:
             warnings.append(
                 f"{_ERR_DISALLOWED_PAIR}: about expects episode|decision→concept|decision — "
                 f"skipped ({st or '?'}→{dt or '?'}); {_ALLOWED_PAIRS_HINT}")
             return None
         rel = _EC_EDGES[etype]
         (sl, sp), (dl, dp) = ends = (_end(st), _end(dt))
-        was = _edge_exists(store, rel, ends, ksrc, kdst, owner=owner, osc=osc)
+        was = _edge_values(store, rel, ends, ksrc, kdst, owner=owner, osc=osc)
         ev_set, ev_p = _ev_set("r", rel)
         b_set, b_p = _birth_set("r")
         store.run(
@@ -1080,12 +1301,16 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
             f"MERGE (a)-[r:{rel}]->(b){b_set}{ev_set}",
             {"s": ksrc, "d": kdst, **op, **ev_p, **b_p})
-        if not was and stamp_edges:
+        if _edge_values_change(was, ev_p) and stamp_edges:
             _stamp_edge_endpoints(store, rel, ends, ksrc, kdst, eowner,
                                   osc=osc, warnings=warnings)
         return "created"
-    if st in _SEMANTIC_TYPES and dt in _SEMANTIC_TYPES:
-        if etype == "relates_to" and "decision" in (st, dt):
+    # 커뮤니티 위키의 관계는 종류와 무관하게 이 표로 간다. 기록 출발도 ATTACHES_TO 가 아니다:
+    # 반영기가 그래프를 rel 이름으로 읽어 지난 관계를 지우기 때문이다.
+    wiki = (etype in _WIKI_EDGES and st in _PAGE_TYPES and dt in _PAGE_TYPES
+            and wiki_pairs_open(owner))
+    if wiki or (st in _SEMANTIC_TYPES and dt in _SEMANTIC_TYPES):
+        if etype == "relates_to" and "decision" in (st, dt) and not wiki:
             # relates_to 만 개념↔개념에 남는다(embedded_schema._LOUVAIN_PROJECTED_REL).
             # 엔진 제약이자 의미상 옳은 자리다 — 결정은 개념에 **관한** 것이고
             # (about), 결정끼리는 **계보**(derives_from · prerequisite_of)다.
@@ -1106,9 +1331,24 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
                 "RETURN count(*) AS c",
                 {"s": ksrc, "d": kdst, **op})
             if rev and rev[0].get("c"):
+                # 새 엣지는 만들지 않지만 실어 온 근거·신뢰도는 저장된 방향의 엣지에
+                # 쓴다. 정방향 재전송과 같은 결과여야 한다(무방향 MATCH 로 SET 하지 않는다).
+                ev_set, ev_p = _ev_set("r", "RELATED_TO")
+                if ev_set:
+                    # 저장된 방향의 끝점 순서로 읽고 스탬프한다(값이 바뀔 때만).
+                    rends = ((dl, dp), (sl, sp))
+                    held = _edge_values(store, "RELATED_TO", rends, kdst, ksrc,
+                                        owner=owner, osc=osc)
+                    store.run(
+                        f"MATCH (b:{dl})-[r:RELATED_TO]->(a:{sl}) "
+                        f"WHERE b.{dp} = $d AND a.{sp} = $s{_o('b')}{_o('a')}{ev_set}",
+                        {"s": ksrc, "d": kdst, **op, **ev_p})
+                    if _edge_values_change(held, ev_p) and stamp_edges:
+                        _stamp_edge_endpoints(store, "RELATED_TO", rends, kdst, ksrc,
+                                              eowner, osc=osc, warnings=warnings)
                 return "skipped_duplicate"
         rel = _CC_EDGES[etype]
-        was = _edge_exists(store, rel, ends, ksrc, kdst, owner=owner, osc=osc)
+        was = _edge_values(store, rel, ends, ksrc, kdst, owner=owner, osc=osc)
         ev_set, ev_p = _ev_set("r", rel)
         b_set, b_p = _birth_set("r")
         store.run(
@@ -1116,7 +1356,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
             f"MERGE (a)-[r:{rel}]->(b){b_set}{ev_set}",
             {"s": ksrc, "d": kdst, **op, **ev_p, **b_p})
-        if not was and stamp_edges:
+        if _edge_values_change(was, ev_p) and stamp_edges:
             _stamp_edge_endpoints(store, rel, ends, ksrc, kdst, eowner,
                                   osc=osc, warnings=warnings)
         return "created"
@@ -1126,13 +1366,14 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         # — RELATED_TO 같은 무방향 dedupe 는 이 경로에 해당 없음.)
         (dl, dp) = _end(dt)
         # v16 — 근거·신뢰도 저장(GRAPH.md 가 record 엣지에 요구하는 그 필드).
-        # 이미 있는 `SET r.type` 절에 잇는다(prefix=", ").
-        ev_set, ev_p = _ev_set("r", "ATTACHES_TO", prefix=", ")
+        # 원 타입은 MERGE 패턴에 넣는다(TYPED·CONNECTS 와 같다). 패턴 밖에서 SET 하면
+        # 같은 쌍의 다른 타입 부착이 한 엣지로 접혀 앞의 타입·근거를 덮는다.
+        ev_set, ev_p = _ev_set("r", "ATTACHES_TO")
         b_set, b_p = _birth_set("r")
         store.run(
             f"MATCH (a:Record), (b:{dl}) "
             f"WHERE a.record_id = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
-            f"MERGE (a)-[r:ATTACHES_TO]->(b){b_set} SET r.type = $t{ev_set}",
+            f"MERGE (a)-[r:ATTACHES_TO {{type: $t}}]->(b){b_set}{ev_set}",
             {"s": ksrc, "d": kdst, "t": etype, **op, **ev_p, **b_p})
         if stamp_edges:
             _stamp_edge_endpoints(store, "ATTACHES_TO", (("Record", "record_id"), (dl, dp)),
@@ -1169,18 +1410,29 @@ def _interval_of(store, kind: str, label_pk: tuple[str, str], key: str) -> tuple
     return None
 
 
+#: 대체 경고가 가리키는 구간 필드의 이름. 경고는 저작자가 **그대로 따를 수 있는** 자리를
+#: 말해야 한다: Decision 에는 `valid_until` 열이 없어 그 이름으로 보내면 버려지고,
+#: 구간은 props 에 둔다(`_interval_of` 가 읽는 자리, 읽기 게이트가 보는 자리와 같다).
+_INTERVAL_FIELDS = {"record": ("valid_from", "valid_until"),
+                    "decision": ("props.valid_from", "props.valid_until")}
+
+
 def _warn_supersede_interval(store, kind, ends, ksrc, kdst, src, dst, warnings) -> None:
     """대체 엣지의 구간 정합 경고. **값을 쓰지 않는다** — 판정은 저작자 몫이다."""
     new, old = (_interval_of(store, kind, ends[0], ksrc),
                 _interval_of(store, kind, ends[1], kdst))
     if new is None or old is None:
         return
+    vf, vu = _INTERVAL_FIELDS[kind]
     if not old[1]:
-        warnings.append(f"supersedes {src}→{dst}: the old node has no valid_until; "
-                        "set it to the date the new one starts so it leaves the current read")
+        how = (" (send props_patch with expected_rev so the other props stay)"
+               if kind == "decision" else "")
+        warnings.append(f"supersedes {src}→{dst}: the old {kind} has no {vu}; "
+                        f"set {vu} to the date the new one starts{how} so it leaves "
+                        "the current read")
     elif new[0] and old[1] != new[0]:
-        warnings.append(f"supersedes {src}→{dst}: old valid_until {old[1]} differs from "
-                        f"new valid_from {new[0]}")
+        warnings.append(f"supersedes {src}→{dst}: old {vu} {old[1]} differs from "
+                        f"new {vf} {new[0]}")
 
 
 def _warn_orphan_decisions(store, types: dict[str, str], warnings: list[str],
@@ -1199,7 +1451,12 @@ def _warn_orphan_decisions(store, types: dict[str, str], warnings: list[str],
 
     ``owner``: 쓰기 경로에 있는 **조회**라 PK 네임스페이싱을 함께 태워야 한다 —
     안 태우면 플래그가 켜진 스토어에서 이 조회가 항상 0행이라 방금 정상으로 이은
-    결정에까지 고아 경고가 붙는다([[vinc.plan.node-pk-namespacing]] §7)."""
+    결정에까지 고아 경고가 붙는다([[vinc.plan.node-pk-namespacing]] §7).
+
+    커뮤니티 위키의 결정은 페이지라 위키 관계로 닿는다. 거기서는 묻지 않는다: 반영기는
+    경고 하나로도 반영을 실패로 본다."""
+    if wiki_pairs_open(owner):
+        return
     for nid, ntype in types.items():
         if ntype != "decision":
             continue
@@ -1250,6 +1507,37 @@ def _domain_gate(fragment_nodes: list[dict], *, store, owner: str,
         return None
     return {"error": "domain_limit_reached", "limit": max_domains,
             "current": len(existing), "attempted": sorted(fresh)}
+
+
+def _mention_fields(store, owner: str, ids: list[str]) -> dict | None:
+    """개념·결정의 링크를 셀 재료(제목·stem·출처). 읽지 못하면 None 이고, 호출부는 전부 다시 센다."""
+    if not ids:
+        return {}
+    try:
+        from engines.mentions_link import link_fields
+        return link_fields(store, owner, ids)
+    except Exception:
+        return None
+
+
+def _link_mentions(store, owner: str, ids: list[str], before: dict | None) -> None:
+    """새로 생기거나 제목·stem·출처가 바뀐 개념·결정을 owner 의 **이미 있는** 청크에 잇는다.
+
+    `put_doc` 은 문서 쪽에서만 링크를 세므로, 이 단계가 없으면 문서보다 늦게 들어온 개념은
+    링크가 0이고 발췌가 전부 제목 전문 검색 폴백으로 간다. 재료가 그대로인 노드는 건너뛴다
+    (다시 보낸 개념마다 청크를 훑지 않게). 실패는 쓰기를 무효로 만들지 않는다 — 링크는
+    증강이다. 규칙과 쓰기는 링커의 것(`engines.mentions_link.link_nodes`) 하나다."""
+    if not ids:
+        return
+    try:
+        from engines.mentions_link import link_fields, link_nodes
+        after = link_fields(store, owner, ids)
+        changed = [i for i in ids if before is None or after.get(i) != before.get(i)]
+        if changed:
+            link_nodes(store, owner=owner, ids=changed)
+    except Exception as exc:
+        import sys
+        print(f"[fragment] mentions not linked ({len(ids)} nodes): {exc}", file=sys.stderr)
 
 
 def merge_fragment(fragment: dict, *, store, themes=None,
@@ -1334,6 +1622,10 @@ def merge_fragment(fragment: dict, *, store, themes=None,
                 f"new topics rejected: {', '.join(denial['attempted'])}. "
                 "Existing topics keep working."])
     fold = _ThemeFold(themes, fragment)
+    # 링크(MENTIONS)를 다시 셀 노드를 고르려고 쓰기 **전** 재료를 읽는다(`_link_mentions`).
+    mention_ids = sorted({(n.get("id") or "").strip() for n in nodes
+                          if (n.get("type") or "").strip() in _SEMANTIC_TYPES} - {""})
+    mention_before = _mention_fields(store, owner, mention_ids)
     # 끝점 해석표는 **실제로 MERGE 된 노드**로만 짓는다 — 스킵된 노드가 끝점으로
     # 등록되면 그리로 향하는 엣지가 0행을 만나고도 created 로 세어진다.
     # ⚠ 판정은 **`r is not None`** 이다. "경고가 없었나"로 재면 안 된다 — 경고를
@@ -1347,7 +1639,8 @@ def merge_fragment(fragment: dict, *, store, themes=None,
         if _is_open(ntype):
             fold.fold("node", ntype)
         r = _merge_node(store, n, owner, warnings, owner_explicit=owner_explicit,
-                        theme_id=fold.theme_id or "", conflicts=id_conflicts)
+                        theme_id=fold.theme_id or "", theme_explicit=bool(fold._explicit),
+                        conflicts=id_conflicts)
         created += (r == "created")
         matched += (r == "matched")
         if r is not None:
@@ -1377,6 +1670,7 @@ def merge_fragment(fragment: dict, *, store, themes=None,
     if authored and edges:
         belief_contract.apply(beliefs, edges, store=store, owner=owner, warnings=warnings)
     _warn_orphan_decisions(store, types, warnings, owner=owner)
+    _link_mentions(store, owner, [i for i in mention_ids if i in types], mention_before)
     edges_out = {"created": e_created}
     if e_skipped_dup:
         edges_out["skipped_duplicate"] = e_skipped_dup

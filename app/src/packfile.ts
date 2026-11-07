@@ -7,7 +7,7 @@
  *  바로 그것이다. 의존성 0 이라는 이 코드베이스의 규율을 지키면서 표준 컨테이너를
  *  얻는다.
  *
- *  **하위호환이 핵심 계약이다.** 커뮤니티 갤러리에 구 JSON 팩이 이미 올라가 있으므로
+ *  **하위호환이 핵심 계약이다.** 공식 팩 행과 커뮤니티 팩 공유에 구 JSON 팩이 저장돼 있으므로
  *  **읽기는 두 형식 모두**, **쓰기만** zip. 판별은 첫 바이트: `PK` = zip, 그 외 = JSON.
  *
  *  레이아웃(파이썬과 동일):
@@ -44,7 +44,7 @@ async function pipe(data: Uint8Array, s: CompressionStream | DecompressionStream
 const deflateRaw = (d: Uint8Array) => pipe(d, new CompressionStream("deflate-raw"));
 const inflateRaw = (d: Uint8Array) => pipe(d, new DecompressionStream("deflate-raw"));
 
-export const isZip = (d: Uint8Array) => d[0] === 0x50 && d[1] === 0x4b;   // "PK"
+const isZip = (d: Uint8Array) => d[0] === 0x50 && d[1] === 0x4b;   // "PK"
 
 // ── 쓰기 ────────────────────────────────────────────────────────────────────
 type Entry = { name: Uint8Array; crc: number; raw: number; comp: Uint8Array; off: number };

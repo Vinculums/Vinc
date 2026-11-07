@@ -120,6 +120,11 @@ _DEFAULT_JOURNAL = "DELETE"
 #: **있다는 것**이 중요한 자리다.
 MAX_CLIENTS = max(1, int(os.environ.get("VINC_MCP_MAX_CLIENTS") or 500))
 
+#: 회전된 갱신 토큰이 같은 답을 한 번 더 주는 창(초). 이 안에 같은 토큰이 다시 오면
+#: 새 쌍을 만들지 않고 **방금 회전해 준 쌍**을 돌려준다. 창이 지나면 그 행은 청소된다.
+#: 근거: [[concept:refresh-token-reuse-window]]
+REFRESH_REUSE_GRACE_S = 60
+
 
 def resolve_journal_mode() -> str:
     """저널 모드: env `VINC_MCP_SQLITE_JOURNAL` > DELETE. 미지 값은 기본으로 강등한다
@@ -177,6 +182,11 @@ class Store:
             # ChatGPT 가 인가·토큰 요청에 붙이는 audience 라, 없으면 에코할 자리가 없다.
             for table in ("codes", "tokens", "refresh", "connect_requests"):
                 self._ensure_column(table, "resource", "TEXT NOT NULL DEFAULT ''")
+            # 갱신 토큰 회전 기록. 0 이면 아직 안 돌린 토큰이다. 이 열이 없던 스냅샷의 행도
+            # 전부 그 값으로 열리므로, 이미 연결된 커넥터는 그대로 한 번 더 갱신된다.
+            self._ensure_column("refresh", "rotated_at", "REAL NOT NULL DEFAULT 0")
+            self._ensure_column("refresh", "next_access", "TEXT NOT NULL DEFAULT ''")
+            self._ensure_column("refresh", "next_refresh", "TEXT NOT NULL DEFAULT ''")
             self._db.commit()
         self._save_snapshot()   # 첫 기동에 스키마만이라도 남긴다(경로 쓰기 가능 확인)
 
@@ -281,8 +291,10 @@ class Store:
             self._save_snapshot()
 
     def get_client(self, client_id: str) -> dict | None:
-        row = self._db.execute(
-            "SELECT redirect_uris,name FROM clients WHERE client_id=?", (client_id,)).fetchone()
+        # 커넥션 하나를 여러 스레드가 나눠 쓰므로 읽기도 락 안에서 한다(get_refresh 와 같은 이유).
+        with self._lock:
+            row = self._db.execute(
+                "SELECT redirect_uris,name FROM clients WHERE client_id=?", (client_id,)).fetchone()
         if row is None:
             return None
         return {"redirect_uris": json.loads(row["redirect_uris"]), "name": row["name"]}
@@ -335,19 +347,20 @@ class Store:
     def get_token(self, token: str, now: float | None = None) -> dict | None:
         """유효 토큰이면 {client_id,owner,plan,exp}, 만료면 삭제 후 None."""
         t = time.time() if now is None else now
-        row = self._db.execute(
-            "SELECT client_id,owner,plan,exp,resource FROM tokens WHERE token=?",
-            (token,)).fetchone()
-        if row is None:
-            return None
-        if row["exp"] < t:
-            with self._lock:
+        # 인증된 호출마다 지나는 자리다. 읽기와 만료 삭제를 한 락 구간에서 한다.
+        with self._lock:
+            row = self._db.execute(
+                "SELECT client_id,owner,plan,exp,resource FROM tokens WHERE token=?",
+                (token,)).fetchone()
+            if row is None:
+                return None
+            if row["exp"] < t:
                 self._db.execute("DELETE FROM tokens WHERE token=?", (token,))
                 self._db.commit()
-            return None
-        return dict(row)
+                return None
+            return dict(row)
 
-    # ── refresh(단일 소비) ────────────────────────────────────────────────────
+    # ── refresh(회전, 짧은 재응답 창) ─────────────────────────────────────────
     def add_refresh(self, token: str, client_id: str, owner: str | None,
                     plan: str | None, resource: str = "") -> None:
         with self._lock:
@@ -358,17 +371,80 @@ class Store:
             self._db.commit()
             self._save_snapshot()
 
-    def pop_refresh(self, token: str) -> dict | None:
+    def get_refresh(self, token: str) -> dict | None:
+        """갱신 토큰의 신원(client_id·owner·plan·resource)을 **읽기만** 한다.
+
+        소비하지 않는다 — 요청 검증(`resource` 대조)이 실패해도 토큰이 살아 있어야 해서,
+        검증은 이것으로 하고 회전은 :meth:`rotate_refresh` 가 한다. 회전된 행도 창 안이면
+        돌려준다(창 안인지는 회전 쪽이 본다).
+
+        ⚠ 락을 쥐고 읽는다. 동시 갱신은 정의상 같은 순간에 몰리고, 락 없이 같은 커넥션을
+        여러 스레드가 읽으면 `sqlite3.InterfaceError: bad parameter or other API misuse` 가
+        난다(8 스레드 테스트가 재현한다)."""
         with self._lock:
             row = self._db.execute(
                 "SELECT client_id,owner,plan,resource FROM refresh WHERE token=?",
                 (token,)).fetchone()
+        return dict(row) if row else None
+
+    def rotate_refresh(self, token: str, *, access: str, refresh: str, exp: float,
+                       resource: str = "", grace: float = REFRESH_REUSE_GRACE_S,
+                       now: float | None = None) -> dict | None:
+        """갱신 토큰 하나를 새 쌍으로 돌린다 — **트랜잭션 하나, 스냅샷 한 번**.
+
+        - 안 돌린 토큰: 새 액세스·갱신 토큰을 쓰고, 내민 토큰의 행에 회전 시각과 후계를
+          적는다. 셋 중 하나라도 실패하면 전부 되돌려서 내민 토큰이 그대로 산다. 삭제를
+          먼저 커밋하면 그 뒤 쓰기가 실패할 때 커넥터가 갱신 수단을 잃는다.
+        - 돌린 토큰이 `grace` 초 안에 다시 오면: 후계 갱신 토큰이 아직 안 쓰였고 후계
+          액세스 토큰이 살아 있을 때만 **그 쌍을 그대로** 돌려준다(`replayed`). 새 쌍을
+          만들지 않으므로 같은 토큰에서 갈래가 생기지 않는다.
+        - 그 밖(창 밖, 후계가 이미 다시 회전됨, 모르는 토큰)은 None.
+
+        돌려주는 값: client_id·owner·plan·resource·access_token·refresh_token·exp·replayed."""
+        t = time.time() if now is None else now
+        with self._lock:
+            row = self._db.execute(
+                "SELECT client_id,owner,plan,resource,rotated_at,next_access,next_refresh "
+                "FROM refresh WHERE token=?", (token,)).fetchone()
             if row is None:
                 return None
-            self._db.execute("DELETE FROM refresh WHERE token=?", (token,))
-            self._db.commit()
+            ident = {"client_id": row["client_id"], "owner": row["owner"], "plan": row["plan"]}
+            if row["rotated_at"]:
+                if t - row["rotated_at"] > grace:
+                    return None
+                succ = self._db.execute(
+                    "SELECT rotated_at FROM refresh WHERE token=?",
+                    (row["next_refresh"],)).fetchone()
+                acc = self._db.execute(
+                    "SELECT exp,resource FROM tokens WHERE token=?",
+                    (row["next_access"],)).fetchone()
+                if succ is None or succ["rotated_at"] or acc is None or acc["exp"] < t:
+                    return None
+                return {**ident, "resource": acc["resource"] or "",
+                        "access_token": row["next_access"],
+                        "refresh_token": row["next_refresh"],
+                        "exp": acc["exp"], "replayed": True}
+            bound = resource or row["resource"] or ""
+            try:
+                self._purge_expired_locked(t)
+                self._db.execute(
+                    "INSERT INTO tokens(token,client_id,owner,plan,exp,resource) "
+                    "VALUES(?,?,?,?,?,?)",
+                    (access, row["client_id"], row["owner"], row["plan"], exp, bound))
+                self._db.execute(
+                    "INSERT INTO refresh(token,client_id,owner,plan,resource) "
+                    "VALUES(?,?,?,?,?)",
+                    (refresh, row["client_id"], row["owner"], row["plan"], bound))
+                self._db.execute(
+                    "UPDATE refresh SET rotated_at=?, next_access=?, next_refresh=? "
+                    "WHERE token=?", (t, access, refresh, token))
+                self._db.commit()
+            except Exception:
+                self._db.rollback()
+                raise
             self._save_snapshot()
-        return dict(row)
+        return {**ident, "resource": bound, "access_token": access,
+                "refresh_token": refresh, "exp": exp, "replayed": False}
 
     # ── connect_requests(회원 승인 흐름, 단일 소비) ────────────────────────────
     def add_connect_request(self, req_id: str, client_id: str, redirect_uri: str,
@@ -382,15 +458,6 @@ class Store:
                 (req_id, client_id, redirect_uri, challenge, state, exp, resource or ""))
             self._db.commit()
             self._save_snapshot()
-
-    def get_connect_request(self, req_id: str, now: float | None = None) -> dict | None:
-        t = time.time() if now is None else now
-        row = self._db.execute(
-            "SELECT client_id,redirect_uri,challenge,state,exp,consumed,resource "
-            "FROM connect_requests WHERE req_id=?", (req_id,)).fetchone()
-        if row is None or row["consumed"] or row["exp"] < t:
-            return None
-        return dict(row)
 
     def consume_connect_request(self, req_id: str, now: float | None = None) -> dict | None:
         """미소비·미만료면 consumed 표시하고 레코드 반환(원자적). 아니면 None."""
@@ -416,11 +483,6 @@ class Store:
             self._db.commit()
             self._save_snapshot()
 
-    def get_owner_plan(self, owner: str) -> str | None:
-        row = self._db.execute(
-            "SELECT plan FROM owner_plan WHERE owner=?", (owner,)).fetchone()
-        return row["plan"] if row else None
-
     def get_owner_plan_age(self, owner: str,
                            now: float | None = None) -> tuple[str | None, float | None]:
         """(plan, 나이 초) — 없으면 (None, None).
@@ -428,21 +490,25 @@ class Store:
         나이가 필요한 이유: OAuth 토큰의 등급은 승인 시점에 동결되므로 이 표가
         유일한 갱신 지점이고, 갱신 여부는 **얼마나 오래됐는가**로만 판단할 수 있다.
         """
-        row = self._db.execute(
-            "SELECT plan, updated_at FROM owner_plan WHERE owner=?", (owner,)).fetchone()
+        with self._lock:
+            row = self._db.execute(
+                "SELECT plan, updated_at FROM owner_plan WHERE owner=?", (owner,)).fetchone()
         if not row:
             return None, None
         age = (time.time() if now is None else now) - float(row["updated_at"])
         return row["plan"], max(0.0, age)
 
-    # ── 쿼터(owner 단위 롤링 창 + 초과 잠금) ───────────────────────────────────
+    # ── 쿼터(owner 단위 창 + 선택적 초과 잠금) ─────────────────────────────────
     def quota_check(self, owner: str, *, limit: int, window_s: float, lock_s: float,
-                    now: float | None = None) -> dict:
+                    aligned: bool = False, now: float | None = None) -> dict:
         """1회 소비를 시도한다. 허용되면 소비를 기록하고 allowed:True.
 
         - 잠금 중(now < locked_until): 소비 없이 거부.
         - 창 만료 또는 직전 잠금 해제: 카운터 리셋 후 새 창.
-        - 소비 후 한도 도달분의 **다음** 호출에서 잠금(now+lock_s)·거부.
+        - 소비 후 한도 도달분의 **다음** 호출에서 거부. `lock_s > 0` 이면 그 호출부터
+          now+lock_s 까지 잠그고, `lock_s == 0` 이면 잠그지 않고 창이 끝날 때까지 거부한다.
+        - `aligned=True` 면 창이 epoch 기준 `window_s` 경계에서 시작한다. 24시간이면
+          매일 00:00 UTC 에 리셋된다(Unix 시간에는 윤초가 없어 경계가 어긋나지 않는다).
         로컬 stdio(owner 없음)엔 호출되지 않는다 — 호출자가 remote 만 태운다.
         """
         t = time.time() if now is None else now
@@ -462,7 +528,14 @@ class Store:
             window_expired = (t - window_start) >= window_s
             lock_expired = bool(locked_until) and t >= locked_until
             if window_expired or lock_expired:
-                count, window_start, locked_until = 0, t, 0.0
+                start = math.floor(t / window_s) * window_s if aligned else t
+                count, window_start, locked_until = 0, start, 0.0
+
+            if count >= limit and lock_s <= 0:  # 잠금 없이 창 끝까지 거부(기록할 것 없음)
+                return {"allowed": False, "reason": "exceeded", "limit": limit,
+                        "count": count,
+                        "retry_after_s": int(math.ceil(window_start + window_s - t)),
+                        "locked_until": None, "resets_at": window_start + window_s}
 
             if count >= limit:  # 창 내 한도 소진 → 이번 호출에서 잠금
                 locked_until = t + lock_s
@@ -480,14 +553,16 @@ class Store:
                 "VALUES(?,?,?,?)", (owner, count, window_start, locked_until))
             self._db.commit()
             return {"allowed": True, "limit": limit, "count": count,
-                    "remaining": max(0, limit - count)}
+                    "remaining": max(0, limit - count), "resets_at": window_start + window_s}
 
     def quota_snapshot(self, owner: str, *, limit: int, window_s: float,
-                       now: float | None = None) -> dict:
+                       aligned: bool = False, now: float | None = None) -> dict:
         """소비·리셋·잠금 생성 없이 한 카운터만 읽는다. 신원과 면제는 호출자가 판정한다.
 
         만료된 창·풀린 잠금은 다음 quota_check의 리셋을 미리 읽되 저장하지 않는다.
-        활성 잠금은 창 만료·상한 변경보다 먼저다. 공개 whoami에는 아직 연결하지 않는다.
+        활성 잠금은 창 만료·상한 변경보다 먼저다. `resets_at` 은 카운터가 0 으로 돌아가는
+        시각이다: 잠금이면 잠금 끝, 창이 살아 있으면 창 끝, 창이 없으면 `aligned` 일 때만
+        다음 경계(아니면 다음 호출이 창을 열므로 None).
         """
         t = time.time() if now is None else now
         with self._lock:
@@ -501,8 +576,15 @@ class Store:
         expired = not row or (t - start) >= window_s or (bool(until) and t >= until)
         if expired and not locked:
             count, start, until = 0, None, None
+        if locked:
+            resets_at = until
+        elif start is not None:
+            resets_at = start + window_s
+        else:
+            resets_at = (math.floor(t / window_s) + 1) * window_s if aligned else None
         return {"count": count, "remaining": 0 if locked else max(0, limit - count),
-                "window_start": start, "locked_until": until if locked else None}
+                "window_start": start, "locked_until": until if locked else None,
+                "resets_at": resets_at}
 
     def usage_rows(self) -> list[dict]:
         """usage 표 전량을 **읽기만** 한다 — 운영자 사용량 덤프(`/internal/usage`)의 호출 수.
@@ -542,6 +624,11 @@ class Store:
         n += self._db.execute("DELETE FROM tokens WHERE exp<?", (t,)).rowcount
         n += self._db.execute(
             "DELETE FROM connect_requests WHERE exp<? OR consumed=1", (t,)).rowcount
+        # 회전된 갱신 토큰은 재응답 창이 끝나면 지운다. 안 돌린 토큰(rotated_at=0)은 만료가
+        # 없으므로 여기서 건드리지 않는다.
+        n += self._db.execute(
+            "DELETE FROM refresh WHERE rotated_at>0 AND rotated_at<?",
+            (t - REFRESH_REUSE_GRACE_S,)).rowcount
         return n
 
     def _prune_clients_locked(self) -> int:

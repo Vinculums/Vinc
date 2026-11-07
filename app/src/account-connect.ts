@@ -11,7 +11,7 @@
  *
  *  데스크톱은 로그인해야 쓴다(2026-09-24, `firstrun.ts`). 이 모듈은 그 로그인의 한 벌이다.
  */
-import { cfg, forgetMemberKey, shellInvoke } from "./api";
+import { cfg, forgetMemberKey, shellInvoke, sleep } from "./api";
 
 const K_KEY = "vinc.sync.key";
 /** 기기별 MCP 키(VIN-132). OS 저장소에만 둔다: 엔진의 `vinc mcp serve` 가 거기서 직접
@@ -172,7 +172,7 @@ async function storeMcpKey(value: string): Promise<void> {
 }
 
 /** 진행 중인 폴링을 멈춘다(시트를 닫거나 화면을 다시 그릴 때). */
-export function abortConnect(): void { connectGeneration++; }
+function abortConnect(): void { connectGeneration++; }
 
 /** Open a trusted account or legal URL in the system browser. */
 export async function openBrowser(url: string): Promise<void> {
@@ -181,7 +181,7 @@ export async function openBrowser(url: string): Promise<void> {
   else window.open(url, "_blank", "noopener,noreferrer");
 }
 
-export type ConnectResult = "connected" | "expired" | "aborted" | "failed";
+type ConnectResult = "connected" | "expired" | "aborted" | "failed";
 
 /** 디바이스 플로우를 끝까지 돈다. `onState` 로 진행을 알린다(문구는 호출부가 정한다).
  *
@@ -214,7 +214,7 @@ export async function connectAccount(onState?: (s: "opening" | "waiting") => voi
     if (canceled()) return "aborted";
     onState?.("waiting");
     for (let i = 0; i < 300 && !canceled(); i++) {   // 2s × 300 = TTL(10분)
-      await new Promise((r) => setTimeout(r, 2000));
+      await sleep(2000);
       if (canceled()) return "aborted";
       const st = await api.connectStatus(state).catch(() => null);
       if (canceled()) return "aborted";

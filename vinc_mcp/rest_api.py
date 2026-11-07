@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import community, entitlement, rest_routes, toolcall, tools
 from store import request_timing
+from store.envflag import truthy_strict
 from .http_server import MAX_BODY, _UUID_RE
 
 #: v1 결과 상한. MCP 의 72,000자(rpc.MAX_RESULT_CHARS)는 모델 컨텍스트용 상한이라 스크립트가
@@ -17,7 +18,7 @@ from .http_server import MAX_BODY, _UUID_RE
 MAX_RESULT_BYTES = 16 * 1024 * 1024
 
 
-_SCHEMAS = {item["name"]: item["inputSchema"] for item in tools.specs(allow_target=False)}
+_SCHEMAS = {item["name"]: item["inputSchema"] for item in tools.specs(hub=True)}
 
 
 def _message(result: dict | None) -> str:
@@ -49,11 +50,10 @@ def _coerce(value: str, spec: dict):
             raise ValueError("must be a finite number")
         return number
     if kind == "boolean":
-        if value.lower() in ("true", "1"):
-            return True
-        if value.lower() in ("false", "0"):
-            return False
-        raise ValueError("must be true or false")
+        parsed = truthy_strict(value)
+        if parsed is None:
+            raise ValueError("must be true or false")
+        return parsed
     if kind == "array":
         return value.split(",") if value else []
     return value
@@ -77,6 +77,9 @@ def _check_json_type(name: str, value, spec: dict) -> None:
 
 def _arguments(route: rest_routes.Route, path_fields: dict[str, str],
                query: dict[str, str], body: dict) -> dict:
+    # 빠진 인자의 기본값은 여기서 채우지 않는다. 도구 핸들러가 MCP 와 같은 값을 쓴다 —
+    # 그래서 /v1/search 의 기본 limit 은 20 이고, 사이드카 /search 와 CLI 의 5 와 다르다
+    # (감사 D13, `api/server.py` read_search 주석).
     schema = _SCHEMAS[route.tool].get("properties") or {}
     extras = (set(query) - set(route.query) - {"space"}) | (set(body) - set(route.body) - {"owner"})
     if extras:
@@ -97,6 +100,23 @@ def _arguments(route: rest_routes.Route, path_fields: dict[str, str],
     return args
 
 
+def _partial_search(name: str, result: dict) -> dict:
+    """B9 — 청크 팔만 실패하고 노드 팔이 후보를 냈으면 버리지 않고 성공으로 낸다.
+
+    사유는 `search_error` 로 옮긴다. vinc_brief 가 같은 실패를 그렇게 싣는다 — 최상위
+    `error` 는 이 봉투가 HTTP 오류로 바꾸므로 살아 있는 node_hits 까지 함께 사라졌다.
+    `executed` 는 brief 와 같이 노드 팔 기준이다. 노드 후보도 없으면 그대로 실패다.
+    인자 오류(invalid_*·stale_cursor)는 노드 팔과 무관하게 실패로 남긴다."""
+    error = str(result.get("error") or "")
+    if (name != "vinc_search" or not error or not result.get("node_hits")
+            or error == "store_busy" or error.startswith(("invalid_", "stale_cursor"))):
+        return result
+    out = {key: value for key, value in result.items() if key != "error"}
+    out["search_error"] = error
+    out["executed"] = True
+    return out
+
+
 def _failure(name: str, result: dict, *, by_id: bool = False) -> tuple | None:
     """도구 결과 모양을 v1 상태로 옮긴다. 표는 tests/mcp/test_rest_v1.py 의 FAILURE_CASES 가 고정한다.
     반환은 (status, code, message) 또는 (status, code, message, details)."""
@@ -113,6 +133,16 @@ def _failure(name: str, result: dict, *, by_id: bool = False) -> tuple | None:
     if result.get("status") == "conflict" or error in ("write_conflict", "preview_conflict", "operation_id_conflict"):
         return (409, error, "The saved state no longer matches this request.",
                 {k: result[k] for k in ("node_id", "current_rev", "current_content_hash", "operation_id") if k in result})
+    if error == "role_changed":
+        # 고정한 역할이 바뀌었다. 계약은 싣지 않고 지금의 rev·hash 만 준다.
+        return (409, "role_changed", "The role changed since it was pinned.",
+                {k: result[k] for k in ("id", "rev", "hash") if k in result})
+    if error == "invalid_export_format":
+        return 400, "invalid_argument", note or error
+    if error == "role_contract_too_large":
+        # 계약이 읽기 예산을 넘었다. 서버 고장이 아니라 요청을 바꾸면(compact) 읽히는 일이다.
+        return (400, "role_contract_too_large", note or "The role contract exceeds the read limit.",
+                {k: result[k] for k in ("id", "bytes", "limit", "compact") if k in result})
     if error in ("write_target_unavailable", "document_unavailable", "preview_target_unavailable"):
         return 404, "not_found", "The requested graph item was not found."
     if error.startswith("preview_") and error not in ("preview_read_unavailable", "preview_boundary_unavailable"):
@@ -294,11 +324,13 @@ def _handle(handler, method: str) -> bool:
         return True
     resolved = gated.auth or auth
     authenticated = True
+    spent: dict = {}
     outcome = toolcall.execute(route.tool, args, handler.app.bridge,
                                forced_owner=resolved.get("owner"), plan=resolved.get("plan"),
-                               quota=handler.app.quota_for(resolved),
+                               quota=handler.app.quota_for(resolved, spent),
+                               quota_view=handler.app.quota_view,
                                entitlements=handler.app.entitlements_for(resolved.get("plan")),
-                               allow_target=False,
+                               hub=True,
                                community_write=(lambda args: handler.app.community_write(resolved, args))
                                if handler.app.community_write is not None else None,
                                community_read=(lambda args: handler.app.community_read(resolved, args))
@@ -306,14 +338,25 @@ def _handle(handler, method: str) -> bool:
     if outcome.kind == "invalid_argument":
         fail(400, "invalid_argument", _message(outcome.result))
         return True
+    if outcome.kind == "quota" and "vinc_rate" in (outcome.result or {}).get("_meta", {}):
+        rate = outcome.result["_meta"]["vinc_rate"]
+        fail(429, "rate_limited", _message(outcome.result), details=rate,
+             extra={"Retry-After": rate["retry_after_s"]})
+        return True
     if outcome.kind == "quota":
         quota = (outcome.result or {}).get("_meta", {}).get("vinc_quota", {})
         wait = int(quota.get("retry_after_s") or 0)
         fail(429, "quota_exceeded", _message(outcome.result),
-             details={"limit": quota.get("limit"), "retry_after_s": wait},
+             details={"limit": quota.get("limit"), "retry_after_s": wait,
+                      "resets_at": quota.get("resets_at")},
              extra={"Retry-After": wait, "Vinc-Quota-Limit": quota.get("limit") or "",
-                    "Vinc-Quota-Remaining": 0})
+                    "Vinc-Quota-Remaining": 0, "Vinc-Quota-Reset": quota.get("resets_at") or ""})
         return True
+    # 도구가 결과를 냈으면(성공이든 도구가 말한 오류든) 한도를 쓴 것이라 남은 수를 싣는다.
+    # 세지 않는 스페이스(Genius·면제)에는 헤더가 없다.
+    meta = handler.app.quota_meta(spent)
+    quota_headers = ({"Vinc-Quota-Limit": meta["limit"], "Vinc-Quota-Remaining": meta["remaining"],
+                      "Vinc-Quota-Reset": meta["resets_at"] or ""} if meta else {})
     if outcome.kind != "ok":
         error = outcome.error
         message = _message(outcome.result) if outcome.result else str(error)
@@ -333,12 +376,13 @@ def _handle(handler, method: str) -> bool:
         else:
             fail(500, "internal", message)
         return True
-    result = outcome.result or {}
+    result = _partial_search(route.tool, outcome.result or {})
     failure = _failure(route.tool, result, by_id=bool(route.path_args))
     if failure:
         status, code, message, *rest = failure
         fail(status, code, message, details=rest[0] if rest else None,
-             extra={"Retry-After": "1"} if result.get("error") == "store_busy" else None)
+             extra={**quota_headers, **({"Retry-After": "1"}
+                                        if result.get("error") == "store_busy" else {})})
         return True
     from .roles import serialize_result
     size = len(serialize_result(result).encode("utf-8"))
@@ -351,5 +395,5 @@ def _handle(handler, method: str) -> bool:
         return True
     status = (201 if route.tool == "vinc_doc_put" and result.get("created")
               else route.success)
-    send(status, result)
+    send(status, result, quota_headers)
     return True

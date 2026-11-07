@@ -9,6 +9,15 @@
 틀려진다(§8 이 이미 그렇게 낡았다). 목록을 만드는 장치를 남기고 목록은 그때그때
 다시 센다.
 
+**죽은 키 규칙**(`dead_deck_keys`): 덱의 잎은 `app/src` 가 그것을 **속성으로**
+읽어야 산다. `.잎`·`?.잎`, 구조 분해 이름, `["잎"]` 중 하나다. 이름이 어디엔가
+글자로 있기만 하면 살려 주던 옛 판정은 같은 이름의 지역 변수 하나(`local`·`you`)에
+죽은 키를 숨겼다. 예외는 셋이다. 덱 함수가 스스로 찾는 괄호 안 조회표의 키,
+부모 객체가 통째로 `표[k]` 로 읽히고 그 키 이름이 `app/src` 에 문자열로 적힌 잎,
+그리고 키가 서버에서 오는 표(`SERVER_CODE_TABLES`)의 잎이다. 부모가 대괄호로
+읽힌다는 사실만으로 자식 전부를 살리지 않는다. `const T = COPY.ui.tools; T[k]`
+하나가 `k` 로 절대 오지 않는 키까지 덮었기 때문이다(VIN-548).
+
 두 소비자가 이 모듈을 읽는다:
   · `tests/design/test_copy_parity.py` — 회귀를 잠근다(덱 밖 한글 0 · 죽은 키 0)
   · `scripts/gate_forbidden.py` — F9(한국어 금지 어휘)가 주석을 걸러 내는 데
@@ -97,6 +106,13 @@ def strip_comments(text: str):
             nb = line.find("/*", pos)
             nh = line.find("<!--", pos)
             cands = [c for c in (nb, nh) if c >= 0]
+            # 줄 주석이 먼저 오면 그 뒤의 `/*` 는 주석 글자일 뿐이다. 이걸 안 보면
+            # `// 디스커버리(/.well-known/*)` 한 줄이 블록을 열어 다음 `*/` 까지
+            # 코드 100줄을 통째로 삼킨다(실측: settings.ts).
+            lc = _LINE_COMMENT.search(line, pos)
+            if lc and (not cands or lc.start() < min(cands)):
+                out.append(line[pos:lc.start()])
+                break
             if not cands:
                 out.append(line[pos:])
                 break
@@ -159,10 +175,23 @@ def hangul_outside_deck(root: Path) -> list[Hit]:
 
 # ── 덱 키 ────────────────────────────────────────────────────────────────────
 _IDENT_COLON = re.compile(r"([A-Za-z_$][\w$]*)\s*:")
+_INLINE = "\0inline"
+
+# 키가 서버에서 오는 표. 앱 코드에 그 키 이름이 문자열로도 적히지 않으므로, 표를
+# 통째로 받아 `표[코드]` 로 읽는 곳이 있으면 자식 전부를 산 것으로 친다. 여기 없는
+# 표는 키 이름이 `app/src` 어딘가에 문자열로 적혀 있어야 산다(`dead_deck_keys`).
+# 목록이 낡지 않게 `tests/design/test_copy_parity.py` 가 셋 모두 덱에 있고 통째로
+# 읽히는지 확인한다.
+SERVER_CODE_TABLES = frozenset({
+    ("ui", "intakeUi", "docError"),                      # 문서 추출 거부 사유 코드
+    ("ui", "settingsUi", "folderBad"),                   # 저장 폴더 검사 사유 코드
+    ("ui", "settingsUi", "conversionDocumentEvidence"),  # 주제 이전 점검의 문서 집계 키
+    ("ui", "viewx", "seg"),                              # 원장 구간 키(api/query.py _LEDGER_MARKS)
+})
 
 
 def _walk(lines: list[str], start: int, end: int):
-    """덱 한 벌을 훑어 (키 경로, 줄번호, 객체인가) 를 내놓는다.
+    """덱 한 벌을 훑어 (키 경로, 줄번호, 객체인가, 덱 안 조회표인가) 를 내놓는다.
 
     들여쓰기가 아니라 **중괄호 깊이**로 센다. 들여쓰기로 세면 한 줄에 둘 이상 있는
     키를 못 본다 — `importTab: "Import", shareTab: "Share",` 에서 둘째가 통째로
@@ -224,8 +253,11 @@ def _walk(lines: list[str], start: int, end: int):
             i += 1
             continue
         if c == "{":
+            # 괄호 안에서 이름 없이 열린 객체(`({ code: "…" })[code]`)는 덱의 키가
+            # 아니라 덱 함수가 스스로 찾는 조회표다. 경로에는 안 남기고 표시만 한다.
+            inline = pending is None and bool(containers) and containers[-1] == "("
             containers.append("{")
-            stack.append(pending or "")
+            stack.append(_INLINE if inline else (pending or ""))
             pending = None
             i += 1
             continue
@@ -245,12 +277,12 @@ def _walk(lines: list[str], start: int, end: int):
         if containers and containers[-1] == "{":
             m = _IDENT_COLON.match(text, i)
             if m:
-                path = tuple(s for s in stack[1:] if s) + (m.group(1),)
+                path = tuple(s for s in stack[1:] if s and s != _INLINE) + (m.group(1),)
                 j = m.end()
                 while j < n and text[j] in " \t":
                     j += 1
                 is_obj = j < n and text[j] == "{"
-                yield path, lineno, is_obj
+                yield path, lineno, is_obj, _INLINE in stack
                 if is_obj:
                     pending = m.group(1)
                 i = m.end()
@@ -265,51 +297,115 @@ def _deck_bounds(lines: list[str]) -> tuple[int, int, int, int]:
     return en, ko - 3, ko, ko_end
 
 
+def _code_only(text: str) -> str:
+    return "\n".join(code for _, code in strip_comments(text))
+
+
+_IDENT = r"[A-Za-z_$][\w$]*"
+
+
+def _names_read(blob: str) -> set[str]:
+    """`blob` 이 **속성으로** 읽는 이름들: `.이름`·`?.이름`, 구조 분해, `["이름"]`.
+
+    맨 이름 일치는 증거가 아니다. `local`·`you`·`header` 같은 잎은 같은 이름의
+    지역 변수·매개변수·속성 키 하나만 있어도 살아남았다. 잎마다 정규식을 돌리지
+    않고 한 번 훑어 집합으로 만든다(잎이 천 개를 넘는다).
+    """
+    names = set(re.findall(r"(?<![.])\.\s*(" + _IDENT + ")", blob))  # `...x` 는 스프레드
+    for body in re.findall(r"\{([^{}=]*)\}\s*=", blob):
+        names.update(re.findall(_IDENT, body))
+    names.update(re.findall(r"\[\s*[\"'`](" + _IDENT + r")[\"'`]\s*\]", blob))
+    return names
+
+
+def _string_literals(blob: str) -> set[str]:
+    """문자열 리터럴 그 자체가 식별자 모양인 것들(`"create"`)."""
+    return set(re.findall(r"(?<=[\"'`])(" + _IDENT + r")(?=[\"'`])", blob))
+
+
+def _read_whole(name: str, sources: list[str]) -> bool:
+    """덱 객체 `name` 을 통째로 받아 동적으로 읽는 곳이 있는가.
+
+    세 모양을 센다: `….name[k]`(형 단언 `(….name as T)[k]` 포함), 함수에 통째로
+    넘기기(`f(R.tiers)`), 지역 변수에 받아 `X[k]`. 마지막 것은 대입과 대괄호가
+    **같은 파일**에 있어야 인정한다. 리포 전체를 한 덩어리로 보면 `P`·`T` 같은
+    한 글자 지역명이 남의 파일 대괄호와 우연히 맞아떨어진다(실측: 오탐 3건).
+    """
+    e = re.escape(name)
+    direct = re.compile(
+        r"(?<![.])\.\s*" + e + r"\s*(?:as\s+[^;)\n]*\)\s*)?\[(?!\s*\])"
+        r"|(?<![.])\.\s*" + e + r"\s*[,)]")
+    alias = re.compile(
+        r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)[^=\n]*=\s*[^;]*?\." + e
+        + r"\s*(?:as\s+[^;]*)?;", re.S)
+    for src in sources:
+        if direct.search(src):
+            return True
+        for m in alias.finditer(src):
+            if re.search(r"(?<![\w$.])" + re.escape(m.group(1))
+                         + r"\s*\[(?!\s*\])", src):
+                return True
+    return False
+
+
 def dead_deck_keys(root: Path) -> list[tuple[str, int, int]]:
     """호출부가 0 인 덱 키. (키 경로, EN 줄, KO 줄).
 
-    판정은 잎 이름의 전수 grep 이다 — 이름이 리포 어디에도 없으면 정적으로 닿을
-    길이 없다. 남는 구멍은 **동적 조회** 하나뿐이라 그것만 따로 뺀다: 덱 객체를
-    지역 변수에 받아 `표[코드]` 로 읽는 자리(`intakeUi.docError` 가 서버 사유
-    코드를 그렇게 읽는다). 그 객체의 자식은 이름이 코드에 없어도 살아 있다.
+    잎 하나가 산 것으로 치는 길은 넷이다. 차례로 본다.
+
+    1. **속성 접근**: `app/src` 가 그 잎을 `.잎`·`?.잎`, 구조 분해 이름,
+       `["잎"]` 으로 읽는다. 맨 이름이 어디에든 있기만 하면 된다는 옛 판정은
+       `ui.common.local`·`ui.ask.you`·`records.actions.pin` 을 같은 이름의 지역
+       변수·속성 하나로 살려 두었다.
+    2. **덱 안 조회표**: 덱 함수가 괄호 안 객체를 스스로 찾는다
+       (`({ 코드: "…" } as Record<string, string>)[code]`). 그 키는 덱 바깥에서
+       읽히지 않는 것이 정상이다(`settingsUi` 의 이전 차단 코드).
+    3. **부모를 통째로 읽고, 키 이름이 문자열로 적혀 있다**: 부모 객체를
+       `표[k]` 로 읽거나 통째로 넘기는 곳이 있고(`_read_whole`), 잎 이름이
+       `app/src` 어딘가에 문자열 리터럴로 있다. 키는 어디선가 와야 한다. 옛 판정은
+       부모가 대괄호로 읽히기만 하면 자식 전부를 살렸는데, `const T = COPY.ui.tools;
+       T[k]` 하나가 `k` 로 절대 오지 않는 `ui.tools.saveFirst` 까지 덮었다.
+    4. **서버 코드 표**: 키가 서버에서 오는 표(`SERVER_CODE_TABLES`)는 부모가
+       통째로 읽히기만 하면 자식 전부가 산다. 그 키는 앱 코드에 적히지 않는다.
+
+    주석은 걷어 내고 본다. 주석에 이름이 남아 있다고 키가 사는 것은 아니다.
     """
     copy_ts = root / _DECK
     lines = copy_ts.read_text(encoding="utf-8").splitlines()
     en_s, en_e, ko_s, ko_e = _deck_bounds(lines)
 
-    en = {p: i for p, i, _ in _walk(lines, en_s, en_e)}
-    ko = {p: i for p, i, _ in _walk(lines, ko_s, ko_e)}
-    objects = {p for p, _, is_obj in _walk(lines, en_s, en_e) if is_obj}
+    walked_en = list(_walk(lines, en_s, en_e))
+    walked_ko = list(_walk(lines, ko_s, ko_e))
+    en = {p: i for p, i, _, _ in walked_en}
+    ko = {p: i for p, i, _, _ in walked_ko}
+    objects = {p for p, _, is_obj, _ in walked_en + walked_ko if is_obj}
+    inline = {p for p, _, _, inl in walked_en + walked_ko if inl}
 
     sources = [
-        p.read_text(encoding="utf-8")
+        _code_only(p.read_text(encoding="utf-8"))
         for p in sorted((root / "app" / "src").rglob("*.ts"))
         if p.name != "copy.ts"
     ]
     blob = "\n".join(sources)
+    read, literals = _names_read(blob), _string_literals(blob)
 
-    # 동적으로 통째로 소비되는 객체: `... = <이름>;` 로 받아 `<지역>[` 로 읽는 것.
-    # ⚠ 대입과 대괄호 조회가 **같은 파일**에 있어야 인정한다. 리포 전체를 한 덩어리로
-    # 붙여 놓고 보면 `P`·`T`·`v` 같은 한 글자 지역명이 남의 파일 대괄호와 우연히
-    # 맞아떨어져 멀쩡한 죽은 키를 살아 있다고 오판한다(실측: 오탐 3건).
-    opaque = set()
-    for path in objects:
-        name = path[-1]
-        for src in sources:
-            m = re.search(
-                r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)[^=\n]*=\s*[^;]*?\b"
-                + re.escape(name) + r"\s*;", src, re.S)
-            if m and re.search(r"\b" + re.escape(m.group(1)) + r"\s*\[", src):
-                opaque.add(path)
-                break
+    whole: dict[str, bool] = {}
+
+    def parent_read_whole(parent: tuple[str, ...]) -> bool:
+        if parent[-1] not in whole:
+            whole[parent[-1]] = _read_whole(parent[-1], sources)
+        return whole[parent[-1]]
 
     dead = []
     for path in sorted(set(en) | set(ko)):
         if path in objects:
             continue                                     # 잎만 판정한다
-        if any(path[:k] in opaque for k in range(1, len(path))):
+        leaf, parent = path[-1], path[:-1]
+        if leaf in read or path in inline:
             continue
-        if re.search(r"\b" + re.escape(path[-1]) + r"\b", blob):
+        if parent and parent_read_whole(parent) and (
+                parent in SERVER_CODE_TABLES
+                or leaf in literals):
             continue
         dead.append((".".join(path), en.get(path, 0), ko.get(path, 0)))
     return dead

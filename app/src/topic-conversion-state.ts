@@ -1,8 +1,8 @@
-import type { ConversionCheck, ConversionRun } from "./api";
+import type { ConversionCheck, ConversionRun, ConventionsPolicy } from "./api";
 
-export type Checkpoint = { id: string; name: string; topic: string; fingerprint: string };
-export type ConversionClient = {
-  preflight(topic: string): Promise<ConversionCheck>;
+export type Checkpoint = { id: string; name: string; topic: string; fingerprint: string; conventions_policy?: ConventionsPolicy };
+type ConversionClient = {
+  preflight(topic: string, policy: ConventionsPolicy): Promise<ConversionCheck>;
   reserve(body: Checkpoint): Promise<ConversionRun>;
   status(id: string): Promise<ConversionRun>;
   resume(id: string): Promise<ConversionRun>;
@@ -14,15 +14,21 @@ export class TopicConversion {
   topic = ""; name = ""; check: ConversionCheck | null = null;
   run: ConversionRun | null = null; checkpoint: Checkpoint | null;
   busy = false; error = "";
+  conventionsPolicy: ConventionsPolicy = "retain";
   private revision = 0;
   constructor(private client: ConversionClient, private save: (value: Checkpoint | null) => void,
               checkpoint: Checkpoint | null = null, private uuid = () => crypto.randomUUID()) {
     this.checkpoint = checkpoint;
-    if (checkpoint) { this.topic = checkpoint.topic; this.name = checkpoint.name; }
+    if (checkpoint) { this.topic = checkpoint.topic; this.name = checkpoint.name;
+      this.conventionsPolicy = checkpoint.conventions_policy ?? "retain"; }
   }
   edit(topic: string, name: string) {
     if (this.checkpoint) return;
     this.topic = topic; this.name = name; this.check = null; this.revision++;
+  }
+  chooseConventions(policy: ConventionsPolicy) {
+    if (this.checkpoint || this.busy) return;
+    this.conventionsPolicy = policy; this.check = null; this.revision++;
   }
   private async action(fn: () => Promise<void>) {
     if (this.busy) return;
@@ -32,9 +38,12 @@ export class TopicConversion {
     finally { this.busy = false; }
   }
   async preflight() {
-    const revision = this.revision, topic = this.topic;
+    const revision = this.revision, topic = this.topic, policy = this.conventionsPolicy;
     await this.action(async () => {
-      const check = await this.client.preflight(topic);
+      this.check = null;
+      const check = await this.client.preflight(topic, policy);
+      if ((policy === "move_original" || check.conventions !== undefined) && check.conventions?.policy !== policy)
+        throw { code: "conversion_response_uncertain" };
       if (revision === this.revision) this.check = check;
     });
   }
@@ -42,6 +51,7 @@ export class TopicConversion {
     if (!consent || !this.check?.ready || !this.check.fingerprint || !this.name.trim()) return;
     await this.action(async () => {
       this.checkpoint ??= { id: this.uuid(), name: this.name.trim(), topic: this.topic, fingerprint: this.check!.fingerprint! };
+      if (this.conventionsPolicy === "move_original") this.checkpoint.conventions_policy = this.conventionsPolicy;
       this.save(this.checkpoint);
       this.run = await this.reservation();
     });
@@ -69,7 +79,7 @@ export class TopicConversion {
     catch (e: any) {
       // These replies occur before any reservation is attempted. An uncertain
       // transport or DB outcome must keep the same recovery identity.
-      if (["preflight_changed", "invalid_conversion_request", "topic_conversion_unavailable"].includes(e?.code)) this.clear();
+      if (["preflight_changed", "invalid_conversion_request", "topic_conversion_unavailable", "team_space_limit"].includes(e?.code)) this.clear();
       throw e;
     }
   }

@@ -7,8 +7,10 @@ executed=False + pdf_support_missing 로 강등되는 것이 계약이다.
 """
 from __future__ import annotations
 
+import io
 import sys
 import unittest
+import unittest.mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -113,6 +115,159 @@ class ExtractTests(unittest.TestCase):
         self.assertEqual(res["error"], "pdf_no_text")
 
 
+# 목차 픽스처의 페이지 본문. 문장으로 끝나야 개념 추출이 one_liner 를 얻는다.
+_PAGES = [
+    "The graph store keeps every node in one table.",
+    "Chunk boundaries follow paragraphs so a page stays whole.",
+    "Owner scope hides every row that belongs to someone else.",
+]
+# (제목, 페이지, 부모 항목 번호). 한 페이지에 두 항목(1·2, 3·4)이 걸린다.
+_OUTLINE = [
+    ("Graph Store", 0, None),
+    ("Chunk Boundaries", 1, None),
+    ("Page Joins", 1, 1),
+    ("Blank Lines", 2, 2),
+    ("Owner Scope", 2, None),
+]
+
+
+@unittest.skipUnless(_HAS_PYPDF, "pypdf 미설치: PDF 목차 경로 skip")
+class PdfOutlineTests(unittest.TestCase):
+    """목차(북마크) 제목이 그 페이지 앞의 마크다운 헤딩이 되는가. 목차가 없거나
+    깨졌으면 출력은 페이지만 이은 것과 글자 하나 다르지 않아야 한다."""
+
+    def test_no_outline_output_is_the_plain_page_join(self):
+        data = _pdf(_PAGES)
+        res = tx.extract_text("plain.pdf", data)
+        self.assertTrue(res["executed"], res)
+        self.assertEqual(res["text"], "\n\n".join(_page_texts(data)).strip())
+        self.assertNotIn("#", res["text"])
+
+    def test_outline_titles_become_headings_in_front_of_their_pages(self):
+        data = _outlined(_pdf(_PAGES), _OUTLINE)
+        p = _page_texts(data)
+        res = tx.extract_text("outlined.pdf", data)
+        self.assertTrue(res["executed"], res)
+        # 깊이 0 → `##`, 1 → `###`, 2 → `####`. 한 페이지의 항목은 목차 순서를 지킨다.
+        self.assertEqual(res["text"], "\n\n".join([
+            "## Graph Store", p[0],
+            "## Chunk Boundaries", "### Page Joins", p[1],
+            "#### Blank Lines", "## Owner Scope", p[2],
+        ]))
+
+    def test_headings_count_toward_the_character_cap(self):
+        data = _outlined(_pdf(_PAGES), _OUTLINE)
+        plain = "\n\n".join(_page_texts(data)).strip()
+        old = tx.MAX_PDF_CHARS
+        tx.MAX_PDF_CHARS = len(plain) + 10       # 페이지는 들어가고 헤딩까지는 못 든다
+        try:
+            res = tx.extract_text("outlined.pdf", data)
+        finally:
+            tx.MAX_PDF_CHARS = old
+        self.assertTrue(res["executed"], res)
+        self.assertEqual(res["text"], plain)
+
+    def test_heading_level_stops_at_six(self):
+        chain = [(f"Level {k}", 0, k - 1 if k else None) for k in range(7)]
+        res = tx.extract_text("deep.pdf", _outlined(_pdf(_PAGES[:1]), chain))
+        lines = res["text"].split("\n\n")
+        self.assertEqual(lines[0], "## Level 0")
+        self.assertEqual(lines[4], "###### Level 4")
+        self.assertEqual(lines[6], "###### Level 6")
+
+    def test_dest_array_named_destination_and_group_entries(self):
+        """writer 가 쓰는 GoTo 동작 말고도 `/Dest` 배열과 이름 목적지를 읽는다.
+        페이지를 가리키지 않는 묶음 항목은 헤딩 없이 자식만 남는다."""
+        from pypdf.generic import (ArrayObject, DictionaryObject, NameObject,
+                                   TextStringObject)
+
+        def mutate(w, refs):
+            w.add_named_destination("owner-scope", 2)
+            first = refs[0].get_object()
+            del first["/A"]
+            first[NameObject("/Dest")] = ArrayObject(
+                [w.pages[0].indirect_reference, NameObject("/Fit")])
+            del refs[1].get_object()["/A"]                  # 묶음 항목
+            refs[4].get_object()[NameObject("/A")] = DictionaryObject({
+                NameObject("/S"): NameObject("/GoTo"),
+                NameObject("/D"): TextStringObject("owner-scope")})
+
+        data = _outlined(_pdf(_PAGES), _OUTLINE, mutate)
+        p = _page_texts(data)
+        res = tx.extract_text("forms.pdf", data)
+        self.assertEqual(res["text"], "\n\n".join([
+            "## Graph Store", p[0], "### Page Joins", p[1],
+            "#### Blank Lines", "## Owner Scope", p[2],
+        ]))
+
+    def test_broken_outline_falls_back_to_the_plain_page_join(self):
+        from pypdf.generic import ArrayObject, NameObject, TextStringObject
+
+        def cycle(w, refs):
+            refs[4].get_object()[NameObject("/Next")] = refs[0]
+
+        def no_title(w, refs):
+            del refs[2].get_object()["/Title"]
+
+        def not_a_page(w, refs):
+            item = refs[3].get_object()
+            del item["/A"]
+            item[NameObject("/Dest")] = ArrayObject([refs[0], NameObject("/Fit")])
+
+        def unknown_name(w, refs):
+            item = refs[3].get_object()
+            del item["/A"]
+            item[NameObject("/Dest")] = TextStringObject("nowhere")
+
+        def oversized_title(w, refs):
+            refs[1].get_object()[NameObject("/Title")] = TextStringObject(
+                "x" * (tx.MAX_OUTLINE_TITLE + 1))
+
+        for mutate in (cycle, no_title, not_a_page, unknown_name, oversized_title):
+            with self.subTest(case=mutate.__name__):
+                data = _outlined(_pdf(_PAGES), _OUTLINE, mutate)
+                res = tx.extract_text("broken.pdf", data)
+                self.assertTrue(res["executed"], res)
+                self.assertEqual(res["text"], "\n\n".join(_page_texts(data)).strip())
+
+    def test_too_many_entries_falls_back(self):
+        data = _outlined(_pdf(_PAGES), _OUTLINE)
+        with unittest.mock.patch.object(tx, "MAX_OUTLINE_ENTRIES", len(_OUTLINE) - 1):
+            res = tx.extract_text("many.pdf", data)
+        self.assertEqual(res["text"], "\n\n".join(_page_texts(data)).strip())
+
+    def test_page_limit_drops_entries_past_the_cut(self):
+        """페이지 상한은 그대로다. 잘린 페이지를 가리키는 항목만 빠지고 나머지는 남는다."""
+        data = _outlined(_pdf(_PAGES), _OUTLINE)
+        with unittest.mock.patch.object(tx, "MAX_PDF_PAGES", 1):
+            res = tx.extract_text("cut.pdf", data)
+        self.assertTrue(res["executed"], res)
+        self.assertTrue(res["text"].startswith("## Graph Store\n\n" + _page_texts(data)[0]))
+        self.assertIn("[truncated: PDF exceeded 1 pages", res["text"])
+        self.assertNotIn("Chunk Boundaries", res["text"])
+
+    def test_outline_does_not_hide_a_scan(self):
+        """목차 제목만 있는 스캔본은 여전히 pdf_no_text 다."""
+        res = tx.extract_text("scan.pdf", _outlined(_pdf(["", "", ""]), _OUTLINE))
+        self.assertFalse(res["executed"])
+        self.assertEqual(res["error"], "pdf_no_text")
+
+    def test_outlined_pdf_yields_concept_candidates(self):
+        """앱 가져오기 뒤의 결정론 추출(`/doc/extract` → `extract_concepts`)이
+        목차 없는 PDF 에서는 후보 0개, 목차 있는 PDF 에서는 헤딩마다 후보를 낸다."""
+        from api import docstore
+        plain = tx.extract_text("plain.pdf", _pdf(_PAGES))["text"]
+        self.assertEqual(docstore.extract_concepts(plain), [])
+        outlined = tx.extract_text("outlined.pdf", _outlined(_pdf(_PAGES), _OUTLINE))["text"]
+        cands = docstore.extract_concepts(outlined)
+        # 자기 본문 없이 자식 헤딩이 바로 붙은 항목(Chunk Boundaries)과 `####` 는
+        # 후보가 아니다. 나머지는 그 페이지 첫 문장을 one_liner 로 얻는다.
+        self.assertEqual([c["title"] for c in cands],
+                         ["Graph Store", "Page Joins", "Owner Scope"])
+        self.assertEqual(cands[0]["one_liner"], _PAGES[0])
+        self.assertEqual(cands, docstore.extract_concepts(outlined))   # 결정론
+
+
 class ReadFileTests(unittest.TestCase):
     def test_missing_path_degrades(self):
         res = tx.read_file(str(Path(__file__).parent / "no-such-file.md"))
@@ -127,17 +282,25 @@ class ReadFileTests(unittest.TestCase):
 
 def _one_page_pdf(text: str) -> bytes:
     """텍스트 한 줄이 들어간 최소 PDF(외부 픽스처 파일 없이 인라인 생성)."""
-    body = (
-        f"BT /F1 24 Tf 40 120 Td ({text.encode('ascii', 'replace').decode()}) Tj ET"
-    ).encode("ascii")
+    return _pdf([text])
+
+
+def _pdf(texts: list[str]) -> bytes:
+    """페이지마다 텍스트 한 줄(빈 문자열이면 텍스트 없는 페이지)이 들어간 최소 PDF."""
+    kids = " ".join(f"{4 + 2 * k} 0 R" for k in range(len(texts)))
     objs = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
-        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] "
-        b"/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
-        b"<< /Length " + str(len(body)).encode() + b" >>\nstream\n" + body + b"\nendstream",
+        f"<< /Type /Pages /Kids [{kids}] /Count {len(texts)} >>".encode(),
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     ]
+    for k, text in enumerate(texts):
+        line = text.encode("ascii", "replace").decode()
+        body = f"BT /F1 10 Tf 10 100 Td ({line}) Tj ET".encode("ascii") if text else b""
+        objs.append(f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 200] "
+                    f"/Resources << /Font << /F1 3 0 R >> >> "
+                    f"/Contents {5 + 2 * k} 0 R >>".encode())
+        objs.append(b"<< /Length " + str(len(body)).encode() + b" >>\nstream\n"
+                    + body + b"\nendstream")
     out = bytearray(b"%PDF-1.4\n")
     offsets = []
     for i, o in enumerate(objs, start=1):
@@ -150,6 +313,28 @@ def _one_page_pdf(text: str) -> bytes:
     out += (f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\n"
             f"startxref\n{xref}\n%%EOF\n").encode()
     return bytes(out)
+
+
+def _outlined(data: bytes, entries, mutate=None) -> bytes:
+    """``entries = [(제목, 페이지, 부모 번호|None)]`` 목차를 pypdf writer 로 단다.
+    ``mutate(writer, refs)`` 는 쓰기 직전에 목차 항목을 고칠 자리다(깨진 목차 픽스처)."""
+    from pypdf import PdfReader, PdfWriter
+    w = PdfWriter(clone_from=PdfReader(io.BytesIO(data)))
+    refs = []
+    for title, page, parent in entries:
+        refs.append(w.add_outline_item(
+            title, page, parent=refs[parent] if parent is not None else None))
+    if mutate:
+        mutate(w, refs)
+    buf = io.BytesIO()
+    w.write(buf)
+    return buf.getvalue()
+
+
+def _page_texts(data: bytes) -> list[str]:
+    """pypdf 가 페이지마다 꺼내는 텍스트(기대값을 손으로 옮겨 적지 않으려고)."""
+    from pypdf import PdfReader
+    return [p.extract_text() or "" for p in PdfReader(io.BytesIO(data)).pages]
 
 
 if __name__ == "__main__":

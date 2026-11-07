@@ -73,8 +73,9 @@ class RecallToolWiring(unittest.TestCase):
     def test_schema_and_description_name_the_cursor(self):
         spec = next(s for s in tools.specs() if s["name"] == "vinc_recall")
         self.assertIn("cursor", spec["inputSchema"]["properties"])
+        reference = next(t for t in tools.TOOLS if t["name"] == "vinc_recall")["reference"]
         for word in ("next_cursor", "has_more", "subtree"):
-            self.assertIn(word, spec["description"])
+            self.assertIn(word, reference)
 
     def test_narrow_hint_mentions_the_cursor(self):
         from vinc_mcp import rpc

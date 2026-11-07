@@ -56,35 +56,33 @@ try {
   page.on("pageerror", e => errors.push(e.message));
   page.on("console", m => { if (m.text().startsWith("View layout stages")) stages.push(m.text()); });
   await page.goto(`${origin}/#view`);
-  const handle = view => page.evaluate(v => v === "2d" ? !!window.__s2?.getGraph()?.order : !!window.__g3?.graphData()?.nodes.length, view);
+  const handle = () => page.evaluate(() => !!window.__g3?.graphData()?.nodes.length);
   await page.waitForFunction(() => window.__g3?.graphData()?.nodes.length === 12);
   assert.equal(await page.evaluate(() => window.layoutWorkers), 0, "default hub must not allocate a layout worker");
   await page.locator("#view-lens").click();
   await page.locator("[data-pref='layout'][data-val='hub']").waitFor();
-  for (const view of ["3d", "2d"]) {
-    if (view === "2d") await page.locator("#tb-viewpoints [data-view='2d']").click();
-    await page.waitForFunction(v => v === "2d" ? window.__s2?.getGraph()?.order === 12 : window.__g3?.graphData()?.nodes.length === 12, view);
+  for (const view of ["3d"]) {
+    await page.waitForFunction(() => window.__g3?.graphData()?.nodes.length === 12);
     assert.equal(await page.locator("[data-pref='layout']").count(), 2);
     for (const layout of ["hub", "temporalRoots", "hub"]) {
       const beforeWorkers = await page.evaluate(() => window.layoutWorkers);
-      await page.evaluate(v => { window.previousLayoutHandle = v === "2d" ? window.__s2 : window.__g3; }, view);
+      await page.evaluate(() => { window.previousLayoutHandle = window.__g3; });
       const already = await page.locator(`[data-pref='layout'][data-val='${layout}']`).getAttribute("aria-checked") === "true";
       await page.locator(`[data-pref='layout'][data-val='${layout}']`).click();
-      if (!already) await page.waitForFunction(v => (v === "2d" ? window.__s2 : window.__g3) !== window.previousLayoutHandle, view);
+      if (!already) await page.waitForFunction(() => window.__g3 !== window.previousLayoutHandle);
       await page.waitForTimeout(600);
       assert.equal(await page.locator(`[data-pref='layout'][data-val='${layout}']`).getAttribute("aria-checked"), "true");
-      assert.equal(await handle(view), true);
+      assert.equal(await handle(), true);
       const roots = layout.endsWith("Roots"), workerCount = await page.evaluate(() => window.layoutWorkers);
       if (!roots) assert.equal(workerCount, beforeWorkers, "existing layout allocated a worker");
       else assert.ok(workerCount > beforeWorkers, "new roots layout did not use its worker");
-      const received = await page.evaluate(v => v === "2d"
-        ? window.__s2.getGraph().nodes().map(id => ({ id, x: window.__s2.getGraph().getNodeAttribute(id, "x"), y: window.__s2.getGraph().getNodeAttribute(id, "y") }))
-        : window.__g3.graphData().nodes.map(n => ({ id: n.id, x: n.fx / 140, y: n.fy / 140, z: n.fz / 140 })), view);
+      const received = await page.evaluate(() =>
+        window.__g3.graphData().nodes.map(n => ({ id: n.id, x: n.fx / 140, y: n.fy / 140, z: n.fz / 140 })));
       const last = requests.at(-1), expected = graphFor(last.layout, last.cone).nodes;
       if (!roots) for (const n of expected) {
         const got = received.find(x => x.id === n.id);
-        assert.ok(Math.abs(got.x - (view === "2d" ? n.x2 : n.x)) < 1e-8, `${view} ${layout}: changed server x`);
-        assert.ok(Math.abs(got.y - (view === "2d" ? n.y2 : n.y)) < 1e-8, `${view} ${layout}: changed server y`);
+        assert.ok(Math.abs(got.x - n.x) < 1e-8, `${view} ${layout}: changed server x`);
+        assert.ok(Math.abs(got.y - n.y) < 1e-8, `${view} ${layout}: changed server y`);
       }
       else assert.ok(received.some(n => !expected.some(e => e.id === n.id && Math.abs(n.x - e.x) < 1e-8)), "roots used original coordinates");
       assert.equal(await page.locator("#pref-cone").count(), view === "3d" && !roots ? 1 : 0);
@@ -106,7 +104,6 @@ try {
       if (layout !== "hub" || results.length < 3) await page.screenshot({ path: resolve(output, `${view}-${layout}.png`) });
     }
   }
-  await page.locator("#tb-viewpoints [data-view='3d']").click();
   await page.locator("#pref-cone").waitFor();
   const beforeConeReads = requests.length;
   await page.locator("#pref-cone").evaluate(e => { e.value = "1.2"; e.dispatchEvent(new Event("change", { bubbles: true })); });

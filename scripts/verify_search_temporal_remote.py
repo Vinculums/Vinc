@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 import urllib.error
 import urllib.request
 
-from verify_layout_remote import BASE, NoRedirect, VerificationError
+from verify_layout_remote import BASE, VerificationError, urlopen
 
 FIELDS = {"created_at", "updated_at", "content_time", "valid_from", "valid_until",
           "superseded_by", "validity", "supersession", "supersedes", "claim_status", "conflicts"}
@@ -16,7 +16,7 @@ FIELDS = {"created_at", "updated_at", "content_time", "valid_from", "valid_until
 
 def _json_read(request, timeout):
     try:
-        with urllib.request.build_opener(NoRedirect()).open(request, timeout=timeout) as response:
+        with urlopen(request, timeout=timeout) as response:
             data = response.read(8 * 1024 * 1024 + 1)
     except urllib.error.HTTPError as exc:
         raise VerificationError(f"search read returned HTTP {exc.code}") from None
@@ -71,16 +71,25 @@ def read_mcp(options, key, timeout):
     raise VerificationError("MCP search reply did not contain a result")
 
 
+def graph_space() -> str | None:
+    """검증이 읽을 팀 스페이스(uuid). 비었거나 personal 이면 개인 그래프다."""
+    space = (os.environ.get("VINC_GRAPH_SPACE") or "").strip()
+    return None if space in ("", "personal") else space
+
+
 def verify(key: str, *, get=read, mcp_key=None, mcp_get=read_mcp,
-           clock=time.monotonic, sleep=time.sleep, wait_s=300) -> dict:
+           clock=time.monotonic, sleep=time.sleep, wait_s=300, space=None) -> dict:
     if not key:
         raise VerificationError("VINC_GRAPH_READONLY_KEY is absent")
     checks = []
     deadline = clock() + wait_s
+    # 같은 팀을 두 경로가 다른 이름으로 받는다: 계정 REST 는 `team`, 허브 MCP 는 `space`.
+    team = {"team": space} if space else {}
+    scoped = {"space": space} if space else {}
     transports = [("account", lambda opts: get("/search?" + urlencode({
-        "query": "vinc", "top_k": 1, **opts}), key, 30))]
+        "query": "vinc", "top_k": 1, **opts, **team}), key, 30))]
     if mcp_key:
-        transports.append(("mcp", lambda opts: mcp_get(opts, mcp_key, 30)))
+        transports.append(("mcp", lambda opts: mcp_get({**opts, **scoped}, mcp_key, 30)))
     for transport, fetch in transports:
         for options in ({}, {"mode": "general"}, {"mode": "current"},
                         {"mode": "historical", "detail": "full"},
@@ -154,8 +163,10 @@ def verify(key: str, *, get=read, mcp_key=None, mcp_get=read_mcp,
 if __name__ == "__main__":
     try:
         print(json.dumps(verify(os.environ.get("VINC_GRAPH_READONLY_KEY", ""),
-                                # Both reads exercise the same bound personal graph.
-                                # The control token remains for MCP tools/list health.
-                                mcp_key=os.environ.get("VINC_GRAPH_READONLY_KEY")), sort_keys=True))
+                                # Both reads exercise the same bound graph (personal, or the
+                                # team in VINC_GRAPH_SPACE). The control token remains for
+                                # MCP tools/list health.
+                                mcp_key=os.environ.get("VINC_GRAPH_READONLY_KEY"),
+                                space=graph_space()), sort_keys=True))
     except VerificationError as exc:
         raise SystemExit(str(exc))

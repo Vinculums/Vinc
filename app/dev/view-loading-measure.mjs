@@ -1,4 +1,6 @@
-// Run after npm run build and measure_view_graph.py:
+// Run after npm run build, with OUTPUT_DIR/backend.json naming a loopback synthetic /graph backend.
+// The Python server that wrote it (scripts/measure_view_graph.py) was deleted in VIN-566 as an orphan;
+// recover it with: git show c6988043:scripts/measure_view_graph.py
 // node app/dev/view-loading-measure.mjs APP_DIR OUTPUT_DIR LABEL
 // Playwright must resolve from app/package.json or the package.json given by VINC_TEST_MODULES.
 // A LABEL starting with before reconstructs the baseline completion boundary.
@@ -52,7 +54,7 @@ const browser=await chromium.launch({channel:'msedge',headless:true,args:['--ena
   '--disable-background-networking','--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.2']});
 const results=[];
 try {
-  for (size of [200,3000]) for (const view of ['2d','3d']) {
+  for (size of [200,3000]) for (const view of ['3d']) {
     const context=await browser.newContext({viewport:{width:1440,height:900}});
     await context.addInitScript(({view})=>{
       // Synthetic auth only. No credential or real account is used.
@@ -75,11 +77,10 @@ try {
         if(this.url.includes('/graph/graph')) window.__measure.json.push({started:t,ended:performance.now()}); return value; };
       new PerformanceObserver(list=>window.__measure.longTasks.push(...list.getEntries().map(x=>({start:x.startTime,ms:x.duration})))).observe({type:'longtask',buffered:true});
       let frame=0;
-      const tick=()=>{ const canvas=document.querySelector(view==='2d'?'.a2-stage canvas':'.scene-container canvas');
+      const tick=()=>{ const canvas=document.querySelector('.scene-container canvas');
         if(canvas&&canvas.getBoundingClientRect().width>0&&getComputedStyle(canvas.closest('#view-canvas')||canvas).opacity!=='0'){
           if(++frame>=3&&!window.__measure.first) {
             window.__measure.first=performance.now();
-            if(view==='2d') window.__measure.complete=performance.now();
           }
         } else frame=0;
         if(!window.__measure.first) requestAnimationFrame(tick); };

@@ -10,7 +10,7 @@
    네 역할을 그대로 내고, `prompts/get` 이 그 계약을 낸다.
 4. 기본 팩은 무료 주제 상한이 꽉 찬 그래프에도 들어간다(예약 주제 면제).
 5. 매니페스트(`official-packs.json`)가 다섯을 공식팩으로 들고 있다 — 계정 백엔드의 자동
-   적재는 그 갤러리 행을 읽는다.
+   적재는 그 공식 팩 행을 읽는다.
 """
 from __future__ import annotations
 
@@ -39,7 +39,13 @@ MANIFEST = json.loads((ROOT / "starter-packs" / "official-packs.json").read_text
 HANGUL = re.compile(r"[가-힣]")
 EDIT_TOOLS = {"Edit", "Write", "NotebookEdit"}
 REQUIRED_PROPS = ("mission", "tier", "rung", "repos", "paths", "reads", "gates",
-                  "never", "person_only", "writes_graph")
+                  "never_checks", "never", "person_only", "writes_graph")
+#: 문서(vincs.io/docs/agents/create/ 6단계)가 말하는 최소 계약의 기본 검사 셋.
+BASE_GATES = [
+    {"id": "person_only", "check": {"type": "person_only"}, "on_fail": "interrupt"},
+    {"id": "side_effect_evidence", "check": {"type": "side_effect_evidence"}, "on_fail": "block"},
+    {"id": "handoff_manifest", "check": {"type": "handoff_manifest"}, "on_fail": "block"},
+]
 
 
 def _load(p: Path) -> dict:
@@ -47,12 +53,23 @@ def _load(p: Path) -> dict:
 
 
 def _nodes(p: Path) -> list[dict]:
+    """Role nodes of a pack. Procedure nodes (concept:procedure-*) ride beside them since 2026-11-05 and
+    are checked by ProcedureContract below."""
+    return [n for n in _load(p)["fragment"]["nodes"] if n["id"].startswith(roles.ID_PREFIX)]
+
+
+def _procedures(p: Path) -> list[dict]:
+    return [n for n in _load(p)["fragment"]["nodes"] if n["id"].startswith("concept:procedure-")]
+
+
+def _all_nodes(p: Path) -> list[dict]:
     return _load(p)["fragment"]["nodes"]
 
 
 class PackContract(unittest.TestCase):
-    def test_five_packs_and_the_default_is_one_of_them(self):
-        self.assertEqual(len(PACKS), 5, [p.name for p in PACKS])
+    def test_one_pack_and_it_is_the_default(self):
+        """직함 역할 팩 넷은 내렸다(2026-11-06): 직함 역할이 로스터에서 물러났다."""
+        self.assertEqual(len(PACKS), 1, [p.name for p in PACKS])
         self.assertIn(DEFAULT, PACKS)
 
     def test_every_pack_passes_the_share_pack_validator(self):
@@ -90,9 +107,10 @@ class PackContract(unittest.TestCase):
                     # one_liner 는 prompts/list 의 description 이 되고 mission 은 prompts/get 의
                     # description 이 된다 — 둘이 갈리면 고르는 화면과 계약이 다른 말을 한다.
                     self.assertEqual(n["one_liner"], props["mission"])
-                    # reads·gates·paths 는 사용자의 것이다. 비워 두고 tool_note 가 그 말을 한다.
-                    self.assertEqual((props["reads"], props["gates"], props["paths"], props["repos"]),
-                                     ([], [], [], []))
+                    # reads·paths 는 사용자의 것이다. 비워 두고 tool_note 가 그 말을 한다.
+                    # gates 는 기본 셋만 싣는다(아래 RoleCheckAcceptsEveryPackRole).
+                    self.assertEqual((props["reads"], props["paths"], props["repos"]), ([], [], []))
+                    self.assertEqual(props["gates"], BASE_GATES)
                     self.assertTrue(props.get("tool_note"))
 
     def test_no_pack_ships_an_orchestrator(self):
@@ -138,7 +156,7 @@ class PackContract(unittest.TestCase):
                 self.assertLessEqual(len(e["title"]), 120)
                 self.assertLessEqual(len(e["description"]), 500)
         default = by_file["agents/default-agents.json"]
-        # 계정 백엔드가 이 제목으로 갤러리 행을 찾는다(provisionDefaults.ts).
+        # 계정 백엔드가 이 제목으로 공식 팩 행을 찾는다(provisionDefaults.ts).
         self.assertEqual(default["title"], "Default Agents")
 
 
@@ -158,6 +176,53 @@ class RenderedLikeThePromptSurface(unittest.TestCase):
                     self.assertIn("## Mission", text)
                     self.assertIn("## Output contract", text)
                     self.assertNotIn("—", text)    # 화면 노출 텍스트, em-dash 금지(D38)
+
+
+class ProcedureContract(unittest.TestCase):
+    """2026-11-05: the default pack carries procedures beside its two agents (vinc.plan.agent-ontology-2026-11-05). A
+    procedure is a concept whose id starts with concept:procedure-, names its agent, and carries only what its agent does
+    not: the harness composes agent and procedure, so a repeated item is a second place to keep in step."""
+
+    LISTS = (("disallowed_tools", None), ("capabilities", "deny"), ("never", None), ("gates", None))
+
+    def test_every_procedure_names_an_agent_in_the_pack_and_carries_the_lists(self):
+        for p in PACKS:
+            role_ids = {n["id"] for n in _nodes(p)}
+            for n in _procedures(p):
+                with self.subTest(pack=p.name, procedure=n["id"]):
+                    self.assertEqual(n["type"], "concept")
+                    self.assertEqual(n["domain"], roles.DOMAIN)
+                    props = n["props"]
+                    self.assertEqual(props["kind"], "procedure")
+                    self.assertIn(props["agent"], role_ids)
+                    self.assertEqual(n["one_liner"], props["description"])
+                    for k in REQUIRED_PROPS:
+                        self.assertIn(k, props)
+                    self.assertEqual((props["reads"], props["paths"], props["repos"]), ([], [], []))
+                    self.assertEqual(sorted(n["tags"]), sorted(["procedure", props["agent"].rsplit("-", 1)[-1]]))
+
+    def test_a_procedure_never_repeats_what_its_agent_carries(self):
+        for p in PACKS:
+            agents = {n["id"]: n["props"] for n in _nodes(p)}
+            for n in _procedures(p):
+                a, props = agents[n["props"]["agent"]], n["props"]
+                for field, nested in self.LISTS:
+                    mine = ((props.get(field) or {}).get(nested) or []) if nested else (props.get(field) or [])
+                    theirs = ((a.get(field) or {}).get(nested) or []) if nested else (a.get(field) or [])
+                    with self.subTest(pack=p.name, procedure=n["id"], field=field):
+                        self.assertEqual([x for x in mine if x in theirs], [])
+                actions = {x.get("action") for x in a.get("person_only") or []}
+                self.assertEqual([x for x in props.get("person_only") or [] if x.get("action") in actions], [], n["id"])
+
+    def test_the_agents_carry_the_universal_gates(self):
+        for n in _nodes(DEFAULT):
+            self.assertEqual(n["props"]["gates"], BASE_GATES, n["id"])
+
+    def test_the_default_pack_is_two_agents_and_four_procedures(self):
+        self.assertEqual([n["id"] for n in _nodes(DEFAULT)], ["concept:agent-maker", "concept:agent-checker"])
+        self.assertEqual(len(_procedures(DEFAULT)), 4)
+        listed = [x for n in _nodes(DEFAULT) for x in n["props"]["procedures"]]
+        self.assertEqual(sorted(listed), sorted(n["id"] for n in _procedures(DEFAULT)))
 
 
 class _FreshSpace(Bridge):
@@ -197,21 +262,61 @@ class DefaultPackOnTheWire(unittest.TestCase):
     def setUp(self):
         self.nodes = _nodes(DEFAULT)
 
-    def test_a_fresh_space_lists_the_four_default_roles_as_prompts(self):
+    def test_a_fresh_space_lists_the_two_default_agents_as_prompts(self):
         got = roles.list_prompts(_FreshSpace(self.nodes))
         self.assertEqual([p["name"] for p in got["prompts"]],
-                         ["agent-curator", "agent-researcher", "agent-reviewer", "agent-steward"])
+                         ["agent-checker", "agent-maker"])
         # 고르는 화면의 부제는 one_liner(=mission)다.
         by_name = {p["name"]: p["description"] for p in got["prompts"]}
-        self.assertTrue(by_name["agent-steward"].startswith("Keep the graph honest"))
+        self.assertTrue(by_name["agent-maker"].startswith("Do the work in one context"))
 
     def test_get_prompt_hydrates_a_default_role(self):
-        got = roles.get_prompt("agent-reviewer", {}, _FreshSpace(self.nodes))
+        got = roles.get_prompt("agent-checker", {}, _FreshSpace(self.nodes))
         text = got["messages"][0]["content"]["text"]
-        self.assertTrue(got["description"].startswith("Check every claim"))
+        self.assertTrue(got["description"].startswith("Check finished work"))
         self.assertIn("disallowedTools: Edit, Write, NotebookEdit", text)
         self.assertIn("## Never", text)
-        self.assertIn("edit any node or document", text)
+        self.assertIn("edit any node, document or file", text)
+
+
+class RoleCheckAcceptsEveryPackRole(unittest.TestCase):
+    """2026-11-01: 팩의 모든 역할이 `gates: []`·`never_checks` 없음·문자열 person_only 로
+    나가서 `vinc_role_check` 가 어떤 답이든 `invalid_role_contract` 로 막았다(VIN-876).
+    도구와 같은 길(`_t_role_check` → `roles.contract` → `OutputGate`)로 돌려 고정한다."""
+
+    NEUTRAL = "Here is a summary of what the documents say.\nSources: none"
+
+    def _check(self, nodes, rid, output):
+        from vinc_mcp import tools
+        return tools._t_role_check({"role": rid, "output": output}, _FreshSpace(nodes))
+
+    def test_every_pack_role_passes_a_neutral_answer(self):
+        for p in PACKS:
+            nodes = _nodes(p)
+            for n in nodes:
+                with self.subTest(pack=p.name, role=n["id"]):
+                    got = self._check(nodes, n["id"], self.NEUTRAL)
+                    self.assertTrue(got["executed"], got)
+                    self.assertEqual((got["verdict"], got["failed_checks"]), ("pass", []), got)
+
+    def test_every_pack_role_passes_the_write_time_contract_check(self):
+        from api import role_gate_contract
+        for p in PACKS:
+            for n in _nodes(p):
+                with self.subTest(pack=p.name, role=n["id"]):
+                    self.assertEqual(role_gate_contract.check(n["props"]), [])
+
+    def test_never_checks_are_wired_not_decorative(self):
+        nodes = _nodes(DEFAULT)   # Checker 의 never_checks 가 편집을 막는다
+        got = self._check(nodes, "concept:agent-checker", "I will edit the file now.")
+        self.assertEqual(got["verdict"], "block", got)
+        self.assertIn("never_forbidden_actions", got["failed_checks"])
+
+    def test_person_only_actions_reach_the_interrupt(self):
+        nodes = _nodes(DEFAULT)   # Maker 의 person_only 에 publish 가 있다
+        got = self._check(nodes, "concept:agent-maker", "Please publish the release when ready.")
+        self.assertEqual(got["verdict"], "interrupt", got)
+        self.assertIn("publish", got["person_only_actions"])
 
 
 class DefaultPackAndTheFreeCap(unittest.TestCase):

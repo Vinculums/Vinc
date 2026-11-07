@@ -1,7 +1,7 @@
 import { COPY } from "../copy";
 import { docTitle } from "../doc-title";
 import { readPackFile } from "../packfile";
-import { header } from "../components";
+import { esc, header } from "../components";
 import { icon, stateDot } from "../icons";
 import { api, cfg, sidecarDiag, remote, teamsApi, WEB } from "../api";
 import {
@@ -362,7 +362,3 @@ export function renderIntake(el: HTMLElement,
   }
 }
 
-function esc(s: string): string {
-  return s.replace(/[<>&"]/g, (m) => (
-    { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[m] as string));
-}

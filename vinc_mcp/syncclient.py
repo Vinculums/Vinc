@@ -14,8 +14,8 @@
 from __future__ import annotations
 
 import json
-import urllib.error
-import urllib.request
+
+from . import hubhttp
 
 DEFAULT_URL = "https://mcp.vincs.io"
 TIMEOUT = 120.0
@@ -26,24 +26,20 @@ class SyncError(RuntimeError):
 
 
 def _post(base: str, path: str, token: str, payload: dict, *, timeout: float) -> dict:
-    req = urllib.request.Request(
-        base.rstrip("/") + path,
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={"Content-Type": "application/json",
-                 "Authorization": f"Bearer {token}"},
-        method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
+        return hubhttp.post_json(base.rstrip("/") + path, token=token, payload=payload,
+                                 timeout=timeout)
+    except hubhttp.HubHTTPError as e:
+        if e.status is None:
+            raise SyncError(f"remote {path} unreachable: {type(e.cause).__name__}") from None
         detail = ""
         try:
-            detail = json.loads(e.read().decode("utf-8")).get("error", "")
+            detail = json.loads(e.body).get("error", "")
         except Exception:
             pass
-        if e.code == 401:
+        if e.status == 401:
             raise SyncError("unauthorized — 계정 키(vinc_sk_…)가 없거나 폐기됨") from None
-        raise SyncError(f"remote {path} failed ({e.code}) {detail}".strip()) from None
+        raise SyncError(f"remote {path} failed ({e.status}) {detail}".strip()) from None
     except Exception as e:
         raise SyncError(f"remote {path} unreachable: {type(e).__name__}") from None
 

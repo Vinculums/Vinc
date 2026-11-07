@@ -15,15 +15,12 @@ sha256(key) 기준 60s 캐시 — 커넥션마다 계정을 때리지 않는다.
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 import os
 import threading
 import time
-import urllib.error
-import urllib.request
 
-from . import edverify
+from . import edverify, hubhttp
 
 _POS_TTL = 60.0     # 유효 키 캐시(초)
 _NEG_TTL = 5.0      # 무효 키 캐시(짧게 — 방금 만든 키가 오래 막히지 않게)
@@ -44,27 +41,32 @@ class VerificationUnavailable(RuntimeError):
 
 def _verification_failure(exc: Exception) -> None:
     # 계정 계약의 명시적 거절은 404뿐이다. 서비스 어서션 401도 키 무효가 아니다.
-    if isinstance(exc, urllib.error.HTTPError) and exc.code == 404:
+    status = exc.status if isinstance(exc, hubhttp.HubHTTPError) else None
+    if status == 404:
         return
-    status = exc.code if isinstance(exc, urllib.error.HTTPError) else None
-    _log.warning("account verification unavailable: kind=%s status=%s",
-                 type(exc).__name__, status)
+    kind = type(exc.cause if isinstance(exc, hubhttp.HubHTTPError) and status is None else exc).__name__
+    _log.warning("account verification unavailable: kind=%s status=%s", kind, status)
     raise VerificationUnavailable() from None
 
-#: 와이어에서 허용되는 등급 값. **Free 와 Team 둘뿐이다**(2026-09-19 지시로 Pro 폐기).
-#: DB 열거형(`users.plan`)은 free 뿐이고 `team` 은 어서션·verify-key 응답에만 실리는
-#: 와이어 전용 값이다([[vinc.canon.account-policy]] §2.1).
-#: 근거·기각안: [[decision:the-plans-are-free-and-team-and-the-axis-is-the-call-limit]]
-PLANS = ("free", "team")
+#: 와이어에서 허용되는 등급 값. **Curious(`free`)와 Genius(`genius`) 둘이다**. 화면 이름과
+#: 와이어 값이 다른 것은 의도다: 와이어 값은 계정 DB·토큰·캐시에 남아 오래 살고, 화면
+#: 이름은 마케팅이 바꿀 수 있다. Enterprise 는 아직 와이어 값이 없다.
+#: 근거: [[vinc.canon.account-policy §8]]
+PLANS = ("free", "genius")
 
-#: 유료로 취급하는 등급(한도 분기의 단일 기준).
-PAID_PLANS = ("team",)
+#: 유료로 취급하는 등급(한도 분기의 단일 기준). 유료는 하루 호출을 세지 않는다.
+PAID_PLANS = ("genius",)
 
-#: 폐기된 등급 → 지금 등급. 아직 `pro` 를 실어 오는 토큰·캐시·미배포 계정이 있을 수
-#: 있어 **조용히** 접는다 — 아래 normalize_plan 의 경고는 "배포 순서가 어긋났다"는
-#: 신호인데 이건 의도된 폐기라 경고가 거짓 경보가 된다. free 가 주제 무제한이 되어
-#: pro→free 로 잃는 것이 없다는 것이 조용해도 되는 이유다.
-RETIRED_PLANS = {"pro": "free"}
+#: 폐기된 등급 → 지금 등급. 계정 응답(verify-key·어서션·등급 조회)에 폐기된 값이 오면
+#: **조용히** 접는다. 아래 normalize_plan 의 경고는 "배포 순서가 어긋났다"는
+#: 신호인데 이건 의도된 폐기라 경고가 거짓 경보가 된다.
+#: - `pro` → free: free 가 주제 무제한이 되어 잃는 것이 없다.
+#:   제거 조건: 운영 계정 DB 에 Vinc-homepage `020_retire_pro_plan` 이 적용돼 `users.plan` 이 `free` 하나뿐인 것을 확인하면 뺀다.
+#: - `team` → genius: Team 의 후속이 Genius 다. 계정이 팀 어서션에 아직 `team` 을
+#:   싣고(웹 프록시), OAuth 토큰·등급 캐시에도 남아 있다. 지금 활성인 팀은 전부 체험
+#:   (`TRIAL_UNTIL`) 중이라 Genius 로 읽는 것이 맞다.
+#:   제거 조건: 계정이 팀 소유자 등급(`team_plan`)을 싣게 된 뒤 `team` 을 내는 곳이 없음을 확인하면 뺀다.
+RETIRED_PLANS = {"pro": "free", "team": "genius"}
 
 #: 회원 키 접두 — vinc_sk(전권) · vinc_ro(읽기 전용, W18). 접두는 사람 눈 구분용이고
 #: 권한의 정본은 계정 verify-key 응답의 `scope` 다. 근거: [[decision:scoped-key-tier]]
@@ -97,6 +99,19 @@ def normalize_plan(raw: object, *, source: str) -> str:
         _log.warning("unknown plan %r from %s — treating as 'free' "
                      "(hub older than account?)", raw, source)
     return "free"
+
+
+def _team_plan_field(body: dict, *, source: str) -> dict:
+    """팀 멤버십 응답의 `team_plan`(팀 소유자 등급) → 결과에 붙일 필드.
+
+    계정이 안 실으면 **빈 dict** 다. 값을 지어내지 않고 부재를 그대로 넘겨, 허브가
+    부재를 "팀 소유자 등급을 아직 안 싣는 계정"으로 읽게 한다(`http_server._team_plan`).
+    멤버 개인 등급(`plan`)과 섞으면 안 된다: Curious 멤버가 Genius 팀에서 일하면 Genius 를
+    받아야 한다."""
+    raw = body.get("team_plan")
+    if raw is None:
+        return {}
+    return {"team_plan": normalize_plan(raw, source=source)}
 
 
 def normalize_scope(raw: object, key: str) -> str:
@@ -151,14 +166,19 @@ def verify_key(raw: str, team: str | None = None) -> dict | None:
     (잃으면 TTL 동안 무음 승격이 된다). 부재·미지 값의 해석은 normalize_scope.
 
     `team` 없음: owner 는 `user:{public_id}`. 기존과 바이트 동일하다.
-    `team` 있음(publicId): 발급 대상이 일치하는 팀 키와 현재 활성 멤버십을 요구한다.
+    `team` 있음(publicId): **스페이스 스코프 질문**이다 — 이 키의 사람이 그 팀의 활성
+    멤버인가. 키가 어디에 묶였는지(`key_space`)도 본다: 그 팀에 묶인 키와 개인 키(`"personal"`, 또는 필드 없음)는 받고 다른 팀에 묶인 키는 거절한다.
+    개인 키가 멤버십으로 팀에 닿는 것은 채택된 동작이다(아래 스페이스 인자 결정). 팀 키는 따로 발급되고
+    자기 팀에만 묶인다. 계정이 엄격 모드(`KEY_GRAPH_SCOPE_STRICT`, 기본 꺼짐)를 켜면 개인 키의 팀 질문을
+    나쁜 키와 같이 거절하므로 여기까지 오지 않는다. 켜는 것은 그 결정을 뒤집는 일이라 소유자가 먼저 새로 정해야 한다.
     맞으면 owner 는 계정이 서명해 준 `team:{uuid}` 이고 `role` 이 함께 온다.
     아니면 None 이고, **모르는 팀·비멤버·정지된 팀이 나쁜 키와 구분되지 않는다**
     (계정이 같은 404 를 낸다 — 구분되면 팀의 존재가 샌다).
 
     ⚠ **캐시 키에 team 이 들어간다.** 안 넣으면 개인 스코프 답이 팀 질문을 TTL 동안
-    만족시킨다. 다른 공간에 대한 거절도 원래 키의 정상 조회를 막으면 안 된다.
-    근거: [[decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right]]
+    만족시킨다 — 같은 키로 두 스페이스를 묻는 것이 정상 흐름이라 이건 이론이 아니다. 다른 공간에 대한
+    거절도 원래 키의 정상 조회를 막으면 안 된다.
+    근거: [[decision:the-space-is-an-argument-and-the-default-is-personal]]
     """
     if not raw or not raw.startswith(KEY_PREFIXES):
         return None
@@ -175,23 +195,19 @@ def verify_key(raw: str, team: str | None = None) -> dict | None:
 
     result: dict | None = None
     try:
-        req = urllib.request.Request(
-            _account_url() + "/internal/mcp/verify-key",
-            data=json.dumps({"key": raw, **({"team": team} if team else {})})
-            .encode("utf-8"),
-            headers={"Content-Type": "application/json",
-                     "X-Vinc-Assertion": _sign_assertion(seed)},
-            method="POST")
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
+        body = hubhttp.post_json(
+            _account_url() + "/internal/mcp/verify-key", token=None,
+            payload={"key": raw, **({"team": team} if team else {})},
+            headers={"X-Vinc-Assertion": _sign_assertion(seed)}, timeout=_TIMEOUT)
         sub = body.get("sub")
         if isinstance(sub, str) and sub:
             plan = normalize_plan(body.get("plan"), source="verify-key")
             scope = normalize_scope(body.get("scope"), raw)
             if team:
-                # 멤버십만으로 개인 키를 팀 키로 승격하지 않는다. 구 계정 답도 거절한다.
-                if body.get("key_space") != team:
-                    raise ValueError("missing or mismatched key space")
+                # 다른 팀에 묶인 키는 멤버여도 이 팀에 들이지 않는다. 개인 키와 필드 없는 답은 받는다
+                # (개인 키의 팀 접근은 계정의 멤버십 검사와 엄격 모드가 가른다).
+                if (body.get("key_space") or "personal") not in ("personal", team):
+                    raise ValueError("key bound to another team")
                 # 팀 질문에는 계정이 서명한 graph_owner 와 role 이 함께 와야 한다.
                 # 하나라도 없으면 **개인으로 떨어뜨리지 않고 거절한다** — 팀 쓰기가
                 # 조용히 개인 그래프에 쌓이는 것이 여기서 가장 나쁜 고장이다.
@@ -199,9 +215,10 @@ def verify_key(raw: str, team: str | None = None) -> dict | None:
                 if (isinstance(go, str) and go.startswith("team:")
                         and isinstance(role, str) and role):
                     result = {"owner": go, "plan": plan, "scope": scope,
-                              "role": role, "member": f"user:{sub}"}
+                              "role": role, "member": f"user:{sub}",
+                              **_team_plan_field(body, source="verify-key")}
             else:
-                if body.get("key_space", "personal") != "personal":
+                if (body.get("key_space") or "personal") != "personal":
                     raise ValueError("team credential cannot access personal graph")
                 result = {"owner": f"user:{sub}", "plan": plan, "scope": scope}
         if result is None:
@@ -233,7 +250,7 @@ def verify_member(sub: str, team: str) -> dict | None:
 
     캐시는 `verify_key` 와 **같은 표를 쓰되 접두로 갈라 둔다**. 안 가르면 키 해시와
     publicId 가 같은 이름공간에 섞인다.
-    근거: [[decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right]]
+    근거: [[decision:the-space-is-an-argument-and-the-default-is-personal]]
     """
     if not sub or not team:
         return None
@@ -250,18 +267,15 @@ def verify_member(sub: str, team: str) -> dict | None:
 
     result: dict | None = None
     try:
-        req = urllib.request.Request(
-            _account_url() + "/internal/mcp/team-membership",
-            data=json.dumps({"sub": sub, "team": team}).encode("utf-8"),
-            headers={"Content-Type": "application/json",
-                     "X-Vinc-Assertion": _sign_assertion(seed)},
-            method="POST")
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
+        body = hubhttp.post_json(
+            _account_url() + "/internal/mcp/team-membership", token=None,
+            payload={"sub": sub, "team": team},
+            headers={"X-Vinc-Assertion": _sign_assertion(seed)}, timeout=_TIMEOUT)
         go, role = body.get("graph_owner"), body.get("role")
         if (isinstance(go, str) and go.startswith("team:")
                 and isinstance(role, str) and role):
-            result = {"owner": go, "role": role, "member": f"user:{sub}"}
+            result = {"owner": go, "role": role, "member": f"user:{sub}",
+                      **_team_plan_field(body, source="team-membership")}
         if result is None:
             raise ValueError("invalid membership response")
     except Exception as exc:
@@ -306,14 +320,10 @@ def list_spaces(sub: str) -> list[dict] | None:
 
     rows: list[dict] | None = None
     try:
-        req = urllib.request.Request(
-            _account_url() + "/internal/mcp/spaces",
-            data=json.dumps({"sub": sub}).encode("utf-8"),
-            headers={"Content-Type": "application/json",
-                     "X-Vinc-Assertion": _sign_assertion(seed)},
-            method="POST")
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
+        body = hubhttp.post_json(
+            _account_url() + "/internal/mcp/spaces", token=None,
+            payload={"sub": sub},
+            headers={"X-Vinc-Assertion": _sign_assertion(seed)}, timeout=_TIMEOUT)
         raw = body.get("spaces")
         if isinstance(raw, list):
             rows = []
@@ -325,8 +335,11 @@ def list_spaces(sub: str) -> list[dict] | None:
                     continue
                 if rid.startswith("community:"):
                     continue
-                rows.append({"id": rid, "name": name if isinstance(name, str) else "",
-                             "role": role})
+                row = {"id": rid, "name": name if isinstance(name, str) else "", "role": role}
+                # 팀 등급은 계정이 실을 때만 싣는다. 없으면 허브가 기본으로 읽는다(`_team_plan`).
+                if r.get("plan") is not None:
+                    row["plan"] = normalize_plan(r["plan"], source="spaces")
+                rows.append(row)
     except Exception:
         rows = None              # 네트워크·HTTP·형식 → "못 물었다"(빈 목록 아님)
 
@@ -348,12 +361,10 @@ def list_communities(sub: str) -> list[dict] | None:
             return hit[1]
     rows = None
     try:
-        req = urllib.request.Request(_account_url() + "/internal/mcp/spaces",
-                                     data=json.dumps({"sub": sub}).encode("utf-8"),
-                                     headers={"Content-Type": "application/json", "X-Vinc-Assertion": _sign_assertion(seed)},
-                                     method="POST")
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
+        body = hubhttp.post_json(
+            _account_url() + "/internal/mcp/spaces", token=None,
+            payload={"sub": sub},
+            headers={"X-Vinc-Assertion": _sign_assertion(seed)}, timeout=_TIMEOUT)
         raw = body.get("communities")
         if isinstance(raw, list):
             rows = [{"id": r["id"].lower(), "name": r.get("name") if isinstance(r.get("name"), str) else "",
@@ -380,14 +391,10 @@ def lookup_plan(sub: str) -> str | None:
     if seed is None:
         return None
     try:
-        req = urllib.request.Request(
-            _account_url() + "/internal/mcp/plan",
-            data=json.dumps({"sub": sub}).encode("utf-8"),
-            headers={"Content-Type": "application/json",
-                     "X-Vinc-Assertion": _sign_assertion(seed)},
-            method="POST")
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
+        body = hubhttp.post_json(
+            _account_url() + "/internal/mcp/plan", token=None,
+            payload={"sub": sub},
+            headers={"X-Vinc-Assertion": _sign_assertion(seed)}, timeout=_TIMEOUT)
     except Exception:
         return None
     if body.get("sub") != sub:

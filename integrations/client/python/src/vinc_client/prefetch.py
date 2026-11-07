@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any
+from typing import Any, NamedTuple, Sequence
 
 from .context import BOUNDARY, SOURCES_LINE, fence, format_answer
 from .errors import VincInvalidArgument, VincUnavailable
@@ -17,6 +17,13 @@ TASK_EVIDENCE_MAX_CHARS = 6000
 CITE_LINE = ("Required readings with a verified mirror name their citable id after \"cite as\"; "
              "cite that id, not the document key. Readings marked \"no citable id\" "
              "have no verified node citation; do not invent one. " + SOURCES_LINE)
+
+
+class RolePrefetch(NamedTuple):
+    """A prefetch block and the role contract it was built from, read in the same call."""
+
+    block: str
+    contract: dict[str, Any]
 
 
 def reading_list(contract: dict[str, Any]) -> list[str]:
@@ -53,6 +60,15 @@ def with_citation(read: str, document: dict[str, Any], node_result: dict[str, An
             or node.get("id") != cite_id(read)):
         raise VincUnavailable("prefetch_citation_unresolved", "A required reading's mirror response is invalid.")
     return {**document, "cite_id": node["id"]}
+
+
+def verified_document(result: dict[str, Any], doc_id: str) -> bool:
+    """A complete, verified canonical document under exactly ``doc_id``, its text matching its hash."""
+    text = result.get("text")
+    return (result.get("doc_id") == doc_id and result.get("executed") is True
+            and result.get("verified") is True and not result.get("partial")
+            and not result.get("error") and isinstance(text, str) and bool(text.strip())
+            and hashlib.sha256(text.encode("utf-8")).hexdigest() == result.get("content_hash"))
 
 
 def required_reading(doc_id: str, result: dict[str, Any]) -> str:
@@ -92,17 +108,30 @@ def role_context(contract: dict[str, Any]) -> str:
     return f"{CITE_LINE}\n{BOUNDARY}\n\n{fence(json.dumps(role, ensure_ascii=False, indent=2))}"
 
 
-def citation_policy(contract: dict[str, Any], specs: list[tuple[str, dict]]) -> str:
-    """Repeat the citation contract after long readings with exact verified source ids."""
+def citation_policy(contract: dict[str, Any], specs: list[tuple[str, dict]], *,
+                    extra_ids: Sequence[str] = (), extra_uncitable: Sequence[str] = ()) -> str:
+    """Repeat the citation contract after long readings with exact verified source ids.
+
+    ``extra_ids`` and ``extra_uncitable`` add what a context compiler verified beyond the
+    required readings; left empty, the text is prefetch's, byte for byte.
+    """
     ids = [contract["id"]]
     ids.extend(result["cite_id"] for read, result in specs
                if result.get("cite_id") == cite_id(read))
     sources = " ".join(f"[{node_id}]" for node_id in dict.fromkeys(ids))
     uncitable = [document_key(read) for read, result in specs
                  if result.get("cite_id") != cite_id(read)]
+    extra = ""
+    if extra_ids:
+        extra += ("Other verified source IDs in this context: "
+                  + " ".join(f"[{node_id}]" for node_id in dict.fromkeys(extra_ids)) + "\n")
+    if extra_uncitable:
+        extra += ("Other document keys with NO citable node in this space: "
+                  f"{json.dumps(list(dict.fromkeys(extra_uncitable)), ensure_ascii=False)}\n")
     return ("Citation contract for this run:\n"
             f"Verified role and required-reading source IDs: {sources}\n"
             f"Required document keys with NO citable node in this space: {json.dumps(uncitable, ensure_ascii=False)}\n"
+            + extra +
             "These uncitable documents are available as reference text, but must not appear "
             "in Sources. Adding concept:doc. to one of their keys creates an unverified ID. "
             "For the supplied role/readings, select Sources IDs only from the verified list above. "

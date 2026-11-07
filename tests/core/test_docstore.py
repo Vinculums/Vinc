@@ -1516,6 +1516,26 @@ class DocstoreE2E(unittest.TestCase):
         self.assertTrue(r["executed"], r)
         self.assertFalse(ds.get_doc(self.store, did)["needs_embed"])
 
+    def test_임베딩_대기열은_owner_마다_돌아가며_낸다(self):
+        """한 owner 의 대량 적재 뒤에 들어온 다른 owner 의 문서가 그 뒤로 통째로 밀리지 않는다.
+        owner 사이는 오래 기다린 owner 부터 한 문서씩, owner 안은 오래 기다린 문서부터다."""
+        bulk = [ds.put_doc(self.store, owner="user:big", text=f"대량 적재 본문 {i}. " * 20,
+                           title=f"B{i}")["doc_id"] for i in range(6)]
+        small = ds.put_doc(self.store, owner="user:small", text="작은 쪽 본문. " * 20,
+                           title="S")["doc_id"]
+
+        def picked(limit):
+            return list(dict.fromkeys(
+                c["doc_id"] for c in ds.pending_embed_chunks(self.store, limit=limit)))
+        self.assertEqual(picked(3), [bulk[0], small, bulk[1]], "작은 쪽이 대량 적재 뒤로 밀렸다")
+        self.assertEqual(picked(8), [bulk[0], small, *bulk[1:]])
+        self.assertEqual(picked(0), [])
+
+    def test_owner_가_비어_있는_문서도_대기열에서_빠지지_않는다(self):
+        did = ds.put_doc(self.store, owner="user:a", text="무소유 본문. " * 20, title="L")["doc_id"]
+        self.store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $d SET d.owner_id = NULL", {"d": did})
+        self.assertIn(did, {c["doc_id"] for c in ds.pending_embed_chunks(self.store)})
+
     def test_모델이_바뀐_뒤_도착한_벡터는_거절한다(self):
         """RV-03 둘째 절 — 전환 직전에 꺼낸 배치가 옛 모델 벡터를 새 스토어에 넣으면 안 된다."""
         d = ds.put_doc(self.store, owner="user:a", text="본문. " * 40, title="T")

@@ -1,18 +1,15 @@
 import { api, cfg, type SearchOptions } from "../api";
 import { COPY } from "../copy";
-import { header, armsNoticeBadge, searchTemporalText } from "../components";
+import { esc, header, armsNoticeBadge, searchTemporalText } from "../components";
 import { renderBrowse } from "./records";
 import { viewHooks } from "../topbar";
 import { renderSearchError } from "../search-error";
 import { partitionSearchResults } from "../search-relevance";
-
-function esc(s: string): string {
-  return String(s ?? "").replace(/[&<>"]/g, (c) =>
-    c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
-}
+import { loaderRows } from "../vinc-loaders.js";
 
 /** Surface 4 — Search (spec: [[vinc.spec.surface-search]], DEC D24).
- *  Single field + operators (domain:, tag:, "phrase"). Results grouped by
+ *  Single field + operators (domain:, tag:). 따옴표 구절 검색은 없다(인용부호는 낱말을 가른다,
+ *  `store/lexical.py` `_SPLIT`). Results grouped by
  *  domain; match notation ≡ (keyword arm) / ≈ (semantic arm) shows *why* a row
  *  matched — scores stay in the tooltip. */
 
@@ -33,7 +30,7 @@ export function renderSearch(el: HTMLElement) {
   el.innerHTML = `
     ${header("search", COPY.ui.topbar.search, COPY.ui.meta.search)}
     <form id="search-form" role="search">
-      <input id="q" type="search" placeholder="${COPY.search.idle}  ·  domain:math tag:core &quot;phrase&quot;"
+      <input id="q" type="search" placeholder="${COPY.search.idle}  ·  domain:math tag:core"
              style="width:100%;font:inherit;padding:var(--space-3,.75rem);
                     border:1px solid hsl(var(--input));border-radius:var(--radius);
                     background:hsl(var(--card));color:hsl(var(--foreground))" />
@@ -104,7 +101,7 @@ export function renderSearch(el: HTMLElement) {
       localStorage.setItem(RECENT_KEY, JSON.stringify(next));
     }
     const { text, domain, tag } = parseQuery(raw);
-    body.innerHTML = `<div class="hint">${COPY.search.searching}</div>`;
+    body.innerHTML = loaderRows(COPY.search.searching, { count: 5 });
     try {
       const mode = scope.value as SearchOptions["mode"];
       // Explicit scopes use one retrieval path so title matches cannot bypass its filters.

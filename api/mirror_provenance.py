@@ -11,6 +11,7 @@ from hashlib import sha256
 
 from engines.mentions_link import MENTIONS_RULE, compute_links
 from store import pkns
+from store.envflag import truthy_strict
 
 MAX_MIRRORS = 32
 MAX_CHUNKS = 256
@@ -19,8 +20,8 @@ MAX_CHUNKS = 256
 def graph_with_mirror_review(*, review_mirror=False, **kwargs):
     """기존 Graph 읽기에 명시적으로 선택한 미러 하나의 출처 검토를 덧붙인다."""
     from api import query
-    if isinstance(review_mirror, str) and review_mirror.lower() in ("true", "false"):
-        review_mirror = review_mirror.lower() == "true"
+    if isinstance(review_mirror, str):
+        review_mirror = truthy_strict(review_mirror)
     if type(review_mirror) is not bool:
         raise ValueError("review_mirror must be a boolean")
     seed = kwargs.get("seed") or ""

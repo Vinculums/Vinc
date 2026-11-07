@@ -1,5 +1,6 @@
 import type { NodeContext, TopicDetail } from "./api";
 import type { COPY } from "./copy";
+import { topicOf } from "./node-topic";
 
 export type DetailState = "ready" | "failed" | "unavailable" | "unsupported";
 export function detailState(res: NodeContext): DetailState {
@@ -33,7 +34,7 @@ export function topicDetailHTML(topic: TopicDetail, copy: Copy, esc: (s: string)
   const group = (rel: "PARENT_OF" | "IN_DOMAIN", title: string, count: number) => {
     const items = topic.structure.items.filter(it => it.rel === rel);
     return `<section class="pane-links"><h3 class="hint rail-sec">${esc(title)} · ${count}</h3>`
-      + items.map(it => go(it.id, it.title, it.rel === "PARENT_OF" ? it.id.slice(7) : it.domain)).join("")
+      + items.map(it => go(it.id, it.title, it.rel === "PARENT_OF" ? topicOf(it) : it.domain)).join("")
       + (items.length ? "" : `<p class="card-note">${esc(copy.topicEmpty)}</p>`) + "</section>";
   };
   return `<p class="hint">${esc(copy.topicPath)}</p><p>${path}</p>

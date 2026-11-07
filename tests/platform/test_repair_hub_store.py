@@ -545,6 +545,52 @@ class RepairHubStoreTests(unittest.TestCase):
         self.assertEqual(rep["requeue"]["refused"], "migration_marker_present")
         self.assertFalse(os.path.exists(self.dst), "거절했는데 사본을 남겼다")
 
+    def _marker_left_by(self, pending: str):
+        """끝난 이행의 표식을 남긴다: `pending` 문서 하나만 needs_embed=1 로 남는다."""
+        docs = _seed(self.src)
+        s = _open(self.src)
+        try:
+            s.run("MERGE (m:_SchemaMeta {key: 'embed_migration_model'}) SET m.value = 'model-a'")
+            s.run("MATCH (d:_DocMeta) WHERE d.doc_id = $d SET d.needs_embed = 1",
+                  {"d": docs[pending][0]})
+            s.run("CHECKPOINT")
+        finally:
+            s.close()
+
+    def test_unmark_lifts_a_marker_held_only_by_a_document_without_chunks(self):
+        """VIN-697. 청크 없는 문서는 워커가 못 보므로 대기열에 영영 남고, 표식은 대기 0 에서만
+        내려간다. unmark 가 그 표식을 내리면 같은 실행의 requeue 가 거절되지 않고 팔도 켜져 있다."""
+        self._marker_left_by("gone")
+        rc, rep, _ = _run_cli(self.src, self.dst, "--repairs", "requeue,unmark")
+        self.assertEqual(rc, 0, rep.get("problems"))
+        self.assertEqual(rep["repairs"], ["unmark", "requeue"])
+        um = rep["unmark"]
+        self.assertEqual((um["marker"], um["removed"], um["pending"], um["pending_without_chunks"]),
+                         ("model-a", True, 1, 1))
+        self.assertEqual(um["after"]["vectors"], um["before"]["vectors"])
+        self.assertEqual(rep["requeue"]["requeued"], 5)
+        self.assertEqual(rep["requeue"]["vector_arm_gate_after"], "on")
+        s = _open(self.dst)
+        try:
+            st = ds.embed_model_state(s)
+            self.assertEqual((st["migration_model"], st["stored"], st["pending"]), ("", "model-a", 6))
+            self.assertFalse(st["migrating"], st)
+        finally:
+            s.close()
+
+    def test_unmark_refuses_while_a_document_with_chunks_is_pending(self):
+        self._marker_left_by("cross")
+        rc, rep, _ = _run_cli(self.src, self.dst, "--repairs", "unmark")
+        self.assertEqual(rc, 1)
+        self.assertEqual(rep["unmark"]["refused"], "pending_documents_with_chunks")
+        self.assertFalse(os.path.exists(self.dst), "거절했는데 사본을 남겼다")
+
+    def test_unmark_without_a_marker_changes_nothing(self):
+        _seed(self.src)
+        rc, rep, _ = _run_cli(self.src, self.dst, "--repairs", "unmark")
+        self.assertEqual(rc, 0, rep.get("problems"))
+        self.assertEqual((rep["unmark"]["marker"], rep["unmark"]["removed"]), ("", False))
+
 
 if __name__ == "__main__":
     unittest.main()

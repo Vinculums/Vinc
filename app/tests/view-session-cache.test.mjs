@@ -36,8 +36,8 @@ test('bounded LRU entry count, payload size, replacement camera state and TTL',(
   put(c,'s','a','r');put(c,'s','b','r');c.get('s','a','r');put(c,'s','c','r');
   assert.equal(c.get('s','b','r'),undefined);assert.equal(c.count,2);
   assert.equal(put(c,'s','huge','r',{...graph,nodes:[{id:'x',props:{note:'x'.repeat(9000)}}]}),false);
-  c.remember('s','a','r',{prefs:'filter',camera2:{x:1,ratio:.3}},['domain/a']);
-  put(c,'s','a','r');assert.ok(c.bytes<=6000);assert.equal(c.getState('s','a','r','filter').camera2.x,1);
+  c.remember('s','a','r',{prefs:'filter',camera3:{pos:{x:1,y:0,z:0}}},['domain/a']);
+  put(c,'s','a','r');assert.ok(c.bytes<=6000);assert.equal(c.getState('s','a','r','filter').camera3.pos.x,1);
   now=101;assert.equal(c.count,0);assert.equal(c.last('s'),undefined);
 });
 test('camera and filter bookmark restored only in the verified session and same preferences',()=>{

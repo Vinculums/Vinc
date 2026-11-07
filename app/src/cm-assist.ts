@@ -7,8 +7,9 @@
 //       제목을 찾아 잇는다). 마지막 줄은 "개념 만들기: <글자>".
 //   D — 글을 고르면 그 위에 작은 줄(개념 · 기록 · 결정). 누르면 부르는 쪽이 컴포저를 연다.
 import type { EditorView } from "@codemirror/view";
+import { esc } from "./components";
 
-export type MentionHit = { id: string; title: string; domain: string };
+type MentionHit = { id: string; title: string; domain: string };
 export type MentionOpts = {
   /** 찾은 노드와, 의미 팔이 빠진 검색이면 그 사실(`note`). */
   search: (q: string) => Promise<{ hits: MentionHit[]; note: string }>;
@@ -22,9 +23,6 @@ export type SelectionOpts = {
   actions: { key: string; label: string }[];
   run: (key: string, text: string) => void;
 };
-
-const escHtml = (s: string) => String(s ?? "").replace(/[&<>"]/g, (c) =>
-  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
 /** 줄 머리부터 커서까지에서 `[[질의` 를 찾는다. 닫는 `]]` 가 이미 있으면 링크를 쓰는 중이 아니다. */
 export const MENTION_RE = /\[\[([^[\]\n]{0,60})$/;
@@ -84,14 +82,14 @@ export class MentionMenu {
   private render() {
     const rows = this.rows();
     this.sel = Math.min(this.sel, Math.max(rows.length - 1, 0));
-    const empty = (this.note ? `<p class="cm-assist-note">${escHtml(this.note)}</p>` : "")
+    const empty = (this.note ? `<p class="cm-assist-note">${esc(this.note)}</p>` : "")
       + (this.q.trim() && !this.hits.length
-        ? `<p class="cm-assist-note">${escHtml(this.o.noneLabel)}</p>` : "");
+        ? `<p class="cm-assist-note">${esc(this.o.noneLabel)}</p>` : "");
     this.dom.innerHTML = empty + rows.map((r, i) =>
       `<div class="cm-assist-row${i === this.sel ? " sel" : ""}${r.hit ? "" : " cm-assist-create"}"
         role="option" aria-selected="${i === this.sel}" data-i="${i}">
-        <span class="cm-assist-name">${escHtml(r.label)}</span>${
-        r.sub ? `<span class="cm-assist-sub">${escHtml(r.sub)}</span>` : ""}</div>`).join("");
+        <span class="cm-assist-name">${esc(r.label)}</span>${
+        r.sub ? `<span class="cm-assist-sub">${esc(r.sub)}</span>` : ""}</div>`).join("");
     this.dom.querySelectorAll<HTMLElement>(".cm-assist-row").forEach((el) =>
       el.addEventListener("mousedown", (e) => { e.preventDefault(); void this.choose(Number(el.dataset.i)); }));
   }
@@ -135,7 +133,7 @@ export class SelectionBar {
     this.dom.setAttribute("aria-label", o.label);
     this.dom.hidden = true;
     this.dom.innerHTML = o.actions.map((a) =>
-      `<button type="button" data-k="${escHtml(a.key)}">${escHtml(a.label)}</button>`).join("");
+      `<button type="button" data-k="${esc(a.key)}">${esc(a.label)}</button>`).join("");
     // 누르는 동안 편집기의 선택이 풀리지 않게 한다(mousedown 에서 초점을 뺏지 않는다).
     this.dom.addEventListener("mousedown", (e) => e.preventDefault());
     this.dom.querySelectorAll<HTMLElement>("button").forEach((b) =>

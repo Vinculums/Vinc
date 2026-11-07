@@ -39,7 +39,7 @@ jobs:
     timeout-minutes: 30
     env:
       RG: vincsRG
-      STORAGE: vincstorage01
+      STORAGE: vinchubssd01
       SHARE: hub-data
       APP: vinc-hub
     steps:
@@ -127,7 +127,7 @@ jobs:
       # 63MB → 167MB). 내용은 그만큼 안 컸다 — 문서 197건·청크 약 1,500개다.
       # 논리 재구축 전후의 크기 비교만이 "죽은 공간"과 "진짜 내용"을 가른다.
       # 여기 붙이는 이유는 재료가 이미 여기 있어서다: 스냅샷도 사본도 이 잡이 떴다.
-      # 근거: [[record:storage-transactions-are-the-snapshot-loop-and-they-tripled-in-three-weeks]]
+      # 근거: [[record:the-live-store-is-mostly-content-and-a-rebuild-returns-only-a-third]]
       - name: 부풀었나 재본다 (논리 재구축 전후 크기)
         run: |
           set -euo pipefail

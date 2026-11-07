@@ -68,6 +68,17 @@ class LadybugVendorTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256(data).hexdigest(),
                              sums[f"linux_amd64-lib{e}.lbug_extension"], e)
 
+    def test_엔진_검증과_스토어_재구축도_같은_릴리스의_바이트를_쓴다(self):
+        """VIN-698. 상류는 같은 판 경로의 확장을 다시 올린다(2026-10-20 algo). 후보 검증과
+        허브 스토어 재구축이 상류에서 받으면 그날 둘 다 멈추고, 출하하는 바이트와 다른 것을
+        검증하게 된다. 둘 다 시드 단계와 같은 릴리스에서 받아 해시 목록과 대조해야 한다."""
+        wf = ROOT / ".github" / "workflows"
+        for name in ("engine-qualification.yml", "hub-store-rebuild.yml"):
+            text = (wf / name).read_text(encoding="utf-8")
+            self.assertIn(f"gh release download ladybug-ext-{_ver()} ", text, name)
+            self.assertRegex(text, r"prepare_candidate_engine\.py --root \S+ (--no-export )?--vendor-dir ",
+                             f"{name}: 상류 INSTALL 로 확장을 받는다")
+
 
 if __name__ == "__main__":
     unittest.main()

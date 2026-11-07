@@ -65,7 +65,7 @@ permissions:
   actions: read
 env:
   APP: "--name vinc-hub -g vincsRG"
-  ACCOUNT: vincstorage01
+  ACCOUNT: vinchubssd01
   SHARE: hub-data
 jobs:
   rebuild:
@@ -137,10 +137,16 @@ jobs:
           )
           pip install "$engine" argon2-cffi pyyaml pypdf
           echo "SELECTED_ENGINE=$engine" >> "$GITHUB_ENV"
+      # 확장은 Vinc 릴리스 ladybug-ext-0.21.2 의 바이트를 해시 대조해 쓴다(허브가 싣는 것과 같다).
+      # 상류 서버는 같은 판 경로의 파일을 다시 올리므로, 거기서 받으면 해시 대조에서 이 잡이 멈춘다.
       - name: Prepare matching candidate extensions
         if: env.SELECTED_ENGINE == 'ladybug==0.21.2'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          python scripts/qa/prepare_candidate_engine.py --root verified-engine --no-export
+          set -euo pipefail
+          gh release download ladybug-ext-0.21.2 --pattern "linux_amd64-*.lbug_extension" --dir verified-assets
+          python scripts/qa/prepare_candidate_engine.py --root verified-engine --no-export --vendor-dir verified-assets
           echo "VINC_LBUG_EXT_DIR=$GITHUB_WORKSPACE/verified-engine/extensions" >> "$GITHUB_ENV"
       - name: Azure 프로필을 이 잡 전용으로
         run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
@@ -201,6 +207,17 @@ jobs:
           # 쓰기 검사가 허브와 같은 키 규약으로 쓰게 한다.
           echo "VINC_PK_NAMESPACED=${pkns:-off}" >> "$GITHUB_ENV"
           echo "원본 /data/$src → 재구축본 /data/$dst (VINC_PK_NAMESPACED=${pkns:-off})"
+
+      # 장애 감시에 허브 배포 창을 연다(apply 만 허브를 내린다). 창은 서버에서 최대 30분이다.
+      # 규칙과 근거는 scripts/incident_window.sh 머리말에 있다.
+      - name: Incident window open (a planned rebuild must not page)
+        if: inputs.mode == 'apply'
+        env:
+          INCIDENT_MAINTENANCE_TOKEN: ${{ secrets.INCIDENT_MAINTENANCE_TOKEN }}
+        # 체크아웃이 이 스크립트보다 오래된 커밋일 수 있다(계획 잡이 고른 커밋). 파일이 없으면 건너뛴다.
+        continue-on-error: true
+        run: |
+          if [ -f scripts/incident_window.sh ]; then bash scripts/incident_window.sh open hub "hub-store-rebuild-${{ github.run_id }}"; else echo "::notice::this checkout has no scripts/incident_window.sh, so no incident window"; fi
 
       # ── apply 전용: 허브를 먼저 내린다 ──────────────────────────────────────
       # 재구축본은 스냅샷 시점의 사본이다. 허브가 떠 있으면 그 뒤의 쓰기가 갈아타는
@@ -415,6 +432,16 @@ jobs:
             [ "$ready" = 1 ] || { echo '::error::original revision did not recover; operator intervention required'; exit 1; }
           done
           echo 'Original revision restored before any store switch; both store files retained.'
+
+      # 배포 창을 닫는다. 앞이 실패해도 닫아야 허브가 안 살아났을 때 감시가 장애를 바로 연다.
+      - name: Incident window close
+        if: ${{ always() && inputs.mode == 'apply' }}
+        env:
+          INCIDENT_MAINTENANCE_TOKEN: ${{ secrets.INCIDENT_MAINTENANCE_TOKEN }}
+        # 체크아웃이 이 스크립트보다 오래된 커밋일 수 있다(계획 잡이 고른 커밋). 파일이 없으면 건너뛴다.
+        continue-on-error: true
+        run: |
+          if [ -f scripts/incident_window.sh ]; then bash scripts/incident_window.sh close hub; else echo "::notice::this checkout has no scripts/incident_window.sh, so no incident window"; fi
 
       # 이 실행에서 만든 사본만 지운다. --snapshot 없는 삭제는 라이브 공유를 지운다.
       - name: Remove the rehearsal snapshot

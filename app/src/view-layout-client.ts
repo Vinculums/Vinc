@@ -1,18 +1,18 @@
 import type { GraphNode, GraphEdge } from "./api";
-import type { LayoutGraph, LayoutOrdering } from "./view-layout";
+import type { LayoutGraph } from "./view-layout";
 
 /** 진척이 이만큼 없으면 멈춘 것으로 본다. 워커는 ELK 호출 사이에 5초마다 진척을 알리고,
  *  가장 긴 동기 라우팅 한 번은 큰 그래프에서 20초대였다. */
-export const LAYOUT_IDLE_MS = 60_000;
+const LAYOUT_IDLE_MS = 60_000;
 /** 진척이 있어도 이보다 길면 접는다. 화면은 그동안 중심에서 배치를 보여 주고 있다. */
-export const LAYOUT_CAP_MS = 300_000;
+const LAYOUT_CAP_MS = 300_000;
 
 /** A layout job owns its worker. All exits terminate it, including removal of
  * View, a newer scope, worker faults, a stalled worker and the overall cap.
  * The deadline follows progress: a large graph that keeps reporting is not cut
  * at a fixed time. 근거: [[vinc.research.time-branches-layout-bottleneck-2026-10-12]] */
 export function layoutInWorker(nodes: GraphNode[], edges: GraphEdge[], basis: "recorded" | "content",
-  signal: AbortSignal, ordering: LayoutOrdering = "temporal",
+  signal: AbortSignal,
   factory = () => new Worker(new URL("./view-layout.worker.ts", import.meta.url), { type: "module" }),
   aspectRatio = 1.6, limits: { idleMs?: number; capMs?: number } = {}): Promise<LayoutGraph> {
   if (signal.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
@@ -63,7 +63,7 @@ export function layoutInWorker(nodes: GraphNode[], edges: GraphEdge[], basis: "r
     };
     worker.onerror = (event) => finish(new Error(event.message || "View layout worker failed"));
     worker.onmessageerror = () => finish(new Error("Invalid View layout worker response"));
-    try { worker.postMessage({ nodes, edges, basis, ordering, aspectRatio }); } catch (error) {
+    try { worker.postMessage({ nodes, edges, basis, aspectRatio }); } catch (error) {
       finish(error instanceof Error ? error : new Error(String(error)));
     }
   });

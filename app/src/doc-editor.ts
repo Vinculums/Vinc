@@ -6,8 +6,10 @@
 import { api, cfg, docMidWrite, storeDownReason, shellInvoke } from "./api";
 import { COPY } from "./copy";
 import { docTitle } from "./doc-title";
-import { confirmDestructive } from "./components";
 import { hydrateRich } from "./rich-blocks";
+import { esc } from "./components";
+import { loaderRows } from "./vinc-loaders.js";
+import { tableCaret, tableMarkdown, type InsertOpts } from "./cm-insert";
 
 /** 결정론 미니 마크다운 렌더러(폴백 미리보기·Reader 공용). **표시 전용** — 소스는
  *  변형하지 않는다. 전부 이스케이프 후 최소 문법만. */
@@ -102,9 +104,6 @@ export function renderMarkdown(src: string): string {
   return out.join("");
 }
 
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) =>
-  c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
-
 /** 마운트 핸들 — 읽기/편집 전환이 **같은 렌더 위에서** 일어난다(D45-E 개정).
  *  구조상 Reader 라는 별도 화면이 없어졌다: 문서는 언제나 렌더된 모습이고,
  *  편집을 켜면 그 자리에 커서가 생길 뿐이다. */
@@ -120,7 +119,11 @@ export type DocEditorHandle = {
   pauseSaving: (pause: boolean) => Promise<void>;
   /** 목차 클릭·청크 히트 착지가 쓰는 스크롤. 폴백(textarea)에는 오프셋 개념이
    *  없어 무동작이다 — 그 경로는 렌더 자체가 강등본이라 착지도 함께 강등한다. */
-  scrollToOffset: (pos: number) => void;
+  scrollToOffset: (pos: number, align?: "center" | "start") => void;
+  /** 오프셋이 놓인 줄의 화면 y. 옆 칸 목차가 지금 절을 고른다(폴백·stub 에는 없다). */
+  lineTop?: (pos: number) => number;
+  /** 개념 언급 자리에 밑줄을 긋고 첫 자리로 간다(옆 칸의 개념 칩). */
+  highlight?: (ranges: { char_start: number; char_end: number }[]) => void;
   /** 지금 편집기가 들고 있는 원문. **복사 버튼이 쓴다**(발주자 지적 2026-09-10:
    *  "그냥 내용 드래그해서 복사하려는 사용자도 있을 것"). 화면에서 긁으면 렌더된
    *  모습이 딸려 오지만 문서의 정본은 마크다운이므로, 한 번 눌러 얻는 것은
@@ -163,13 +166,14 @@ export function docEditorOpen(): boolean {
   return !!pane && !pane.hidden && !!pane.querySelector(".cm-content");
 }
 
-export type DocEditorOpts = {
+type DocEditorOpts = {
   owner: string;
   docId?: string;         // 없으면 신규(첫 저장 시 생성 → 반환 id 로 이후 편집)
   title?: string;
   initial?: string;       // 신규/이미 로드된 텍스트. docId 있고 미지정이면 fetch.
   contentHash?: string;   // 로드 시점 해시(충돌 감지 기준)
-  onSaved?: (docId: string, title: string) => void;
+  /** 저장이 들어갔다. `contentHash` 는 저장된 판의 해시다(다시 마운트할 때 충돌 기준으로 넘긴다). */
+  onSaved?: (docId: string, title: string, contentHash: string) => void;
   onClose?: () => void;
   /** 읽기 전용으로 마운트(커서를 켜지 않는다). 마운트 뒤 전환하는 문은 없다 —
    *  문서 열은 상시 편집이라 쓸 곳이 없었고, 있던 토글은 사문이었다(2026-09-07 제거). */
@@ -201,7 +205,43 @@ export type DocEditorOpts = {
   onUnsaved?: (draft: { title: string; text: string; contentTime: string }) => void;
   /** 만들기 폼은 완료를 눌렀을 때만 저장한다. 닫기·취소는 제출이 아니다. */
   manualSave?: boolean;
+  /** 본문이 바뀌었다(글자마다). 옆 칸 목차처럼 원문에서 다시 세는 자리가 받는다. */
+  onText?: (text: string) => void;
 };
+
+/** 삽입 목록 — 슬래시 · 우클릭 · 머리 줄의 + 버튼이 같은 것을 쓴다(cm-insert).
+ *  넣는 원문은 마크다운이고, 라벨만 카피에서 온다. 테스트가 목록을 읽으려고 내보낸다. */
+export function insertOpts(): InsertOpts {
+  const S = COPY.ui.viewx.slash;
+  const I = COPY.ui.viewx.ins;
+  const head = (i: number) => I.column(i);
+  const mermaid = "```mermaid\ngraph TD\n  A --> B\n```";
+  return {
+    blocks: [
+      { key: "h1", label: S.h1, glyph: "H1", hint: "#", text: "# ", prefix: true, aliases: "heading title" },
+      { key: "h2", label: S.h2, glyph: "H2", hint: "##", text: "## ", prefix: true, aliases: "heading" },
+      { key: "h3", label: S.h3, glyph: "H3", hint: "###", text: "### ", prefix: true, aliases: "heading" },
+      { key: "bullet", label: S.bullet, glyph: "•", hint: "-", text: "- ", prefix: true, aliases: "list ul" },
+      { key: "number", label: S.number, glyph: "1.", hint: "1.", text: "1. ", prefix: true, aliases: "list ol" },
+      { key: "task", label: S.task, glyph: "☐", hint: "- [ ]", text: "- [ ] ", prefix: true, aliases: "todo check" },
+      { key: "quote", label: S.quote, glyph: "“", hint: ">", text: "> ", prefix: true, aliases: "blockquote" },
+      { key: "table", label: S.table, glyph: "▦", hint: "|", table: true, spaced: true, aliases: "grid",
+        text: (r, c) => tableMarkdown(r, c, head), caret: (r, c) => tableCaret(r, c, head) },
+      { key: "code", label: S.code, glyph: "</>", hint: "```", text: "```\n\n```", caret: 4, spaced: true },
+      { key: "math", label: S.math, glyph: "∑", hint: "$$", text: "$$\n\n$$", caret: 3, spaced: true,
+        aliases: "equation latex tex formula" },
+      { key: "diagram", label: S.diagram, glyph: "◇", hint: "mermaid", text: mermaid,
+        caret: mermaid.length - 4, spaced: true, aliases: "mermaid chart flow" },
+      { key: "hr", label: S.hr, glyph: "─", hint: "---", text: "---", spaced: true, aliases: "divider line" },
+    ],
+    labels: {
+      blocks: I.blocks, format: I.format,
+      cut: I.cut, copy: I.copy, paste: I.paste,
+      formats: { bold: I.bold, italic: I.italic, strike: I.strike, code: I.code, link: I.link },
+      tableSize: I.tableSize, linkText: I.linkText,
+    },
+  };
+}
 
 /** 편집기를 host 에 마운트. host 내부를 편집 UI 로 채운다(호출부가 컨테이너·닫기
  *  버튼 제공). 반환 = dispose. */
@@ -213,7 +253,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
   let contentTime = opts.contentTime || "";   // D72 — 내용 시점(빈 값 = 안 적음)
 
   if (docId && opts.initial === undefined) {
-    host.innerHTML = `<p class="hint">${COPY.ui.viewx.readerLoading}</p>`;
+    host.innerHTML = loaderRows(COPY.ui.viewx.readerLoading, { count: 6, compact: true });
     // 이 await 는 오래 try 밖에 있었다. `call()` 은 비 2xx 를 전부 던지므로
     // (죽은 사이드카·500·그리고 2026-08-16 부터 스토어 미개방의 503) 예외가
     // mountDocEditor 밖으로 새어 나가고, 호출부는 "문서를 여는 중"에서 굳는다.
@@ -264,7 +304,9 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       const stub: DocEditorHandle = {
         dispose: async (discard) => { closed = true; LIVE.delete(host); await again?.dispose(discard); },
         pauseSaving: async (pause) => { await again?.pauseSaving(pause); },
-        scrollToOffset: (pos) => again?.scrollToOffset(pos),
+        scrollToOffset: (pos, align) => again?.scrollToOffset(pos, align),
+        lineTop: (pos) => again?.lineTop?.(pos) ?? 0,
+        highlight: (ranges) => again?.highlight?.(ranges),
         // 아직 못 읽은 문서다 — 빈 문자열이 곧 "복사할 것이 없다"이고,
         // 호출부(복사 버튼)는 그 경우 아무 일도 하지 않는다.
         getText: () => again?.getText() ?? "",
@@ -295,6 +337,9 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
         style="width:7.5rem;background:transparent;color:inherit;
         border:none;border-bottom:1px solid hsl(var(--border));font:inherit;
         font-size:.85em;padding:.2rem 0"/>
+      <button class="btn btn-quiet ed-insert" id="ed-insert" type="button" hidden
+        aria-label="${esc(COPY.ui.viewx.ins.open)}" data-tip="${esc(COPY.ui.viewx.ins.openTip)}">
+        <span aria-hidden="true">+</span><span>${esc(COPY.ui.viewx.ins.open)}</span></button>
       <span class="hint" id="ed-status">${COPY.ui.viewx.edSaved}</span>
     </div>
     <textarea id="ed-src" spellcheck="false" style="width:100%;min-height:12rem;resize:vertical;
@@ -342,36 +387,25 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
   const onEdited = () => {
     setStatus(COPY.ui.viewx.edDirty);
     if (!cm) { prev.innerHTML = renderMarkdown(src.value); hydrateRich(prev); }
+    opts.onText?.(getText());
     schedule();
   };
-
-  // 슬래시 커맨드 항목 — 결정론 블록(오프라인·무LLM). cursorBack 은 코드펜스처럼
-  // 커서를 안쪽에 두어야 할 때 끝에서 되돌릴 칸수.
-  const s = COPY.ui.viewx.slash;
-  const slashItems = [
-    { label: s.h1, insert: "# " }, { label: s.h2, insert: "## " },
-    { label: s.bullet, insert: "- " }, { label: s.number, insert: "1. " },
-    { label: s.quote, insert: "> " },
-    { label: s.code, insert: "```\n\n```", cursorBack: 4 },
-    { label: s.hr, insert: "---\n" },
-  ];
 
   try {
     const mod = await import("./codemirror-editor");
     const cmHost = document.createElement("div");
-    cmHost.style.cssText = opts.hideTitle
-      // 레일 문서 = 상자 없음. 스크롤은 레일이 진다(중첩 스크롤 금지).
-      ? "margin-top:.2rem"
-      // 시트 문서도 같은 규율 — vh 상한을 걸면 문서가 패널이 아니라 창 기준으로
-      // 잘리고(52vh 사고), 스크롤이 .sheet-body 와 이중이 된다. 시트 높이는
-      // app.css `.sheet[data-size="write"]` 가 진다.
-      : "border:1px solid hsl(var(--border));border-radius:6px;"
-        + "padding:.25rem;margin-top:.4rem";
+    // 레일 문서 = 상자 없음. 스크롤은 레일이 진다(중첩 스크롤 금지).
+    // 시트 문서도 같은 규율 — vh 상한을 걸면 문서가 패널이 아니라 창 기준으로
+    // 잘리고(52vh 사고), 스크롤이 .sheet-body 와 이중이 된다. 시트 높이는
+    // app.css `.sheet[data-size="write"]` 가 진다. 상자는 클래스라 자리마다 걷을 수 있다
+    // (문서 홈은 걷는다 — app.css `.home-doc .doc-cm-box`).
+    if (opts.hideTitle) cmHost.style.marginTop = ".2rem";
+    else cmHost.className = "doc-cm-box";
     src.replaceWith(cmHost);
     prev.remove();
     const A = COPY.author;
     cm = mod.mountEditor(cmHost, { initial, onChange: onEdited, onSave: () => void save(false, true),
-      slash: slashItems, readOnly: opts.readOnly, fmLabel: COPY.ui.viewx.edFmLabel,
+      insert: insertOpts(), readOnly: opts.readOnly, fmLabel: COPY.ui.viewx.edFmLabel,
       onDocLink: opts.onDocLink,
       // 흐름 C — `[[` 로 기존 노드를 찾아 제목을 넣는다(멘션은 저장 때 링커가 잇는다).
       mention: {
@@ -393,6 +427,15 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
         if (invoke) await invoke("plugin:shell|open", { path: url });
         else window.open(url, "_blank", "noopener");
       })() });
+    // 머리 줄의 + 버튼 — 우클릭을 모르는 손을 위한 같은 메뉴의 문. 편집할 수 있을 때만.
+    const insBtn = host.querySelector<HTMLButtonElement>("#ed-insert");
+    if (insBtn && !opts.readOnly) {
+      insBtn.hidden = false;
+      insBtn.addEventListener("click", () => {
+        const r = insBtn.getBoundingClientRect();
+        cm?.openInsert({ x: r.left, y: r.bottom + 4 });
+      });
+    }
     if (opts.highlights?.length) {
       cm.setHighlights(opts.highlights);
       // 첫 언급으로 스크롤 — 레이아웃이 앉은 뒤라야 좌표가 맞는다.
@@ -469,47 +512,46 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       if (!text.trim()) { setStatus(COPY.author.docNeedBody); return false; }
       if (!explicit && !leaving && document.activeElement === titleInput) return false;
     }
+    // 원격본이 읽은 판이 아니다 — 덮어쓸지 다시 읽을지 사람이 고른다.
+    const showConflict = (cur: Awaited<ReturnType<typeof api.docGet>>): boolean => {
+      setStatus(COPY.ui.viewx.edDirty);
+      conflictBox.innerHTML = `
+        <div class="error-banner" style="margin:.4rem 0">${COPY.ui.viewx.edConflict}
+          <div style="margin-top:.3rem">
+            <button class="btn" id="ed-ow">${COPY.ui.viewx.edOverwrite}</button>
+            <button class="btn" id="ed-rl">${COPY.ui.viewx.edReload}</button>
+          </div></div>`;
+      conflictBox.querySelector("#ed-ow")!.addEventListener("click", async () => {
+        conflictBox.innerHTML = "";
+        // 덮어쓰기 전 원격본을 "충돌본" 문서로 먼저 보존(작업 소실 0 — 순수
+        // LWW 의 유일한 위험을 없앤다). 신규 doc 이라 id 없이 put.
+        if (cur.text !== undefined && cur.text !== "") {
+          try {
+            await api.docPut(opts.owner, cur.text, undefined,
+                             COPY.ui.viewx.edConflictCopy(cur.title || t));
+          } catch { /* 스냅샷 실패해도 덮어쓰기는 진행 — 최선 노력 보존 */ }
+        }
+        void save(true, false, topicOnce);
+      });
+      conflictBox.querySelector("#ed-rl")!.addEventListener("click", () => {
+        conflictBox.innerHTML = "";
+        if (cur.text !== undefined) {
+          setText(cur.text); lastSaved = cur.text; hash = cur.content_hash || "";
+          titleInput.value = (cur.title || "").trim(); lastTitle = titleInput.value;
+          setStatus(COPY.ui.viewx.edSaved);
+        }
+      });
+      return false;
+    };
     setStatus(COPY.ui.viewx.edSaving);
     try {
       // 무음 LWW 금지 — 기존 문서면 저장 직전 원격 해시 비교.
       if (!force && docId) {
         const cur = await api.docGet(opts.owner, docId);
-        // ⚠ P18 이 여기다(P17b 범위 밖 — 일부러 안 고쳤다). 아래 조건은 `cur.executed`
-        // 를 앞세우므로, 원격이 **쓰기 창(P17 의 `executed:false`)** 이면 비교가 통째로
-        // 건너뛰어지고 저장이 그냥 진행된다: 충돌 배너도, 아래 "덮어쓰기 전 원격본을
-        // 충돌본으로 보존"도 돌지 않는다. 즉 무음 LWW 금지 규율이 바로 그 상태에서만
-        // 풀린다. 마운트는 이 상태를 막지만(위 stub), 이 경로는 **마운트 뒤에 원격이
-        // 그 상태가 된 경우**라 stub 이 못 막는다.
-        if (cur.executed && cur.content_hash && cur.content_hash !== hash) {
-          setStatus(COPY.ui.viewx.edDirty);
-          conflictBox.innerHTML = `
-            <div class="error-banner" style="margin:.4rem 0">${COPY.ui.viewx.edConflict}
-              <div style="margin-top:.3rem">
-                <button class="btn" id="ed-ow">${COPY.ui.viewx.edOverwrite}</button>
-                <button class="btn" id="ed-rl">${COPY.ui.viewx.edReload}</button>
-              </div></div>`;
-          conflictBox.querySelector("#ed-ow")!.addEventListener("click", async () => {
-            conflictBox.innerHTML = "";
-            // 덮어쓰기 전 원격본을 "충돌본" 문서로 먼저 보존(작업 소실 0 — 순수
-            // LWW 의 유일한 위험을 없앤다). 신규 doc 이라 id 없이 put.
-            if (cur.text !== undefined && cur.text !== "") {
-              try {
-                await api.docPut(opts.owner, cur.text, undefined,
-                                 COPY.ui.viewx.edConflictCopy(cur.title || t));
-              } catch { /* 스냅샷 실패해도 덮어쓰기는 진행 — 최선 노력 보존 */ }
-            }
-            void save(true, false, topicOnce);
-          });
-          conflictBox.querySelector("#ed-rl")!.addEventListener("click", () => {
-            conflictBox.innerHTML = "";
-            if (cur.text !== undefined) {
-              setText(cur.text); lastSaved = cur.text; hash = cur.content_hash || "";
-              titleInput.value = (cur.title || "").trim(); lastTitle = titleInput.value;
-              setStatus(COPY.ui.viewx.edSaved);
-            }
-          });
-          return false;
-        }
+        // 여기 비교는 원격이 쓰기 창(`executed:false`)이면 건너뛰고, 비교와 쓰기 사이에도 틈이
+        // 있다. 그래서 쓰기 자체도 읽은 해시(`expected_content_hash`)를 들고 가고, 서버가 그
+        // 해시가 아니라고 거절하면 아래 쓰기 뒤에서 같은 충돌 상자를 연다.
+        if (cur.executed && cur.content_hash && cur.content_hash !== hash) return showConflict(cur);
       }
       let res: Awaited<ReturnType<typeof api.docPut>>;
       if (creating) {
@@ -531,7 +573,10 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
         if (res.created === false) throw new Error("doc id already in use");
         docId = res.doc_id || id;
       } else {
-        res = await api.docPut(opts.owner, text, docId, t, ct, undefined, topicOnce || undefined);
+        // 덮어쓰기(force)가 아니면 읽은 해시를 들고 간다. 서버가 그 판이 아니라고 하면 충돌 상자.
+        res = await api.docPut(opts.owner, text, docId, t, ct, undefined, topicOnce || undefined,
+                               force ? undefined : hash || undefined);
+        if (!res.executed && res.error === "write_conflict") return showConflict(await api.docGet(opts.owner, docId!));
         if (!res.executed) throw new Error(res.error || "put failed");
       }
       if (res.doc_id) docId = res.doc_id;              // 신규 → 생성된 id 확보
@@ -546,7 +591,7 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       // 저장하는 동안 더 친 것이 있으면 "저장됨"이라고 말하지 않고 한 번 더 저장한다.
       if (dirty()) { setStatus(COPY.ui.viewx.edDirty); if (!timer) schedule(); }
       else setStatus(COPY.ui.viewx.edSaved);
-      opts.onSaved?.(docId || "", t);
+      opts.onSaved?.(docId || "", t, hash);
       if (creating && docId) opts.onCreated?.(docId, res.topic || topic);
       if (!res.skipped && docId) { void offerExtract(); void reindex(res.needs_embed); }
       return true;
@@ -654,7 +699,9 @@ export async function mountDocEditor(host: HTMLElement, opts: DocEditorOpts): Pr
       cm?.destroy();
       cm = null;
     },
-    scrollToOffset: (pos: number) => cm?.scrollToOffset(pos),
+    scrollToOffset: (pos: number, align?: "center" | "start") => cm?.scrollToOffset(pos, align),
+    lineTop: (pos: number) => cm?.lineTop(pos) ?? 0,
+    highlight: (ranges) => { if (!cm) return; cm.setHighlights(ranges); cm.scrollToHighlight(); },
     getText,
     saveTopic,
     saveNow: async () => {

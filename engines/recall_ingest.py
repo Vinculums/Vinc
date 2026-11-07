@@ -48,11 +48,9 @@ _DATE_DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # ── dotenv 로드 ───────────────────────────────────────────────────────────────
 
 def _load_dotenv() -> None:
-    """weg9000-hub/.env 를 환경변수로 로드한다."""
+    """현재 디렉터리의 .env 를 환경변수로 로드한다(이미 있는 값은 덮지 않는다)."""
     env_candidates = [
         Path(".env"),
-        Path("../weg9000-hub/.env"),
-        Path("../../weg9000-hub/.env"),
     ]
     for env_path in env_candidates:
         if env_path.exists():

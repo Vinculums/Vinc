@@ -1,0 +1,961 @@
+{
+ "app": "http://tauri.localhost:5297",
+ "capturedAt": "2026-11-04T05:47:03.645Z",
+ "tool": "scripts/design/capture_app.mjs",
+ "node": null,
+ "sourceRev": "458bd656ce75085e7d936f1d5cfada3f61dd8efd",
+ "sourceRevNote": "Vinc commit whose app/src the captures rendered",
+ "sourceTree": "874144739f336eb0f322ff5a0c28bf234269b4a9",
+ "sourceTreeNote": "git rev-parse <sourceRev>:app/src — the gate compares this with the current tree, not commit history (squash merge keeps the tree, not the commit)",
+ "states": [
+  {
+   "id": "view__3d",
+   "surface": "#view",
+   "state": "3d",
+   "trigger": "load: 3D viewpoint, all topics",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__3d.png",
+   "sha1": "a671bf0a4b0f90c98aa00bf40410a365674693df"
+  },
+  {
+   "id": "view__topic-scope",
+   "surface": "#view",
+   "state": "topic-scope",
+   "trigger": "LNB: the topic's scope button narrows View, scope chip appears",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__topic-scope.png",
+   "sha1": "3083777900749bc2b4714673d6aa5138ec4e9fb5"
+  },
+  {
+   "id": "view__lnb-collapsed",
+   "surface": "#view",
+   "state": "lnb-collapsed",
+   "trigger": "LNB: collapse",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__lnb-collapsed.png",
+   "sha1": "90a96f3b4c3dbf49cbb5439838c2502efa301138"
+  },
+  {
+   "id": "view__lens-options-3d",
+   "surface": "#view",
+   "state": "lens-options-3d",
+   "trigger": "lens button: Options tab (3D rows)",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__lens-options-3d.png",
+   "sha1": "17497021ca46c589cd73eaedc6313b7cc6824089"
+  },
+  {
+   "id": "view__lens-legend",
+   "surface": "#view",
+   "state": "lens-legend",
+   "trigger": "lens: Legend tab",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__lens-legend.png",
+   "sha1": "b46201aeb6834c08c45981be3ac14eb557255f8f"
+  },
+  {
+   "id": "view__lens-help-open",
+   "surface": "#view",
+   "state": "lens-help-open",
+   "trigger": "lens: '?' explanations expanded",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__lens-help-open.png",
+   "sha1": "dd377a0dc147fac43104afbf3aa38c4a639a648c"
+  },
+  {
+   "id": "view__node-float",
+   "surface": "#view",
+   "state": "node-float",
+   "trigger": "node addressed: float card with causal cone",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__node-float.png",
+   "sha1": "a305fd7a15701c5a07412d627925224558780883"
+  },
+  {
+   "id": "view__node-float-links",
+   "surface": "#view",
+   "state": "node-float-links",
+   "trigger": "float card: Links row expanded",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__node-float-links.png",
+   "sha1": "3021484a8bcabe167b6e9174354f2a34f409bd9a"
+  },
+  {
+   "id": "view__lnb-pick",
+   "surface": "#view",
+   "state": "lnb-pick",
+   "trigger": "graph: pick a node in the LNB: floating card and the side pane together",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__lnb-pick.png",
+   "sha1": "1be1f8e603752a99099e59d2adf5692087e16d5c"
+  },
+  {
+   "id": "view__item-page",
+   "surface": "#view",
+   "state": "item-page",
+   "trigger": "side pane widened: the item page (what the node says, how it was decided)",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__item-page.png",
+   "sha1": "3abe032fa9c4ffd4ac153cb2f1cc6ba3ba74a425"
+  },
+  {
+   "id": "view__agent-scope",
+   "surface": "#view",
+   "state": "agent-scope",
+   "trigger": "graph: rail Agent narrows the graph to the role topics",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__agent-scope.png",
+   "sha1": "4762df115baee565d68ccbf6098d2823b155cc24"
+  },
+  {
+   "id": "view__node-ask-menu",
+   "surface": "#view",
+   "state": "node-ask-menu",
+   "trigger": "float card: Ask the assistant menu",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__node-ask-menu.png",
+   "sha1": "497906da43d4ff808ad581ca1b41b618a6738726"
+  },
+  {
+   "id": "view__node-detail",
+   "surface": "#view",
+   "state": "node-detail",
+   "trigger": "float card: Detail and source: docpane node detail",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__node-detail.png",
+   "sha1": "08b05962df87f9724d0c6132b20d4e6fa46e7f15"
+  },
+  {
+   "id": "view__node-delete-confirm",
+   "surface": "#view",
+   "state": "node-delete-confirm",
+   "trigger": "float card: Delete: destructive confirm (not confirmed)",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__node-delete-confirm.png",
+   "sha1": "eee874d5c3de47abaeca7486cd17891de3e1d9f2"
+  },
+  {
+   "id": "view__edge-detail",
+   "surface": "#view",
+   "state": "edge-detail",
+   "trigger": "float card link tag with evidence: edge detail in the docpane",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__edge-detail.png",
+   "sha1": "23555aba4531d337c3d4fd79d8e86bcb79301525"
+  },
+  {
+   "id": "view__reader",
+   "surface": "#view",
+   "state": "reader",
+   "trigger": "LNB: click a document: reader in the docpane",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__reader.png",
+   "sha1": "e89295ee1926060c119d5f9ab69f7033b05451ec"
+  },
+  {
+   "id": "view__topic-context-menu",
+   "surface": "#view",
+   "state": "topic-context-menu",
+   "trigger": "LNB: right-click a topic",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__topic-context-menu.png",
+   "sha1": "71f1ca7e7137ecd414e9cff0625b6ad9f5d5ac9b"
+  },
+  {
+   "id": "view__topic-rename-prompt",
+   "surface": "#view",
+   "state": "topic-rename-prompt",
+   "trigger": "LNB: right-click a topic, Rename: text prompt",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__topic-rename-prompt.png",
+   "sha1": "0f4300b0b26eccc0cb6f642767506d8e9ecf6900"
+  },
+  {
+   "id": "view__coachmark",
+   "surface": "#view",
+   "state": "coachmark",
+   "trigger": "first visit: coachmark",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__coachmark.png",
+   "sha1": "fa28ac1df13adac7103ec8ee80935078a7cb0713"
+  },
+  {
+   "id": "view__first-run",
+   "surface": "#view",
+   "state": "first-run",
+   "trigger": "first launch in the shell: the full-window sign-in (VIN-128)",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__first-run.png",
+   "sha1": "c069da0149c8fb754d8e0c92ca91a3dca74aadc4"
+  },
+  {
+   "id": "view__light",
+   "surface": "#view",
+   "state": "light",
+   "trigger": "theme light",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "light",
+   "file": "view__light.png",
+   "sha1": "a62f15e18f074c294314badfa96e3c753ced8998"
+  },
+  {
+   "id": "view__light-lens",
+   "surface": "#view",
+   "state": "light-lens",
+   "trigger": "theme light, lens Options",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "light",
+   "file": "view__light-lens.png",
+   "sha1": "cd1767b220cdcbc7835bcfa5dc6c0c771d9381da"
+  },
+  {
+   "id": "view__empty-invite",
+   "surface": "#view",
+   "state": "empty-invite",
+   "trigger": "empty store: empty invite on the canvas, LNB empty",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__empty-invite.png",
+   "sha1": "d450ea1787d168304abcb33e3b2e2aea218a20e0"
+  },
+  {
+   "id": "view__new-node-sheet",
+   "surface": "#view",
+   "state": "new-node-sheet",
+   "trigger": "empty invite: Create a node sheet",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__new-node-sheet.png",
+   "sha1": "324fb0269cd09cd157dc278ff7b3c15b2438faa1"
+  },
+  {
+   "id": "view__error",
+   "surface": "#view",
+   "state": "error",
+   "trigger": "sidecar unreachable for the map: error box",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__error.png",
+   "sha1": "dafed5ca6b4095bc4264a154e22670359be90565"
+  },
+  {
+   "id": "view__lnb-failed",
+   "surface": "#view",
+   "state": "lnb-failed",
+   "trigger": "nav-tree 500: LNB failed state with Retry",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__lnb-failed.png",
+   "sha1": "34f0599ed6f12575a09a5b0cf904b03b30749c7e"
+  },
+  {
+   "id": "view__lnb-loading",
+   "surface": "#view",
+   "state": "lnb-loading",
+   "trigger": "nav-tree pending: LNB loading",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "view__lnb-loading.png",
+   "sha1": "714de55ce59fc4caa60feaa7050cc47c8b8b543b"
+  },
+  {
+   "id": "home__list",
+   "surface": "#home",
+   "state": "list",
+   "trigger": "load: document home, all documents, recent first",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "home__list.png",
+   "sha1": "2ff200752d533901e428d25c1de9952fbe8e4f3c"
+  },
+  {
+   "id": "home__topic",
+   "surface": "#home",
+   "state": "topic",
+   "trigger": "LNB: a topic's filter button narrows the list (breadcrumb and chips)",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "home__topic.png",
+   "sha1": "7924ec1c58a8c706f5ff39cb8834763ff23fe540"
+  },
+  {
+   "id": "home__filter-empty",
+   "surface": "#home",
+   "state": "filter-empty",
+   "trigger": "title filter with no match",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "home__filter-empty.png",
+   "sha1": "27f06d35542e2fb02d6fbaea8d8fd25120ac7d42"
+  },
+  {
+   "id": "home__doc",
+   "surface": "#home",
+   "state": "doc",
+   "trigger": "open a document: reading face with the side panel",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "home__doc.png",
+   "sha1": "208548a9d2a74fcaea5ba2cc40eaa7e7652995c2"
+  },
+  {
+   "id": "home__new",
+   "surface": "#home",
+   "state": "new",
+   "trigger": "New document: the writer",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "home__new.png",
+   "sha1": "8a67fbbfafc8b15c451c7fff45feafc620f6a513"
+  },
+  {
+   "id": "home__agent",
+   "surface": "#home",
+   "state": "agent",
+   "trigger": "rail Agent: role roster, list narrowed to the role topics",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "home__agent.png",
+   "sha1": "345c8d50691430abec8d6269dea76226d5ad4d6d"
+  },
+  {
+   "id": "home__agent-empty",
+   "surface": "#home",
+   "state": "agent-empty",
+   "trigger": "rail Agent with no roles: New Agent role in the list and the LNB",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "home__agent-empty.png",
+   "sha1": "fcdf20d015ff5e5f8712bbaeed053bb736c337b4"
+  },
+  {
+   "id": "home__doc-options",
+   "surface": "#home",
+   "state": "doc-options",
+   "trigger": "header end button on documents: reading options",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "home__doc-options.png",
+   "sha1": "6a9697934b2b66a6bd7dbf3850df6b68ec5771be"
+  },
+  {
+   "id": "home__doc-legend",
+   "surface": "#home",
+   "state": "doc-legend",
+   "trigger": "reading options panel: Legend tab",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "home__doc-legend.png",
+   "sha1": "c76c5528272eece38875976ff44399cd81bb8182"
+  },
+  {
+   "id": "home__agent-writes",
+   "surface": "#home",
+   "state": "agent-writes",
+   "trigger": "Agents board scrolled to the agent writes review",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "home__agent-writes.png",
+   "sha1": "e8eabb4cf91f0e6ab0773d63154133e429533b0b"
+  },
+  {
+   "id": "home__role-edit",
+   "surface": "#home",
+   "state": "role-edit",
+   "trigger": "Agents board, a role's Edit: the role page with run policy and eval cards",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "home__role-edit.png",
+   "sha1": "9c2b203d100af7c60621bd0a58415e5d3e84a89a"
+  },
+  {
+   "id": "home__role-new",
+   "surface": "#home",
+   "state": "role-new",
+   "trigger": "Agents board, New role: the empty role page",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "home__role-new.png",
+   "sha1": "f7a5ff965aa1822e2c76402b767c73fe8aaaa021"
+  },
+  {
+   "id": "home__lnb-collapsed",
+   "surface": "#home",
+   "state": "lnb-collapsed",
+   "trigger": "LNB: collapse to the icon strip",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "home__lnb-collapsed.png",
+   "sha1": "8e2be7da5c883fb16e3e291318da8b88d3f1536b"
+  },
+  {
+   "id": "home__empty",
+   "surface": "#home",
+   "state": "empty",
+   "trigger": "empty store: write or import",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "home__empty.png",
+   "sha1": "7383237e495f3d533f7ceeaf8f10bd3147b68fe9"
+  },
+  {
+   "id": "topbar__find-open",
+   "surface": "#view",
+   "state": "find-open",
+   "trigger": "search pill: expanded across the header, mode button and query field",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__find-open.png",
+   "sha1": "65258977f7f52d46c48a9dc417f8578f15f493b9"
+  },
+  {
+   "id": "topbar__mode-menu",
+   "surface": "#view",
+   "state": "mode-menu",
+   "trigger": "search mode dropdown",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__mode-menu.png",
+   "sha1": "00bb12f2f6229a857bb8932779cbaf68bea509be"
+  },
+  {
+   "id": "topbar__find-results",
+   "surface": "#view",
+   "state": "find-results",
+   "trigger": "type: results listbox",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__find-results.png",
+   "sha1": "b10b573bbaf8fd9f98d9995b870e4096b53a5db7"
+  },
+  {
+   "id": "topbar__find-empty",
+   "surface": "#view",
+   "state": "find-empty",
+   "trigger": "type a query with no hits",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__find-empty.png",
+   "sha1": "0829600c96d896c460bbcd2be70149bef2f35a67"
+  },
+  {
+   "id": "topbar__find-loading",
+   "surface": "#view",
+   "state": "find-loading",
+   "trigger": "search pending",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__find-loading.png",
+   "sha1": "a194f2e9390167f6405a01f52e3ede9581dcd0bf"
+  },
+  {
+   "id": "topbar__find-error",
+   "surface": "#view",
+   "state": "find-error",
+   "trigger": "search 500",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__find-error.png",
+   "sha1": "43bda102874687d56f08693234d8b00ed58f2a26"
+  },
+  {
+   "id": "topbar__browse-sheet",
+   "surface": "#view",
+   "state": "browse-sheet",
+   "trigger": "results footer: All documents sheet, topic layer",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__browse-sheet.png",
+   "sha1": "e84a9370f1a083a547c487d84d826d54a38cb3fc"
+  },
+  {
+   "id": "topbar__browse-sheet-docs",
+   "surface": "#view",
+   "state": "browse-sheet-docs",
+   "trigger": "All documents: inside a topic",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__browse-sheet-docs.png",
+   "sha1": "c1c7d240287e919c0e7060fc43e05f8e5de3d5d9"
+  },
+  {
+   "id": "topbar__ask-intro",
+   "surface": "#view",
+   "state": "ask-intro",
+   "trigger": "mode Ask: chat panel intro",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__ask-intro.png",
+   "sha1": "d0f5ee93662498a32677ee95d8debd2bfaf5bd13"
+  },
+  {
+   "id": "topbar__ask-answer",
+   "surface": "#view",
+   "state": "ask-answer",
+   "trigger": "ask a question that resolves",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__ask-answer.png",
+   "sha1": "0bb897586e51eec30642379aff1d2dbb4a2815ea"
+  },
+  {
+   "id": "topbar__ask-none",
+   "surface": "#view",
+   "state": "ask-none",
+   "trigger": "ask something the graph has nothing on",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__ask-none.png",
+   "sha1": "6256134cb5b41cd78fd906d2873489903075a17d"
+  },
+  {
+   "id": "topbar__ask-history",
+   "surface": "#view",
+   "state": "ask-history",
+   "trigger": "chat head: History sheet",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__ask-history.png",
+   "sha1": "e2df6eba12e213d1f59bbf7bee3c3976890a173d"
+  },
+  {
+   "id": "topbar__palette",
+   "surface": "#view",
+   "state": "palette",
+   "trigger": "Ctrl+Shift+K: command palette",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__palette.png",
+   "sha1": "81b8f4056b5dfae2a72091b57a1f59687bb82695"
+  },
+  {
+   "id": "topbar__palette-filtered",
+   "surface": "#view",
+   "state": "palette-filtered",
+   "trigger": "palette with a filter typed",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__palette-filtered.png",
+   "sha1": "7e3a4f017e47609aba36e9a37b509a773c5f7999"
+  },
+  {
+   "id": "topbar__cheatsheet",
+   "surface": "#view",
+   "state": "cheatsheet",
+   "trigger": "?: shortcuts sheet",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__cheatsheet.png",
+   "sha1": "04e3eb49910a7deeadfb0ddd44f5c19e98c32328"
+  },
+  {
+   "id": "topbar__tools-import",
+   "surface": "#view",
+   "state": "tools-import",
+   "trigger": "Settings › Data: Import tab",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__tools-import.png",
+   "sha1": "080760ac177c399c665a3b22103f15d70b434052"
+  },
+  {
+   "id": "topbar__tools-share",
+   "surface": "#view",
+   "state": "tools-share",
+   "trigger": "Settings › Data: Share tab",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__tools-share.png",
+   "sha1": "157f3f09096ac8bdd318880f253dbc54de62477a"
+  },
+  {
+   "id": "topbar__share-sheet",
+   "surface": "#view",
+   "state": "share-sheet",
+   "trigger": "node card Share: the share sheet, spec grid and node list",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__share-sheet.png",
+   "sha1": "a397fe0b4cc3917fe80cae008adc2bbed9a85914"
+  },
+  {
+   "id": "topbar__import-pack-sheet",
+   "surface": "#view",
+   "state": "import-pack-sheet",
+   "trigger": "Import › pick a .vincpack: the pack is being added",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__import-pack-sheet.png",
+   "sha1": "9cef8a99865ffcf358a1446b4e4d20747645f5fa"
+  },
+  {
+   "id": "topbar__import-doc-sheet",
+   "surface": "#view",
+   "state": "import-doc-sheet",
+   "trigger": "Import › pick a .md: the document is added",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__import-doc-sheet.png",
+   "sha1": "b724108d16807a648c07c145c9fb9604319a2e0f"
+  },
+  {
+   "id": "topbar__graphmd",
+   "surface": "#view",
+   "state": "graphmd",
+   "trigger": "Settings › GRAPH.md",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__graphmd.png",
+   "sha1": "11d62b5200b6af4d492f09c00f7993ad8c9d4668"
+  },
+  {
+   "id": "topbar__settings-general",
+   "surface": "#view",
+   "state": "settings-general",
+   "trigger": "Settings › General · appearance",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__settings-general.png",
+   "sha1": "64ef48344f6d1fa396d767b9c37247d6bb8cf037"
+  },
+  {
+   "id": "topbar__settings-account",
+   "surface": "#view",
+   "state": "settings-account",
+   "trigger": "Settings › Account (signed in, local mode)",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__settings-account.png",
+   "sha1": "34b243e5b31767a92276ea5bae82cd804048cba6"
+  },
+  {
+   "id": "topbar__settings-connections",
+   "surface": "#view",
+   "state": "settings-connections",
+   "trigger": "Settings › AI assistants",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__settings-connections.png",
+   "sha1": "d3ce4c42908dfaaa43a3a0766778f817b84d9df0"
+  },
+  {
+   "id": "topbar__settings-advanced",
+   "surface": "#view",
+   "state": "settings-advanced",
+   "trigger": "Settings › Advanced",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__settings-advanced.png",
+   "sha1": "87caad7dfdddbbae4d9060c5290363f1f044eede"
+  },
+  {
+   "id": "topbar__settings-reading",
+   "surface": "#view",
+   "state": "settings-reading",
+   "trigger": "Settings › Reading",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__settings-reading.png",
+   "sha1": "9e38bc67c045c35b80bcdb2c0d7f2181202f211e"
+  },
+  {
+   "id": "topbar__settings-about",
+   "surface": "#view",
+   "state": "settings-about",
+   "trigger": "Settings › About",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "topbar__settings-about.png",
+   "sha1": "5aaeb9980ccf41eeb90e7f163fe3c18f83529a77"
+  },
+  {
+   "id": "topbar__settings-light",
+   "surface": "#view",
+   "state": "settings-light",
+   "trigger": "Settings › General, light theme",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "light",
+   "file": "topbar__settings-light.png",
+   "sha1": "fef36ccdca9b5dd788195bf0db15475722252986"
+  },
+  {
+   "id": "search__default",
+   "surface": "#search",
+   "state": "default",
+   "trigger": "load: recent queries and the browse list",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "search__default.png",
+   "sha1": "a51a61572169b94fa304a8a004fe51ca96f37c27"
+  },
+  {
+   "id": "search__results",
+   "surface": "#search",
+   "state": "results",
+   "trigger": "type: grouped results",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "search__results.png",
+   "sha1": "d2d925277677a0b673f8108ed22d0ed2f3cfba07"
+  },
+  {
+   "id": "search__empty",
+   "surface": "#search",
+   "state": "empty",
+   "trigger": "no hits",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "search__empty.png",
+   "sha1": "8acc909b315873555c631efa44298234a4599e3e"
+  },
+  {
+   "id": "search__error",
+   "surface": "#search",
+   "state": "error",
+   "trigger": "search 500: banner",
+   "viewport": {
+    "width": 1280,
+    "height": 800
+   },
+   "scheme": "dark",
+   "file": "search__error.png",
+   "sha1": "443bfb96a6fa6760f9a351680a9d501807614c65"
+  }
+ ]
+}

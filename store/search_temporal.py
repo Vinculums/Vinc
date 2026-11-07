@@ -13,6 +13,16 @@ FIELDS = ("created_at", "updated_at", "content_time", "valid_from", "valid_until
 KINDS = {"concept": ("Concept", "concept_id"), "record": ("Record", "record_id"),
          "decision": ("Decision", "decision_id"), "episode": ("Episode", "episode_id")}
 
+#: 대체 계보를 따라 읽는 노드 수의 상한. 후보 수가 아니라 SUPERSEDES 로 이어진 노드를 센다.
+#: 후보 수로 세면 current 모드(후보 최대 2000건)에서 계보가 짧아도 모든 hit 가 판정을 포기한다.
+LINEAGE_CAP = 256
+
+#: 날짜만 적힌 시작은 시간대가 없다. 그 날이 가장 먼저 시작되는 곳(UTC+14)에서 시작된 것으로 읽는다.
+#: UTC 자정으로 읽으면 KST 로 적은 "오늘 시작"이 매일 아홉 시간 동안 future 로 빠진다.
+#: 기본 경로(`querybase.validity_state`)가 future 를 감추지 않는 것과 같은 이유다.
+_EARLIEST_ZONE = dt.timedelta(hours=14)
+_DATE_ONLY = re.compile(r"\d{4}(?:-\d{2}){0,2}")
+
 
 def instant(value):
     """Expand partial dates to period starts; compare timestamp offsets in UTC."""
@@ -28,6 +38,14 @@ def instant(value):
         return parsed.replace(tzinfo=dt.timezone.utc) if parsed.tzinfo is None else parsed.astimezone(dt.timezone.utc)
     except ValueError:
         return None
+
+
+def _start_instant(value):
+    """구간 시작의 순간. 날짜만 적혔으면 그 날이 지구 어디에선가 시작되는 첫 순간이다."""
+    start = instant(value)
+    if start is not None and _DATE_ONLY.fullmatch(str(value).strip()):
+        return start - _EARLIEST_ZONE
+    return start
 
 
 def overlaps_scope(valid_from, valid_until, scope):
@@ -60,7 +78,7 @@ def metadata(row, *, now=None, scope=None):
         state = "unknown"
     elif vu and now >= vu:
         state = "historical"
-    elif vf and now < vf:
+    elif vf and now < _start_instant(out["valid_from"]):
         state = "future"
     elif not vf and not vu:
         state = "unknown"
@@ -74,13 +92,31 @@ def metadata(row, *, now=None, scope=None):
     return out
 
 
+#: `stamp` 이 행에 평평하게 한 번 더 채우는 시간 칸. 같은 이름이 `temporal{}` 안에도 있다.
+FLAT = FIELDS + ("validity",)
+
+
 def stamp(row, source=None, **kw):
     row["temporal"] = metadata(source if source is not None else row, **kw)
     # Keep legacy detail strings and fill only absent search fields.
+    # 공개 검색의 요약 응답은 이 사본을 걷는다(:func:`drop_flat`).
     for key in FIELDS:
         row.setdefault(key, row["temporal"][key])
     row.setdefault("validity", row["temporal"]["validity"])
     return row
+
+
+def drop_flat(result):
+    """검색 응답의 `rows`·`node_hits` 에서 평평한 시간 칸(:data:`FLAT`)을 걷는다.
+
+    `temporal{}` 이 있는 행만 걷으므로 시간 메타의 하나뿐인 사본은 지우지 않는다. 행의 수와
+    순서, 다른 키는 그대로다. 결과 dict 를 제자리에서 고치고 돌려준다."""
+    for key in ("rows", "node_hits"):
+        for row in result.get(key) or []:
+            if isinstance(row, dict) and isinstance(row.get("temporal"), dict):
+                for field in FLAT:
+                    row.pop(field, None)
+    return result
 
 
 def mode_scope(mode, historical, as_of, query):
@@ -275,11 +311,13 @@ def finish_nodes(store, hits, *, owner=None, scope=None, current=False, known_at
             if key not in seen_edges:
                 seen_edges.add(key)
                 edges.append(edge)
-        missing = {e[k] for e in edges for k in ("new", "old")} - sources.keys()
+        lineage = {e[k] for e in edges for k in ("new", "old")}
+        missing = lineage - sources.keys()
         if not missing:
             exhausted = False
             break
-        if len(sources) + len(missing) > 256:
+        # 상한은 계보의 크기로 잰다. 후보(seed)를 세면 계보가 없어도 판정을 포기한다.
+        if len(lineage) > LINEAGE_CAP:
             break
         loaded = node_sources(store, missing, owner=owner)
         if not loaded:

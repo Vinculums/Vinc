@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
 
-from . import pkns
+from . import canon, pkns
 from .embedded_schema import (
     SCHEMA_VERSION, meta_table_specs, node_table_specs, rel_table_specs,
 )
@@ -25,8 +25,8 @@ MAX_INVENTORY_ROWS = 5000
 MAX_INVENTORY_BYTES = 32 * 1024 * 1024
 
 
-def _canonical(value):
-    return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+# 저장된 지문과 다시 대조하므로 ASCII 형식을 쓴다. 바꾸지 말 것(canon 모듈 설명).
+_canonical = canon.canonical_json_ascii_v1
 
 
 def fingerprint(snapshot: dict) -> str:
@@ -128,6 +128,8 @@ class Plan:
     documents: tuple[str, ...]
     blockers: tuple[str, ...]
     conventions_policy: str = "retain"
+    # 막지 않고 원문 그대로 옮기며 건수만 공개하는 참조(토픽 밖 id·외부 http(s) 첨부).
+    preserved: tuple[str, ...] = ()
 
     @property
     def ready(self):
@@ -140,10 +142,85 @@ _ATTACHMENTS = {"attachment", "attachments", "file", "files", "blob", "blobs", "
 _EXTERNAL_RESOURCE = re.compile(r"^(?:[A-Za-z]:[\\/]|(?:file|blob|s3|azure|gs|az|https?):|[/\\])", re.I)
 _MANAGED_RESOURCE = re.compile(r"^(?:blob|s3|azure|gs|az):", re.I)
 _IMAGE_REFERENCE = re.compile(r"!\[[^\]]*\]\([^)]*\)|<img\b[^>]*>", re.I)
-_CITATION_FIELDS = {"url", "urls", "href", "link", "links", "source", "sources",
-                    "sourceurl", "sourcepath", "provenance", "origin", "citation",
-                    "citations", "reference", "references", "subjectpath", "repository"}
+_IMAGE_SOURCE = re.compile(r"!\[[^\]]*\]\(\s*<?([^)\s>]*)|<img\b[^>]*?\bsrc\s*=\s*[\"']?([^\"'\s>]*)", re.I)
 _HISTORY = ("_Tombstone", "_EdgeTombstone", "_DocTombstone")
+
+
+def rejection_disposition(row, source, logical, endpoint_state):
+    """완전한 소유자 범위 조회로 부재가 증명된 기각 이력만 개인 공간에 둔다."""
+    a, b = row.get("a_id"), row.get("b_id")
+    if (not isinstance(a, str) or not isinstance(b, str) or not a or not b or a == b
+            or not a.startswith("concept:") or not b.startswith("concept:")
+            or a != pkns.strip(a) or b != pkns.strip(b) or "|" in a or "|" in b
+            or row.get("pair_key") != source + "|" + "|".join(sorted((a, b)))):
+        return "unsupported_merge_rejection_key"
+    states = {endpoint_state(ref) for ref in (a, b)}
+    # 접미(끝점 상태·행 해시)는 리허설 리포트가 원본 id 없이 행 수와 원인을 세게 한다.
+    unknown = "merge_rejection_topic_membership_unknown:" + "+".join(sorted(states)) + ":" + row_digest(row["pair_key"])
+    if any(state.startswith("ambiguous") for state in states):
+        return unknown
+    if states == {"selected"}:
+        return "move"
+    if "missing" in states and states <= {"selected", "missing"}:
+        return "retain"
+    if "selected" in states:
+        return "merge_rejection_history_not_supported"
+    if "missing" in states:
+        return unknown
+    return "outside"
+
+
+def row_digest(value):
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
+
+
+def concept_endpoint(matches, source):
+    """병합 기각은 개념 사이의 기록이다. 이 소유자의 개념 행이 하나뿐이면 그것이 끝점이다.
+
+    같은 id 가 기록·사건 표에도 있으면(타입을 바꿔 다시 쓴 흔적) 그 행은 끝점이 아니다.
+    근거: [[decision:topic-transfer-rejection-endpoint-is-the-owners-concept-2026-10-16]]
+    """
+    own = [match for match in matches if match[0] == "Concept" and match[1].get("owner_id") == source]
+    return own if len(own) == 1 else matches
+
+
+def endpoint_ambiguity(matches, source=None):
+    if len(matches) != 1:
+        # 리허설이 원인을 세도록 겹친 행의 표와 소유 관계만 붙인다(id 는 붙이지 않는다).
+        kinds = sorted(f"{label}/{'own' if row.get('owner_id') == source else 'other'}" for label, row in matches)
+        return "ambiguous_multiple(" + ",".join(kinds) + ")"
+    return "ambiguous_kind" if matches[0][0] != "Concept" else "ambiguous_owner"
+
+
+def retained_edge_deletion(label, row, source):
+    """선택 노드 사이 엣지 삭제 표식은 개인 소유 그대로 남기고 팀으로 복사하지 않는다.
+
+    소유자 합성 키일 때만이다. 레거시 키는 팀이 같은 엣지를 지울 때 같은 행을 덮는다.
+    근거: [[decision:topic-transfer-edge-history-and-foreign-rejection-endpoints-2026-10-16]]
+    """
+    return label == "_EdgeTombstone" and str(row.get("ekey") or "").startswith(source + pkns.SEP)
+
+
+def tombstone_blocker(label, refs):
+    return f"existing_tombstone_history_not_supported:{label}:{row_digest(chr(31).join(sorted(refs)))}"
+
+
+def rejection_endpoint_state(snapshot, source, logical, ref):
+    # 합성 키 행이 있으면 그것이 이 소유자의 끝점이다. 없을 때만 이 소유자의 레거시 행을 본다.
+    # 같은 id 의 남의 행이나 옮겨지지 않는 레거시 잔재는 판정에 끼지 않는다.
+    # 근거: [[decision:topic-transfer-moves-unmanaged-attachments-as-text-2026-10-16]]
+    rows = [(label, row, row[node_table_specs()[label]["pk"]] == source + pkns.SEP + ref)
+            for label in _KINDS + ("Bridge",) for row in snapshot["nodes"][label]
+            if row[node_table_specs()[label]["pk"]] in (ref, source + pkns.SEP + ref)]
+    matches = ([(label, row) for label, row, composed in rows if composed]
+               or [(label, row) for label, row, _ in rows if row.get("owner_id") == source])
+    matches = concept_endpoint(matches, source)
+    if not matches:
+        return "missing"
+    if (len(matches) != 1 or matches[0][0] != "Concept"
+            or matches[0][1].get("owner_id") != source):
+        return endpoint_ambiguity(matches, source)
+    return "selected" if ref in logical else "outside"
 
 
 def deletion_references(label, row, source):
@@ -169,8 +246,52 @@ def retained_history_counts(snapshot, plan):
                 refs = deletion_references(label, row, plan.source)
             except TransferRefused:
                 continue
-            if not refs & logical:
+            if not refs & logical or retained_edge_deletion(label, row, plan.source):
                 counts[label] += 1
+    retained = sum(row.get("owner_id") == plan.source and rejection_disposition(
+        row, plan.source, logical,
+        lambda ref: rejection_endpoint_state(snapshot, plan.source, logical, ref)) == "retain"
+        for row in snapshot["meta"]["_MergeRejection"])
+    if retained:
+        counts["_MergeRejection"] = retained
+    return counts
+
+
+def external_images(text):
+    """이미지 참조가 있으면 (관리형 주소가 하나도 없는가, 개수)를, 없으면 None 을 돌려준다.
+
+    관리형 저장소(blob: 등)를 가리키는 src 만 막는다. 외부·로컬·상대·data: 주소와 src 없는
+    태그는 적힌 그대로 옮긴다(팀에서 열리지 않을 수 있다는 것을 건수로 알린다).
+    근거: [[decision:topic-transfer-moves-unmanaged-attachments-as-text-2026-10-16]]
+    """
+    found = _IMAGE_REFERENCE.findall(text)
+    if not found:
+        return None
+    sources = []
+    for ref in found:
+        match = _IMAGE_SOURCE.match(ref)
+        sources.append((match.group(1) or match.group(2) or "") if match else "")
+    return not any(_MANAGED_RESOURCE.match(src) for src in sources), len(found)
+
+
+def _has_managed(value):
+    """첨부 키 아래 어딘가에 관리형 저장소 주소가 있으면 참이다."""
+    if isinstance(value, dict):
+        return any(_has_managed(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_has_managed(v) for v in value)
+    return isinstance(value, str) and bool(_MANAGED_RESOURCE.match(value))
+
+
+def preserved_reference_counts(plan):
+    """동의 화면에 보일 건수. 식별자는 내보내지 않는다(남의 id 일 수 있다)."""
+    counts = {"external_references": 0, "external_attachments": 0}
+    for item in plan.preserved:
+        code = item.split(":", 1)[0]
+        if code == "external_reference":
+            counts["external_references"] += 1
+        elif code == "external_attachment":
+            counts["external_attachments"] += 1
     return counts
 
 
@@ -283,6 +404,9 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
                   conventions_policy: str = "retain") -> Plan:
     """Select one authored topic tree. Dependencies outside it are blockers, not additions."""
     blocks = _validate_snapshot(snapshot)
+    # 토픽 밖 id 참조와 외부 이미지는 막지 않고 원문 그대로 옮긴 뒤 건수만 공개한다.
+    # 근거: [[decision:topic-transfer-plain-references-and-external-images-2026-10-16]]
+    preserved = set()
     if conventions_policy not in ("retain", "move_original"):
         raise TransferRefused("invalid_conventions_policy")
     if not source.startswith("user:") or pkns.SEP in source or not source[5:]:
@@ -396,7 +520,7 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
             refs = set(referenced_ids(fields))
             if (label, key) in selected:
                 for ref in refs - (logical | docs):
-                    blocks.add("external_reference:" + ref)
+                    preserved.add("external_reference:" + ref)
             elif refs & (logical | docs):
                 blocks.add("incoming_reference:" + key)
     for edge in snapshot["edges"]:
@@ -422,7 +546,7 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
         if sa or sb:
             for ref in _REFERENCE.findall(str(edge["props"].get("evidence") or "")):
                 if ref not in logical and ref not in docs:
-                    blocks.add("external_reference:" + ref)
+                    preserved.add("external_reference:" + ref)
     for label, nid in tuple(selected):
         row = _row_by_key(allrows[label], specs[label]["pk"], nid)
         if "theme_id" in row and row["theme_id"]:
@@ -438,64 +562,69 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
             except (TypeError, ValueError):
                 blocks.add("opaque_props:" + nid)
                 props = {}
-            def inspect(value, field=""):
+            def inspect(value):
                 if isinstance(value, dict):
                     for key, val in value.items():
                         compact = re.sub(r"[^a-z0-9]", "", key.lower())
                         if (compact in _ATTACHMENTS or compact in (
                                 "attachmenturl", "attachmentpath", "asseturl", "bloburi",
                                 "filepath", "filepaths", "fileurl")) and val:
-                            blocks.add("external_attachments_not_supported:" + nid)
+                            # 관리형 저장소 첨부만 막고 나머지 값은 텍스트로 옮긴다. 근거: [[decision:topic-transfer-moves-unmanaged-attachments-as-text-2026-10-16]]
+                            if _has_managed(val):
+                                blocks.add("external_attachments_not_supported:managed:" + nid)
+                            else:
+                                preserved.add("external_attachment:" + nid)
                         if compact in ("vocabulary", "themeid") and val:
                             blocks.add("owner_vocabulary_not_supported:" + nid)
                         if compact in ("graphmd", "conventions") and val:
                             blocks.add("owner_conventions_require_separate_decision:" + nid)
                         if compact in ("docid", "supersededby", "nodeid", "ref") and val and isinstance(val, str):
                             if val not in logical and val not in docs:
-                                blocks.add("external_reference:" + val)
-                        inspect(val, compact)
+                                preserved.add("external_reference:" + val)
+                        inspect(val)
                 elif isinstance(value, list):
                     for val in value:
-                        inspect(val, field)
+                        inspect(val)
                 elif isinstance(value, str):
-                    if _EXTERNAL_RESOURCE.match(value) and (field not in _CITATION_FIELDS or _MANAGED_RESOURCE.match(value)):
+                    # 일반 URL·경로 문자열은 키 이름과 무관하게 원문 보존한다. 관리형 자원만 막는다.
+                    if _MANAGED_RESOURCE.match(value):
                         blocks.add("external_resource_reference_not_supported:" + nid)
-                    if _IMAGE_REFERENCE.search(value):
-                        blocks.add("external_attachments_not_supported:" + nid)
+                    image = external_images(value)
+                    if image:
+                        if image[0]:
+                            preserved.add("external_attachment:" + nid)
+                        else:
+                            blocks.add("external_attachments_not_supported:managed_image:" + nid)
                     for ref in _REFERENCE.findall(value):
                         if ref not in logical and ref not in docs:
-                            blocks.add("external_reference:" + ref)
+                            preserved.add("external_reference:" + ref)
             inspect(props)
         if label == "Chunk":
-            if _IMAGE_REFERENCE.search(row["text"] or ""):
-                blocks.add("external_attachments_not_supported:" + nid)
+            image = external_images(row["text"] or "")
+            if image:
+                if image[0]:
+                    preserved.add("external_attachment:" + nid)
+                else:
+                    blocks.add("external_attachments_not_supported:managed_image:" + nid)
             for ref in _REFERENCE.findall(row["text"] or ""):
                 if ref not in logical and ref not in docs:
-                    blocks.add("external_reference:" + ref)
+                    preserved.add("external_reference:" + ref)
     for row in snapshot["meta"]["_SyncBase"]:
         if row["node_id"] == source + pkns.SEP + pkns.strip(row["node_id"]) and pkns.strip(row["node_id"]) in logical:
             selected.add(("_SyncBase", row["node_id"]))
     # 이력은 추측해서 버리거나 다른 토픽과 함께 가져오지 않는다.
-    source_logical = {pkns.strip(r[specs[label]["pk"]]) for label in _KINDS + ("Bridge",)
-                      for r in snapshot["nodes"][label] if r["owner_id"] == source}
     for row in snapshot["meta"]["_MergeRejection"]:
         if row["owner_id"] == source:
             refs = {pkns.strip(row["a_id"] or ""), pkns.strip(row["b_id"] or "")}
-            if refs <= logical and "" not in refs:
-                a, b = row["a_id"], row["b_id"]
-                expected = source + "|" + "|".join(sorted((a, b)))
-                if (a == b or a != pkns.strip(a) or b != pkns.strip(b) or "|" in a or "|" in b
-                        or row["pair_key"] != expected):
-                    blocks.add("unsupported_merge_rejection_key")
-                else:
-                    selected.add(("_MergeRejection", row["pair_key"]))
-                    for ref in set(referenced_ids(row["note"])) - (logical | docs):
-                        blocks.add("external_reference:" + ref)
-            elif refs & logical:
-                blocks.add("merge_rejection_history_not_supported")
-            elif not refs <= source_logical:
-                blocks.add("merge_rejection_topic_membership_unknown")
-            if not refs <= logical and set(referenced_ids(row["note"])) & (logical | docs):
+            disposition = rejection_disposition(row, source, logical,
+                lambda ref: rejection_endpoint_state(snapshot, source, logical, ref))
+            if disposition == "move":
+                selected.add(("_MergeRejection", row["pair_key"]))
+                for ref in set(referenced_ids(row["note"])) - (logical | docs):
+                    preserved.add("external_reference:" + ref)
+            elif disposition not in ("retain", "outside"):
+                blocks.add(disposition)
+            if disposition != "move" and set(referenced_ids(row["note"])) & (logical | docs):
                 blocks.add("incoming_reference:merge_rejection")
     for label in _HISTORY:
         for row in snapshot["meta"][label]:
@@ -505,8 +634,8 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
                 except TransferRefused as exc:
                     blocks.add(str(exc))
                     continue
-                if refs & (logical | docs):
-                    blocks.add("existing_tombstone_history_not_supported")
+                if refs & (logical | docs) and not retained_edge_deletion(label, row, source):
+                    blocks.add(tombstone_blocker(label, refs & (logical | docs)))
     for label, nid in selected:
         if label in _KINDS + ("Bridge",) and not nid.startswith(source + pkns.SEP):
             blocks.add("namespaced_node_key_required:" + nid)
@@ -516,7 +645,8 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
     if conventions_policy == "move_original" and any(row["doc_id"] in docs for row in conventions):
         if len(conventions) != 1 or not is_conventions_doc_id(conventions[0]["doc_id"]):
             blocks.add("ambiguous_owner_conventions")
-    return Plan(source, target, topic, fingerprint(snapshot), tuple(sorted(selected)), tuple(sorted(docs)), tuple(sorted(blocks)), conventions_policy)
+    return Plan(source, target, topic, fingerprint(snapshot), tuple(sorted(selected)), tuple(sorted(docs)), tuple(sorted(blocks)), conventions_policy,
+                tuple(sorted(preserved)))
 
 
 def mapped_rejection_key(key: str, source: str, target: str) -> str:
@@ -675,43 +805,6 @@ def _apply_rehearsal(store, plan: Plan, *, run_id: str, stamp: str, fail_at=None
             raise RuntimeError("injected_before_commit")
         store.run("COMMIT", raw=True)
         return "committed"
-    except BaseException:
-        store.run("ROLLBACK", raw=True)
-        raise
-
-
-def _restore_rehearsal(store, before: dict, plan: Plan, *, run_id: str, stamp: str, fail_at=None):
-    """Compensate an isolated synthetic commit before account activation.
-
-    A changed store is refused. This is not a live sync recovery protocol: live
-    recovery must publish new monotonic revisions under durable scope fences.
-    """
-    _require_synthetic(store)
-    if any(r["index_name"] != "_PK" for r in store.run("CALL show_indexes() RETURN *", raw=True)):
-        raise TransferRefused("indexed_store_not_supported_in_rehearsal")
-    expected = transformed_snapshot(before, plan, stamp=stamp)
-    key = "topic-transfer:run:" + run_id
-    args = _canonical([plan.source, plan.target, plan.topic, plan.before_hash])
-    store.run("BEGIN TRANSACTION", raw=True)
-    try:
-        current = read_snapshot(store)
-        journals = [r for r in current["meta"]["_SyncMeta"] if r["key"] == key]
-        if not journals or json.loads(journals[0]["value"])["args"] != args:
-            raise TransferRefused("run_not_committed")
-        without_journal = copy.deepcopy(current)
-        without_journal["meta"]["_SyncMeta"] = [r for r in without_journal["meta"]["_SyncMeta"] if r["key"] != key]
-        if json.loads(journals[0]["value"]).get("status") == "cancelled":
-            if fingerprint(without_journal) != fingerprint(before):
-                raise TransferRefused("restored_payload_changed")
-            store.run("COMMIT", raw=True)
-            return "already_restored"
-        if fingerprint(without_journal) != fingerprint(expected):
-            raise TransferRefused("compensation_source_changed")
-        _write_difference(store, current, before, fail_at=fail_at)
-        value = _canonical({"args": args, "status": "cancelled"})
-        store.run("CREATE (m:_SyncMeta {key:$key, value:$value})", {"key": key, "value": value}, raw=True)
-        store.run("COMMIT", raw=True)
-        return "restored"
     except BaseException:
         store.run("ROLLBACK", raw=True)
         raise

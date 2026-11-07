@@ -72,7 +72,7 @@ class ToolVerbTests(unittest.TestCase):
 
     def test_call_registry_covers_all_registered_tools(self):
         names = {item["name"] for item in tools.TOOLS}
-        self.assertEqual(len(names), 31)
+        self.assertEqual(len(names), 38)
         guarded = {"vinc_delete", "vinc_delete_edge", "vinc_merge_nodes",
                    "vinc_doc_delete"}
         for name in sorted(names):
@@ -158,3 +158,76 @@ class TemporalVerbTests(unittest.TestCase):
             options = {"mode": "historical", "historical": True, "as_of": "2020", "known_at": "2021"}
             _, explicit, _ = _tool_request(SimpleNamespace(**flags, **options))
             self.assertTrue(all(explicit[key] == value for key, value in options.items()))
+
+
+class DocPutFileTests(unittest.TestCase):
+    """`doc put --file` 의 파일 이름 기본값은 만들 때만 쓴다. 생략은 보존, 빈 문자열은 지우기다."""
+
+    def _put(self, **flags):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "draft-notes.md"
+            path.write_text("# Draft\n\nbody\n", encoding="utf-8")
+            base = {"cmd": "doc", "doccmd": "put", "owner": None, "id": None, "title": None,
+                    "origin": None, "file": str(path), "create_only": None}
+            name, data, _ = _tool_request(SimpleNamespace(**{**base, **flags}))
+        self.assertEqual(name, "vinc_doc_put")
+        return data
+
+    def test_만들_때는_파일_이름이_기본값이다(self):
+        for flags in ({}, {"id": "doc.new", "create_only": True}):
+            with self.subTest(flags=flags):
+                data = self._put(**flags)
+                self.assertEqual((data["title"], data["origin"]), ("draft-notes", "draft-notes.md"))
+
+    def test_고칠_때는_제목과_origin_을_보내지_않는다(self):
+        data = self._put(id="doc.existing")
+        self.assertIsNone(data["title"])
+        self.assertIsNone(data["origin"])
+        self.assertIn("# Draft", data["text"])
+
+    def test_빈_문자열은_파일_이름으로_덮이지_않는다(self):
+        for flags in ({}, {"id": "doc.existing"}):
+            with self.subTest(flags=flags):
+                data = self._put(title="", origin="", **flags)
+                self.assertEqual((data["title"], data["origin"]), ("", ""))
+
+    def test_표준_입력으로_고칠_때_origin_을_지우지_않는다(self):
+        # 실제 인자 파서의 기본값을 거친다. 기본값이 빈 문자열이면 고칠 때마다 origin 이 지워진다.
+        seen = []
+        with patch("api.cli_tools.run", lambda args: (seen.append(args) or ({}, 0))),                 redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            cli.main(["--target", "local", "--format", "json", "doc", "put", "--id", "doc.existing"])
+        with patch("sys.stdin", io.StringIO("body")):
+            _, data, _ = _tool_request(seen[0])
+        self.assertIsNone(data["origin"])
+        self.assertIsNone(data["title"])
+
+
+class DecideMissingTopicShowsCandidates(unittest.TestCase):
+    """VIN-888 — decide 가 토픽을 못 찾으면 CLI 가 후보와 힌트를 보여야 한다."""
+
+    FAKE = {"kind": "decide", "executed": True, "found": False,
+            "topic": "concept:nope", "nodes": [], "edges": [], "conflicts": [],
+            "error": "topic not found: concept:nope",
+            "hint": "Use vinc_search to find the id first.",
+            "candidates": [{"id": "concept:node-view", "title": "Node view"}]}
+
+    def _run(self, *extra):
+        out, err = io.StringIO(), io.StringIO()
+        with patch("api.cli_tools.run", return_value=(self.FAKE, None)), \
+                redirect_stdout(out), redirect_stderr(err):
+            code = cli.main(["--target", "local", *extra, "decide", "--topic", "concept:nope"])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_human_output_prints_candidates_and_hint(self):
+        code, _out, err = self._run()
+        self.assertNotEqual(code, 0)
+        self.assertIn("topic not found", err)
+        self.assertIn("concept:node-view", err)        # 후보
+        self.assertIn("Use vinc_search", err)           # 힌트
+
+    def test_json_keeps_candidates_and_hint(self):
+        code, out, err = self._run("--format", "json")
+        blob = out + err
+        self.assertIn("concept:node-view", blob)
+        self.assertIn("candidates", blob)
+        self.assertIn("Use vinc_search", blob)

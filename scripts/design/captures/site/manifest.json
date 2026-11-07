@@ -1,0 +1,2262 @@
+{
+ "base": "https://vincs.io",
+ "capturedAt": "2026-11-04T04:14:41.396Z",
+ "tool": "scripts/design/capture_site.mjs",
+ "siteRev": "bc1930ef12dbc63ae3c3b5259787aaccb14d8291",
+ "states": [
+  {
+   "id": "landing__default",
+   "route": "/",
+   "state": "default",
+   "trigger": "load, signed out",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "landing__default.png",
+   "sha1": "48b939fbc3134f49f2d51783f62ee5d4a29b9a88",
+   "height": 7803,
+   "finalUrl": "/"
+  },
+  {
+   "id": "landing__signed-in",
+   "route": "/",
+   "state": "signed-in",
+   "trigger": "load with a session: GNB shows Account and My graph, hero CTA relabels",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "landing__signed-in.png",
+   "sha1": "9c235daa454775bfa6cc7696bb9127c7de4f2480",
+   "height": 7803,
+   "finalUrl": "/"
+  },
+  {
+   "id": "landing__light",
+   "route": "/",
+   "state": "light",
+   "trigger": "theme segment: light",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "light",
+   "file": "landing__light.png",
+   "sha1": "4747157013a98ae47799daca2468d2cc70652a68",
+   "height": 7803,
+   "finalUrl": "/"
+  },
+  {
+   "id": "landing__ko",
+   "route": "/",
+   "state": "ko",
+   "trigger": "globe button: Korean (reference only, boards stay English)",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "landing__ko.png",
+   "sha1": "9c326e7ad72d2ea20fe32026b98ea9a8efc44697",
+   "height": 7600,
+   "finalUrl": "/"
+  },
+  {
+   "id": "landing__mobile-390",
+   "route": "/",
+   "state": "mobile-390",
+   "trigger": "viewport 390: GNB folds into the menu button",
+   "viewport": {
+    "width": 390,
+    "height": 844
+   },
+   "scheme": "dark",
+   "file": "landing__mobile-390.png",
+   "sha1": "0b3d163020f243148c64d08b1667f6be401a6564",
+   "height": 6525,
+   "finalUrl": "/"
+  },
+  {
+   "id": "landing__newsletter-busy",
+   "route": "/",
+   "state": "newsletter-busy",
+   "trigger": "newsletter submit, response pending",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "landing__newsletter-busy.png",
+   "sha1": "83ddd9573d99061b0c682401b7855ff5809e1da0",
+   "height": 900,
+   "finalUrl": "/?hp="
+  },
+  {
+   "id": "landing__newsletter-success",
+   "route": "/",
+   "state": "newsletter-success",
+   "trigger": "newsletter submit 200: block swaps to Almost there",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "landing__newsletter-success.png",
+   "sha1": "dda8509df998037c8f5d604cc7a9dbe6e247db6b",
+   "height": 900,
+   "finalUrl": "/?hp="
+  },
+  {
+   "id": "landing__newsletter-invalid",
+   "route": "/",
+   "state": "newsletter-invalid",
+   "trigger": "newsletter submit with a bad address",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "landing__newsletter-invalid.png",
+   "sha1": "0e7a74f7103a13d2e4d540c14283914db32292cc",
+   "height": 900,
+   "finalUrl": "/"
+  },
+  {
+   "id": "landing__newsletter-error",
+   "route": "/",
+   "state": "newsletter-error",
+   "trigger": "newsletter submit 500",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "landing__newsletter-error.png",
+   "sha1": "47247528042c13284d88fc4e081f7331b1e8037a",
+   "height": 900,
+   "finalUrl": "/?hp="
+  },
+  {
+   "id": "community__default",
+   "route": "/community/",
+   "state": "default",
+   "trigger": "directory: communities, signed out",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "community__default.png",
+   "sha1": "8d62204187f1cffd2441d0ff7214e82242e98e08",
+   "height": 1345,
+   "finalUrl": "/community/"
+  },
+  {
+   "id": "community__signed-in",
+   "route": "/community/",
+   "state": "signed-in",
+   "trigger": "directory with a session: my communities",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "community__signed-in.png",
+   "sha1": "efb084aa23af0593caf54c7028ec28f56b757102",
+   "height": 1392,
+   "finalUrl": "/community/"
+  },
+  {
+   "id": "community__home",
+   "route": "/community/",
+   "state": "home",
+   "trigger": "community home: topic, Rules link, page index",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "community__home.png",
+   "sha1": "a4eb90d32ac67446f194fcf00da10dcae3413932",
+   "height": 1375,
+   "finalUrl": "/community/frontend"
+  },
+  {
+   "id": "community__page-read",
+   "route": "/community/",
+   "state": "page-read",
+   "trigger": "wiki page, Read tab: body, sources, revision line",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "community__page-read.png",
+   "sha1": "ffd6296683bd5e6084f6a5d1bb7e1cf8bbf2fb5c",
+   "height": 1643,
+   "finalUrl": "/community/frontend/p/design-tokens"
+  },
+  {
+   "id": "community__talk",
+   "route": "/community/",
+   "state": "talk",
+   "trigger": "Talk tab: one thread with a reply",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "community__talk.png",
+   "sha1": "ae3be1661c0d39b413f57d51f37ca5ac86895674",
+   "height": 2135,
+   "finalUrl": "/community/frontend/p/design-tokens/talk/019fa000-0000-7000-8000-000000000003"
+  },
+  {
+   "id": "community__lounge",
+   "route": "/community/",
+   "state": "lounge",
+   "trigger": "Lounge: post index",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "community__lounge.png",
+   "sha1": "2c53e1378c1e133031dc17bb609e311d687ed660",
+   "height": 900,
+   "finalUrl": "/community/frontend/lounge"
+  },
+  {
+   "id": "community__agent-share",
+   "route": "/community/",
+   "state": "agent-share",
+   "trigger": "agent share, pinned version 2: role, tools, license, hash",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "community__agent-share.png",
+   "sha1": "f45f8a519d0035512ff80120e2b24327c5dd9c68",
+   "height": 1041,
+   "finalUrl": "/community/a/019fb000-0000-7000-8000-000000000001/v/2"
+  },
+  {
+   "id": "community__agent-take",
+   "route": "/community/",
+   "state": "agent-take",
+   "trigger": "Take panel signed in: exports and Add to my Graph (personal)",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "community__agent-take.png",
+   "sha1": "fa41722c44101fa7b5fc8eb6e7401d88fe70c245",
+   "height": 1268,
+   "finalUrl": "/community/a/019fb000-0000-7000-8000-000000000001/v/2/take"
+  },
+  {
+   "id": "community__mobile-390",
+   "route": "/community/",
+   "state": "mobile-390",
+   "trigger": "viewport 390: wiki page, Read tab",
+   "viewport": {
+    "width": 390,
+    "height": 844
+   },
+   "scheme": "dark",
+   "file": "community__mobile-390.png",
+   "sha1": "a1a155977bb0d46ba431ef2f0c7f1b7f8ca3e693",
+   "height": 2124,
+   "finalUrl": "/community/frontend/p/design-tokens"
+  },
+  {
+   "id": "account__default",
+   "route": "/account/",
+   "state": "default",
+   "trigger": "load: free plan, trial open, two keys, one joined community with a shared agent and pack, graph at the vinc level (top 6 + 3 more)",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__default.png",
+   "sha1": "98b2b807711b677d90cfe487bb87176918f89ee4",
+   "height": 3230,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__pro",
+   "route": "/account/",
+   "state": "pro",
+   "trigger": "plan pro: header badge, topics tile without the limit",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__pro.png",
+   "sha1": "8f86fb1c0555aec3bdbeed9916ffae5ab2663ce9",
+   "height": 3230,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__team-member",
+   "route": "/account/",
+   "state": "team-member",
+   "trigger": "user with teams: Team plan badge, LNB lists the teams",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__team-member.png",
+   "sha1": "51bebed28f9e76a1d5dfcfd26313d04a70ce0f6d",
+   "height": 3230,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__plan-get-pro",
+   "route": "/account/",
+   "state": "plan-get-pro",
+   "trigger": "billing: trial closed, checkout open: Get Pro",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__plan-get-pro.png",
+   "sha1": "28cf6d5965477aad023c853bcd94fefb17296d74",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__plan-active",
+   "route": "/account/",
+   "state": "plan-active",
+   "trigger": "billing: active Paddle subscription: Cancel subscription + Active until",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__plan-active.png",
+   "sha1": "73bff52922399b6450532ada8dd1a9662b124a7b",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__plan-trialing",
+   "route": "/account/",
+   "state": "plan-trialing",
+   "trigger": "billing: trialing subscription",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__plan-trialing.png",
+   "sha1": "a6d61fa2de84b2c1a8024c41326d3b0281abc10a",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__plan-past-due",
+   "route": "/account/",
+   "state": "plan-past-due",
+   "trigger": "billing: past_due: Payment failed · in grace period",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__plan-past-due.png",
+   "sha1": "fac0ceff6654b18cbe11879219238c00611b94d1",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__plan-hidden",
+   "route": "/account/",
+   "state": "plan-hidden",
+   "trigger": "billing: nothing applies: CTA hidden",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__plan-hidden.png",
+   "sha1": "dbcf44618b7fc4b80e8c5237c36d20e84f7ff442",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__username-unset",
+   "route": "/account/",
+   "state": "username-unset",
+   "trigger": "username null: 'You haven't set a username yet.'",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__username-unset.png",
+   "sha1": "5886c7d2cd02d3cc9a41f10bf1da680159d74a02",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__username-checking",
+   "route": "/account/",
+   "state": "username-checking",
+   "trigger": "typing: Checking…",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__username-checking.png",
+   "sha1": "b6be3ad11fb9688223cb6d8e4fe1c11d01b00be5",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__username-available",
+   "route": "/account/",
+   "state": "username-available",
+   "trigger": "check: available, Save enabled",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__username-available.png",
+   "sha1": "603da343832733e3fc3b7f42ae420787d36f4d11",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__username-taken",
+   "route": "/account/",
+   "state": "username-taken",
+   "trigger": "check: taken",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__username-taken.png",
+   "sha1": "fbb8525e7f95531732a1d8c7e5ca2878889c161d",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__username-too-short",
+   "route": "/account/",
+   "state": "username-too-short",
+   "trigger": "check: too short",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__username-too-short.png",
+   "sha1": "31107330fe518ffbed02b0a9d2798851738f2c74",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__username-bad-format",
+   "route": "/account/",
+   "state": "username-bad-format",
+   "trigger": "check: bad format",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__username-bad-format.png",
+   "sha1": "455ba6a1163bc24e3bb64b944e15c6e8a73a718e",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__username-reserved",
+   "route": "/account/",
+   "state": "username-reserved",
+   "trigger": "check: reserved",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__username-reserved.png",
+   "sha1": "616bde01ff5d2f9998099a732f5dfddf25288f5e",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__username-saved",
+   "route": "/account/",
+   "state": "username-saved",
+   "trigger": "Save 200: Saved · @handle",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__username-saved.png",
+   "sha1": "8e33063f213b1bad281b0943e82565c9e74b040e",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__username-cooldown",
+   "route": "/account/",
+   "state": "username-cooldown",
+   "trigger": "Save 429: changed recently",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__username-cooldown.png",
+   "sha1": "7ed313b90c8efd1196609c25febe4bd2126d3666",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__username-conflict",
+   "route": "/account/",
+   "state": "username-conflict",
+   "trigger": "Save 409: taken at save time",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__username-conflict.png",
+   "sha1": "7043cebabe5fd2d2de44658c1d3169cb4804204a",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__keys-empty",
+   "route": "/account/",
+   "state": "keys-empty",
+   "trigger": "no keys: 'No keys yet…'",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__keys-empty.png",
+   "sha1": "4476a99b2d054a618c21189c76ef7b2662aa07bb",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__keys-fresh",
+   "route": "/account/",
+   "state": "keys-fresh",
+   "trigger": "Generate a key 201: fresh key box, copy once",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__keys-fresh.png",
+   "sha1": "87ecab15b84046cc23bec56d4a424a8a2e403e14",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__keys-fresh-readonly",
+   "route": "/account/",
+   "state": "keys-fresh-readonly",
+   "trigger": "Generate a read-only key 201",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__keys-fresh-readonly.png",
+   "sha1": "db791343f405b4d395d6033ac7c643595861beac",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__keys-limit",
+   "route": "/account/",
+   "state": "keys-limit",
+   "trigger": "Generate 400 bad_request: native alert 'Key limit reached…' (text in manifest)",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__keys-limit.png",
+   "sha1": "8d153693875cb25263d162cc53cb72e5af6c7f2f",
+   "height": 900,
+   "dialogs": [
+    {
+     "type": "alert",
+     "message": "Key limit reached. Revoke an unused key first."
+    }
+   ],
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__keys-revoke-confirm",
+   "route": "/account/",
+   "state": "keys-revoke-confirm",
+   "trigger": "Revoke: native confirm (text in manifest)",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__keys-revoke-confirm.png",
+   "sha1": "ec007d3b2ec59e7b05e55b03544ebe227d342bb2",
+   "height": 900,
+   "dialogs": [
+    {
+     "type": "confirm",
+     "message": "Revoke this key? Any connector using it will stop working."
+    }
+   ],
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__graph-default",
+   "route": "/account/",
+   "state": "graph-default",
+   "trigger": "graph: donut at the vinc level, six named slices + '3 more'",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__graph-default.png",
+   "sha1": "c72510719f5f594ec76f12c4c1ca9802d8cf395f",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__graph-more-open",
+   "route": "/account/",
+   "state": "graph-more-open",
+   "trigger": "graph: '3 more' expanded",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__graph-more-open.png",
+   "sha1": "5e5670e587ba97baabb73d3ad9fb8ce3c04c4315",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__graph-drill-product",
+   "route": "/account/",
+   "state": "graph-drill-product",
+   "trigger": "graph: legend row 'product' › descends, breadcrumb All › product",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__graph-drill-product.png",
+   "sha1": "deea59015ac267dd1c05f61f246e90943a41cccd",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__graph-drill-book",
+   "route": "/account/",
+   "state": "graph-drill-book",
+   "trigger": "graph: product › book, two leaves",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__graph-drill-book.png",
+   "sha1": "7b5169808d7ef63e7f4330d96af3af0bd774b0b6",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__graph-empty",
+   "route": "/account/",
+   "state": "graph-empty",
+   "trigger": "graph: rows [] : Nothing synced yet",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__graph-empty.png",
+   "sha1": "974b10bc2ac4b04fdb85f40467f3e366047ea3e2",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__community-list",
+   "route": "/account/",
+   "state": "community-list",
+   "trigger": "Community: one joined community, one contribution, one shared agent and one shared pack",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__community-list.png",
+   "sha1": "83b5ce3559b78ea009a67be93677bf72fbaee2b3",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__community-empty",
+   "route": "/account/",
+   "state": "community-empty",
+   "trigger": "Community: nothing joined, contributed or shared",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__community-empty.png",
+   "sha1": "87bf7d5d8b0d75aa91ac871d7d47a1b4a9815039",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__delete-ask",
+   "route": "/account/",
+   "state": "delete-ask",
+   "trigger": "Delete: modal, Delete disabled until the word is typed",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__delete-ask.png",
+   "sha1": "21298c1d044187af49335ff4febf2b275ce603d2",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__delete-typed",
+   "route": "/account/",
+   "state": "delete-typed",
+   "trigger": "Delete: DELETE typed, button enabled",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__delete-typed.png",
+   "sha1": "26b5cdcc5bdee1e4cf78c5a1ce0c80427084fe80",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__delete-busy",
+   "route": "/account/",
+   "state": "delete-busy",
+   "trigger": "Delete: request pending",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__delete-busy.png",
+   "sha1": "b661120f2ea4c23446599d6113314d8084189884",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__delete-done",
+   "route": "/account/",
+   "state": "delete-done",
+   "trigger": "Delete 202: We sent a confirmation link",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__delete-done.png",
+   "sha1": "cc8d95bf6978036bf54188ca19bbb32e5ccbda92",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__delete-error",
+   "route": "/account/",
+   "state": "delete-error",
+   "trigger": "Delete 500: back to ask with an error line",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account__delete-error.png",
+   "sha1": "cfa7ba09f97998f3be50faa57864e7cd97856db1",
+   "height": 900,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "account__mobile-390",
+   "route": "/account/",
+   "state": "mobile-390",
+   "trigger": "viewport 390",
+   "viewport": {
+    "width": 390,
+    "height": 844
+   },
+   "scheme": "dark",
+   "file": "account__mobile-390.png",
+   "sha1": "8e3e4acb057fbdab4dba18172b91adcdd2f02be0",
+   "height": 4471,
+   "finalUrl": "/account/"
+  },
+  {
+   "id": "team__default-admin",
+   "route": "/account/team/",
+   "state": "default-admin",
+   "trigger": "admin: members with role selects, invites, connector, seats, danger zone",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__default-admin.png",
+   "sha1": "c26dd7c8086794970a5f55c528781152c4ad6c6a",
+   "height": 1926,
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "team__viewer",
+   "route": "/account/team/",
+   "state": "viewer",
+   "trigger": "viewer: read-only pills, no invite or danger card",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__viewer.png",
+   "sha1": "1944312d5b8ac6564f024fc8057c4247fc5fc230",
+   "height": 1452,
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "team__no-mcp-base",
+   "route": "/account/team/",
+   "state": "no-mcp-base",
+   "trigger": "server sends no mcpBase: connector card hidden",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__no-mcp-base.png",
+   "sha1": "9f641648688b3bdb391e24234d427bdae7e91e4e",
+   "height": 1643,
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "team__no-teams",
+   "route": "/account/team/",
+   "state": "no-teams",
+   "trigger": "user without teams: No teams yet + Create a team",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__no-teams.png",
+   "sha1": "6bc838a33d78e55649aeb0c5012835bba1c1be52",
+   "height": 900,
+   "finalUrl": "/account/team/"
+  },
+  {
+   "id": "team__invite-card",
+   "route": "/account/team/",
+   "state": "invite-card",
+   "trigger": "arrive with #token: invitation card",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__invite-card.png",
+   "sha1": "7ae84b2a43489bab04f90988591ace0cab997d20",
+   "height": 900,
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "team__invite-accepted",
+   "route": "/account/team/",
+   "state": "invite-accepted",
+   "trigger": "Accept 200: You joined the team",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__invite-accepted.png",
+   "sha1": "8c3bf4d8b10f317e1b514909a409dfbc53adec0e",
+   "height": 900,
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "team__invite-invalid",
+   "route": "/account/team/",
+   "state": "invite-invalid",
+   "trigger": "Accept 400: not valid any more",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__invite-invalid.png",
+   "sha1": "f7dfbe34561a8f12a459a415d0d84277357b2ae0",
+   "height": 900,
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "team__invite-typeahead",
+   "route": "/account/team/",
+   "state": "invite-typeahead",
+   "trigger": "type 'ca' in the invite field: candidates dropdown",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__invite-typeahead.png",
+   "sha1": "18b76bc3867f8d849e392dd5ca2ddf17d02bd60e",
+   "height": 900,
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "team__invite-sent",
+   "route": "/account/team/",
+   "state": "invite-sent",
+   "trigger": "Invite 200 sent",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__invite-sent.png",
+   "sha1": "536377d54811bb96675c272064161af0c9e6f8fc",
+   "height": 900,
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "team__invite-seat-full",
+   "route": "/account/team/",
+   "state": "invite-seat-full",
+   "trigger": "Invite 409 seat_limit",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__invite-seat-full.png",
+   "sha1": "1b25d5b6437f0b3517f5ffab2083e1ab2b8029ec",
+   "height": 900,
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "team__invite-delivery-failed",
+   "route": "/account/team/",
+   "state": "invite-delivery-failed",
+   "trigger": "Invite 200 status failed",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__invite-delivery-failed.png",
+   "sha1": "b586f232ca10bd0b9c7f1ab462ae94c2603113c6",
+   "height": 900,
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "team__connector-copied",
+   "route": "/account/team/",
+   "state": "connector-copied",
+   "trigger": "Copy: label flips to Copied",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__connector-copied.png",
+   "sha1": "5bfb8ff70e44e32662add2d3362cff5cfb86f27b",
+   "height": 900,
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "team__danger-error",
+   "route": "/account/team/",
+   "state": "danger-error",
+   "trigger": "Delete team confirm accepted, 500: inline error",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__danger-error.png",
+   "sha1": "fe85afd2a6458b1b35eb8fad596b85bfd620be9e",
+   "height": 900,
+   "dialogs": [
+    {
+     "type": "confirm",
+     "message": "Delete this team? The shared graph goes with it. This cannot be undone."
+    }
+   ],
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "team__graph",
+   "route": "/account/team/",
+   "state": "graph",
+   "trigger": "Graph tab: donut of the top 4 domains + topic list",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__graph.png",
+   "sha1": "9529850288dc66cdf47e0ec0783c376e330f4035",
+   "height": 900,
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "team__graph-empty",
+   "route": "/account/team/",
+   "state": "graph-empty",
+   "trigger": "Graph tab, rows []",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__graph-empty.png",
+   "sha1": "d7f06e48d6bdf9129e6443c1659a1fc4ab6deaa8",
+   "height": 900,
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "team__drill-list",
+   "route": "/account/team/",
+   "state": "drill-list",
+   "trigger": "click a topic: drill rail with concepts",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__drill-list.png",
+   "sha1": "75c1fccf9e798b10e5f1ebd4e4e3e6d444f910e3",
+   "height": 900,
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "team__drill-loading",
+   "route": "/account/team/",
+   "state": "drill-loading",
+   "trigger": "drill rail, request pending",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__drill-loading.png",
+   "sha1": "7fbfc67aa9a3dc0ade83064be6134909e9def90d",
+   "height": 900,
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "team__drill-empty",
+   "route": "/account/team/",
+   "state": "drill-empty",
+   "trigger": "drill rail, nodes []",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__drill-empty.png",
+   "sha1": "d4076475202cb05f7fdfc0f112644b2df56f9dd0",
+   "height": 900,
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "team__drill-error",
+   "route": "/account/team/",
+   "state": "drill-error",
+   "trigger": "drill rail 500",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__drill-error.png",
+   "sha1": "f0fe47354b4ba50a5e19ab05cabeafe992ef138b",
+   "height": 900,
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "team__drill-detail",
+   "route": "/account/team/",
+   "state": "drill-detail",
+   "trigger": "click a concept: detail with excerpts and related, Back chevron",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__drill-detail.png",
+   "sha1": "6227761a808409aa95414bb399e3d62c9188de49",
+   "height": 900,
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "team__create-modal",
+   "route": "/account/team/",
+   "state": "create-modal",
+   "trigger": "New team: create modal",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__create-modal.png",
+   "sha1": "93d3c73c23523fa831086e346333e2b1b78e8066",
+   "height": 900,
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "team__create-error",
+   "route": "/account/team/",
+   "state": "create-error",
+   "trigger": "Create 500: inline error",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "team__create-error.png",
+   "sha1": "634841709c0eb3e5cec095fbb73186c8fcd71a4f",
+   "height": 900,
+   "finalUrl": "/account/team/?team=018f0000-0000-7000-8000-000000000001"
+  },
+  {
+   "id": "login__default",
+   "route": "/login/",
+   "state": "default",
+   "trigger": "load, signed out",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "login__default.png",
+   "sha1": "13e91e7e82df6ab12b1e451a34441c49956bbe9f",
+   "height": 900,
+   "finalUrl": "/login/"
+  },
+  {
+   "id": "login__sending",
+   "route": "/login/",
+   "state": "sending",
+   "trigger": "submit, response pending",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "login__sending.png",
+   "sha1": "045615ba8ca7e83a98884deaa37610540eaf9b5b",
+   "height": 900,
+   "finalUrl": "/login/"
+  },
+  {
+   "id": "login__sent",
+   "route": "/login/",
+   "state": "sent",
+   "trigger": "submit 200: Check your inbox",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "login__sent.png",
+   "sha1": "96ecbf49d0512875a42f180d4c315aa1350ac901",
+   "height": 900,
+   "finalUrl": "/login/"
+  },
+  {
+   "id": "login__invalid",
+   "route": "/login/",
+   "state": "invalid",
+   "trigger": "submit 400 invalid_email",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "login__invalid.png",
+   "sha1": "6e5eb3e9a2bd46161b4bc5e295049e8c4bc953b9",
+   "height": 900,
+   "finalUrl": "/login/"
+  },
+  {
+   "id": "login__rate-limited",
+   "route": "/login/",
+   "state": "rate-limited",
+   "trigger": "submit 429",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "login__rate-limited.png",
+   "sha1": "64a33388705df298d75bc5a835cc145792beba40",
+   "height": 900,
+   "finalUrl": "/login/"
+  },
+  {
+   "id": "login__error",
+   "route": "/login/",
+   "state": "error",
+   "trigger": "submit 500",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "login__error.png",
+   "sha1": "ac4fa990991a213573e8b46c6647dfaf8c449a71",
+   "height": 900,
+   "finalUrl": "/login/"
+  },
+  {
+   "id": "verify__confirm",
+   "route": "/auth/verify/",
+   "state": "confirm",
+   "trigger": "arrive with a token: click gate",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "verify__confirm.png",
+   "sha1": "eb7ba4dd9b0e13075a66380a520d33133a50652b",
+   "height": 900,
+   "finalUrl": "/auth/verify/"
+  },
+  {
+   "id": "verify__verifying",
+   "route": "/auth/verify/",
+   "state": "verifying",
+   "trigger": "Confirm clicked, response pending",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "verify__verifying.png",
+   "sha1": "194c4a1e9a276cde0ea4ae966bcb93a02eaa67d8",
+   "height": 900,
+   "finalUrl": "/auth/verify/"
+  },
+  {
+   "id": "verify__ctx",
+   "route": "/auth/verify/",
+   "state": "ctx",
+   "trigger": "verify 409 confirm_required: Confirm it's you with request context",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "verify__ctx.png",
+   "sha1": "d7f5c9c4e4e4cf1bd9646dd8a16b70060ac0ea68",
+   "height": 900,
+   "finalUrl": "/auth/verify/"
+  },
+  {
+   "id": "verify__expired",
+   "route": "/auth/verify/",
+   "state": "expired",
+   "trigger": "verify 400: This link is spent",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "verify__expired.png",
+   "sha1": "f9852c70e842885968a3ab91e15530dd2e0559a9",
+   "height": 900,
+   "finalUrl": "/auth/verify/"
+  },
+  {
+   "id": "verify__error",
+   "route": "/auth/verify/",
+   "state": "error",
+   "trigger": "verify 500",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "verify__error.png",
+   "sha1": "60276168f76793101d146462857d84181f7e4b01",
+   "height": 900,
+   "finalUrl": "/auth/verify/"
+  },
+  {
+   "id": "verify__invalid",
+   "route": "/auth/verify/",
+   "state": "invalid",
+   "trigger": "no token in the URL",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "verify__invalid.png",
+   "sha1": "ae8cf062cbb74c0afcd11301c8c766e509885c98",
+   "height": 900,
+   "finalUrl": "/auth/verify/"
+  },
+  {
+   "id": "welcome__loading",
+   "route": "/welcome/",
+   "state": "loading",
+   "trigger": "session probe pending",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "welcome__loading.png",
+   "sha1": "492adc257a7ef2307bbce23d0d0e36de711317e9",
+   "height": 900,
+   "finalUrl": "/welcome/"
+  },
+  {
+   "id": "welcome__form",
+   "route": "/welcome/",
+   "state": "form",
+   "trigger": "signed in without a handle: pick a username",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "welcome__form.png",
+   "sha1": "b3fe390821de7c7fb5ae4c85e6459561f00cf659",
+   "height": 900,
+   "finalUrl": "/welcome/"
+  },
+  {
+   "id": "welcome__available",
+   "route": "/welcome/",
+   "state": "available",
+   "trigger": "typed a free handle",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "welcome__available.png",
+   "sha1": "d6e100faba2729462fc3f8d202bbb55fe63986dd",
+   "height": 900,
+   "finalUrl": "/welcome/"
+  },
+  {
+   "id": "welcome__taken",
+   "route": "/welcome/",
+   "state": "taken",
+   "trigger": "typed a taken handle",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "welcome__taken.png",
+   "sha1": "a2289de9df5b57db625bfa5496e1170d86ea986c",
+   "height": 900,
+   "finalUrl": "/welcome/"
+  },
+  {
+   "id": "connect__loading",
+   "route": "/connect/",
+   "state": "loading",
+   "trigger": "describe pending",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "connect__loading.png",
+   "sha1": "9256030792864f60f08d6c0dae4c8389932131e3",
+   "height": 900,
+   "finalUrl": "/connect/#req=r_1&cra=cra_abc"
+  },
+  {
+   "id": "connect__ask",
+   "route": "/connect/",
+   "state": "ask",
+   "trigger": "describe 200: Let this app reach your account graph?",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "connect__ask.png",
+   "sha1": "c9eb617560db330c64733ee5973672827fcd5d57",
+   "height": 900,
+   "finalUrl": "/connect/"
+  },
+  {
+   "id": "connect__login",
+   "route": "/connect/",
+   "state": "login",
+   "trigger": "describe 401: Sign in to approve",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "connect__login.png",
+   "sha1": "7f5b68b0d6dbbeb96b4fecf4387dba70bcc95bd5",
+   "height": 900,
+   "finalUrl": "/connect/"
+  },
+  {
+   "id": "connect__done",
+   "route": "/connect/",
+   "state": "done",
+   "trigger": "approve 200: Connected, then redirect",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "connect__done.png",
+   "sha1": "950adb56391230a4c040859082f2f07b88809844",
+   "height": 900,
+   "finalUrl": "/connect/#done"
+  },
+  {
+   "id": "connect__expired",
+   "route": "/connect/",
+   "state": "expired",
+   "trigger": "describe 400: This request expired",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "connect__expired.png",
+   "sha1": "46b67c49c5d1245945b463382e06ef3c1daae30b",
+   "height": 900,
+   "finalUrl": "/connect/"
+  },
+  {
+   "id": "connect__error",
+   "route": "/connect/",
+   "state": "error",
+   "trigger": "describe network failure: Approval didn't go through",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "connect__error.png",
+   "sha1": "b7e7731a8139b2ff187c266b8a1d17ae8bf5765d",
+   "height": 900,
+   "finalUrl": "/connect/"
+  },
+  {
+   "id": "connect__no-cra",
+   "route": "/connect/",
+   "state": "no-cra",
+   "trigger": "missing cra: expired immediately",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "connect__no-cra.png",
+   "sha1": "60f97988225cdab43b7a972999f5bab5ab2ed5f8",
+   "height": 900,
+   "finalUrl": "/connect/#req=r_1"
+  },
+  {
+   "id": "connect-app__ask",
+   "route": "/connect-app/",
+   "state": "ask",
+   "trigger": "signed in: Link the desktop app to this account?",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "connect-app__ask.png",
+   "sha1": "c2c88a59f3e4b89ee5c2f8a4b841f3e3aad7b571",
+   "height": 900,
+   "finalUrl": "/connect-app/"
+  },
+  {
+   "id": "connect-app__login",
+   "route": "/connect-app/",
+   "state": "login",
+   "trigger": "401: Sign in",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "connect-app__login.png",
+   "sha1": "462f3d1550f31a9cf065e4ddac87e46c8bfda819",
+   "height": 900,
+   "finalUrl": "/connect-app/"
+  },
+  {
+   "id": "connect-app__done",
+   "route": "/connect-app/",
+   "state": "done",
+   "trigger": "Approve: key 201 + loopback 200: App linked",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "connect-app__done.png",
+   "sha1": "dd59209f7b5a974aef63ee057e553756d4882ab8",
+   "height": 900,
+   "finalUrl": "/connect-app/"
+  },
+  {
+   "id": "connect-app__manual",
+   "route": "/connect-app/",
+   "state": "manual",
+   "trigger": "Approve: key 201, loopback refused: One manual step with the key",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "connect-app__manual.png",
+   "sha1": "d2426053581f8342319bba7f52fd7ed3edd3859e",
+   "height": 900,
+   "finalUrl": "/connect-app/"
+  },
+  {
+   "id": "connect-app__error",
+   "route": "/connect-app/",
+   "state": "error",
+   "trigger": "Approve: key 400: Couldn't issue a key",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "connect-app__error.png",
+   "sha1": "fd191be8551e4334070111ff9ca9498cb8306b80",
+   "height": 900,
+   "finalUrl": "/connect-app/"
+  },
+  {
+   "id": "connect-app__expired",
+   "route": "/connect-app/",
+   "state": "expired",
+   "trigger": "malformed hash: The app stopped waiting",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "connect-app__expired.png",
+   "sha1": "3071dc3b21bfbf44f29ce97657d6f96e6adb3d7d",
+   "height": 900,
+   "finalUrl": "/connect-app/#port=99"
+  },
+  {
+   "id": "subscribe__confirm",
+   "route": "/subscribe/confirm/",
+   "state": "confirm",
+   "trigger": "arrive with a token",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "subscribe__confirm.png",
+   "sha1": "61290fe61b72b2a3d5c2ef41059b3f1a26c056fe",
+   "height": 900,
+   "finalUrl": "/subscribe/confirm/"
+  },
+  {
+   "id": "subscribe__confirming",
+   "route": "/subscribe/confirm/",
+   "state": "confirming",
+   "trigger": "Confirm clicked, pending",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "subscribe__confirming.png",
+   "sha1": "55f56000598c764d5955a303c6f1281f89a7826e",
+   "height": 900,
+   "finalUrl": "/subscribe/confirm/"
+  },
+  {
+   "id": "subscribe__confirmed",
+   "route": "/subscribe/confirm/",
+   "state": "confirmed",
+   "trigger": "200: You're on the list",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "subscribe__confirmed.png",
+   "sha1": "3cf89510a85507fb734f7020010fe0d24372ca96",
+   "height": 900,
+   "finalUrl": "/subscribe/confirm/"
+  },
+  {
+   "id": "subscribe__expired",
+   "route": "/subscribe/confirm/",
+   "state": "expired",
+   "trigger": "400: Link expired",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "subscribe__expired.png",
+   "sha1": "aedd9839f5ae62045f9b7df53fd5b953d94bffe2",
+   "height": 900,
+   "finalUrl": "/subscribe/confirm/"
+  },
+  {
+   "id": "subscribe__error",
+   "route": "/subscribe/confirm/",
+   "state": "error",
+   "trigger": "500: Couldn't confirm",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "subscribe__error.png",
+   "sha1": "d35479ccabf3b3587cb051de675c238b227bbd37",
+   "height": 900,
+   "finalUrl": "/subscribe/confirm/"
+  },
+  {
+   "id": "subscribe__no-token",
+   "route": "/subscribe/confirm/",
+   "state": "no-token",
+   "trigger": "no token: expired",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "subscribe__no-token.png",
+   "sha1": "a58eaed742e865a7f38bf7a712d431a780d46bfb",
+   "height": 900,
+   "finalUrl": "/subscribe/confirm/"
+  },
+  {
+   "id": "unsubscribe__confirm",
+   "route": "/unsubscribe/",
+   "state": "confirm",
+   "trigger": "arrive with a token: Stop release news?",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "unsubscribe__confirm.png",
+   "sha1": "6ed0af9a896c5b8d1e523ff0cdc004132d90d0eb",
+   "height": 900,
+   "finalUrl": "/unsubscribe/?token=tok_abc"
+  },
+  {
+   "id": "unsubscribe__unsubscribing",
+   "route": "/unsubscribe/",
+   "state": "unsubscribing",
+   "trigger": "pending",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "unsubscribe__unsubscribing.png",
+   "sha1": "6a8c6e4d334610386a3d988c5c71b227298f8ea4",
+   "height": 900,
+   "finalUrl": "/unsubscribe/?token=tok_abc"
+  },
+  {
+   "id": "unsubscribe__unsubscribed",
+   "route": "/unsubscribe/",
+   "state": "unsubscribed",
+   "trigger": "200",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "unsubscribe__unsubscribed.png",
+   "sha1": "7909d837883e9123290be45b578bc223a94f56fb",
+   "height": 900,
+   "finalUrl": "/unsubscribe/?token=tok_abc"
+  },
+  {
+   "id": "unsubscribe__invalid",
+   "route": "/unsubscribe/",
+   "state": "invalid",
+   "trigger": "400 invalid_token",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "unsubscribe__invalid.png",
+   "sha1": "87da4919f2226d185187c7603c557b9b42843c99",
+   "height": 900,
+   "finalUrl": "/unsubscribe/?token=tok_abc"
+  },
+  {
+   "id": "unsubscribe__error",
+   "route": "/unsubscribe/",
+   "state": "error",
+   "trigger": "500",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "unsubscribe__error.png",
+   "sha1": "5d8d555feeab7b60ed6b62541e007c8541e281e9",
+   "height": 900,
+   "finalUrl": "/unsubscribe/?token=tok_abc"
+  },
+  {
+   "id": "unsubscribe__no-token",
+   "route": "/unsubscribe/",
+   "state": "no-token",
+   "trigger": "no token: invalid",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "unsubscribe__no-token.png",
+   "sha1": "d6970595372df6bd8e3de8e4ef2af624ab620681",
+   "height": 900,
+   "finalUrl": "/unsubscribe/"
+  },
+  {
+   "id": "account-delete__confirm",
+   "route": "/account/delete/",
+   "state": "confirm",
+   "trigger": "arrive with a token, signed in: account row shown",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account-delete__confirm.png",
+   "sha1": "7270e4966e3082fded9e60d056c03e477d8812b0",
+   "height": 900,
+   "finalUrl": "/account/delete/"
+  },
+  {
+   "id": "account-delete__confirm-signed-out",
+   "route": "/account/delete/",
+   "state": "confirm-signed-out",
+   "trigger": "arrive with a token, 401: account row hidden",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account-delete__confirm-signed-out.png",
+   "sha1": "e6883bd526501c9054f31c7693148a9e2b9c88b0",
+   "height": 900,
+   "finalUrl": "/account/delete/"
+  },
+  {
+   "id": "account-delete__deleting",
+   "route": "/account/delete/",
+   "state": "deleting",
+   "trigger": "Delete clicked, pending",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account-delete__deleting.png",
+   "sha1": "93f5814d563c0264d25121011f046240f03ed24f",
+   "height": 900,
+   "finalUrl": "/account/delete/"
+  },
+  {
+   "id": "account-delete__deleted",
+   "route": "/account/delete/",
+   "state": "deleted",
+   "trigger": "200: Your web account is gone",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account-delete__deleted.png",
+   "sha1": "8edcfc0d0897a3a7fff413c4a7b2b7e7f98589b1",
+   "height": 900,
+   "finalUrl": "/account/delete/"
+  },
+  {
+   "id": "account-delete__expired",
+   "route": "/account/delete/",
+   "state": "expired",
+   "trigger": "400: This link is spent",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account-delete__expired.png",
+   "sha1": "a1735e502589f7478ee5664bddc47944a1f34102",
+   "height": 900,
+   "finalUrl": "/account/delete/"
+  },
+  {
+   "id": "account-delete__error-no-retry",
+   "route": "/account/delete/",
+   "state": "error-no-retry",
+   "trigger": "409 confirm_required with a server message, Retry hidden",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account-delete__error-no-retry.png",
+   "sha1": "43fbf508f765fea05966ceffc10dc06bcedc07fe",
+   "height": 900,
+   "finalUrl": "/account/delete/"
+  },
+  {
+   "id": "account-delete__error-retry",
+   "route": "/account/delete/",
+   "state": "error-retry",
+   "trigger": "network failure: error with Retry",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account-delete__error-retry.png",
+   "sha1": "ef23b37b7b26360fef0801ab7fa5cec1c25229cd",
+   "height": 900,
+   "finalUrl": "/account/delete/"
+  },
+  {
+   "id": "account-delete__no-token",
+   "route": "/account/delete/",
+   "state": "no-token",
+   "trigger": "no token: expired",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "account-delete__no-token.png",
+   "sha1": "0c0c900c59bdf10eb3b8249b814064b4f1f85242",
+   "height": 900,
+   "finalUrl": "/account/delete/"
+  },
+  {
+   "id": "pricing__monthly",
+   "route": "/pricing/",
+   "state": "monthly",
+   "trigger": "load: monthly",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "pricing__monthly.png",
+   "sha1": "6f9b4cd0304c9dc7ee8e5ca8f3344b6cf09a6bcb",
+   "height": 2442,
+   "finalUrl": "/pricing/"
+  },
+  {
+   "id": "pricing__yearly",
+   "route": "/pricing/",
+   "state": "yearly",
+   "trigger": "Yearly segment",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "pricing__yearly.png",
+   "sha1": "452db8de3c8334a158d0e51b94c3f3eedc3f884e",
+   "height": 2442,
+   "finalUrl": "/pricing/"
+  },
+  {
+   "id": "pricing__trial-banner",
+   "route": "/pricing/",
+   "state": "trial-banner",
+   "trigger": "billing: trial open: banner with the end date",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "pricing__trial-banner.png",
+   "sha1": "bea2c8d5baf844a8a11cd002f605ee523979ab8a",
+   "height": 2526,
+   "finalUrl": "/pricing/"
+  },
+  {
+   "id": "pricing__ko",
+   "route": "/pricing/",
+   "state": "ko",
+   "trigger": "Korean: KRW prices (reference)",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "pricing__ko.png",
+   "sha1": "f13bf83b3af6a4fcdf58b6ba426b70a2c73e167f",
+   "height": 2310,
+   "finalUrl": "/pricing/"
+  },
+  {
+   "id": "pricing__mobile-390",
+   "route": "/pricing/",
+   "state": "mobile-390",
+   "trigger": "viewport 390",
+   "viewport": {
+    "width": 390,
+    "height": 844
+   },
+   "scheme": "dark",
+   "file": "pricing__mobile-390.png",
+   "sha1": "69ddc060ca80ef3fe301f0f8b5c78bc056613329",
+   "height": 3854,
+   "finalUrl": "/pricing/"
+  },
+  {
+   "id": "download__mac",
+   "route": "/download/",
+   "state": "mac",
+   "trigger": "platform detected from the user agent: mac",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "download__mac.png",
+   "sha1": "7e2a4432ffd593e0d30ec297f20d2c393247f90d",
+   "height": 2056,
+   "finalUrl": "/download/"
+  },
+  {
+   "id": "download__win",
+   "route": "/download/",
+   "state": "win",
+   "trigger": "platform detected from the user agent: win",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "download__win.png",
+   "sha1": "7321da267e296173d9785791da04ec8623ce65fd",
+   "height": 2056,
+   "finalUrl": "/download/"
+  },
+  {
+   "id": "download__linux",
+   "route": "/download/",
+   "state": "linux",
+   "trigger": "platform detected from the user agent: linux",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "download__linux.png",
+   "sha1": "e871ab2cb282807b4c93ad19d3720a390e769baf",
+   "height": 2056,
+   "finalUrl": "/download/"
+  },
+  {
+   "id": "download__other",
+   "route": "/download/",
+   "state": "other",
+   "trigger": "platform detected from the user agent: other",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "download__other.png",
+   "sha1": "9fdca8cb84a1b8c0d0872facd53bbc07209b1265",
+   "height": 2056,
+   "finalUrl": "/download/"
+  },
+  {
+   "id": "release__default",
+   "route": "/release/",
+   "state": "default",
+   "trigger": "load",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "release__default.png",
+   "sha1": "fce294ede1acaf5f39324c6ee2e9f0ecae88c3c7",
+   "height": 25621,
+   "finalUrl": "/release/"
+  },
+  {
+   "id": "privacy__default",
+   "route": "/privacy/",
+   "state": "default",
+   "trigger": "load",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "privacy__default.png",
+   "sha1": "5de0168099a41999a3edb0fcf61a36dc82adc203",
+   "height": 6083,
+   "finalUrl": "/privacy/"
+  },
+  {
+   "id": "licensing__default",
+   "route": "/licensing/",
+   "state": "default",
+   "trigger": "load",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "licensing__default.png",
+   "sha1": "58c899075e5b32e57c2fa713d5ed0b9c02cde8c4",
+   "height": 3272,
+   "finalUrl": "/licensing/"
+  },
+  {
+   "id": "support__default",
+   "route": "/support/",
+   "state": "default",
+   "trigger": "load",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "support__default.png",
+   "sha1": "fb4f6c177bfeb7b55cd53795a5269a9a4e07a413",
+   "height": 1766,
+   "finalUrl": "/support/"
+  },
+  {
+   "id": "terms__default",
+   "route": "/terms/",
+   "state": "default",
+   "trigger": "load",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "terms__default.png",
+   "sha1": "c3a5d33afe0bbfc68d224fceb859af90640aa302",
+   "height": 5251,
+   "finalUrl": "/terms/"
+  },
+  {
+   "id": "demo__default",
+   "route": "/demo/",
+   "state": "default",
+   "trigger": "load: the web demo of the app on its bundled sample graph",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "demo__default.png",
+   "sha1": "fd89f85d5d4a8348f15b04e9003c581cd8b6cda7",
+   "height": 900,
+   "finalUrl": "/demo/?space=personal"
+  },
+  {
+   "id": "404__default",
+   "route": "/this-page-is-not-here/",
+   "state": "default",
+   "trigger": "unknown path",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "404__default.png",
+   "sha1": "f67d7832b3d1146e75e426189efc6c60f58d35ef",
+   "height": 900,
+   "finalUrl": "/this-page-is-not-here/"
+  },
+  {
+   "id": "docs__index",
+   "route": "/docs/",
+   "state": "index",
+   "trigger": "load",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "docs__index.png",
+   "sha1": "1798d1c92ba7a0f782265af9c40a6038fefafef4",
+   "height": 2829,
+   "finalUrl": "/docs/"
+  },
+  {
+   "id": "docs__mcp",
+   "route": "/docs/mcp/",
+   "state": "mcp",
+   "trigger": "load",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "docs__mcp.png",
+   "sha1": "6b3dbdea22dbff89017f0e3ce4bbc2692f339938",
+   "height": 2428,
+   "finalUrl": "/docs/mcp/"
+  },
+  {
+   "id": "docs__agents",
+   "route": "/docs/agents/",
+   "state": "agents",
+   "trigger": "load",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "docs__agents.png",
+   "sha1": "e368cf70c8bb8176d5db9a2fa1c0994705e8e77b",
+   "height": 4131,
+   "finalUrl": "/docs/agents/"
+  },
+  {
+   "id": "docs__cli",
+   "route": "/docs/cli/",
+   "state": "cli",
+   "trigger": "load",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "docs__cli.png",
+   "sha1": "e059f0034a68cbd91f267a3bdc99196a0b9ad221",
+   "height": 3817,
+   "finalUrl": "/docs/cli/"
+  },
+  {
+   "id": "docs__graph-md",
+   "route": "/docs/graph-md/",
+   "state": "graph-md",
+   "trigger": "load",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "docs__graph-md.png",
+   "sha1": "f5da2d9074d09ad1a3bc4f9d47da7ac4b140a2f7",
+   "height": 2911,
+   "finalUrl": "/docs/graph-md/"
+  },
+  {
+   "id": "docs__mcp-sign-in",
+   "route": "/docs/mcp/sign-in/",
+   "state": "mcp-sign-in",
+   "trigger": "load",
+   "viewport": {
+    "width": 1440,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "docs__mcp-sign-in.png",
+   "sha1": "993090aa9c7801df7f9f37ed6d134e83a7ca5dab",
+   "height": 1874,
+   "finalUrl": "/docs/mcp/sign-in/"
+  },
+  {
+   "id": "docs__mobile-800",
+   "route": "/docs/mcp/",
+   "state": "mobile-800",
+   "trigger": "viewport 800: sidebar becomes a horizontal strip",
+   "viewport": {
+    "width": 800,
+    "height": 900
+   },
+   "scheme": "dark",
+   "file": "docs__mobile-800.png",
+   "sha1": "07b85aff4abdd2bc6328f218e9c7262c7a99274e",
+   "height": 2646,
+   "finalUrl": "/docs/mcp/"
+  },
+  {
+   "id": "docs__mobile-390",
+   "route": "/docs/",
+   "state": "mobile-390",
+   "trigger": "viewport 390",
+   "viewport": {
+    "width": 390,
+    "height": 844
+   },
+   "scheme": "dark",
+   "file": "docs__mobile-390.png",
+   "sha1": "8af0f4e94a5a0f674ed3848c3a9b46b98ee9607f",
+   "height": 3877,
+   "finalUrl": "/docs/"
+  }
+ ],
+ "updatedAt": "2026-11-04T04:29:33.715Z"
+}

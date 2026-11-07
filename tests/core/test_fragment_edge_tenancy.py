@@ -91,7 +91,7 @@ class EdgeTenancyTests(unittest.TestCase):
     # (2026-08-30 실측). #117 이 경고를 달았고, v16 이 ATTACHES_TO 에 열을 줘서
     # record 엣지는 경고 대상에서 **저장 대상**으로 옮겨 갔다. 무열 rel 로 남은
     # CONNECTS·TYPED 가 경고 경로의 증인이다.
-    # 근거: [[record:graph-md-requires-evidence-that-ingest-refuses-to-store]]
+    # 근거: [[record:attaches-to-carries-evidence-since-v16]]
 
     def _ingest_edges(self, edges):
         return frag.merge_fragment({"owner": A, "nodes": [

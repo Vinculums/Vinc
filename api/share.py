@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 
 from . import fragment as frag
@@ -59,7 +60,7 @@ def _concepts_plan(*, owner: str, domain: str | None = None,
         "c.tags AS tags, c.topic AS topic, c.one_liner AS one_liner, c.props AS props, "
         # created 를 싣는다 — 안 실으면 받는 쪽에서 팩 개념이 전부 임포트 시각으로
         # 몰려 타임라인이 밴드 하나가 된다. 가산 필드라 구 임포터는 무시한다
-        # ([[record:sync-drops-node-created-pack-keeps-it]]).
+        # ([[decision:created-is-earliest-known-recording]]).
         "c.created AS created, "
         # content_time 은 **더 실려야 할 쪽**이다 — created 는 공간의 시계지만 이것은
         # 지시체에 속해(1905 는 어느 그래프에서든 1905다) 공간을 건너도 참이다
@@ -121,6 +122,9 @@ def _share_edges_plan(*, owner: str, ids: list[str]) -> q.QueryPlan:
     pairs += [(s, t, "ABOUT") for s in ("episode", "decision")
               for t in ("concept", "decision")]
     pairs += [("record", t, "ATTACHES_TO") for t in ("concept", "decision")]
+    # 대체는 같은 종류끼리만 쓰인다(fragment `_SUPERSEDES_KINDS`). 빠지면 받는 쪽에서
+    # 대체된 것과 대체한 것이 둘 다 현재로 남는다.
+    pairs += [(kind, kind, "SUPERSEDES") for kind in frag._SUPERSEDES_KINDS]
     arms = []
     for source, target, relation in pairs:
         sl, sp = frag._NODE_MAP[source]
@@ -311,11 +315,22 @@ def _docs_for_concepts(store, *, owner: str, concept_ids: list[str],
             store.close()
 
 
+# 한 번의 share 가 고르는 노드 수 상한. 녹화한 share 호출을 재생해 한 호출로 그래프를 통째로
+# 긁어 가는 것을 막고, 거대한 팩을 짓는 자원 소모도 막는다. 넘으면 팩을 짓지 않고 거절하며
+# 주제로 나눠 받으라고 말한다(전체 백업은 이 경로가 아니라 /activate 다). 0 이하면 상한 없음.
+# 값은 hub-deploy 가 리포 변수 VINC_SHARE_MAX_NODES 에서 싣고, 비어 있으면 2000 이다.
+def _share_node_cap() -> int:
+    try:
+        return int(os.environ.get("VINC_SHARE_MAX_NODES", "2000"))
+    except ValueError:
+        return 2000
+
+
 def build_share_pack(*, owner: str, domain: str | None = None,
                      tags: list[str] | None = None, seed: str | None = None,
                      ids: list[str] | None = None,
                      depth: int = 2, include_records: bool = True,
-                     generated_at: str | None = None,
+                     generated_at: str | None = None, max_nodes: int | None = None,
                      cfg=None, store=None, doc_refs: bool = False) -> dict:
     """네 종류의 콘텐츠를 선택한다: ids > seed > domain, 이후 태그 교집합.
 
@@ -370,6 +385,12 @@ def build_share_pack(*, owner: str, domain: str | None = None,
         selected[kind] = _tag_filter(result.get("rows", []), tags)
     id_set = concept_ids | {r["id"] for rows in selected.values() for r in rows}
 
+    # 상한을 여기서 본다 — 엣지·원문을 읽기 전이라 거절이 싸다. 노드 수(개념+기록+결정+사건)로 잰다.
+    cap = _share_node_cap() if max_nodes is None else max_nodes
+    if cap > 0 and len(id_set) > cap:
+        return {"executed": False, "note": "share_too_large",
+                "node_count": len(id_set), "limit": cap}
+
     # 2) 스코프 내 저작 엣지 — 네 종류의 관계를 읽고 경계 밖은 잘라낸다.
     edges: list[dict] = []
     if id_set:
@@ -381,9 +402,17 @@ def build_share_pack(*, owner: str, domain: str | None = None,
         for r in e_res.get("rows", []):
             relation = r.get("rel") or ""
             ftype = (r.get("role") if relation == "ATTACHES_TO" else
-                     "about" if relation == "ABOUT" else _REL_TO_FRAGMENT.get(relation))
+                     "about" if relation == "ABOUT" else
+                     "supersedes" if relation == "SUPERSEDES" else
+                     _REL_TO_FRAGMENT.get(relation))
             tgt = r.get("target")
             if not tgt or tgt not in id_set or r["id"] not in id_set:
+                continue
+            if relation == "SUPERSEDES" and not str(r.get("evidence") or "").strip():
+                # 쓰기 경로가 근거 없는 대체를 거절하므로 실어도 받는 쪽에서 떨어진다.
+                # 팩을 실패시키지 않고 빼고 말한다.
+                warnings.append(f"{relation} {r['id']} -> {tgt} has no evidence; "
+                                "left out of the pack")
                 continue
             if (not ftype or (relation == "ATTACHES_TO" and ftype not in frag._CC_EDGES)):
                 # 타입 없는 ATTACHES_TO 는 병합 경로(query.py)가 실제로 쓴다. 그 엣지
@@ -403,8 +432,10 @@ def build_share_pack(*, owner: str, domain: str | None = None,
                 e["created"] = r["edge_created"]
             # 값이 있을 때만 싣는다. ALTER 로 열을 얻은 스토어는 빈 엣지도 ''·0.0 을
             # 돌려주고, 그것을 실으면 수신측의 실제 근거·신뢰도를 덮어 지운다.
+            # RETURNS_TO·SUPERSEDES 는 열과 함께 만들어져 0.0 도 저작한 값이다.
+            authored = relation in ("RETURNS_TO", "SUPERSEDES")
             for field in ("evidence", "confidence"):
-                if r.get(field) or (relation == "RETURNS_TO" and r.get(field) is not None):
+                if r.get(field) or (authored and r.get(field) is not None):
                     e[field] = r[field]
             edges.append(e)
 

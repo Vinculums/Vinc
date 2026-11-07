@@ -22,7 +22,7 @@ from pathlib import Path
 from vinc_mcp import http_server, rpc
 
 ROOT = Path(__file__).resolve().parents[2]
-HUB_SVG = ROOT / "design-hub/assets/logo/vinc-ring-favicon.svg"
+HUB_SVG = ROOT / "scripts/design/assets/logo/vinc-ring-favicon.svg"
 
 ICON_FIELDS = ("icons", "websiteUrl")
 
@@ -100,7 +100,18 @@ class IconPayloadTest(unittest.TestCase):
         """어긋나면 클라이언트가 잘못 스케일한다."""
         import struct
         w, h = struct.unpack(">II", http_server._FAVICON_PNG[16:24])
-        self.assertEqual(self._icons_info()["icons"][0]["sizes"], f"{w}x{h}")
+        self.assertEqual(self._icons_info()["icons"][0]["sizes"], [f"{w}x{h}"])
+
+    def test_아이콘이_스키마의_Icon_모양이다(self):
+        """2025-11-25·2026-07-28 스키마의 Icon: src 는 필수 문자열, mimeType 은 문자열,
+        sizes 는 문자열 배열, theme 은 dark·light 중 하나. 이 밖의 키는 없다."""
+        for ic in self._icons_info()["icons"]:
+            self.assertLessEqual(set(ic), {"src", "mimeType", "sizes", "theme"})
+            self.assertIsInstance(ic["src"], str)
+            self.assertIsInstance(ic.get("mimeType", ""), str)
+            self.assertIsInstance(ic.get("sizes", []), list)
+            self.assertTrue(all(isinstance(s, str) for s in ic.get("sizes", [])))
+            self.assertIn(ic.get("theme", "dark"), ("dark", "light"))
 
 
 class FaviconAssetTest(unittest.TestCase):
@@ -118,6 +129,14 @@ class FaviconAssetTest(unittest.TestCase):
 
     def test_SVG_상수는_그대로_있다(self):
         self.assertIn("<svg", http_server._FAVICON_SVG)
+
+    def test_SVG_viewBox_가_정사각이다(self):
+        """아이콘 칸은 정사각이고, 래스터화하는 쪽(구글 검색 결과·커넥터 카드)은 비율을
+        지키지 않고 그 칸에 늘린다. 마크 자체의 436x604 를 그대로 두면 링이 가로로
+        퍼지고 구체가 타원이 된다. 근거: [[record:a-tall-favicon-viewbox-is-stretched-into-a-square-2026-10-21]]"""
+        import re
+        box = re.search(r'viewBox="([^"]+)"', http_server._FAVICON_SVG).group(1).split()
+        self.assertEqual(box[2], box[3], f"파비콘 viewBox 가 정사각이 아니다: {box}")
 
 
 class RequestLoggingTest(unittest.TestCase):
@@ -181,7 +200,7 @@ class EmbeddedIconMatchesCanon(unittest.TestCase):
     def test_SVG_는_허브의_파비콘_링이다(self):
         self.assertEqual(
             http_server._FAVICON_SVG, _hub_svg(),
-            "커넥터 SVG 가 design-hub 의 파비콘 링과 다르다 — 정본이 바뀌었는데 "
+            "커넥터 SVG 가 scripts/design/assets 의 파비콘 링과 다르다 — 정본이 바뀌었는데 "
             "_FAVICON_SVG 를 안 고쳤다.")
 
     # PNG 는 앱 아이콘과 바이트가 같지 않다: 앱 아이콘은 검정 판 위의 흰 링이고(2026-09-26)

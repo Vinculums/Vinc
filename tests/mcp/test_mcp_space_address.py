@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """스페이스는 주소로 정하고, 자격증명이 들어갈 수 있는지 증명한다.
 
-정본: [[decision:the-endpoint-carries-the-space-and-the-credential-carries-the-right]].
+처음에는 주소만이 스페이스를 정했고, 그 결정은 스페이스를 인자로도 받는 지금 결정으로
+대체됐다. 주소 경로는 그대로 남아 이 파일이 지킨다. 정본: [[decision:the-space-is-an-argument-and-the-default-is-personal]].
 
 `/mcp` 는 개인 그래프, `/t/<uuid>/mcp` 는 그 팀 그래프. **URL 은 의도, 키는 권한.**
 팀 id 를 안다는 것만으로는 아무것도 못 하고, 키 하나가 모든 스페이스를 섬긴다.
@@ -395,11 +396,10 @@ class VerifyKeyCacheTests(unittest.TestCase):
                               "graph_owner": f"team:{body['team']}", "role": "viewer", "key_space": body["team"]})
             return _Resp({"sub": "u1", "plan": "pro"})
 
-        import urllib.request
-        real_open, real_seed = urllib.request.urlopen, entitlement._seed
+        real_open, real_seed = entitlement.hubhttp.urlopen, entitlement._seed
         entitlement._cache.clear()
         try:
-            urllib.request.urlopen = fake_urlopen
+            entitlement.hubhttp.urlopen = fake_urlopen
             entitlement._seed = lambda: b"\x01" * 32
             a = entitlement.verify_key("vinc_sk_x")
             b = entitlement.verify_key("vinc_sk_team_x", TEAM)
@@ -408,7 +408,7 @@ class VerifyKeyCacheTests(unittest.TestCase):
             self.assertEqual(b["owner"], f"team:{TEAM}")
             self.assertEqual(b["role"], "viewer")
         finally:
-            urllib.request.urlopen = real_open
+            entitlement.hubhttp.urlopen = real_open
             entitlement._seed = real_seed
             entitlement._cache.clear()
 

@@ -103,6 +103,8 @@ class ToolsAbsorbsPacksTests(unittest.TestCase):
         self.assertIn('window.location.assign("/community/share/")', pub)
         self.assertNotIn('community.publish(', pub)
         self.assertIn('downloadPack(out,', pub)
+        # 갤러리 시절 게시 클라이언트는 호출부 없이 남아 있었다(VIN-569). 다시 생기지 않게.
+        self.assertNotIn('/api/community/publish', (APP / "api.ts").read_text(encoding="utf-8"))
 
     # ── 표면을 지우면서 조용히 깨지는 것 둘 ────────────────────────────────
     def test_숫자_단축키가_표면_수를_따라간다(self):
@@ -164,8 +166,9 @@ class ToolsAbsorbsPacksTests(unittest.TestCase):
         self.assertNotRegex(tag.group(0), r"\bhidden\b", "레일 설정 버튼이 숨겨져 있다")
 
         lnb = (APP / "lnb.ts").read_text(encoding="utf-8")
-        self.assertRegex(lnb, r'id\s*===\s*"rail-settings"\)\s*\{[^}]*openSettings\(',
-                         "레일 설정 버튼이 설정 시트를 안 연다")
+        # 설정 버튼은 LNB 바닥에 산다(2026-10-22, 종 레일을 걷었다).
+        self.assertRegex(lnb, r'settingsBtn\?\.addEventListener\("click",[^;]*openSettings\(',
+                         "LNB 설정 버튼이 설정 시트를 안 연다")
 
         settings = (APP / "surfaces" / "settings.ts").read_text(encoding="utf-8")
         cats = settings[settings.index("const ALL_CATS"):settings.index("const CATS")]

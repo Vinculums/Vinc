@@ -36,9 +36,14 @@ import os
 import re
 import subprocess
 import sys
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+try:
+    from scripts._gitutil import git
+    from scripts._root import ROOT
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _gitutil import git
+    from _root import ROOT
+
 TEAMS = ROOT / "agents" / "teams.json"
 ROLES = ROOT / "agents" / "roles.json"
 CODEOWNERS = ROOT / ".github" / "CODEOWNERS"
@@ -192,16 +197,17 @@ def roster_drift(teams: dict, roles: dict, rules, exists) -> list[str]:
 
 # ── 층 방향 ──────────────────────────────────────────────────────────────────
 
-#: 아래 층은 위 층을 import 하지 않는다. `store`·`vinc_mcp` 가 `api` 를 부르던 두 곳을
-#: 2026-09-30 에 걷었고(VIN-242: `procutil` 은 store 로 내리고, 재구축의 재큐는 인자로
-#: 주입), 그 뒤로 다시 생기지 않게 여기서 잠근다. 함수 안 지연 import 도 잡는다 —
-#: 순환을 피하려고 지연시킨 import 가 정확히 그 방향을 숨기던 것이었다.
-#: `engines` 는 아직 어느 쪽에도 없다: `embed_pipeline`·`recall_ingest` 가 `api` 를 써서
-#: `vinc_rag` 로 옮길 수 없고(VIN-244 는 워커·인코더·리랭커만 옮겼다), 반대로
-#: `store/embedded_backend.py` 가 `engines.domain_hierarchy` 를 쓴다. 그것을 정리한 뒤
+#: 아래 층은 위 층을 import 하지 않는다(`procutil` 은 store 에 있고, 재구축의 재큐는
+#: 인자로 주입된다). 함수 안 지연 import 도 잡는다: 순환을 피하려고 지연시킨 import 가
+#: 정확히 그 방향을 숨긴다.
+#: `engines` 는 이 층 표의 어느 쪽에도 없다(키로도, 금지 대상으로도). 소유 팀과는 별개다:
+#: `agents/teams.json` 은 `engines/` 를 core, `engines/recall_ingest.py` 를 rag 에 둔다.
+#: `engines/recall_ingest.py` 가 `api` 를 써서 `vinc_rag` 로 옮길 수 없고, 반대로
+#: `store/embedded_backend.py` 가 `engines.domain_hierarchy` 를 쓴다. 그 import 를 정리한 뒤
 #: `store/` 의 금지에 `engines` 를 더한다.
-#: `vinc_rag` 는 검색 코어(VIN-243)다. `api` 가 그것을 부르고, 그것은 `store`·`engines`
-#: 만 부른다 — 공용 바닥 함수를 `store/querybase.py` 로 내린 이유가 이 한 줄이다.
+#: `vinc_rag` 는 검색 코어다. `api` 가 그것을 부르고, 그것은 `store`·`engines` 만
+#: 부른다. 공용 바닥 함수를 `store/querybase.py` 로 내린 이유가 이 한 줄이다.
+#: 근거: [[vinc.plan.team-split]]
 LAYER_BANS: dict[str, tuple[str, ...]] = {
     "store/": ("api", "vinc_mcp", "vinc_rag"),
     "vinc_mcp/": ("api",),
@@ -241,14 +247,8 @@ def teams_touched(changed: list[str], rules, teams: dict) -> list[str]:
 
 # ── 실행 ─────────────────────────────────────────────────────────────────────
 
-def _git(*args: str) -> str:
-    return subprocess.run(["git", "-c", "core.quotepath=off", *args], cwd=ROOT,
-                          capture_output=True, text=True, encoding="utf-8",
-                          check=True).stdout
-
-
 def tracked_files() -> list[str]:
-    return [f for f in _git("ls-files", "-z").split("\0") if f]
+    return [f for f in git(["ls-files", "-z"], cwd=ROOT).split("\0") if f]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -292,7 +292,7 @@ def main(argv: list[str] | None = None) -> int:
     base, head = os.environ.get("BASE"), os.environ.get("HEAD")
     if base and head:
         try:
-            changed = [f for f in _git("diff", "--name-only", base, head).splitlines() if f]
+            changed = [f for f in git(["diff", "--name-only", base, head], cwd=ROOT).splitlines() if f]
         except subprocess.CalledProcessError:
             changed = []
             print(f"::warning::변경 목록을 못 구했다({base}..{head}) — 닿은 팀을 비운다")

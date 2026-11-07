@@ -1,9 +1,6 @@
 """Directed incident edges are complete, typed and scoped in the real engine."""
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import pytest
 
 from api import query as q
@@ -90,6 +87,17 @@ def test_all_carriers_and_actual_incident_relations(graph):
     assert prereq["edges"][0]["evidence"] == "Gate before release"
     assert prereq["edges"][0]["confidence"] == 0.85
     assert q.node_edges("decision:choice", owner=OWNER, dir="out", type="PREREQUISITE_OF", store=st)["count"] == 0
+    # VIN-894 — 문서화된 소문자 이름을 대소문자 무관하게 받는다(물리 라벨은 대문자라
+    # 그대로는 어느 라벨과도 안 맞아 0건이 나왔다).
+    for name in ("prerequisite_of", "Prerequisite_Of", "PREREQUISITE_OF"):
+        same = q.node_edges("decision:choice", owner=OWNER, dir="in", type=name, store=st)
+        assert same["count"] == 1 and same["edges"][0]["from"] == "concept:hub", (name, same)
+    # `relates_to` → `RELATED_TO`: 대문자 폴백만으로는 못 맞추는 맵 경로.
+    rel = q.node_edges("concept:hub", owner=OWNER, type="relates_to", store=st)
+    assert rel["count"] == 1 and {e["type"] for e in rel["edges"]} == {"RELATED_TO"}, rel
+    # 라벨이 아닌 저작 서브타입은 원문 그대로 걸러 라벨 정규화에 휘둘리지 않는다.
+    sub = q.node_edges("concept:hub", owner=OWNER, type="supports", store=st)
+    assert sub["count"] == 1 and sub["edges"][0]["type"] == "ATTACHES_TO", sub
     for nid in ("record:proof", "episode:run", "bridge:crossing", "custom:a"):
         got = q.node_edges(nid, owner=OWNER, dir="out", store=st)
         assert got["found"] and got["count"] == 1, got
@@ -134,16 +142,21 @@ def test_owner_and_global_domain_tree_never_disclose_foreign_subtrees(graph):
     assert q.node_edges("concept:foreign", owner=FOREIGN, type="RELATED_TO", store=st)["count"] == 0
 
 
-def test_original_exp05_dag_in_one_batch_without_graph_payload(graph):
-    fixture = json.loads((Path(__file__).parents[1] / "fixtures" / "agent_lab_exp05_dag.json").read_text("utf-8"))
-    for nid in fixture["roster"]:
+def test_a_dag_in_one_batch_without_graph_payload(graph):
+    # A small hand-off DAG (the shape of the lab's exp05 roster), built inline so the
+    # test does not depend on which roles the roster currently carries.
+    roster = [f"concept:step-{i}" for i in range(8)]
+    dag = [(roster[a], roster[b], f"{a} must finish before {b} starts.")
+           for a, b in ((0, 1), (0, 2), (1, 3), (2, 3), (3, 4), (3, 5), (4, 6), (5, 6), (6, 7),
+                        (1, 5), (2, 4), (0, 7))]
+    for nid in roster:
         put(graph, "Concept", nid)
-    for src, dst, evidence in fixture["edges"]:
+    for src, dst, evidence in dag:
         edge(graph, "Concept", src, "PREREQUISITE_OF", "Concept", dst, evidence=evidence)
-    got = q.node_edges(nodes=fixture["roster"], owner=OWNER, type="PREREQUISITE_OF", dir="out", store=graph)
+    got = q.node_edges(nodes=roster, owner=OWNER, type="PREREQUISITE_OF", dir="out", store=graph)
     assert got["executed"] and not got["missing_nodes"], got
-    assert got["count"] == len(fixture["edges"]) == 27
-    assert sorted((e["from"], e["to"], e["evidence"]) for e in got["edges"]) == sorted(tuple(e) for e in fixture["edges"])
+    assert got["count"] == len(dag) == 12
+    assert sorted((e["from"], e["to"], e["evidence"]) for e in got["edges"]) == sorted(dag)
     assert "graph" not in got and not got["edges_truncated"]
 
 

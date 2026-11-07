@@ -381,3 +381,340 @@ def test_native_agents_deliver_identical_plain_system_instructions(instructions)
     ma_instructions = asyncio.run(run())
     assert isinstance(model.system_contents[0], str)
     assert model.system_contents == [ma_instructions]
+
+
+def test_write_helpers_share_the_retry_contract_in_both_frameworks():
+    # VIN-601: 두 패키지의 쓰기 헬퍼가 같은 인자를 받고 같은 본문을 보낸다(create_only·operation_id 포함).
+    import inspect
+    from vinc_agent_framework import record_episode as maf_episode, write_package as maf_package
+    from vinc_langgraph import (arecord_episode as lg_aepisode, awrite_package as lg_apackage,
+                                record_episode as lg_episode, write_package as lg_package)
+    def params(fn):
+        return [p for p in inspect.signature(fn).parameters if p != "client"]
+    assert params(maf_episode) == params(lg_episode) == params(lg_aepisode)
+    assert params(maf_package) == params(lg_package) == params(lg_apackage)
+    for name in ("create_only", "operation_id"):
+        assert name in params(maf_episode) and name in params(maf_package)
+
+    op = "00000000-0000-4000-8000-000000000601"
+    episode = {"episode_id": "episode:run-one", "date": "2026-10-16",
+               "create_only": True, "operation_id": op}
+    package = {"claims": [{"claim": "Holds.", "evidence_ids": ["decision:policy"]}],
+               "produced_by": "agent:writer", "run_id": "run-1", "package_id": "record:handoff",
+               "space": SPACE, "create_only": True, "operation_id": op}
+    sk = "vinc_sk_" + "b" * 32
+    sync_seen, ma_seen, lg_seen = [], [], []
+    with VincClient(sk, transport=httpx.MockTransport(lambda r: response(r, sync_seen))) as client:
+        lg_episode(client, "Approved", **episode)
+        lg_package(client, "Which?", "This.", **package)
+    async def run():
+        async with AsyncVincClient(sk, transport=httpx.MockTransport(
+                lambda r: response(r, ma_seen))) as client:
+            await maf_episode(client, "Approved", **episode)
+            await maf_package(client, "Which?", "This.", **package)
+        async with AsyncVincClient(sk, transport=httpx.MockTransport(
+                lambda r: response(r, lg_seen))) as client:
+            await lg_aepisode(client, "Approved", **episode)
+            await lg_apackage(client, "Which?", "This.", **package)
+    asyncio.run(run())
+    assert sync_seen == ma_seen == lg_seen and len(ma_seen) == 2
+    assert all((row[3]["create_only"], row[3]["operation_id"]) == (True, op) for row in ma_seen)
+
+
+def test_same_disallowed_tools_are_hidden_and_refused_in_both_frameworks(caplog):
+    # 같은 계약이면 두 패키지가 같은 도구를 모델에서 빼고, 그래도 불린 호출에 같은 문장을 돌려주고,
+    # 어느 도구와도 맞지 않은 항목을 같은 경고로 한 번 알린다(정확한 이름 일치).
+    import logging
+    from agent_framework import ChatMiddlewareLayer, Content, tool as maf_tool
+    from langchain.agents import create_agent
+    from langchain_core.messages import HumanMessage, ToolMessage
+    from langchain_core.tools import tool as lg_tool
+    from vinc_agent_framework import VincContextProvider
+    from vinc_client import RoleToolPolicy
+    from vinc_langgraph import VincContextMiddleware
+
+    def role_with_denylist(request, seen):
+        if request.method == "GET" and request.url.path.startswith("/v1/roles/"):
+            seen.append(request.url.path)
+            return httpx.Response(200, json={"found": True, "id": ROLE, "props": {
+                "reads": [], "disallowed_tools": ["Bash", "Edit"]}})
+        return response(request, [])
+
+    @lg_tool("Bash")
+    def lg_bash(command: str) -> str:
+        """Run a shell command."""
+        raise AssertionError("a disallowed tool ran")
+
+    @lg_tool("lookup")
+    def lg_lookup(query: str) -> str:
+        """A local lookup."""
+        return "local answer"
+
+    @maf_tool(name="Bash")
+    def ma_bash(command: str) -> str:
+        """Run a shell command."""
+        raise AssertionError("a disallowed tool ran")
+
+    @maf_tool(name="lookup")
+    def ma_lookup(query: str) -> str:
+        """A local lookup."""
+        return "local answer"
+
+    class LgModel(BaseChatModel):
+        seen_tools: list = []
+
+        @property
+        def _llm_type(self):
+            return "calls-bash"
+
+        def bind_tools(self, tools, **kwargs):
+            self.seen_tools.append(sorted(t.name for t in tools))
+            return self
+
+        def _generate(self, messages, **kwargs):
+            if any(m.type == "tool" for m in messages):
+                return ChatResult(generations=[ChatGeneration(message=AIMessage("done"))])
+            return ChatResult(generations=[ChatGeneration(message=AIMessage("", tool_calls=[
+                {"name": "Bash", "args": {"command": "ls"}, "id": "c1"}]))])
+
+    class MaChat(FunctionInvocationLayer, ChatMiddlewareLayer, BaseChatClient):
+        def __init__(self):
+            super().__init__()
+            self.seen_tools = []
+
+        async def _inner_get_response(self, *, messages, stream, options, **kwargs):
+            self.seen_tools.append(sorted(t.name for t in options.get("tools") or []))
+            if any(c.type == "function_result" for m in messages for c in m.contents):
+                return ChatResponse(messages=Message("assistant", ["done"]))
+            return ChatResponse(messages=Message("assistant", [
+                Content.from_function_call("c1", "Bash", arguments={"command": "ls"})]))
+
+    lg_roles, ma_roles = [], []
+    with caplog.at_level(logging.WARNING):
+        with VincClient(KEY, transport=httpx.MockTransport(
+                lambda r: role_with_denylist(r, lg_roles))) as client:
+            model = LgModel()
+            agent = create_agent(model, tools=[lg_bash, lg_lookup], middleware=[
+                VincContextMiddleware(client=client, prefetch_role=ROLE)])
+            state = agent.invoke({"messages": [HumanMessage("Review.")]})
+            lg_refusal = [m.content for m in state["messages"] if isinstance(m, ToolMessage)]
+        lg_warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+        caplog.clear()
+
+        async def run():
+            async with AsyncVincClient(KEY, transport=httpx.MockTransport(
+                    lambda r: role_with_denylist(r, ma_roles))) as client:
+                chat = MaChat()
+                res = await Agent(chat, tools=[ma_bash, ma_lookup], context_providers=[
+                    VincContextProvider(client, prefetch_role=ROLE)]).run("Review.")
+                return chat.seen_tools, [str(c.result) for m in res.messages for c in m.contents
+                                         if c.type == "function_result"]
+        ma_seen_tools, ma_refusal = asyncio.run(run())
+        ma_warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+
+    assert model.seen_tools == ma_seen_tools == [["lookup"], ["lookup"]]
+    assert lg_refusal == ma_refusal == [RoleToolPolicy(ROLE, ["Bash"]).refusal("Bash")]
+    assert lg_warnings == ma_warnings and len(lg_warnings) == 1 and ": Edit." in lg_warnings[0]
+    assert len(lg_roles) == len(ma_roles) == 1
+
+
+def test_same_role_pin_request_refusal_and_block_in_both_frameworks():
+    # 같은 고정이면 두 패키지가 같은 요청(expected_hash)을 보내고, 역할이 바뀌었으면 같은 예외로
+    # 모델 호출 전에 멈추며, 지금 해시로 고정하면 고정 없이 읽은 것과 같은 블록을 넣는다.
+    from langchain.agents import create_agent
+    from langchain_core.messages import HumanMessage
+    from vinc_agent_framework import VincContextProvider
+    from vinc_client import VincRoleChanged
+    from vinc_langgraph import VincContextMiddleware
+
+    current, stale = "c" * 64, "d" * 64
+
+    def pinned_hub(request, seen):
+        if request.method == "GET" and request.url.path.startswith("/v1/roles/"):
+            expected = request.url.params.get("expected_hash")
+            seen.append(expected)
+            if expected not in (None, current):
+                return httpx.Response(409, json={"error": {
+                    "code": "role_changed", "message": "The role changed since it was pinned.",
+                    "details": {"id": ROLE, "rev": 4, "hash": current}}})
+            return httpx.Response(200, json={"found": True, "id": ROLE, "domain": "vinc/engineering",
+                "props": {"reads": ["vinc.spec.fixture"], "mission": "Review evidence."},
+                "rev": 4, "hash": current})
+        return response(request, [])
+
+    class LgModel(BaseChatModel):
+        systems: list = []
+
+        @property
+        def _llm_type(self):
+            return "records-system"
+
+        def _generate(self, messages, **kwargs):
+            self.systems.append(messages[0].text)
+            return ChatResult(generations=[ChatGeneration(message=AIMessage("done"))])
+
+    class MaChat(BaseChatClient):
+        def __init__(self):
+            super().__init__()
+            self.instructions = []
+
+        async def _inner_get_response(self, *, messages, stream, options, **kwargs):
+            self.instructions.append(options.get("instructions") or "")
+            return ChatResponse(messages=Message("assistant", ["done"]))
+
+    def langgraph(pin, seen):
+        model = LgModel()
+        model.systems = []
+        with VincClient(KEY, transport=httpx.MockTransport(lambda r: pinned_hub(r, seen))) as client:
+            agent = create_agent(model, middleware=[VincContextMiddleware(
+                client=client, prefetch_role=ROLE, prefetch_pin=pin)])
+            try:
+                agent.invoke({"messages": [HumanMessage("Review.")]})
+            except VincRoleChanged as exc:
+                return model.systems, exc
+        return model.systems, None
+
+    def maf(pin, seen):
+        chat = MaChat()
+        async def run():
+            async with AsyncVincClient(KEY, transport=httpx.MockTransport(
+                    lambda r: pinned_hub(r, seen))) as client:
+                await Agent(chat, context_providers=[VincContextProvider(
+                    client, prefetch_role=ROLE, prefetch_pin=pin)]).run("Review.")
+        try:
+            asyncio.run(run())
+        except VincRoleChanged as exc:
+            return chat.instructions, exc
+        return chat.instructions, None
+
+    lg_seen, ma_seen = [], []
+    lg_calls, lg_error = langgraph(stale, lg_seen)
+    ma_calls, ma_error = maf(stale, ma_seen)
+    assert lg_calls == ma_calls == []
+    assert (lg_error.code, lg_error.status, lg_error.details) == (
+        ma_error.code, ma_error.status, ma_error.details) == ("role_changed", 409,
+                                                              {"id": ROLE, "rev": 4, "hash": current})
+    assert lg_seen == ma_seen == [stale]
+
+    pinned = langgraph(current, [])[0], maf(current, [])[0]
+    plain = langgraph(None, [])[0], maf(None, [])[0]
+    assert pinned == plain
+    assert len(pinned[0]) == len(pinned[1]) == 1
+    assert pinned[0][0] == pinned[1][0] and ROLE in pinned[0][0]
+
+
+def test_run_record_helpers_send_the_same_body_in_both_frameworks():
+    # VIN-778: 실행 기록 헬퍼 셋(LangGraph 동기·비동기, Agent Framework)이 같은 본문을 보낸다.
+    from vinc_agent_framework import record_run as maf_run
+    from vinc_langgraph import arecord_run as lg_arun, record_run as lg_run
+    fields = {"role": ROLE, "outcome": "success", "steps": 2, "tool_calls": 3,
+              "cited_ids": ["record:rule"], "date": "2026-10-25"}
+    sk = "vinc_sk_" + "b" * 32
+    sync_seen, ma_seen, lg_seen = [], [], []
+    with VincClient(sk, transport=httpx.MockTransport(lambda r: response(r, sync_seen))) as client:
+        lg_run(client, "run-778", **fields)
+
+    async def run():
+        async with AsyncVincClient(sk, transport=httpx.MockTransport(
+                lambda r: response(r, ma_seen))) as client:
+            await maf_run(client, "run-778", **fields)
+        async with AsyncVincClient(sk, transport=httpx.MockTransport(
+                lambda r: response(r, lg_seen))) as client:
+            await lg_arun(client, "run-778", **fields)
+    asyncio.run(run())
+    assert sync_seen == ma_seen == lg_seen
+    posts = [seen for seen in sync_seen if seen[0] == "POST"]
+    assert len(posts) == 1 and posts[0][3]["nodes"][0]["props"]["run_id"] == "run-778"
+
+
+_PROFILE = next(p for p in json.loads((__import__("pathlib").Path(__file__).resolve().parents[1]
+                / "fixtures" / "output_gate" / "proposed-role-checks.json").read_text(
+                    encoding="utf-8"))["profiles"] if p["id"] == "concept:agent-dev-core")
+
+
+def _build_hub(seen):
+    def handler(request):
+        seen.append((request.method, request.url.path,
+                     json.loads(request.content) if request.content else None))
+        path = request.url.path
+        if path.startswith("/v1/roles/"):
+            body = {"found": True, "id": "concept:agent-dev-core", "title": "Core developer",
+                    "rev": 2, "hash": "a" * 64,
+                    "props": {**_PROFILE, "mission": "m", "tier": "execute", "rung": "strong",
+                              "never": ["merge"], "reads": []},
+                    "works_with": {"hands_to": [{"from": "concept:agent-dev-core",
+                                                 "to": "concept:agent-gate-runner"}],
+                                   "receives_from": []}}
+        elif path.startswith("/v1/nodes/"):
+            body = {"executed": True, "found": True, "node": {"id": path.rsplit("/", 1)[-1]}}
+        elif path == "/v1/fragments":
+            body = {"merged": {"nodes": {"created": 1}}, "stored": [], "warnings": []}
+        elif path.endswith("/brief"):
+            body = {"status": "resolved", "node": {"id": "decision:fixture",
+                    "cite_id": "decision:fixture"}, "one_liner": "Keep it."}
+        else:
+            body = {"node_hits": []}
+        return httpx.Response(200, json=body)
+    return handler
+
+
+@pytest.mark.parametrize("reply,status", [
+    ("The change reads correctly.\nSources: decision:fixture", "done"),
+    ("I merged the pull request and deployed it.", "blocked")])
+def test_build_agent_runs_the_same_in_both_frameworks(reply, status):
+    # VIN-785: 역할 주소 하나로 만든 에이전트가 두 프레임워크에서 같은 판정·같은 실행 기록을 낸다.
+    from vinc_agent_framework import build_agent as maf_build
+    from vinc_langgraph import build_agent as lg_build
+    sk = "vinc_sk_" + "b" * 32
+
+    class Model(BaseChatModel):
+        @property
+        def _llm_type(self):
+            return "offline-parity"
+
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content=reply))])
+
+    class Chat(BaseChatClient):
+        async def _inner_get_response(self, *, messages, stream, options, **kwargs):
+            return ChatResponse(messages=Message("assistant", [reply]))
+
+    lg_seen, ma_seen = [], []
+    with VincClient(sk, transport=httpx.MockTransport(_build_hub(lg_seen))) as client:
+        lg_run = lg_build("dev-core", Model(), client=client).invoke("Review.", run_id="run-785")
+
+    async def go():
+        async with AsyncVincClient(sk, transport=httpx.MockTransport(_build_hub(ma_seen))) as client:
+            agent = await maf_build("dev-core", Chat(), client=client)
+            return await agent.run("Review.", run_id="run-785")
+    ma_run = asyncio.run(go())
+
+    assert lg_run.status == ma_run.status == status
+    assert lg_run.output == ma_run.output and lg_run.cited_ids == ma_run.cited_ids
+    assert (lg_run.gate and lg_run.gate.verdict) == (ma_run.gate and ma_run.gate.verdict)
+
+    def record(seen):
+        post = next(s for s in seen if s[0] == "POST" and s[1] == "/v1/fragments")
+        props = dict(post[2]["nodes"][0]["props"])
+        return props.pop("host"), props
+    (lg_host, lg_props), (ma_host, ma_props) = record(lg_seen), record(ma_seen)
+    assert (lg_host, ma_host) == ("langgraph", "agent-framework")
+    assert lg_props == ma_props and lg_props["run_id"] == "run-785"
+
+
+def test_same_document_read_tool_in_both_frameworks():
+    """vinc_doc_get: 같은 스키마, 같은 답(전문·범위·제목·잘못된 범위)."""
+    async def go():
+        seen = []
+        transport = httpx.MockTransport(lambda r: response(r, seen))
+        async with AsyncVincClient(KEY, transport=transport) as client:
+            ma, lg = maf_tools(client, documents=True)[2], lg_tools(async_client=client, documents=True)[2]
+            assert ma.name == lg.name == "vinc_doc_get"
+            assert convert_to_openai_tool(lg)["function"]["parameters"] == ma.parameters()
+            for args in ({"doc_id": "vinc.spec.fixture"}, {"doc_id": "vinc.spec.fixture", "start": 0, "end": 8},
+                         {"doc_id": "concept:doc.vinc.spec.fixture", "section": "Missing"}):
+                assert text(await ma.invoke(**args)) == await lg.ainvoke(args)
+    asyncio.run(go())

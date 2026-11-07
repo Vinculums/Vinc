@@ -12,7 +12,15 @@ class MutationConflict(ValueError):
                   else "query_failed" if code.endswith("unavailable") else "unsupported_kind"
                   if code.endswith("not_supported") else "invalid_request")
         self.result = {"executed": False, "error": code, "status": status, **details}
+        if code == "write_conflict":
+            # 응답이 다음 할 일을 말한다(도구 설명은 짧은 요약이다).
+            # 근거: [[decision:mcp-tool-descriptions-are-short-summaries-with-a-docs-link]]
+            self.result["hint"] = WRITE_CONFLICT_HINT
         super().__init__(code)
+
+
+WRITE_CONFLICT_HINT = ("Nothing was changed: the stored version is not the one you read, or the id already "
+                       "exists. Read it again, merge your change, and resend with the current rev or hash.")
 
 
 def merge_patch(current, patch):

@@ -14,6 +14,8 @@ import re
 import shutil
 from pathlib import Path
 
+from . import canon
+
 # 세대 루트 안의 번호 붙은 항목 전부(표식·임시 표식·세대·stage).
 _ENTRY = re.compile(r"(?:commit|stage-commit|generation|stage)-(\d+)(?:\.json)?")
 
@@ -23,13 +25,8 @@ class GenerationError(RuntimeError):
 
 
 def _digest(path: Path) -> dict[str, int | str]:
-    h = hashlib.sha256()
-    size = 0
-    with path.open("rb") as src:
-        for block in iter(lambda: src.read(1024 * 1024), b""):
-            size += len(block)
-            h.update(block)
-    return {"size": size, "sha256": h.hexdigest()}
+    sha, size = canon.file_sha256_size(path)
+    return {"size": size, "sha256": sha}
 
 
 def _live_digest(path: Path) -> dict[str, int | str]:

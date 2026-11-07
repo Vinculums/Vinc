@@ -340,12 +340,12 @@ class IdleTick(_Enabled):
 
 
 class WriterFence(_Enabled):
-    """배포 중 되살아난 구 리비전이 **새 리비전 뒤에** 영속본을 덮지 못하는가.
+    """배포 중 구 리비전의 늦은 스냅샷이 **새 리비전 뒤에** 영속본을 덮지 못하는가.
 
-    ACA 는 단일 리비전 모드의 롤링 전환에서 방금 내린 구 리비전을 다시 띄우고, 그것은
-    1분쯤 뒤 종료 훅에서 최종 스냅샷을 쓴다. 번호가 큰 리비전이 자격을 가져갔으면
-    번호가 작은 쪽의 저장은 영속본을 건드리지 않아야 한다.
-    근거: [[record:aca-reboots-the-stopped-hub-revision-during-every-deploy-and-it-writes-a-late-final-snapshot-2026-09-25]]
+    배포 중에는 두 리비전이 겹쳐 살고, 인계가 어긋나면 구 리비전의 최종 스냅샷이 새
+    리비전이 자격을 가져간 뒤에 온다. 번호가 큰 리비전이 자격을 가져갔으면 번호가
+    작은 쪽의 저장은 영속본을 건드리지 않아야 한다.
+    근거: [[decision:the-hub-hands-the-writer-over-at-boot-instead-of-stopping-the-old-revision-2026-10-17]]
     """
     OLD, NEW = "vinc-hub--0000230", "vinc-hub--0000231"
 
@@ -435,3 +435,79 @@ class WriterFence(_Enabled):
         self._as(self.OLD)
         self.assertIsNone(persistence.newer_writer())
         self.assertEqual(self._save(b"GEN1"), "ok")
+
+
+class ReplicaFence(_Enabled):
+    """같은 리비전의 레플리카 둘(재시작의 겹침). 표식은 ``<리비전>@<레플리카>`` 다.
+
+    넘김을 본 새 레플리카는 표식을 덮어쓰고, 그 뒤 옛 레플리카의 스냅샷은 막힌다.
+    레플리카를 모르는 쪽(옛 표식)과는 예전처럼 가르지 않는다."""
+    REV = "vinc-hub--0000452"
+    A, B = REV + "@vinc-hub--0000452-aaa", REV + "@vinc-hub--0000452-bbb"
+
+    def setUp(self):
+        super().setUp()
+        saved = {k: os.environ.get(k) for k in (persistence.REVISION_ENV, persistence.REPLICA_ENV)}
+
+        def restore():
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        self.addCleanup(restore)
+
+    def _save(self, payload: bytes) -> str:
+        Path(self.live).write_bytes(payload)
+        return persistence.save_snapshot(_FakeStore(self.live))
+
+    def _marker(self) -> str:
+        return Path(self.snap + persistence.WRITER_SUFFIX).read_text(encoding="utf-8").strip()
+
+    def _as_replica(self, identity):
+        rev, _, rep = identity.partition("@")
+        os.environ[persistence.REVISION_ENV] = rev
+        if rep:
+            os.environ[persistence.REPLICA_ENV] = rep
+        else:
+            os.environ.pop(persistence.REPLICA_ENV, None)
+
+    def test_identity_carries_the_replica(self):
+        self._as_replica(self.A)
+        self.assertEqual(persistence.writer_identity(), self.A)
+        self._as_replica(self.REV)
+        self.assertEqual(persistence.writer_identity(), self.REV)
+
+    def test_the_new_replica_takes_over_and_the_old_one_is_fenced(self):
+        self._as_replica(self.A)
+        self.assertEqual(persistence.claim_writer(), "claimed")
+        self.assertEqual(self._save(b"FINAL-OF-A"), "ok")
+        self._as_replica(self.B)
+        self.assertEqual(persistence.claim_writer(), "claimed", "넘김 뒤의 새 레플리카는 자격을 가져간다")
+        self.assertEqual(self._marker(), self.B)
+        self.assertEqual(self._save(b"B1"), "ok")
+        self._as_replica(self.A)
+        self.assertEqual(self._save(b"LATE-A"), f"fenced: {self.B}")
+        self.assertEqual(Path(self.snap).read_bytes(), b"B1")
+
+    def test_a_marker_without_a_replica_is_not_told_apart(self):
+        Path(self.snap + persistence.WRITER_SUFFIX).write_text(self.REV + "\n", encoding="utf-8")
+        self._as_replica(self.B)
+        self.assertIsNone(persistence.newer_writer(), "옛 표식과 같은 리비전은 가르지 않는다")
+        self.assertEqual(persistence.claim_writer(), "claimed")
+        self.assertEqual(self._marker(), self.B)
+
+    def test_a_newer_revision_still_fences_every_replica_of_the_old_one(self):
+        self._as_replica(self.A)
+        persistence.claim_writer()
+        self._as_replica("vinc-hub--0000453@vinc-hub--0000453-ccc")
+        self.assertEqual(persistence.claim_writer(), "claimed")
+        self._as_replica(self.B)
+        self.assertEqual(persistence.claim_writer(), "fenced: vinc-hub--0000453@vinc-hub--0000453-ccc")
+
+    def test_displaces(self):
+        self.assertTrue(persistence.displaces(self.B, self.A))
+        self.assertFalse(persistence.displaces(self.A, self.A))
+        self.assertFalse(persistence.displaces(self.REV, self.A))
+        self.assertTrue(persistence.displaces("vinc-hub--0000453", self.A))
+        self.assertFalse(persistence.displaces("vinc-hub--0000451@x", self.A))

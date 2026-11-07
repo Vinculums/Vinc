@@ -28,6 +28,7 @@ from . import revstamp
 from . import syncmerge
 from . import query as q
 from store import pkns
+from store import embedded_schema as _es
 
 # 청크 상한 — 원격 `MAX_BODY`(4MB, vinc_mcp/http_server.py)보다 넉넉히 아래.
 # 초과 시 서버가 빈 바디로 400 을 내므로 조용히 실패한다 → 여유를 크게 둔다.
@@ -37,15 +38,15 @@ _SEL_KEY = "selected_domains"
 
 # ── 동기화 필드(=merge_fragment 가 실제로 왕복시키는 것만, S3) ─────────────────
 # 급소: **fragment 가 왕복시키는 필드만** 나른다 — 그 밖의 필드(Concept 의 topic·
-# one_liner·status·stem, Episode 의 pinned)는 동기화하면 유실된다
-# ([[vinc.spec.dataplane §6.1]]).
+# status·stem, Episode 의 pinned)는 동기화하면 유실된다([[vinc.spec.dataplane §6.1]]).
+# Concept 의 one_liner 와 Episode 의 props 는 fragment 가 왕복시키므로 여기 든다.
 # ⚠ 열이 있는 라벨에만 넣을 것 — 없는 라벨에 넣으면 `_local_snapshot` 의 SELECT 가
 # Binder 로 죽는다(`content_time` 은 Concept 에만 있다).
 # ⚠ `created`(출생)는 여기 넣지 않는다 — 3-way 병합 대상이 아니고 규칙이 다르다
 # (`_reconcile_birth` — 가장 이른 값이 이긴다 · [[vinc.plan.sync-node-time-fields]]).
 SYNC_FIELDS: dict[str, tuple[str, ...]] = {
-    "Concept": ("title", "domain", "tags", "props", "content_time"),
-    "Episode": ("title", "date", "domain", "summary", "tags"),
+    "Concept": ("title", "domain", "tags", "props", "content_time", "one_liner"),
+    "Episode": ("title", "date", "domain", "summary", "tags", "props"),
     # Record — 라이브 실측 277건으로 **노드 종류 중 최대**인데 여기 없어서 기기와
     # 계정 사이를 통째로 못 오갔다. Bridge·Entity 제외는 아래 스코프 결정이지만
     # Record 는 그 문장에도 없었다: 빠진 줄 아무도 몰랐다는 뜻이다.
@@ -68,6 +69,15 @@ _SYNC_TYPES = {"concept": "Concept", "episode": "Episode", "decision": "Decision
 _SYNC_LABELS = tuple(_SYNC_TYPES.values())
 #: 라벨 → PK 열. fragment 의 타입 표에서 파생한다(중복 정의 회피).
 _SYNC_PK = {lbl: frag._NODE_MAP[t][1] for t, lbl in _SYNC_TYPES.items()}
+#: 나중에 SYNC_FIELDS 에 든 필드. 이 필드를 모르는 구버전 클라이언트의 번들에는 **키가 없다**.
+#: 키가 없는 것을 "원격이 비웠다"로 읽으면 3-way 병합이 받는 쪽 값을 지우므로,
+#: apply 는 키가 없으면 그 필드를 말하지 않은 것으로 본다(`apply_delta`).
+_LATE_SYNC_FIELDS: dict[str, tuple[str, ...]] = {"Concept": ("one_liner",),
+                                                 "Episode": ("props",)}
+#: 근거 열이 ALTER 기본값(''·0.0)으로 붙은 rel(v3 의 다섯, v16 의 ATTACHES_TO). 열이 붙기
+#: 전부터 있던 행의 그 값은 "모름"이라 실어 보내면 받는 쪽의 실제 근거·신뢰도를 덮는다. 그래서 값이 있을
+#: 때만 싣는다. RETURNS_TO·SUPERSEDES 는 열과 함께 만들어져 0.0 도 저작한 값이다.
+_DEFAULTED_EVIDENCE_RELS = frozenset((*_es._EVIDENCE_RELS, "ATTACHES_TO"))
 
 
 def _snapshot(label: str, node: dict) -> dict:
@@ -358,6 +368,7 @@ def _episodes_delta_plan(*, owner: str, domains: list[str] | None, since: int) -
         f"MATCH (e:Episode) WHERE {' AND '.join(where)} "
         "RETURN e.episode_id AS id, e.title AS title, e.domain AS domain, "
         "e.date AS date, e.summary AS summary, e.tags AS tags, e.pinned AS pinned, "
+        "e.props AS props, "
         "e.updated_at AS updated_at, e.rev AS rev, e.sync_seq AS sync_seq "
         "ORDER BY e.sync_seq"
     )
@@ -403,50 +414,44 @@ def _records_delta_plan(*, owner: str, domains: list[str] | None, since: int) ->
     return q.QueryPlan("sync_records", cypher, params, note="owner+domain scoped delta")
 
 
+def _row_props(r: dict) -> dict:
+    """저장된 props JSON 을 dict 로. 비었거나 깨졌으면 빈 dict."""
+    if not r.get("props"):
+        return {}
+    try:
+        return json.loads(r["props"]) or {}
+    except (TypeError, ValueError):
+        return {}
+
+
 def _node_from_concept(r: dict) -> dict:
-    # sync 는 **raw props** 만 나른다(topic/one_liner 는 fragment 왕복 불가라 폴딩 안 함).
-    props = {}
-    if r.get("props"):
-        try:
-            props = json.loads(r["props"]) or {}
-        except (TypeError, ValueError):
-            props = {}
+    # sync 는 **raw props** 만 나른다(topic 은 fragment 왕복 불가라 폴딩 안 함).
     return {"id": r["id"], "type": "concept", "title": r.get("title") or r["id"],
             "domain": r.get("domain") or "", "tags": list(r.get("tags") or []),
-            "props": props,
+            "props": _row_props(r),
             # 내용 시점은 **본문**으로(3-way 병합 대상), 출생은 **스탬프**로(_ 접두 —
             # 병합하지 않고 `_reconcile_birth` 가 따로 처리한다).
             "content_time": r.get("content_time") or "",
+            # 키를 늘 싣는다. 빠지면 받는 쪽 fragment 가 props.note 를 승격해 값이 갈린다.
+            "one_liner": r.get("one_liner") or "",
             "_rev": int(r.get("rev") or 0), "_updated_at": r.get("updated_at") or "",
             "_created": r.get("created") or "",
             "_seq": int(r.get("sync_seq") or 0)}
 
 
 def _node_from_decision(r: dict) -> dict:
-    props = {}
-    if r.get("props"):
-        try:
-            props = json.loads(r["props"]) or {}
-        except (TypeError, ValueError):
-            props = {}
     return {"id": r["id"], "type": "decision", "title": r.get("title") or r["id"],
             "domain": r.get("domain") or "", "tags": list(r.get("tags") or []),
-            "props": props,
+            "props": _row_props(r),
             "_rev": int(r.get("rev") or 0), "_updated_at": r.get("updated_at") or "",
             "_created": r.get("created") or "",
             "_seq": int(r.get("sync_seq") or 0)}
 
 
 def _node_from_record(r: dict) -> dict:
-    props = {}
-    if r.get("props"):
-        try:
-            props = json.loads(r["props"]) or {}
-        except (TypeError, ValueError):
-            props = {}
     return {"id": r["id"], "type": "record", "title": r.get("title") or r["id"],
             "domain": r.get("domain") or "", "tags": list(r.get("tags") or []),
-            "props": props,
+            "props": _row_props(r),
             "content_time": r.get("content_time") or "",
             # v15(W13) — 유효구간도 본문이다(content_time 과 같은 신분 — 3-way
             # 병합 대상. 출생 _created 처럼 스탬프가 아니다).
@@ -461,6 +466,7 @@ def _node_from_episode(r: dict) -> dict:
     return {"id": r["id"], "type": "episode", "title": r.get("title") or r["id"],
             "domain": r.get("domain") or "", "tags": list(r.get("tags") or []),
             "date": r.get("date"), "summary": r.get("summary"),
+            "props": _row_props(r),
             "_rev": int(r.get("rev") or 0), "_updated_at": r.get("updated_at") or "",
             "_seq": int(r.get("sync_seq") or 0)}
 
@@ -525,10 +531,11 @@ def export_delta(*, owner: str, since: int = 0, domains: list[str] | None = None
         # 무변경 — merge_fragment 가 타입에서 라우팅한다.
         extra_rows: list[dict] = []
         for pair in _EXTRA_EDGE_PAIRS:
-            res = q.execute(_extra_edges_plan(sorted(ids), owner=owner, pair=pair),
-                            cfg, store=store)
-            if res.get("executed"):
-                extra_rows.extend(res.get("rows", []))
+            for rels in _extra_rel_groups(pair):
+                res = q.execute(_extra_edges_plan(sorted(ids), owner=owner, pair=pair,
+                                                  rels=rels), cfg, store=store)
+                if res.get("executed"):
+                    extra_rows.extend(res.get("rows", []))
         # Record 엣지는 타입이 라벨이 아니라 `r.type` 에 있다(_record_edges_plan).
         # 이미 fragment 타입이므로 아래 역맵을 태우지 않고 `ftype` 으로 바로 들어간다.
         for pair in _RECORD_EDGE_PAIRS:
@@ -555,12 +562,9 @@ def export_delta(*, owner: str, since: int = 0, domains: list[str] | None = None
             e = {"from": r["id"], "to": tgt, "type": ftype}
             if r.get("edge_created"):
                 e["created"] = r["edge_created"]
-            if ftype in ("returns_to", "supersedes"):
-                # 반려 경로는 근거가 필수다. 동기화가 근거를 버리면 수신측이
-                # 동일 엣지를 다시 적재할 수 없으므로 두 필드를 함께 보존한다.
-                for field in ("evidence", "confidence"):
-                    if r.get(field) is not None:
-                        e[field] = r[field]
+            # 근거·신뢰도는 열을 가진 모든 rel 에서 나른다. 반려·대체는 근거가 필수라
+            # 빠지면 받는 쪽이 같은 엣지를 다시 적재하지 못한다.
+            e.update(_edge_signal(r))
             edges.append(e)
 
     # 삭제 표식(S4) — 노드와 같은 커서 공간(sync_seq). 도메인 스코프는 없다(삭제된
@@ -628,15 +632,16 @@ def _record_edges_plan(ids: list[str], *, owner: str, pair: tuple) -> "q.QueryPl
 
     `label(r)` 대신 **`r.type`** 을 fragment 타입으로 돌려준다 — 저장할 때 원 타입을
     거기 보존했으므로 복원도 거기서 한다. 라벨을 명시(`[r:ATTACHES_TO]`)하는 이유는
-    `_extra_edges_plan` 처럼 무타입으로 열면 `r.type` 열이 없는 rel 테이블까지 걸려
-    Binder 가 죽기 때문이다."""
+    무타입으로 열면 `r.type` 열이 없는 rel 테이블까지 걸려 Binder 가 죽기 때문이다."""
     dl, dp = pair
     cypher = (
         f"MATCH (a:Record)-[r:ATTACHES_TO]->(b:{dl}) "
         f"WHERE a.record_id IN $ids AND b.{dp} IN $ids "
         "AND a.owner_id = $owner AND b.owner_id = $owner "
         f"RETURN a.record_id AS id, r.type AS ftype, b.{dp} AS target, "
-        "r.created AS edge_created"
+        "'ATTACHES_TO' AS rel, r.created AS edge_created, "
+        # v16 — ATTACHES_TO 도 근거 열을 갖는다(`_edge_signal` 이 기본값을 거른다).
+        "r.evidence AS evidence, r.confidence AS confidence"
     )
     return q.QueryPlan(f"sync_edges_Record_{dl}", cypher,
                        {"ids": pkns.keys(owner, ids), "owner": owner},
@@ -659,6 +664,7 @@ def _supersedes_edges_plan(ids: list[str], *, owner: str, pair: tuple) -> "q.Que
         f"WHERE a.{pk} IN $ids AND b.{pk} IN $ids "
         "AND a.owner_id = $owner AND b.owner_id = $owner "
         f"RETURN a.{pk} AS id, 'supersedes' AS ftype, b.{pk} AS target, "
+        "'SUPERSEDES' AS rel, "
         "r.created AS edge_created, r.evidence AS evidence, r.confidence AS confidence"
     )
     return q.QueryPlan(f"sync_edges_supersedes_{lbl}", cypher,
@@ -666,21 +672,53 @@ def _supersedes_edges_plan(ids: list[str], *, owner: str, pair: tuple) -> "q.Que
                        note=f"{lbl}->{lbl} SUPERSEDES edges for sync bundle")
 
 
-def _extra_edges_plan(ids: list[str], *, owner: str, pair: tuple) -> "q.QueryPlan":
+def _pair_rels(pair: tuple) -> tuple[str, ...]:
+    """끝점 조합 하나에 걸리는 동기화 rel. 스키마에서 파생한 `q.SYNC_EDGE_RELS` 로 고른다."""
+    return tuple(sorted(rel for rel in _REL_TO_FRAGMENT
+                        if pair in q.SYNC_EDGE_RELS.get(rel, ())))
+
+
+def _extra_rel_groups(pair: tuple) -> list[tuple[str, ...]]:
+    """근거 열이 있는 rel 과 없는 rel 을 나눈다. 한 패턴 안에 둘이 섞이면 근거 열을
+    투영할 수 없어서다(없는 열을 읽으면 Binder 로 죽는다)."""
+    rels = _pair_rels(pair)
+    ev = tuple(r for r in rels if r in _es.EDGE_EVIDENCE_RELS)
+    plain = tuple(r for r in rels if r not in _es.EDGE_EVIDENCE_RELS)
+    return [g for g in (ev, plain) if g]
+
+
+def _edge_signal(r: dict) -> dict:
+    """행의 근거·신뢰도 중 실어 보낼 값만. 기본값을 받은 rel 의 빈 값은 "모름"이라 뺀다."""
+    out: dict = {}
+    defaulted = (r.get("rel") or "") in _DEFAULTED_EVIDENCE_RELS
+    for field in ("evidence", "confidence"):
+        v = r.get(field)
+        if v is None or (defaulted and not v):
+            continue
+        out[field] = v
+    return out
+
+
+def _extra_edges_plan(ids: list[str], *, owner: str, pair: tuple,
+                      rels: tuple[str, ...] | None = None) -> "q.QueryPlan":
     """번들 내 비-(Concept→Concept) 엣지. 양끝 모두 번들 id 집합 + owner 스코프.
 
-    rel 라벨을 좁히지 않고 `label(r)` 로 뽑는다 — 동기화 대상 여부는 호출부의
-    `_REL_TO_FRAGMENT` 가 가린다(IN_DOMAIN 처럼 매핑 없는 것은 거기서 떨어진다).
+    rel 라벨을 **명시한다**(기본은 그 조합의 동기화 rel 전부). 라벨을 열어 두면 근거 열이
+    없는 rel 까지 걸려 `r.evidence` 를 읽을 수 없다. 그래서 근거 열은 묶음 안의 rel 이 전부
+    그 열을 가질 때만 투영한다(`_extra_rel_groups` 가 묶음을 그렇게 나눈다).
     삭제 전파는 엣지 툼스톤(_EdgeTombstone, S4 확장)이 담당."""
     sl, sp, dl, dp = pair
+    rels = rels or _pair_rels(pair)
+    ev = all(rel in _es.EDGE_EVIDENCE_RELS for rel in rels)
     cypher = (
-        f"MATCH (a:{sl})-[r]->(b:{dl}) "
+        f"MATCH (a:{sl})-[r:{'|'.join(rels)}]->(b:{dl}) "
         f"WHERE a.{sp} IN $ids AND b.{dp} IN $ids "
         "AND a.owner_id = $owner AND b.owner_id = $owner "
         f"RETURN a.{sp} AS id, label(r) AS rel, b.{dp} AS target, "
         # v14 — 엣지 출생도 나른다. 안 실으면 수신측에서 그 엣지는 신규라
         # **그 기기 시각으로 다시 태어난다** — 노드에서 방금 고친 것과 같은 병이다.
         "r.created AS edge_created"
+        + (", r.evidence AS evidence, r.confidence AS confidence" if ev else "")
     )
     return q.QueryPlan(f"sync_edges_{sl}_{dl}", cypher,
                        {"ids": pkns.keys(owner, ids), "owner": owner},
@@ -691,7 +729,8 @@ def _extra_edges_plan(ids: list[str], *, owner: str, pair: tuple) -> "q.QueryPla
 def chunk_bundle(bundle: dict, *, limit: int = CHUNK_BYTES) -> list[dict]:
     """번들을 전송 가능한 크기로 쪼갠다. **각 청크는 자기완결** — 엣지는 양끝 노드가
     같은 청크에 있을 때만 싣는다(수신측 fragment 가 payload 내 노드로만 타입 해석).
-    끝점이 갈라진 엣지는 마지막 청크에 양끝 노드를 다시 실어 함께 보낸다."""
+    끝점이 갈라졌거나 자리가 모자란 엣지는 뒤쪽 넘침 청크에 양끝 노드를 다시 실어
+    함께 보낸다. 노드 하나가 상한보다 크지 않은 한 어느 청크도 상한을 넘지 않는다."""
     nodes = bundle.get("nodes") or []
     edges = bundle.get("edges") or []
     tombs = bundle.get("tombstones") or []
@@ -703,34 +742,59 @@ def chunk_bundle(bundle: dict, *, limit: int = CHUNK_BYTES) -> list[dict]:
         return [{"nodes": [], "edges": edges, "tombstones": tombs,
                  "edge_tombstones": etombs}]
 
+    def _bytes(x: dict) -> int:
+        return len(json.dumps(x, ensure_ascii=False).encode("utf-8"))
+
     by_id = {n["id"]: n for n in nodes}
     chunks: list[dict] = []
+    sizes: list[int] = []
     cur: list[dict] = []
     size = 0
     for n in nodes:
-        b = len(json.dumps(n, ensure_ascii=False).encode("utf-8"))
+        b = _bytes(n)
         if cur and size + b > limit:
             chunks.append({"nodes": cur, "edges": []})
+            sizes.append(size)
             cur, size = [], 0
         cur.append(n)
         size += b
     if cur:
         chunks.append({"nodes": cur, "edges": []})
+        sizes.append(size)
 
     # 엣지를 양끝이 함께 든 청크에 배치; 갈라진 엣지는 별도 청크(양끝 노드 동봉).
+    # 엣지 바이트도 상한에 센다. 근거 문장이 실리므로 노드만 세면 청크가 상한을 넘는다.
     placed = set()
-    for ch in chunks:
+    for i, ch in enumerate(chunks):
         have = {n["id"] for n in ch["nodes"]}
         for e in edges:
             k = (e["from"], e["type"], e["to"])
-            if k not in placed and e["from"] in have and e["to"] in have:
-                ch["edges"].append(e)
-                placed.add(k)
+            if k in placed or e["from"] not in have or e["to"] not in have:
+                continue
+            b = _bytes(e)
+            if sizes[i] + b > limit:
+                continue                      # 넘치면 아래 넘침 청크로 간다
+            ch["edges"].append(e)
+            sizes[i] += b
+            placed.add(k)
     spill = [e for e in edges if (e["from"], e["type"], e["to"]) not in placed]
-    if spill:
-        need = {e["from"] for e in spill} | {e["to"] for e in spill}
-        chunks.append({"nodes": [by_id[i] for i in sorted(need) if i in by_id],
-                       "edges": spill})
+    # 넘침 청크도 상한을 지킨다: 엣지와 아직 안 실은 끝점 노드를 함께 세어 넘으면 새 청크.
+    s_ids: set[str] = set()
+    s_edges: list[dict] = []
+    size = 0
+    for e in spill:
+        ends = {i for i in (e["from"], e["to"]) if i in by_id}
+        b = _bytes(e) + sum(_bytes(by_id[i]) for i in ends - s_ids)
+        if s_edges and size + b > limit:
+            chunks.append({"nodes": [by_id[i] for i in sorted(s_ids)], "edges": s_edges})
+            s_ids, s_edges = set(), []
+            b = _bytes(e) + sum(_bytes(by_id[i]) for i in ends)
+            size = 0
+        s_ids |= ends
+        s_edges.append(e)
+        size += b
+    if s_edges:
+        chunks.append({"nodes": [by_id[i] for i in sorted(s_ids)], "edges": s_edges})
     # tombstone(노드·엣지)은 작아 첫 청크에 전부 싣는다(한 번만 적용되게).
     if tombs:
         chunks[0]["tombstones"] = tombs
@@ -844,8 +908,15 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         if not nid or not label:
             out["warnings"].append(f"unsupported node — skipped ({nid or '?'})")
             continue
+        if frag.prefix_mismatch(ntype, nid):
+            # 기기에 남은 사본이 push-all 로 허브에 되살아나지 않게 한다. 묘비·base 를
+            # 건드리기 전에 거른다(둘 다 키가 node_id 하나라 살아 있는 행의 것을 덮는다).
+            out["warnings"].append(f"type disagrees with id prefix: skipped ({nid})")
+            continue
         pk = frag._NODE_MAP[ntype][1]
         remote_snap = _snapshot(label, n)
+        # 구버전 클라이언트가 모르는 필드는 키가 없다. 비운 것이 아니라 말하지 않은 것이다.
+        unstated = [f for f in _LATE_SYNC_FIELDS.get(label, ()) if f not in n]
         r_rev, r_ua = int(n.get("_rev") or 0), n.get("_updated_at") or ""
 
         # 부활 가드(S4): 로컬 tombstone 이 인바운드 편집보다 **새롭거나 같으면** 삭제가
@@ -869,6 +940,8 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         local = _local_snapshot(store, label, pk, nid, owner)
 
         if local is None:                       # 신규 — 원격 그대로, 스탬프 보존
+            for f in unstated:                  # 쓰지 않는다(fragment 의 기존 규칙에 맡긴다)
+                remote_snap.pop(f, None)
             writes.append({"node": _merged_fragment_node(label, nid, ntype, remote_snap),
                            "ua": r_ua, "rev": r_rev})
             base_updates.append((nid, label, remote_snap, r_rev, r_ua))
@@ -880,8 +953,26 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         # 으로 취급돼 값이 다르면 필드별 LWW. dict(local) 로 두면 push 후·pull 전 로컬
         # 편집이 조상에 섞여 유실된다(그 편집이 원격과 충돌 시). 빈 조상이 안전측.
         base_fields = base["fields"] if base else {}
+        for f in unstated:
+            # 말하지 않은 필드는 base 와 같게 둔다 → 원격 변경 없음 → 로컬 값이 남는다.
+            # base 에도 없으면 빼서 base 의 "모름"을 그대로 둔다.
+            if f in base_fields:
+                remote_snap[f] = base_fields[f]
+            else:
+                remote_snap.pop(f, None)
+        # base 가 늦게 든 필드의 키를 모르면(그 필드가 동기화되기 전의 조상) 빈 값은
+        # "비웠다"가 아니라 "아직 못 받았다"다. 그 필드를 나르지 않던 동기화 탓에 한쪽만 빈 채로 남은
+        # 것이므로 찬 쪽을 남긴다. 저장할 base 는 원격 값 그대로 둔다(아래 base_updates).
+        merge_base, merge_remote = base_fields, remote_snap
+        for f in _LATE_SYNC_FIELDS.get(label, ()):
+            if f in base_fields or f not in remote_snap:
+                continue
+            if not remote_snap[f]:
+                merge_remote = {**merge_remote, f: local.get(f)}
+            elif not local.get(f):
+                merge_base = {**merge_base, f: local.get(f)}
         remote_newer = syncmerge.node_remote_newer(l_rev, l_ua, r_rev, r_ua, nid)
-        merged, conflicts = syncmerge.three_way(base_fields, local, remote_snap,
+        merged, conflicts = syncmerge.three_way(merge_base, local, merge_remote,
                                                 remote_newer=remote_newer)
 
         if not syncmerge.maps_equal(merged, local):

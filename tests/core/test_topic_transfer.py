@@ -17,7 +17,7 @@ from store.embedded_schema import (
     SCHEMA_VERSION, meta_table_specs, node_table_specs, render_embedded_ddl,
 )
 from store.topic_transfer import (
-    TransferRefused, _apply_rehearsal, _restore_rehearsal, fingerprint, plan_transfer,
+    TransferRefused, _apply_rehearsal, fingerprint, plan_transfer,
     read_snapshot, transformed_snapshot,
 )
 
@@ -125,10 +125,14 @@ def test_incoming_document_successor_blocks():
     assert any(b.startswith("incoming_reference:") for b in plan(data).blockers)
 
 
-def test_outgoing_wiki_reference_in_native_title_blocks():
+def test_outgoing_wiki_reference_in_native_title_is_preserved_and_counted():
     data = seed()
     data["nodes"]["Concept"][0]["title"] = "See [[" + "concept:other" + "]]"
-    assert "external_reference:concept:other" in plan(data).blockers
+    p = plan(data)
+    assert p.ready, p.blockers
+    assert "external_reference:concept:other" in p.preserved
+    after = transformed_snapshot(data, p, stamp=STAMP)
+    assert after["nodes"]["Concept"][0]["title"] == "See [[" + "concept:other" + "]]"
 
 
 def test_wiki_aliases_retain_the_target_identity():
@@ -136,7 +140,7 @@ def test_wiki_aliases_retain_the_target_identity():
     data["nodes"]["Concept"][0]["title"] = "[[concept:b|Inside]]"
     assert plan(data).ready
     data["nodes"]["Concept"][0]["title"] = "[[concept:other|Outside]]"
-    assert "external_reference:concept:other" in plan(data).blockers
+    assert "external_reference:concept:other" in plan(data).preserved
 
 
 def test_other_owner_logical_alias_is_not_a_source_dependency():
@@ -239,7 +243,7 @@ def test_subtree_only_and_all_payload_fields_preserved():
 
 
 @pytest.mark.parametrize("problem", ["outgoing", "incoming", "shared_doc", "foreign_doc", "bridge",
-                                    "integrity", "attachments", "reference", "rejection", "tombstone",
+                                    "integrity", "attachments", "managed_resource", "rejection", "tombstone",
                                     "nonempty", "metadata", "extra_column", "missing_table", "conventions"])
 def test_preflight_refuses_without_mutation(problem):
     data = seed()
@@ -258,9 +262,9 @@ def test_preflight_refuses_without_mutation(problem):
     elif problem == "integrity":
         data["nodes"]["Chunk"][0]["text"] += "broken"
     elif problem == "attachments":
-        data["nodes"]["Record"][0]["props"] = '{"attachments":["private/blob"]}'
-    elif problem == "reference":
-        data["nodes"]["Decision"][0]["props"] = '{"superseded_by":"decision:outside"}'
+        data["nodes"]["Record"][0]["props"] = '{"attachments":["blob:private"]}'
+    elif problem == "managed_resource":
+        data["nodes"]["Decision"][0]["props"] = '{"resource":"s3:private"}'
     elif problem == "rejection":
         specs = meta_table_specs()["_MergeRejection"]
         row = {c: None for c in specs["cols"]}
@@ -384,41 +388,6 @@ def test_native_resume_verifies_committed_payload(native):
         _apply_rehearsal(native, p, run_id="verify-resume", stamp=STAMP)
 
 
-def test_native_compensation_restores_original_and_cannot_replay_cancelled_run(native):
-    before = read_snapshot(native)
-    p = plan(before)
-    _apply_rehearsal(native, p, run_id="cancel", stamp=STAMP)
-    assert _restore_rehearsal(native, before, p, run_id="cancel", stamp=STAMP) == "restored"
-    current = read_snapshot(native)
-    current["meta"]["_SyncMeta"] = [r for r in current["meta"]["_SyncMeta"] if r["key"] != "topic-transfer:run:cancel"]
-    assert fingerprint(current) == fingerprint(before)
-    assert _restore_rehearsal(native, before, p, run_id="cancel", stamp=STAMP) == "already_restored"
-    with pytest.raises(TransferRefused, match="run_cancelled"):
-        _apply_rehearsal(native, p, run_id="cancel", stamp=STAMP)
-
-
-def test_native_compensation_failure_keeps_recoverable_committed_state(native):
-    before = read_snapshot(native)
-    p = plan(before)
-    _apply_rehearsal(native, p, run_id="compensation-failure", stamp=STAMP)
-    committed = fingerprint(read_snapshot(native))
-    with pytest.raises(RuntimeError, match="injected"):
-        _restore_rehearsal(native, before, p, run_id="compensation-failure", stamp=STAMP, fail_at="delete")
-    assert fingerprint(read_snapshot(native)) == committed
-    assert _restore_rehearsal(native, before, p, run_id="compensation-failure", stamp=STAMP) == "restored"
-
-
-def test_native_compensation_refuses_to_overwrite_subsequent_changes(native):
-    before = read_snapshot(native)
-    p = plan(before)
-    _apply_rehearsal(native, p, run_id="changed", stamp=STAMP)
-    native.run("MATCH (c:Concept) WHERE c.owner_id=$owner SET c.title='new edit'", {"owner": TARGET})
-    changed = fingerprint(read_snapshot(native))
-    with pytest.raises(TransferRefused, match="compensation_source_changed"):
-        _restore_rehearsal(native, before, p, run_id="changed", stamp=STAMP)
-    assert fingerprint(read_snapshot(native)) == changed
-
-
 def test_native_unknown_columns_refused_instead_of_dropped(native):
     native.run("ALTER TABLE Concept ADD unrecognized STRING DEFAULT 'kept'")
     with pytest.raises(TransferRefused, match="unsupported_schema_columns"):
@@ -516,25 +485,6 @@ def test_synthetic_account_prepare_verify_activate_and_resume(native, tmp_path):
     account.advance("saga", SOURCE, "verified")
     account.advance("saga", SOURCE, "active")
     assert account.visible("saga")
-    account.db.close()
-
-
-def test_synthetic_saga_keeps_team_unavailable_until_verifier_passes(native, tmp_path):
-    from api.topic_transfer_rehearsal import resume_rehearsal
-    account = SyntheticAccount(tmp_path / "coordinator-account.sqlite")
-    p = plan(read_snapshot(native))
-    with pytest.raises(TransferRefused, match="actor_not_source_owner"):
-        resume_rehearsal(native, account, p, actor="user:another", run_id="coordinator", stamp=STAMP,
-                         verify=lambda: True)
-    with pytest.raises(TransferRefused, match="activation_verification_failed"):
-        resume_rehearsal(native, account, p, actor=SOURCE, run_id="coordinator", stamp=STAMP,
-                         verify=lambda: False)
-    assert not account.visible("coordinator")
-    account.db.close()
-    account = SyntheticAccount(tmp_path / "coordinator-account.sqlite")
-    assert resume_rehearsal(native, account, p, actor=SOURCE, run_id="coordinator", stamp=STAMP,
-                            verify=lambda: True) == "active"
-    assert account.visible("coordinator")
     account.db.close()
 
 

@@ -18,6 +18,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from store import diagnostics, request_timing
+# 구현은 한 벌뿐이다(Windows 에서 `os.kill` 이 조회 대상을 죽인 사고의 기록은 그 파일에).
+from store.procutil import pid_alive as _pid_alive
 
 DEFAULT_BASE = "http://127.0.0.1:8787"
 # 로컬 스토어의 소유자는 하나다: 앱·fragment 기본값·profile.yml·PK 정규화 표가 모두
@@ -37,25 +39,6 @@ def _pick_free_port() -> int:
         return int(s.getsockname()[1])
     finally:
         s.close()
-
-
-def _pid_alive(pid: int) -> bool:
-    """pid 생존 여부(빠른 판정 — 최종 확인은 항상 /health). 불확실하면 True 로 두어
-    앱 사이드카를 함부로 무시하지 않는다(뒤의 health 가 걸러줌).
-
-    🔴 여기 `os.kill(pid, 0)` 사본이 있었다. POSIX 에서는 무해한 관용구지만
-    **Windows 의 `os.kill` 은 TerminateProcess** 라, 이 함수가 조회하는 pid
-    (= session.json 에 적힌 **앱 자신**)를 조회하는 순간 죽였다. `mcp serve` 기동이
-    곧 앱 사살이었고, 2026-08-18 실기에서 앱 기동 18회 중 17회가 그렇게 사라졌다.
-    구현은 `store/procutil.py` 한 벌만 남긴다(`vinc_mcp` 는 `api` 를 모르는 층이라
-    거기서 가져온다 — VIN-242).
-    """
-    try:
-        from store.procutil import pid_alive
-        return pid_alive(pid)
-    except Exception:
-        # 조회 자체가 불가능하면 살아 있다고 본다 — 뒤의 /health 가 최종 판정한다.
-        return True
 
 
 def _session_path() -> str | None:
@@ -197,15 +180,19 @@ class Bridge:
         finally:
             diagnostics.trace("GET", "/health", status, started, transport="attached")
 
-    def health_detail(self) -> dict | None:
+    def health_detail(self, *, live: bool = False) -> dict | None:
         """사이드카 `/health` **본문**(도달 실패면 None).
 
         :meth:`health` 는 도달성만 bool 로 돌려주는데, 사이드카가 싣는 진단
         (스토어 상태·임베딩 백로그)이 그 bool 안에서 통째로 버려진다. 허브의 공개
         `/health` 가 그것을 그대로 실어 밖에서 한 번의 curl 로 볼 수 있게 한다 —
-        임베딩 정체를 38시간 몰랐던 이유가 정확히 "밖에서 보이는 수치가 없어서"였다."""
+        임베딩 정체를 38시간 몰랐던 이유가 정확히 "밖에서 보이는 수치가 없어서"였다.
+
+        ``live=True`` 는 사이드카의 `/health?live=1` 을 부른다. 스토어를 읽지 않아 임베딩
+        백로그(`embed`)가 빠지고, 상태 판정·스냅샷처럼 메모리에 있는 값만 온다."""
         try:
-            with urllib.request.urlopen(self.base + "/health", timeout=3) as r:
+            with urllib.request.urlopen(
+                    self.base + ("/health?live=1" if live else "/health"), timeout=3) as r:
                 if r.status != 200:
                     return None
                 return json.loads(r.read().decode("utf-8"))

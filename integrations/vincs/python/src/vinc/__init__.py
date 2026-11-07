@@ -2,7 +2,7 @@
 from .sdk import *  # noqa: F403
 from .sdk import AsyncVincClient, VincClient, __all__ as _sdk_exports
 
-__version__ = "0.1.3"
+__version__ = "0.1.9"
 Vinc = VincClient
 AsyncVinc = AsyncVincClient
 __all__ = [*_sdk_exports, "Vinc", "AsyncVinc"]

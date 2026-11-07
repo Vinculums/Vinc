@@ -115,8 +115,7 @@ def _usage_assertion(seed=ACCT_SEED, raw=BODY, **over):
     return ev.sign_assertion(seed, body)
 
 
-_QCFG = {"free_limit": 2000, "team_limit": 6000, "window_s": 86400.0, "lock_s": 43200.0,
-         "exempt_owners": frozenset({"user:me"})}
+_QCFG = {"free_limit": 2000, "exempt_owners": frozenset({"user:me"})}
 T0 = 1_760_000_000.0
 
 
@@ -157,7 +156,8 @@ def test_usage_merges_graph_counts_with_the_current_window(app):
     # 노드가 없고 호출만 있는 소유자는 빈 graph
     assert rows["user:old"]["graph"] == {}
     q_ = out["quota"]
-    assert (q_["free_limit"], q_["team_limit"], q_["window_s"]) == (2000, 6000, 86400.0)
+    # 창 길이는 설정이 아니라 정책 상수(하루)다. Genius 는 세지 않아 team_limit 은 null.
+    assert (q_["free_limit"], q_["team_limit"], q_["window_s"]) == (2000, None, 86400.0)
     assert q_["exempt_owners"] == ["user:me"]
     assert out["generated_at"].endswith("Z")
     # 이메일·제목 같은 것은 애초에 싣지 않는다 — owner 와 숫자뿐

@@ -1,0 +1,104 @@
+/* Vinc 로딩 모션 다섯 가지 (scripts/design/assets/motion) */
+/*
+ * 정본은 scripts/design/assets/motion/ 이고 앱·사이트 사본은 sync_out.py 가 복사한다(손으로 고치지 않는다).
+ * 머리 주석의 줄은 모두 `*` 로 시작한다 — 사본 각인이 머리 끝에 들어가므로 중간에서 끊기면 주석이 깨진다.
+ * 토큰(--foreground · --border · --point · --caption-foreground · --ease-out · --ease-settle)은
+ * 앱과 사이트가 같은 이름으로 갖는다. 종류와 자리는 vinc-loaders.js 머리 주석에 있다.
+ * 모두 흑백 + 포인트 색 하나이고, 모션을 줄인 사람에게는 "진행 중"을 말하는 정지 화면을 보인다.
+ */
+
+.vl {
+  --vl-fg: hsl(var(--foreground, 240 6% 10%));
+  --vl-line: hsl(var(--border, 60 6% 86%));
+  --vl-muted: hsl(var(--caption-foreground, 235 5% 53%));
+  --vl-point: hsl(var(--point, 235 31% 42%));
+  --vl-ease: var(--ease-out, cubic-bezier(.22, 1, .36, 1));
+  --vl-settle: var(--ease-settle, cubic-bezier(.16, 1, .3, 1));
+  color: var(--vl-muted);
+}
+.vl-label { font-size: .8125rem; line-height: 1.4; color: var(--vl-muted); }
+.vl-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* 자리: 큰 것(mark · branch)은 맡은 상자의 가운데에 선다. */
+.vl-block { display: grid; place-items: center; align-content: center; gap: .875rem; padding: 1.5rem; text-align: center; }
+.vl-fill { width: 100%; height: 100%; min-height: 10rem; }
+
+/* ── 1. Mark: 로고 링 위로 포인트 빛이 돈다(링은 돌리지도 외곽선을 따지도 않는다) ── */
+@property --vl-sweep { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+/* 마스크는 vinc-ring-mono.svg 를 그대로 인코딩한 것이다. 로고가 바뀌면 이 줄도 다시 만든다. */
+.vl-mark { position: relative; display: grid; place-items: center;
+  --vl-mark-src: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='42 38 436 604'%3E%3Cpath fill-rule='evenodd' fill='black' d='M328.4 155.7L420.5 284.7Q460.0 340.0 420.5 395.3L328.4 524.3Q260.0 620.0 191.6 524.3L99.5 395.3Q60.0 340.0 99.5 284.7L191.6 155.7Q260.0 60.0 328.4 155.7Z M312.2 203.4L383.9 297.8Q416.0 340.0 383.9 382.2L312.2 476.6Q260.0 545.2 207.8 476.6L136.1 382.2Q104.0 340.0 136.1 297.8L207.8 203.4Q260.0 134.8 312.2 203.4Z'%3E%3C/path%3E%3Ccircle cx='260' cy='340' r='52' fill='black'%3E%3C/circle%3E%3C/svg%3E"); }
+.vl-mark-ring {
+  width: var(--vl-size, 48px); aspect-ratio: 436 / 604;
+  -webkit-mask: var(--vl-mark-src) center / contain no-repeat; mask: var(--vl-mark-src) center / contain no-repeat;
+  background: conic-gradient(from var(--vl-sweep) at 50% 50%, var(--vl-fg) 0 62%, var(--vl-point) 76%, var(--vl-fg) 90%);
+  animation: vl-sweep 1.6s linear infinite;
+}
+.vl-mark::after {
+  content: ""; position: absolute; width: calc(var(--vl-size, 48px) * .25); aspect-ratio: 1; border-radius: 50%;
+  background: var(--vl-point); opacity: 0; animation: vl-core 1.6s var(--vl-settle) infinite;
+}
+@keyframes vl-sweep { to { --vl-sweep: 360deg; } }
+@keyframes vl-core { 0%, 100% { opacity: 0; transform: scale(.7); } 45% { opacity: .9; transform: scale(1); } }
+
+/* ── 2. Branch: 주제 하나가 두 갈래로 왼쪽→오른쪽 자란다(시간순 가지) ── */
+.vl-branch { width: var(--vl-width, 160px); height: auto; overflow: visible; }
+.vl-branch .ln { fill: none; stroke: var(--vl-muted); stroke-width: 1.25; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1;
+  animation: vl-draw 2.4s var(--vl-ease) infinite; }
+.vl-branch .nd { fill: var(--vl-fg); opacity: 0; transform-box: fill-box; transform-origin: center; animation: vl-pop 2.4s var(--vl-ease) infinite; }
+.vl-branch .tp { fill: var(--vl-point); opacity: 1; animation: none; }
+@keyframes vl-draw { 0% { stroke-dashoffset: 1; opacity: 1; } 30%, 78% { stroke-dashoffset: 0; opacity: 1; } 92%, 100% { stroke-dashoffset: 0; opacity: 0; } }
+@keyframes vl-pop { 0% { opacity: 0; transform: scale(.4); } 12%, 78% { opacity: 1; transform: scale(1); } 92%, 100% { opacity: 0; transform: scale(1); } }
+
+/* ── 3. Link: 점 셋이 차례로 켜지고 사이에 선이 그어진다(글자 옆 · 단추 안) ── */
+.vl-inline { display: inline-flex; align-items: center; gap: .5rem; vertical-align: middle; }
+.vl-link { width: var(--vl-width, 32px); height: auto; overflow: visible; flex: none; }
+.vl-link circle { fill: currentColor; opacity: .3; animation: vl-lit 1.2s var(--vl-ease) infinite; }
+.vl-link circle:nth-of-type(2) { animation-delay: .2s; }
+.vl-link circle:nth-of-type(3) { animation-delay: .4s; }
+.vl-link path { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-dasharray: 1; stroke-dashoffset: 1; opacity: .5; animation: vl-wire 1.2s var(--vl-ease) infinite; }
+.vl-link path:nth-of-type(2) { animation-delay: .2s; }
+@keyframes vl-lit { 0% { opacity: .3; } 20% { opacity: 1; fill: var(--vl-point); } 60%, 100% { opacity: .3; } }
+@keyframes vl-wire { 0% { stroke-dashoffset: 1; } 25%, 70% { stroke-dashoffset: 0; opacity: .5; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+
+/* ── 4. Rows: 올 목록과 같은 모양의 자리 행 위로 느린 빛이 지나간다 ── */
+.vl-rows { display: grid; width: 100%; }
+.vl-rows .r { display: grid; grid-template-columns: 8px minmax(0, 1fr) minmax(3rem, 18%); gap: .75rem; align-items: center;
+  padding: .7rem .25rem; border-bottom: 1px solid var(--vl-line); }
+.vl-rows.vl-compact .r { grid-template-columns: 8px minmax(0, 1fr); padding: .45rem .25rem; border-bottom: 0; }
+.vl-rows.vl-compact .bar.meta { display: none; }
+.vl-rows .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--vl-line); }
+.vl-rows .bar { height: 9px; border-radius: 5px; background: var(--vl-line); position: relative; overflow: hidden; }
+.vl-rows .bar.meta { height: 7px; opacity: .7; }
+.vl-rows .bar::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--vl-fg) 9%, transparent), transparent);
+  animation: vl-row 1.8s var(--vl-ease) infinite; animation-delay: calc(var(--i, 0) * .12s); }
+.vl-rows .r:first-child .dot { animation: vl-dot 1.8s var(--vl-ease) infinite; }
+@keyframes vl-row { to { transform: translateX(100%); } }
+@keyframes vl-dot { 0%, 100% { background: var(--vl-line); } 40% { background: var(--vl-point); } }
+
+/* ── 5. Track: 개수가 있는 일. 선이 차오르고 끝난 단계마다 노드가 남는다 ── */
+.vl-track { display: grid; gap: .6rem; width: 100%; }
+.vl-track .rail { position: relative; height: 12px; }
+.vl-track .rail::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--vl-line); }
+.vl-track .fill { position: absolute; left: 0; top: 50%; height: 1.5px; margin-top: -.75px; width: var(--vl-p, 0%); background: var(--vl-fg); transition: width .4s var(--vl-settle); }
+.vl-track .head { position: absolute; top: 50%; left: var(--vl-p, 0%); width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%;
+  background: var(--vl-point); box-shadow: 0 0 0 4px color-mix(in oklab, var(--vl-point) 18%, transparent); transition: left .4s var(--vl-settle); }
+.vl-track .ms { position: absolute; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%; background: var(--vl-line); transition: background .3s; }
+.vl-track .ms.on { background: var(--vl-fg); }
+.vl-track .lab { display: flex; justify-content: space-between; gap: 1rem; font-size: .78rem; color: var(--vl-muted); font-variant-numeric: tabular-nums; }
+/* 개수를 모르는 동안(total 0)은 머리가 선 위를 왕복한다. */
+.vl-track.vl-indef .head { animation: vl-shuttle 1.6s var(--vl-settle) infinite alternate; transition: none; }
+.vl-track.vl-indef .fill { display: none; }
+@keyframes vl-shuttle { from { left: 8%; } to { left: 92%; } }
+
+/* 모션을 줄인 사람: 움직임 대신 "진행 중"이 읽히는 정지 화면 */
+@media (prefers-reduced-motion: reduce) {
+  .vl *, .vl::after, .vl *::after { animation: none !important; transition: none !important; }
+  .vl-mark::after { opacity: .9; }
+  .vl-branch .ln { stroke-dashoffset: 0; }
+  .vl-branch .nd { opacity: 1; }
+  .vl-link circle:nth-of-type(1) { opacity: 1; fill: var(--vl-point); }
+  .vl-link path { stroke-dashoffset: 0; }
+  .vl-track.vl-indef .head { left: 50%; }
+}

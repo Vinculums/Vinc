@@ -66,8 +66,40 @@ test('a known stale preflight rejection permits checking the scope again',async(
   flow.edit('other','Team');assert.equal(flow.topic,'other');
 });
 
+test('the owned team space cap leaves the topic personal and the sheet ready to check again',async()=>{
+  const {flow,saved}=setup({reserve:async()=>{throw {code:'team_space_limit'};}});
+  await flow.preflight();await flow.reserve(true);
+  assert.equal(flow.checkpoint,null);assert.equal(saved.at(-1),null);assert.equal(flow.error,'team_space_limit');
+});
+
 test('a lost reservation response followed by a known stale rejection does not strand the sheet',async()=>{
   let count=0;const {flow}=setup({reserve:async()=>{throw {code:++count===1?'timeout':'preflight_changed'};}});
   await flow.preflight();await flow.reserve(true);assert.ok(flow.checkpoint);
   await flow.resume();assert.equal(flow.checkpoint,null);assert.equal(flow.error,'preflight_changed');
+});
+
+test('original conventions require a matching check and persist through an uncertain reservation',async()=>{
+  const policies=[];
+  const {flow,calls}=setup({preflight:async(topic,policy)=>{policies.push(policy);return {...check,conventions:{policy,documents:1,personal_defaults_after_move:policy==='move_original'}};},
+    reserve:async body=>{calls.push(body);throw {code:'timeout'};}});
+  flow.chooseConventions('move_original');await flow.preflight();await flow.reserve(true);
+  assert.deepEqual(policies,['move_original']);assert.equal(calls[0].conventions_policy,'move_original');
+  flow.chooseConventions('retain');assert.equal(flow.conventionsPolicy,'move_original');
+  const reopened=new TopicConversion({},()=>{},flow.checkpoint);
+  assert.equal(reopened.conventionsPolicy,'move_original');
+});
+
+test('changing conventions invalidates the checked scope and old servers cannot authorize original move',async()=>{
+  const {flow,calls}=setup();await flow.preflight();flow.chooseConventions('move_original');
+  assert.equal(flow.check,null);await flow.reserve(true);assert.equal(calls.length,0);
+  await flow.preflight();assert.equal(flow.check,null);assert.equal(flow.error,'conversion_response_uncertain');
+  await flow.reserve(true);assert.equal(calls.length,0);
+});
+
+test('status progress never repeats a write or announces account completion',async()=>{
+  let writes=0;
+  const flow=new TopicConversion({status:async()=>({...run,state:'committing',progress:{status:'graph_committed',batches:12}}),
+    resume:async()=>{writes++;return run;}},()=>{},checkpoint);
+  await flow.status();await flow.status();assert.equal(writes,0);
+  assert.equal(flow.run.state,'committing');assert.equal(flow.run.progress.batches,12);
 });

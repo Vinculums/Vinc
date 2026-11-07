@@ -20,6 +20,7 @@ DEVICE_CASES = [
     ["plan", "search"], ["onboard", "--profile", "unused"],
     ["domain-backfill"], ["serve"], ["store-probe", "--data", "unused"],
     ["migrate-dim"], ["migrate-lex", "--data", "unused"],
+    ["migrate-body-mentions", "--data", "unused", "--approve"],
     ["store-rebuild", "--out", "unused", "--model", "unused"],
     ["graph-md", "build"], ["graph-md", "check", "--file", "unused"],
     ["graph-md", "check", "--doc", "--no-store", "--owner", "tenant:local"],

@@ -7,7 +7,7 @@
 낡은 것이 아니라 코퍼스의 7할이 사라진다. 그래서 두 규칙은 함께 나가거나 둘 다 안 나간다.
 
 근거: [[decision:temporal-model-operational-policy-2026-09-09]] ·
-[[record:current-only-retrieval-would-hide-seven-in-ten-records-2026-09-09]]
+[[record:time-axis-census-2026-09-11]]
 """
 from __future__ import annotations
 
@@ -117,7 +117,7 @@ class ReadPathDefault(unittest.TestCase):
         `future` 는 `valid_from` 에서 나오므로 `!= "current"` 로 거르면 정책이 감추라고
         한 적 없는 것이 사라진다. `_today()` 가 UTC 라 KST 로 저작한 당일 기록이 매일
         아침 아홉 시간 동안 그 상태로 떨어졌다:
-        [[record:validity-state-compares-a-local-dated-claim-against-a-utc-clock-2026-09-14]]."""
+        [[episode:2026-09-14-future-dated-nodes-leave-the-default-read]]."""
         frag.merge_fragment({"owner": self.OWNER, "nodes": [
             {"id": "record:quorum-note-ahead", "type": "record",
              "title": "quorum settings for the cluster next year", "domain": "eng",

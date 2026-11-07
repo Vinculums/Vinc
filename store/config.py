@@ -12,7 +12,7 @@ import os
 import pathlib
 from dataclasses import dataclass, field
 
-# Embedding dimensions are model-dependent (must match embed_pipeline.py).
+# Embedding dimensions are model-dependent.
 # 영어 우선(v0.4, design §8): 기본은 로컬 오프라인 retrieval 모델.
 #   local-en = bge-base-en-v1.5 (768), local-en-large = bge-large-en-v1.5 (1024).
 #   anthropic (voyage-3, 1024) 은 API 키 필요 — 옵션(F5: 키 없이 기동 가능해야 함).
@@ -36,13 +36,14 @@ EMBEDDING_DIM_BY_MODEL = {
     # ── HF id(VINC_EMBED_MODEL · 워커가 실제로 드는 이름) ────────────────────
     "BAAI/bge-base-en-v1.5": 768,
     "BAAI/bge-large-en-v1.5": 1024,
-    "intfloat/multilingual-e5-base": 768,    # 허브 현행(2026-08-01~)
+    "intfloat/multilingual-e5-base": 768,
     "intfloat/multilingual-e5-large": 1024,
-    "BAAI/bge-m3": 1024,                     # W10 채택 후보 — 차원이 바뀐다
+    "BAAI/bge-m3": 1024,
+    "dragonkue/BGE-m3-ko": 1024,             # 허브 현행. bge-m3 를 한국어로 더 학습한 판, 폭이 같다
 }
 DEFAULT_EMBEDDING_MODEL = "local-en"
 #: 사람이 고르는 별칭만. HF id 는 위 표에 차원 조회용으로만 실려 있다 —
-#: `embed_pipeline --model` 이 그것까지 받으면 `ST_MODEL_BY_KEY.get(...)` 폴백이
+#: 모델 선택지가 그것까지 받으면 `ST_MODEL_BY_KEY.get(...)` 폴백이
 #: 조용히 bge-base-en 을 물어 온다(차원은 맞고 모델만 딴것인 무음 고장).
 EMBEDDING_MODEL_ALIASES = ("local-en", "local-en-large", "anthropic", "local")
 

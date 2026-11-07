@@ -48,6 +48,16 @@ vinc_ingest    노드와 엣지 — 개념 · 기록(Record) · 사건(Episode) 
 그리고 **read-before-write**: `vinc_search` 로 기존 id 를 찾아 재사용한다. 새 id 를
 지어내면 같은 것이 두 벌 생긴다.
 
+### 연구·측정·계획 문서에는 유효기간을 단다
+
+- `vinc_doc_put` 으로 연구·측정 문서를 쓸 때는 `valid_from` 을 잰 날로, 계획 문서는 정한 날로
+  단다. 비워 두면 시간 정책상 "지금도 맞음"으로 읽혀서, 몇 주 지난 측정이 오늘 사실과 같은
+  무게로 검색에 나온다. 근거: [[decision:temporal-model-operational-policy-2026-09-09]]
+- 새 측정이나 새 계획이 옛 문서를 대체하면 옛 문서에 `valid_until`(새 문서의 `valid_from`)과
+  `superseded_by`(새 doc_id)를 단다. 지우지 않는다. 그때는 맞았던 기록이다. 본문을 고치지 않는
+  메타만의 변경이라 본문은 그대로 보내면 된다.
+- 기존 문서를 일괄로 소급하지 않는다. 대체 관계가 분명한 것만 그때그때 닫는다.
+
 ### 급소 (실측으로 물린 것들)
 
 - **오픈 타입 노드는 `props`·`domain` 이 저장되지 않는다.** `record|concept|domain|
@@ -55,12 +65,20 @@ vinc_ingest    노드와 엣지 — 개념 · 기록(Record) · 사건(Episode) 
   (`decision` 은 v12 에서 늘었다. 이 목록이 다섯으로 적혀 있어서 "결정에 props 를
   실으면 사라진다"는 오해가 세션마다 재생산됐다.) 그 밖의
   타입은 Entity 캐리어로 가는데 열이 `type/title/tags` 뿐이라 **값이 조용히 사라진다**
-  (경고는 뜬다). 값을 실어야 하면 `concept` 이나 `record` 를 쓸 것.
-- **엣지는 같은 페이로드에서 실제로 MERGE 된 노드 사이에서만 해석된다.** 배치를
-  나누면 배치 간 엣지가 조용히 skip 되고, **같은 배치라도 노드가 스킵되면 그 노드로
-  향하는 엣지가 함께 떨어진다**(제목 없는 Entity · 남이 소유한 id 등). 양 끝 노드를
-  엣지와 같은 호출에 동봉하고, `warnings` 를 읽을 것 — `merged` 는 실제로 들어간
-  것만 센다.
+  (경고는 뜬다). 값을 실어야 하면 `concept` 이나 `record` 를 쓸 것. 전용 테이블에도
+  빈 열이 있다: Domain 에는 `props` 가, Bridge 에는 `tags` 가 없다(실으면 경고하고 버린다).
+- **엣지의 끝점은 같은 호출의 `nodes` 에 없으면 스토어에서 찾는다**(v0.8.4,
+  `api/fragment.py` `_resolve_endpoint_type`). 그래서 이미 있는 노드 사이의 엣지만 따로
+  보내도 들어간다(2026-10-16 재확인). **남은 함정은 하나다: 같은 호출에서 스킵된
+  노드로 향하는 엣지는 함께 떨어진다**(제목 없는 Entity · 남이 소유한 id 등). 스토어의
+  옛 행으로 되살리지 않는 것이 의도다. `warnings` 를 읽을 것 — `merged` 는 실제로
+  들어간 것만 센다.
+- **id 접두사가 테이블을 정한다. 타입이 접두사와 다르면 그 노드는 건너뛴다**(2026-10-17,
+  `api/fragment.py` `prefix_mismatch`). `concept:x` 를 `episode` 나 개방 타입으로 보내면
+  예전에는 같은 id 의 두 번째 행이 다른 테이블에 생겼고, 삭제와 끝점 해석은 접두사 쪽만
+  봐서 그 사본을 못 지웠다. 그 사본 하나가 토픽 이동 리허설을 두 번 멈췄다. 이제는 경고와
+  함께 빠지므로 `warnings` 를 읽을 것. 이미 생긴 사본은 `vinc_delete` 의 `stray_type` 으로
+  그 행만 지운다(묘비를 쓰지 않는다). 자세한 것은 [[vinc.manual.core]] §2.
 - ~~**`title` 에는 가드가 없다.**~~ **해소됨**(`api/fragment.py` `_merge_node`,
   커밋 85c75f2). 이제 `title` 도 `domain`·`tags`·`props` 와 같이 미지정 시 보존된다.
   지우지 않고 남기는 이유는 이 함정을 기억하는 세션이 아직 있어서다.
@@ -69,13 +87,14 @@ vinc_ingest    노드와 엣지 — 개념 · 기록(Record) · 사건(Episode) 
   갈아치워지고, 안 실은 키는 **경고 없이 사라진다**. 즉석 실측: `{alpha, beta}` 를 가진
   레코드에 `{gamma}` 만 재전송했더니 남은 것은 `gamma` 하나였고 `warnings` 는 비었다.
   필드 이력이 없으므로 **복구는 없다.** 키 하나를 더하려면 **기존 props 를 먼저 읽어
-  합쳐서** 통째로 보낼 것(`vinc_ingest` 의 `stored` 가 현재 값을 그대로 준다).
+  합쳐서** 통째로 보낼 것(`vinc_ingest` 의 `stored` 가 현재 값을 그대로 준다). 아니면
+  `props_patch` 와 `expected_rev`(`vinc_node` 의 `rev`)를 함께 보낸다: JSON Merge Patch 라
+  보낸 키만 바뀌고, rev 가 다르면 쓰기 전에 거절된다.
   아래 Entity `tags` 함정과 같은 종인데 그쪽만 명시돼 있어서 이 줄을 더한다.
-- **그 후속: Entity 는 `tags`·`theme_id` 가 여전히 무가드다.** 개방 타입 노드의
-  Entity 분기는 두 필드를 **무조건 SET** 한다 — id 와 title 만 실은 부분 재전송이
-  `tags` 를 빈 배열로 지운다. 그리고 `themes=None` 으로 부르는 경로(sync·share·
-  테스트)는 `theme_id` 를 `""` 로 덮는다. 개방 타입 노드를 다시 보낼 때는 tags 를
-  함께 실을 것.
+- ~~**그 후속: Entity 는 `tags`·`theme_id` 가 여전히 무가드다.**~~ **해소됨**(VIN-587).
+  이제 Entity 의 `tags` 도 미지정 시 보존되고, `theme_id` 는 신규 노드이거나 fragment 가
+  `theme_id` 를 값으로 직접 실었을 때만 바뀐다(`themes=None` 경로가 `""` 로 덮지 않는다).
+  남은 함정은 위 줄의 `props` 통째 교체다.
 - **도메인은 `vinc/` 아래에 둔다 — 접두를 빼면 지도가 통째로 다시 뿌리내린다.**
   배치는 모든 노드 도메인의 **공통 접두**를 뿌리로 벗긴다(`api/query.py` `_build_tree`).
   2026-09-18 에 노드 **셋**이 `product`·`engineering` 으로 들어오자 공통 접두가
@@ -103,11 +122,11 @@ vinc_ingest    노드와 엣지 — 개념 · 기록(Record) · 사건(Episode) 
 |---|---|---|
 | `Vinc` | 제품 코드 (앱·허브·MCP·사이드카) | 코드는 여기. 설계 산문은 그래프 |
 | `Vinc-homepage` | 사이트 + 계정 백엔드 | 코드는 여기 |
-| ~~`Vinc-design`~~ | **폐기(2026-08-08)** — `Vinc/design-hub/` 로 이전 | [[vinc.manual.design]] 참조 |
+| ~~`Vinc-design`~~ | **폐기(2026-08-08)** — `Vinc/design-hub/` 로 이전, 그 디렉터리도 2026-10-29 해체(값은 그래프, 도구는 `scripts/design/`) | [[vinc.manual.design]] 참조 |
 | ~~`Vinc-docs`~~ | **폐기(2026-08-11)** — 아카이브. 지식은 그래프, 이력은 `Vinc/_migration/` | §4 참조 |
 
 ⚠ GitHub 상태와 이 표가 한 곳에서 어긋난다: `Vinc-design` 은 여기 폐기로 적혀 있지만
-리포는 아직 **아카이브되지 않았다**(2026-08-11 확인). 내용은 `design-hub/` 로 옮겨졌으니
+리포는 아직 **아카이브되지 않았다**(2026-08-11 확인). 내용은 Vinc 로 옮겨졌으니
 읽을 이유는 없다. 조직에 `Vincs-app` 이라는 리포도 있는데 이 표에 없다 — 둘 다 미판정.
 
 ## 3. 팀별 매뉴얼 — 그 경로를 만지기 전에 읽는다
@@ -122,15 +141,15 @@ vinc_ingest    노드와 엣지 — 개념 · 기록(Record) · 사건(Episode) 
 | core | `store/` · `api/` · `vinc_mcp/` · `engines/` · 허브 스토어 | [[vinc.manual.core]] |
 | rag | `vinc_rag/`(검색 코어·리랭커·임베딩 워커) · `rag_eval/`(평가 하네스·평가셋·고정 스토어 락) | [[vinc.manual.rag]] |
 | app | `app/` (데스크톱·웹 프론트엔드), 사이드카 라우트 | [[vinc.manual.app]] |
-| design-content | `design-hub/` · `starter-packs/` · `emails/` · `Vinc-homepage/site/` · `app/src/copy.ts`(app 과 공동) | [[vinc.manual.design]] |
+| design-content | 그래프의 토큰 노드(`vinc/design/tokens`) · `scripts/design/` · `starter-packs/` · `emails/` · `Vinc-homepage/site/` · `app/src/copy.ts`(app 과 공동) | [[vinc.manual.design]] |
 | platform | `infra/` · `packaging/` · `.github/` · `scripts/gate_*` · `agents/` · 허브 운영(배포·`az`·파일 공유) | [[vinc.manual.platform]] |
 
 - 두 팀에 걸친 변경이면 둘 다 읽는다(예: 새 사이드카 라우트는 core 와 app, 토큰 값은
   design 과 소비 리포).
 - 매뉴얼에 없는 함정을 새로 물렸으면 **그 매뉴얼에 쓴다**(읽기 → 합쳐서 `vinc_doc_put` →
   읽어서 확인). 이 파일로 되돌려 쓰지 않는다. 모든 세션에 해당하는 것만 여기로 온다.
-- design-hub 절(값의 정본과 이유의 정본, 디자인 게이트)은 2026-10-01 에 여기서
-  [[vinc.manual.design]] §1 로 옮겼다.
+- 디자인 토큰 절(값의 정본, 바꾸는 순서, 디자인 게이트)은 [[vinc.manual.design]] §1 에 있다.
+  토큰 값은 그래프의 `concept:token.*` 노드가 정본이고 파일(`scripts/design/tokens.json`)은 그 스냅샷이다.
 
 ## 4. Vinc-docs — 폐기 완료 (2026-08-11)
 
@@ -206,12 +225,13 @@ CI 에서 걸렸다).
 **주지 않는다**: 번들은 리눅스 ELF 이고, 로컬 venv 는 CI·허브(0.20.4)와 다른 엔진 판이다.
 자세한 것은 [[vinc.manual.core]] §1.
 
-배포 정책 정본은 그래프의 `vinc.ops.deployment` — `vinc_doc_get` 으로 읽는다. 모든 세션이
-알아야 하는 것은 하나다: **`main` push 가 곧 배포다**(`hub-deploy`·`site-deploy`·`release`).
-브랜치에서 검증하고, **묶음 단위로 머지한다**(2026-10-04 소유자 결정): 같은 묶음은 이어서 머지하고,
-묶음 사이에는 마지막 머지의 CI 와 허브 배포(또는 빌드 없는 20초 런)가 끝나고 헬스가 통과한 것을 본
-뒤 다음 묶음을 넣는다. 묶음과 순서는 그래프 `vinc.plan.merge-order-2026-10-04`, 배포가 합쳐지는
-방식은 [[vinc.manual.platform]] §1 에 있다. 빨간 체크 위로 머지하지 않고, 릴리스 태그는 달지 않는다.
+머지와 배포의 정책 정본은 그래프의 `vinc.canon.merge-and-deploy-policy` 다(`vinc_doc_get`). 모든 세션이
+알아야 하는 것: **`main` 은 머지 큐로만 들어간다.** 두 리포 다 룰셋이 필수 체크와 머지 큐를 걸고 있어
+`gh pr merge --squash` 가 곧 큐 등록이고, 큐가 들어갈 트리 그대로에 CI 를 돌린 뒤 내려놓는다. 묶음은 큐가
+만들고 허브 배포는 그 묶음당 한 번이다. 빨간 체크 위로 머지하지 않고(관리자 우회는 파이프라인 수리에만,
+PR 본문에 적는다), 릴리스 태그는 달지 않는다. 자기 배포로 확인해야 하는 변경은 혼자 큐에 넣는다. 두 리포
+사이의 순서(OpenAPI·도구 참조 → 공홈 재생성 PR, Figma 서명 쌍)와 빨간 배포의 뜻(`failed` 와
+`verification failed` 는 다르다)은 그 문서 §4·§5 에 있다.
 
 허브 운영의 함정(`az` 는 PowerShell 로, 윈도우 jq 의 CRLF, SMB 파일 잠금과 공유 스냅샷,
 고아 핸들 강제 종료)은 [[vinc.manual.platform]] 에, 스토어 엔진의 함정(SMB 위 임베디드 DB,
@@ -280,12 +300,12 @@ Linear" 가 같은 내용의 요약이다(둘이 다르면 정본을 따른다).
   PR 본문(`Closes VIN-123`)에 넣는다. PR 제목은 §7 그대로라 키를 넣지 않는다.
 - **이슈마다 Area 라벨 하나**: `core` `rag` `app` `design-content` `platform` `qa`.
   앞의 다섯은 `agents/teams.json` 의 팀이다.
-- **이슈마다 Agent 라벨 하나**(2026-10-04): `agents/roles.json` 의 역할 id(`agent-dev-core`
-  등). 담당자 칸은 사람으로 둔다. 사람만 할 수 있는 단계는 Agent 라벨 없이 설명 첫 줄에 적는다.
+- **이슈마다 Agent 라벨 하나**(2026-10-04): `agents/roles.json` 의 역할 id. 2026-11-04 부터
+  로스터는 `agent-maker` 와 `agent-checker` 둘이다(직함 역할 23개는 물러났다). 담당자 칸은 사람으로 둔다. 사람만 할 수 있는 단계는 Agent 라벨 없이 설명 첫 줄에 적는다.
 - **설명에 실행 로그를 넣지 않는다**(2026-10-04). 대화 기록·명령 로그·테스트 출력·로컬 경로는
   그래프 에피소드로 보내고 설명이나 댓글에는 그 id 만 적는다.
 - **배포 확인은 사람이 하지 않고 에이전트가 훑는다**(2026-10-04). Done 은 머지 **그리고** 그
-  배포 확인이다. `agent-qa`·`agent-steward` 세션이 Done 이슈마다 그 머지를 담은 성공한 배포 실행을
+  배포 확인이다. Checker 세션(`agent-checker`)이 Done 이슈마다 그 머지를 담은 성공한 배포 실행을
   대조하고, 없는 것만 In Review 로 되돌린다. 실패했거나 빌드를 건너뛴 실행은 확인이 아니다.
   **릴리스로만 나가는 코드(CLI·데스크톱·설치본)는 머지되면 Done** 이고, 릴리스는 프로젝트 단위로
   확인한다: 태그가 있고 release 가 성공하고 `latest.json` 이 그 버전일 때 프로젝트를 닫으며, 그때

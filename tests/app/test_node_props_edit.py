@@ -1,15 +1,17 @@
-"""노드 속성(props) 편집 — 소스 잠금(2026-09-26).
+"""노드 편집(속성 · 기본 정보) — 소스 잠금. 2026-09-26 첫 판, 2026-10-16 0.9.8 계약으로 다시 씀.
 
-동작(형식 변환 · 검사 · 전체 교체)은 `app/dev/props-edit-check.ts` 가 브라우저 없이
-검사하고, 저장 · 충돌 · Esc 는 헤드리스 브라우저로 확인했다. 여기서는 그 동작이 기대는
-구조가 조용히 풀리지 않게 붙잡는다:
+동작(형식 변환 · 검사 · merge patch 생성)은 `app/dev/props-edit-check.ts` 가 브라우저 없이
+검사한다. 여기서는 그 동작이 기대는 구조가 조용히 풀리지 않게 붙잡는다:
 
-- 서버는 props 를 통째로 교체한다. 편집 결과 **전체**를 보내야 한다.
-- 필드 이력이 없다. 저장 직전 다시 읽어 판(rev)이 같을 때만 써야 남의 새 편집을 안 덮는다.
-- owner 를 실으면 로컬에서 교차 소유 가드가 켜져 견본 · 팩 노드가 건너뛰어진다.
+- 필드 이력이 없다. 편집을 연 판(rev)을 `expected_rev` 로 실어 서버가 쓰기 안에서 대조하게
+  한다. 클라이언트가 먼저 읽어 비교하던 방식은 읽기와 쓰기 사이가 열려 있었다.
+- 서버는 `props` 를 통째로 교체한다. 바뀐 키만 `props_patch`(JSON Merge Patch)로 싣는다.
+- 판이 달라 멈춘 쓰기(`status:"conflict"`)는 실패가 아니라 충돌 문구와 새로 불러오기로 말한다.
+- 판 확인은 owner 스코프로 읽으므로 쓰기에 보기의 owner 를 싣는다(계정·웹은 허브가 바꾼다).
 - props 가 저장되지 않는 종(Entity 캐리어)에 편집 단추를 내면 값이 조용히 사라진다.
 
 근거: [[decision:node-props-are-edited-in-the-document-pane-as-a-whole-and-checked-against-the-read-revision-2026-09-26]]
+· [[record:guarded-node-edits-carry-the-view-owner-2026-10-16]]
 """
 from __future__ import annotations
 
@@ -23,6 +25,7 @@ VIEW = (APP / "src" / "surfaces" / "view.ts").read_text(encoding="utf-8")
 EDIT = (APP / "src" / "props-edit.ts").read_text(encoding="utf-8")
 COPY = (APP / "src" / "copy.ts").read_text(encoding="utf-8")
 API = (APP / "src" / "api.ts").read_text(encoding="utf-8")
+BASICS = (APP / "src" / "node-basics.ts").read_text(encoding="utf-8")
 
 
 def _fn(src: str, name: str, nxt: str) -> str:
@@ -31,27 +34,46 @@ def _fn(src: str, name: str, nxt: str) -> str:
 
 
 EDITOR = _fn(VIEW, "openPropsEditor", "function propsDl(")
+SAVE = EDITOR[EDITOR.index("async function save()"):]
+BASICS_SAVE = BASICS[BASICS.index("async function save()"):]
+
+
+class Contract(unittest.TestCase):
+    def test_edit_node_sends_the_read_revision_and_the_view_owner(self):
+        m = re.search(r"editNode: \(node: .*?\n(.*?)\n", API, re.S)
+        assert m, "api.editNode 가 없다"
+        body = m.group(1)
+        self.assertIn('call("/ingest/fragment"', body)
+        self.assertIn("expected_rev: rev", body)
+        self.assertIn("owner: cfg.owner", body)
+
+    def test_conflict_reads_both_the_200_envelope_and_a_409(self):
+        fn = _fn(API, "isWriteConflict", "\n}\n")
+        for needle in ('r?.status === "conflict"', "r?.status === 409",
+                       '"write_conflict"', '"preview_conflict"'):
+            self.assertIn(needle, fn)
 
 
 class Save(unittest.TestCase):
-    def test_rereads_the_node_bypassing_the_cache_before_writing(self):
-        save = EDITOR[EDITOR.index("async function save()"):]
-        read = save.index("api.nodeContext(cfg.owner, nd.id")
-        write = save.index("api.ingestFragment(")
-        self.assertLess(read, write)
-        self.assertNotIn("nodeContextOnce(", save)
+    def test_the_server_checks_the_revision_not_a_client_reread(self):
+        self.assertNotIn("api.nodeContext(", SAVE)
+        self.assertNotIn("api.ingestFragment(", SAVE)
+        self.assertIn("meta.rev ?? 0", SAVE)
+        self.assertIn("api.editNode(", SAVE)
 
-    def test_writes_only_when_the_revision_is_unchanged(self):
-        self.assertIn("(fresh.rev ?? 0) !== (meta.rev ?? 0)", EDITOR)
+    def test_sends_a_patch_of_the_changed_keys_with_id_and_kind_and_no_owner(self):
+        self.assertIn("propsPatchOf(props, next)", SAVE)
+        call = SAVE[SAVE.index("api.editNode("):SAVE.index("meta.rev ?? 0")]
+        self.assertIn("props_patch: patch", call)
+        # patch 로 못 싣는 편집(값으로서의 null)만 전체를 같은 판 조건으로 싣는다.
+        self.assertIn("{ props: next }", call)
+        self.assertIn("type: meta.kind", call)
+        self.assertNotIn("owner", call)   # owner 는 api.editNode 한 곳이 싣는다
+
+    def test_a_conflict_offers_reload_instead_of_failing(self):
         self.assertIn("V.propsConflict", EDITOR)
-
-    def test_sends_the_whole_set_with_id_and_kind_and_no_owner(self):
-        call = re.search(r"api\.ingestFragment\(\{(.*?)\}\);", EDITOR, re.S)
-        assert call, "ingestFragment 호출이 없다"
-        body = call.group(1)
-        self.assertIn("props: next", body)
-        self.assertIn("type: meta.kind", body)
-        self.assertNotIn("owner", body)
+        self.assertIn("if (isWriteConflict(res)) { conflict(); return; }", SAVE)
+        self.assertIn("if (isWriteConflict(err)) { conflict(); return; }", SAVE)
 
     def test_reads_merged_instead_of_trusting_the_call(self):
         self.assertIn("res?.merged?.nodes?.matched", EDITOR)
@@ -62,6 +84,20 @@ class Save(unittest.TestCase):
         self.assertIn("refreshLnb({ quiet: true })", EDITOR)
 
 
+class Basics(unittest.TestCase):
+    def test_the_note_goes_as_a_single_key_patch(self):
+        self.assertIn("node.props_patch = { note: next.oneLiner || null }", BASICS_SAVE)
+        # 지금 props 전체를 읽어 합쳐 보내던 길이 남아 있으면 경합이 되살아난다.
+        self.assertNotIn("fresh.props", BASICS_SAVE)
+        self.assertNotIn("node.props =", BASICS_SAVE)
+
+    def test_the_server_checks_the_revision(self):
+        self.assertNotIn("api.nodeContext(", BASICS_SAVE)
+        self.assertIn("api.editNode(node, src.rev ?? 0)", BASICS_SAVE)
+        self.assertIn("if (isWriteConflict(res)) { conflict(); return; }", BASICS_SAVE)
+        self.assertIn("COPY.ui.viewx.propsConflict", BASICS_SAVE)
+
+
 class Editor(unittest.TestCase):
     def test_escape_folds_only_the_editor(self):
         self.assertIn('e.key === "Escape") { e.stopPropagation(); cancel(); }', EDITOR)
@@ -70,7 +106,7 @@ class Editor(unittest.TestCase):
         self.assertIn("box.replaceWith(fresh)", EDITOR)
 
     def test_detail_passes_kind_and_revision(self):
-        self.assertIn("drawNodeProps(nd, res.props, { kind: res.node_kind, rev: res.rev })", VIEW)
+        self.assertIn("drawNodeProps(nd, res.props, { kind: res.node_kind, rev: res.rev, canEdit })", VIEW)
         self.assertIn("node_kind?: string; rev?: number;", API)
 
 

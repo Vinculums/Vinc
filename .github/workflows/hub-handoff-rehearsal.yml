@@ -1,0 +1,319 @@
+# 허브 writer 인계 리허설. 운영 허브와 같은 이미지·같은 기동 경로의 임시 앱을 빈 스토어로
+# 띄우고, 쓰기 프로브를 붙인 채 리비전을 바꾼다. 구 리비전을 먼저 멈추지 않는다 — 운영
+# 배포가 그 순서로 가기 전에 여기서 증명한다.
+#
+# 통과 조건: 끝내 실패한 쓰기 0, 성공으로 답한 쓰기 가운데 전환 뒤 사라진 것 0, 그리고
+# 리허설 공유의 표식이 마지막 리비전을 writer 로, 그 앞 리비전을 넘긴 쪽으로 적고 있다.
+#
+# 운영 앱(vinc-hub)은 이미지 이름을 읽기만 한다. 운영 공유(hub-data)는 열지 않는다.
+# 임시 앱·공유·환경 스토리지는 이 런의 이름을 달고 생기며 마지막 스텝이 늘 지운다.
+# 설계: [[vinc.plan.hub-writer-handoff-2026-10-17]]
+name: hub-handoff-rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Image tag or full reference in vincacr (empty = the hub's current image)
+        required: false
+        type: string
+      switches:
+        description: Revision switches (or restarts) under the probe
+        required: false
+        default: "2"
+        type: string
+      mode:
+        description: switch = new revisions overlap, restart = az containerapp revision restart on one revision
+        required: false
+        default: switch
+        type: choice
+        options:
+          - switch
+          - restart
+      confirm:
+        description: Enter REHEARSE HANDOFF
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# 배포와 겹치지 않는다. 같은 컨테이너 앱 환경에 앱을 하나 더 만들기 때문이다.
+concurrency:
+  group: hub-deploy
+  cancel-in-progress: false
+
+jobs:
+  rehearse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RG: vincsRG
+      CAE: vinc-cae
+      STORAGE: vincstorage01
+      APP: vinc-hub-rh-${{ github.run_id }}
+      SHARE: hub-rh-${{ github.run_id }}
+      MOUNT: rh${{ github.run_id }}
+      SWITCHES: ${{ inputs.switches }}
+      MODE: ${{ inputs.mode || 'switch' }}
+    steps:
+      - name: Require operator and confirmation
+        env:
+          OPERATORS: ${{ vars.PROD_OPERATORS }}
+          ACTOR: ${{ github.triggering_actor }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          test "$CONFIRM" = 'REHEARSE HANDOFF'
+          case ",$OPERATORS," in *",$ACTOR,"*) ;; *) echo "::error::$ACTOR is not an operator" >&2; exit 1 ;; esac
+          case "$SWITCHES" in [1-5]) ;; *) echo "::error::switches must be 1 to 5" >&2; exit 1 ;; esac
+
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Isolate Azure profile
+        run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+      - uses: azure/login@v2
+        timeout-minutes: 3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Prepare tokens and image
+        env:
+          IMAGE_INPUT: ${{ inputs.image }}
+        run: |
+          set -euo pipefail
+          for v in REHEARSAL_MCP_TOKEN REHEARSAL_SIDECAR_TOKEN; do
+            t=$(python -c 'import secrets; print(secrets.token_urlsafe(32))')
+            echo "::add-mask::$t"
+            echo "$v=$t" >> "$GITHUB_ENV"
+          done
+          case "$IMAGE_INPUT" in
+            "") img=$(az containerapp show -n vinc-hub -g "$RG" --query 'properties.template.containers[0].image' -o tsv) ;;
+            */*) img="$IMAGE_INPUT" ;;
+            *) img="vincacr.azurecr.io/vinc-hub:$IMAGE_INPUT" ;;
+          esac
+          case "$img" in vincacr.azurecr.io/vinc-hub:*) ;; *) echo "::error::not a hub image: $img" >&2; exit 1 ;; esac
+          echo "IMAGE=$img" >> "$GITHUB_ENV"
+          acr=$(az acr credential show -n vincacr --query 'passwords[0].value' -o tsv)
+          echo "::add-mask::$acr"
+          echo "ACR_PASSWORD=$acr" >> "$GITHUB_ENV"
+          key=$(az storage account keys list -g "$RG" -n "$STORAGE" --query '[0].value' -o tsv)
+          echo "::add-mask::$key"
+          { echo "AZURE_STORAGE_ACCOUNT=$STORAGE"; echo "AZURE_STORAGE_KEY=$key"; } >> "$GITHUB_ENV"
+          echo "image: $img"
+
+      - name: Create the rehearsal share and mount
+        run: |
+          set -euo pipefail
+          az storage share-rm create --storage-account "$STORAGE" -g "$RG" --name "$SHARE" --quota 5 --output none
+          echo "CREATED_SHARE=1" >> "$GITHUB_ENV"
+          az containerapp env storage set -n "$CAE" -g "$RG" --storage-name "$MOUNT" \
+            --azure-file-account-name "$STORAGE" --azure-file-account-key "$AZURE_STORAGE_KEY" \
+            --azure-file-share-name "$SHARE" --access-mode ReadWrite --output none
+          echo "CREATED_MOUNT=1" >> "$GITHUB_ENV"
+
+      - name: Create the rehearsal app (first revision, empty store)
+        run: |
+          set -euo pipefail
+          envid=$(az containerapp env show -n "$CAE" -g "$RG" --query id -o tsv)
+          spec="$RUNNER_TEMP/rehearsal-app.yaml"
+          python scripts/handoff_rehearsal.py app-yaml --name "$APP" --env-id "$envid" \
+            --image "$IMAGE" --storage "$MOUNT" --out "$spec"
+          # 앱을 만드는 도중에 실패해도 지우도록 표시를 먼저 남긴다.
+          echo "CREATED_APP=1" >> "$GITHUB_ENV"
+          rc=0
+          az containerapp create -n "$APP" -g "$RG" --yaml "$spec" --output none || rc=$?
+          rm -f "$spec"
+          [ "$rc" = 0 ]
+          fqdn=$(az containerapp show -n "$APP" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)
+          echo "URL=https://$fqdn/mcp" >> "$GITHUB_ENV"
+
+      - name: Wait for the first revision to answer
+        run: |
+          set -euo pipefail
+          deadline=$(( $(date +%s) + 600 ))
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            code=$(curl -s -o "$RUNNER_TEMP/tools.json" -w '%{http_code}' --max-time 100 "$URL" \
+              -X POST -H "Authorization: Bearer $REHEARSAL_MCP_TOKEN" -H "Content-Type: application/json" \
+              -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' || true)
+            if [ "$code" = "200" ] && grep -q '"tools"' "$RUNNER_TEMP/tools.json"; then
+              echo "first revision answers"; exit 0
+            fi
+            echo "  tools/list $code"
+            sleep 15
+          done
+          echo "::error::the rehearsal app never answered" >&2
+          exit 1
+
+      - name: Start the write probe
+        run: |
+          set -euo pipefail
+          nohup python scripts/handoff_rehearsal.py probe --url "$URL" \
+            --prefix "handoff-probe-$GITHUB_RUN_ID" --stop-file "$RUNNER_TEMP/probe.stop" \
+            --out "$RUNNER_TEMP/probe.jsonl" > "$RUNNER_TEMP/probe.out" 2>&1 &
+          echo $! > "$RUNNER_TEMP/probe.pid"
+          # 주기 스냅샷(60초)이 한 번은 돈 뒤에 전환한다. 전환 직전의 쓰기는 마지막 스냅샷에만 있다.
+          sleep 75
+          wc -l < "$RUNNER_TEMP/probe.jsonl"
+
+      - name: Switch revisions under the probe
+        if: env.MODE == 'switch'
+        run: |
+          set -euo pipefail
+          : > "$RUNNER_TEMP/switches.txt"
+          for gen in $(seq 2 $((SWITCHES + 1))); do
+            prev=$(az containerapp show -n "$APP" -g "$RG" --query properties.latestRevisionName -o tsv)
+            extra=()
+            # 두 번째 리비전부터는 빈 스토어 기동을 허용하지 않는다 — 스냅샷이 없으면 막힌다.
+            [ "$gen" = 2 ] && extra=(--remove-env-vars VINC_STORE_ALLOW_EMPTY)
+            az containerapp update -n "$APP" -g "$RG" --set-env-vars "VINC_REHEARSAL_GEN=$gen" "${extra[@]}" --output none
+            latest=$(az containerapp show -n "$APP" -g "$RG" --query properties.latestRevisionName -o tsv)
+            [ "$latest" != "$prev" ] || { echo "::error::no new revision" >&2; exit 1; }
+            echo "switch $gen: $prev -> $latest"
+            done_at=0
+            for i in $(seq 1 60); do
+              st=$(az containerapp revision show -n "$APP" -g "$RG" --revision "$latest" --query properties.runningState -o tsv 2>/dev/null || echo "?")
+              old=$(az containerapp revision show -n "$APP" -g "$RG" --revision "$prev" --query properties.replicas -o tsv 2>/dev/null || echo "?")
+              echo "  new=$st old_replicas=$old"
+              case "$st" in Running|RunningAtMaxScale)
+                if [ "$old" = "0" ] || [ -z "$old" ] || [ "$old" = "None" ]; then done_at=1; break; fi ;;
+              esac
+              sleep 10
+            done
+            [ "$done_at" = 1 ] || { echo "::error::switch $gen did not settle" >&2; exit 1; }
+            echo "$gen $prev $latest" >> "$RUNNER_TEMP/switches.txt"
+            # 새 리비전이 붙잡기를 풀고 쓰기를 받는 구간까지 프로브에 담는다.
+            sleep 60
+          done
+
+      # 같은 리비전의 재시작. 플랫폼은 새 레플리카를 먼저 띄우고 옛 것을 나중에 내린다 —
+      # 그 겹침 동안 두 레플리카가 같은 리비전 이름으로 writer 처럼 보인다. 레플리카 목록을
+      # 5초마다 적어 겹친 시간을 재고, 쓰기 판정(아래)이 유실을 잰다.
+      - name: Restart the revision under the probe
+        if: env.MODE == 'restart'
+        run: |
+          set -euo pipefail
+          rev=$(az containerapp show -n "$APP" -g "$RG" --query properties.latestRevisionName -o tsv)
+          : > "$RUNNER_TEMP/replicas.log"
+          for n in $(seq 1 "$SWITCHES"); do
+            before=$(az containerapp replica list -n "$APP" -g "$RG" --revision "$rev" --query "[].name" -o tsv | sort | tr '\n' ' ')
+            echo "restart $n: $rev (replicas before: $before)"
+            az containerapp revision restart -n "$APP" -g "$RG" --revision "$rev" --output none
+            settled=0
+            for i in $(seq 1 120); do
+              now=$(az containerapp replica list -n "$APP" -g "$RG" --revision "$rev" \
+                      --query "[].[name, properties.runningState]" -o tsv 2>/dev/null | tr '\t' ':' | sort | tr '\n' ' ' || true)
+              echo "$(date +%s) $n $now" >> "$RUNNER_TEMP/replicas.log"
+              names=$(printf '%s\n' $now | sed 's/:.*//' | sort | tr '\n' ' ')
+              count=$(printf '%s\n' $now | grep -c . || true)
+              if [ "$count" = 1 ] && [ "$names" != "$before" ] && printf '%s' "$now" | grep -q ':Running'; then
+                settled=1; break
+              fi
+              sleep 5
+            done
+            [ "$settled" = 1 ] || { echo "::error::restart $n did not settle" >&2; exit 1; }
+            echo "restart $n settled: $(printf '%s' "$now")"
+            sleep 60
+          done
+          awk '{ c = NF - 2; if (c > 1) { if (!s) s = $1; e = $1 } else if (s) { d = e - s + 5; if (d > m) m = d; s = 0 } }
+               END { if (s) { d = e - s + 5; if (d > m) m = d } print "longest stretch with two replicas listed: " (m + 0) " s" }' \
+            "$RUNNER_TEMP/replicas.log" | tee "$RUNNER_TEMP/overlap.txt"
+          for m in writer released; do
+            az storage file download --share-name "$SHARE" --path "db.$m" --dest "$RUNNER_TEMP/db.$m" --output none 2>/dev/null \
+              || : > "$RUNNER_TEMP/db.$m"
+          done
+          echo "markers: writer=$(tr -d '[:space:]' < "$RUNNER_TEMP/db.writer") released=$(tr -d '[:space:]' < "$RUNNER_TEMP/db.released")" \
+            | tee -a "$RUNNER_TEMP/overlap.txt"
+
+      - name: Stop the probe
+        if: always()
+        run: |
+          touch "$RUNNER_TEMP/probe.stop"
+          pid=$(cat "$RUNNER_TEMP/probe.pid" 2>/dev/null || true)
+          # 마지막 쓰기가 재시도 중이면 그 상한(300초)까지 기다린다.
+          for i in $(seq 1 66); do
+            [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null || break
+            sleep 5
+          done
+          tail -5 "$RUNNER_TEMP/probe.out" 2>/dev/null || true
+
+      - name: Check every acknowledged write survived
+        run: |
+          set -euo pipefail
+          python scripts/handoff_rehearsal.py verify --url "$URL" \
+            --log "$RUNNER_TEMP/probe.jsonl" --out "$RUNNER_TEMP/verdict.json"
+
+      - name: Check the writer markers on the rehearsal share
+        if: env.MODE == 'switch'
+        run: |
+          set -euo pipefail
+          read -r _ prev latest < <(tail -1 "$RUNNER_TEMP/switches.txt")
+          for m in writer released; do
+            az storage file download --share-name "$SHARE" --path "db.$m" --dest "$RUNNER_TEMP/db.$m" --output none
+          done
+          # 표식 값은 `<리비전>@<레플리카>` 다. 대조는 리비전만 본다.
+          w=$(tr -d '[:space:]' < "$RUNNER_TEMP/db.writer"); w=${w%%@*}
+          r=$(tr -d '[:space:]' < "$RUNNER_TEMP/db.released"); r=${r%%@*}
+          echo "writer=$w released=$r (expected writer=$latest released=$prev)"
+          [ "$w" = "$latest" ] && [ "$r" = "$prev" ]
+
+      - name: Handoff lines from the current revision
+        if: always()
+        continue-on-error: true
+        run: |
+          [ "${CREATED_APP:-}" = 1 ] || exit 0
+          az containerapp logs show -n "$APP" -g "$RG" --type console --tail 300 2>/dev/null \
+            | grep -E "handoff|store writer|final snapshot|store restore|\[mcp\] hold" | tail -40 || true
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Hub writer handoff rehearsal"
+            echo
+            echo "image: \`$IMAGE\`"
+            echo
+            echo '```'
+            echo "mode: $MODE"
+            cat "$RUNNER_TEMP/switches.txt" 2>/dev/null || true
+            cat "$RUNNER_TEMP/overlap.txt" 2>/dev/null || true
+            cat "$RUNNER_TEMP/verdict.json" 2>/dev/null || echo "no verdict"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: handoff-rehearsal-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/probe.jsonl
+            ${{ runner.temp }}/verdict.json
+            ${{ runner.temp }}/switches.txt
+            ${{ runner.temp }}/replicas.log
+            ${{ runner.temp }}/overlap.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Delete the rehearsal app, mount and share
+        if: always()
+        run: |
+          if [ "${CREATED_APP:-}" = 1 ]; then
+            az containerapp delete -n "$APP" -g "$RG" -y --output none || echo "::warning::app $APP was not deleted"
+          fi
+          if [ "${CREATED_MOUNT:-}" = 1 ]; then
+            az containerapp env storage remove -n "$CAE" -g "$RG" --storage-name "$MOUNT" -y --output none \
+              || echo "::warning::mount $MOUNT was not removed"
+          fi
+          # 저장 계정에는 삭제 잠금이 걸려 있어 ARM 경로(share-rm delete)는 ScopeLocked 로 거절된다.
+          # 잠금은 운영 데이터를 지키는 것이라 풀지 않고, 데이터 평면(계정 키)으로 이 런의 공유만 지운다.
+          if [ "${CREATED_SHARE:-}" = 1 ]; then
+            az storage share delete --name "$SHARE" --output none \
+              || echo "::warning::share $SHARE was not deleted"
+          fi

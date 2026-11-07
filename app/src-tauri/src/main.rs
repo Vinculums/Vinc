@@ -169,7 +169,7 @@ fn cli_link_remove() -> Result<cli_link::Status, String> {
 // **argv 를 읽는 코드가 어디에도 없었다.** single-instance 콜백 시그니처가
 // `|app, _args, _cwd|` 로 args 를 버렸고 다른 어디에도 경로 해석 분기가 없었다.
 // 즉 더블클릭하면 창만 뜨고 팩은 안 열렸다 — 선언만 있고 동작이 없는 상태.
-// 이미 이 확장자로 공유가 이루어지고 있어(커뮤니티 갤러리) 사용자에겐 "깨진 연결"이다.
+// 이미 이 확장자로 공유가 이루어지고 있어(커뮤니티 팩 공유) 사용자에겐 "깨진 연결"이다.
 //
 // 설계: **바이트를 러스트가 읽어 프론트에 넘긴다.** 경로만 넘기면 프론트가 임의 경로를
 // 읽을 권한이 필요해지는데(fs 스코프 확대), 그럴 이유가 없다. 프론트는 받은 바이트를
@@ -467,7 +467,7 @@ fn kill_sidecar_tree(pid: u32) {
 ///
 /// 셸 PID 를 넘겨 heartbeat 감독을 건다(E6) — 셸이 크래시·강제종료로 죽어
 /// RunEvent::Exit 가 안 불려도 사이드카가 ~1s 내 자가종료(고아 근절).
-/// (Windows-안전 조회는 사이드카 server._pid_alive 참조.)
+/// (Windows-안전 조회는 `store/procutil.py` 의 `pid_alive` 참조.)
 ///
 /// 시작 시 이미지명 일괄 taskkill(/IM)로 "고아 회수"는 하지 않는다: 그러면
 /// Settings→MCP 로 Claude 클라이언트에 등록된 브리지(`vinc.exe mcp serve`)

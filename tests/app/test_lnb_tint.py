@@ -31,15 +31,16 @@ MAIN = (SRC / "main.ts").read_text(encoding="utf-8")
 
 class LnbTintTests(unittest.TestCase):
     def test_주제_색은_깊이_잉크_뒤에_붙는다(self):
-        """문서 줄과 노드 줄 **둘 다**. 한쪽만 고치면 갈래를 바꿀 때 색이 사라진다."""
+        """문서 줄(docRow)과 그래프 트리의 노드 줄(gnodeRow, 2026-11-05: 문서 트리와 같은 그림으로 노드를 나열한다)."""
         rows = re.findall(r'style="--lvl:\$\{depth\};--ink:\$\{ink\}([^"]*)"', LNB)
-        self.assertEqual(len(rows), 2, "줄 두 갈래(docRow · nodeRow)가 다 있어야 한다")
+        self.assertEqual(len(rows), 2, "문서 줄(docRow)과 노드 줄(gnodeRow) 둘이어야 한다")
         for tail in rows:
             self.assertEqual(tail, "${tintStyle(domain)}", "잉크 리터럴 뒤에만 붙인다")
 
     def test_주제_색은_늘_켜져_있다(self):
         """토글이 없다(2026-09-26) — 기기별 저장값이 같은 그래프를 기기마다 다른 색으로 만들었다."""
-        self.assertIn("tints = tintMap(groups.map((g) => g.domain), themeMode());", LNB)
+        # 색 표는 조상 경로까지 넣어 나침반과 같은 색을 낸다(planTints → tintPlan, 2026-11-05)
+        self.assertIn("tints = planTints(groups.map((g) => g.domain));", LNB)
         self.assertNotIn("domainTint", LNB)
         self.assertRegex(LNB, r"tints\?\.get\(")      # 없으면 조회가 아니라 강제다
 

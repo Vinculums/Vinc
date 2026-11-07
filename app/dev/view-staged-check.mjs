@@ -123,16 +123,6 @@ try {
     if(mode==='none'){assert.equal(now.arrowObjects,0);assert.equal(now.particleObjects,0);}
     rows.push({test:`edge mode ${mode}`,nodes:now.nodes,links:now.links,lineObjects:now.lineObjects,inside:now.inside});
   }
-  // A response from an older View cannot overwrite the newer 2D surface.
-  holdNext=true;
-  await page.locator('#pref-cone').evaluate(el=>{el.value='0.8';el.dispatchEvent(new Event('change',{bubbles:true}));});
-  await page.waitForFunction(()=>document.querySelector('#view-canvas')!==null);
-  for(let i=0;i<50&&!held;i++)await page.waitForTimeout(20);
-  assert.ok(held);
-  await page.locator('[data-view="2d"]').first().click();await page.locator('.a2-stage canvas').first().waitFor();
-  await held.fulfill({json:fixture});held=null;await page.waitForTimeout(350);
-  assert.ok(await page.locator('.a2-stage canvas').count());assert.equal(await page.locator('#view-canvas .scene-container').count(),0);
-  rows.push({test:'late graph response did not replace newer 2D View'});
   // Space switch reloads; the fixture's node IDs distinguish account scopes.
   await page.goto(`${origin}/?space=synthetic-team`);await complete();
   assert.ok(await page.evaluate(()=>window.__g3.graphData().nodes.every(n=>n.id.startsWith('team-'))));
@@ -155,13 +145,6 @@ try {
   await held.fulfill({json:fixture});held=null;await complete();
   const filtered=await state();assert.ok(filtered.visibility<fixture.nodes.length);assert.equal(filtered.lineObjects,0);
   rows.push({test:'time filter removes provisional overview; final graph applies current filter without hidden lines'});
-  await initial();const old=held;held=null;
-  await page.locator('#view-lens').click();await page.locator('[data-view="2d"]').first().click();
-  await page.locator('.a2-stage canvas').first().waitFor({timeout:60000});
-  await old.fulfill({json:fixture}).catch(()=>{});await page.waitForTimeout(100);
-  assert.equal(await page.locator('[data-graph-preview]').count(),0);assert.equal(await page.locator('.scene-container').count(),0);
-  assert.ok(requests.some(r=>new URLSearchParams(r.query).get('stage')==='cancel'));
-  rows.push({test:'View switch cancels partial continuation and ignores late full response'});
   await initial();const removed=held;held=null;
   const cancelBefore=requests.filter(r=>new URLSearchParams(r.query).get('stage')==='cancel').length;
   await page.locator('#view-canvas').evaluate(el=>el.remove());
@@ -173,15 +156,6 @@ try {
   await complete();assert.equal(await page.locator('[data-graph-preview]').count(),0);
   assert.equal((await state()).nodes,fixture.nodes.length);
   rows.push({test:'partial completion failure cancels and falls back to the exact legacy full graph'});
-  await page.evaluate(()=>localStorage.setItem('vinc.view.prefs',JSON.stringify({pv:2,view:'2d',layout:'hub',edges:'none'})));
-  holdNext=true;held=null;await page.goto(`${origin}/?checkview=2d`);await page.locator('[data-graph-preview]').waitFor();
-  for(let i=0;i<100&&!held;i++)await page.waitForTimeout(20);assert.ok(held);
-  assert.equal(await page.locator('[data-graph-preview] circle').count(),128);
-  assert.equal(await page.locator('.a2-stage canvas').count(),0);
-  await page.screenshot({path:output.replace('.json','-partial-2d.png')});
-  await held.fulfill({json:fixture});held=null;await page.locator('.a2-stage canvas').first().waitFor();
-  assert.equal(await page.locator('[data-graph-preview]').count(),0);
-  rows.push({test:'2D also displays real bounded structure before its full response and removes it on completion'});
   assert.deepEqual(errors,[]);
   await writeFile(output,JSON.stringify({rows,errors,requests},null,2));console.log(JSON.stringify({passed:rows.length,errors}));
 } finally {if(held)await held.abort().catch(()=>{});await browser?.close();await server.close();}

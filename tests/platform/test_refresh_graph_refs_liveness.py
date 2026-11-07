@@ -20,6 +20,8 @@ TIMEOUT = {"error": "remote unreachable: URLError: <urlopen error timed out>",
            "isError": True}
 ABSENT = {"found": False}
 PRESENT = {"found": True, "neighbors": []}
+SUPERSEDED = {"found": True, "executed": True, "node": {"id": "decision:old", "temporal": {
+    "validity": "historical", "superseded_by": "decision:new"}}}
 
 
 class VerifyNodes(unittest.TestCase):
@@ -65,6 +67,40 @@ class VerifyNodes(unittest.TestCase):
         self.assertEqual(len(calls), 2)
 
 
+class Validity(unittest.TestCase):
+    """refresh 는 `vinc_node` 로 물어 유효성과 후속을 매니페스트에 싣는다."""
+
+    def test_it_asks_vinc_node_and_records_the_successor(self):
+        seen = {}
+        with mock.patch.object(R.remote, "call", return_value=SUPERSEDED) as call:
+            alive, unreachable = R.verify_nodes(["decision:old"], validity=seen)
+        self.assertEqual(call.call_args.args, ("vinc_node", {"node_id": "decision:old"}))
+        self.assertEqual((alive, unreachable), (["decision:old"], []))
+        self.assertEqual(seen["decision:old"], {"validity": "historical", "superseded_by": "decision:new"})
+
+    def test_store_busy_waits_before_asking_again(self):
+        waits = []
+        busy = {"executed": False, "error": "store_busy", "retry_after_s": 2}
+        with mock.patch.object(R.remote, "call", side_effect=[busy, PRESENT]):
+            alive, _ = R.verify_nodes(["record:x"], sleep=waits.append)
+        self.assertEqual((alive, waits), (["record:x"], [2.0]))
+
+    def test_refresh_writes_the_validity_map(self):
+        import json
+
+        hits = [("a.py", 1, "decision:old"), ("a.py", 2, "vinc-not-an-id")]
+        handle = mock.mock_open()
+        with mock.patch.object(R, "scan_repo", return_value=hits), \
+             mock.patch.object(R, "fetch_docs", return_value=[]), \
+             mock.patch.object(R.remote, "call", return_value=SUPERSEDED), \
+             mock.patch("io.open", handle), \
+             mock.patch.object(R.sys, "argv", ["refresh_graph_refs.py"]):
+            self.assertEqual(R.main(), 0)
+        written = json.loads("".join(c.args[0] for c in handle().write.call_args_list))
+        self.assertEqual(written["nodes"], ["decision:old"])
+        self.assertEqual(written["validity"]["decision:old"]["superseded_by"], "decision:new")
+
+
 class CheckMode(unittest.TestCase):
     """`--check` 는 배포 안에서 돈다 — 못 물어봤으면 **건너뛴다**(0)."""
 
@@ -108,7 +144,7 @@ class RefreshMode(unittest.TestCase):
         gone = {f"record:n{i:03d}" for i in range(absent)}
 
         def call(_tool, args):
-            return ABSENT if args["node"] in gone else PRESENT
+            return ABSENT if args["node_id"] in gone else PRESENT
 
         with mock.patch.object(R, "scan_repo", return_value=hits), \
              mock.patch.object(R, "fetch_docs", return_value=[]), \
@@ -131,3 +167,24 @@ class RefreshMode(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TeamSpace(unittest.TestCase):
+    """`VINC_GRAPH_SPACE` 가 팀 uuid 면 문서 목록과 노드 대조가 그 팀을 묻는다(vinc 토픽이 팀으로
+    옮겨 간 뒤). 비었거나 personal 이면 지금처럼 개인 그래프다."""
+
+    TEAM = "11111111-2222-3333-4444-555555555555"
+
+    def test_both_reads_carry_the_team_space(self):
+        with mock.patch.dict("os.environ", {"VINC_GRAPH_SPACE": self.TEAM}),                 mock.patch.object(R.remote, "call", return_value=PRESENT) as call:
+            R.verify_nodes(["record:x"])
+            self.assertEqual(call.call_args.args, ("vinc_node", {"node_id": "record:x", "space": self.TEAM}))
+        with mock.patch.dict("os.environ", {"VINC_GRAPH_SPACE": self.TEAM}),                 mock.patch.object(R.remote, "call", return_value={"docs": [], "has_more": False}) as call:
+            R.fetch_docs()
+            self.assertEqual(call.call_args.args, ("vinc_doc_list", {"limit": 200, "space": self.TEAM}))
+
+    def test_empty_or_personal_reads_the_personal_graph(self):
+        for value in ("", "personal"):
+            with self.subTest(value=value), mock.patch.dict("os.environ", {"VINC_GRAPH_SPACE": value}),                     mock.patch.object(R.remote, "call", return_value=PRESENT) as call:
+                R.verify_nodes(["record:x"])
+                self.assertEqual(call.call_args.args, ("vinc_node", {"node_id": "record:x"}))

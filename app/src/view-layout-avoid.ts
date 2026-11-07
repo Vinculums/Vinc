@@ -1,9 +1,17 @@
 import type { GraphEdge, GraphNode } from "./api";
 import { simplifyRoute, type RoutePoint } from "./view-route";
+import { topicOf } from "./node-topic";
 
 export type RoutingNode = GraphNode & { routingBox?: { left: number; right: number; top: number; bottom: number }; routingObstacle?: boolean };
-const rectangleOf = (n: RoutingNode) => n.routingBox || { left: n.x! * 1000 - 110, right: n.x! * 1000 + 110,
-  top: n.y! * 1000 - 24, bottom: n.y! * 1000 + 66 };
+/** 노드 상자 한 벌(배치 좌표 × `UNIT` = px). ELK 자식 상자(`view-layout.ts` 의 `child`)와
+ *  libavoid 장애물이 같은 상자를 써야 경로가 마크를 비켜 간다. 노드 좌표는 상자의 가로
+ *  중앙 · 위에서 `NODE_PORT_Y` 아래(왼쪽·오른쪽 포트 높이)다. */
+export const UNIT = 1000;
+export const NODE_W = 220, NODE_H = 90, NODE_PORT_Y = 24;
+/** 노드 좌표에서 상자 옆면까지, 아랫면까지. */
+export const NODE_HALF_W = NODE_W / 2, NODE_BELOW = NODE_H - NODE_PORT_Y;
+const rectangleOf = (n: RoutingNode) => n.routingBox || { left: n.x! * UNIT - NODE_HALF_W, right: n.x! * UNIT + NODE_HALF_W,
+  top: n.y! * UNIT - NODE_PORT_Y, bottom: n.y! * UNIT + NODE_BELOW };
 
 /** The WASM binding has incomplete type declarations. Keep that boundary here.
  * The router owns shapes, pins, and connectors; temporary value objects do not. */
@@ -14,7 +22,7 @@ function routeBatch(Avoid: any, nodes: GraphNode[], edges: GraphEdge[]): GraphEd
   const loops = new Set(edges.filter(e => e.source === e.target).map(e => e.source));
   const own = (v: any) => { temporaries.push(v); return v; };
   const map = new Map(nodes.map(n => [n.id, n]));
-  const raw = (n: GraphNode): RoutePoint => ({ x: n.x! * 1000, y: n.y! * 1000, z: n.z! * 1000 });
+  const raw = (n: GraphNode): RoutePoint => ({ x: n.x! * UNIT, y: n.y! * UNIT, z: n.z! * UNIT });
   try {
     // libavoid documents crossing penalties as experimental: they add a global
     // crossing-detection/rerouting pass and can create detours. Keep the normal
@@ -30,8 +38,8 @@ function routeBatch(Avoid: any, nodes: GraphNode[], edges: GraphEdge[]): GraphEd
         own(new Avoid.Point(rect.right, rect.bottom))));
       const shape = new Avoid.ShapeRef(router, rectangle);
       const ports = [
-        { x: 220, y: 24, dir: Avoid.ConnDirRight },
-        { x: 0, y: 24, dir: Avoid.ConnDirLeft },
+        { x: NODE_W, y: NODE_PORT_Y, dir: Avoid.ConnDirRight },
+        { x: 0, y: NODE_PORT_Y, dir: Avoid.ConnDirLeft },
       ];
       // Route from the actual mark centre with all departure directions. This
       // makes bend cost include the complete visible path rather than choosing
@@ -62,7 +70,7 @@ function routeBatch(Avoid: any, nodes: GraphNode[], edges: GraphEdge[]): GraphEd
       // Change depth at the target mark, keeping every segment axis aligned.
       points.push({ ...points[points.length - 1], z: b.z }, b);
       return { ...edge, route: { engine: "libavoid" as const, points: simplifyRoute(points)
-        .map(p => ({ x: p.x / 1000, y: p.y / 1000, z: p.z / 1000 })) } };
+        .map(p => ({ x: p.x / UNIT, y: p.y / UNIT, z: p.z / UNIT })) } };
     });
   } finally {
     Avoid.destroy(router);
@@ -91,7 +99,7 @@ export function routeAcrossTopics(Avoid: any, nodes: GraphNode[], edges: GraphEd
     });
   }
   const map = new Map(nodes.map(n => [n.id, n]));
-  const topic = (id: string) => { const n = map.get(id)!; return n.kind === "domain" ? n.id.slice(7) : n.domain || ""; };
+  const topic = (id: string) => topicOf(map.get(id)!);
   const batches = new Map<string, number[]>();
   edges.forEach((e, i) => {
     // Large topic pairs can span many columns. Combining their unrelated
@@ -137,8 +145,8 @@ export function routeAcrossTopics(Avoid: any, nodes: GraphNode[], edges: GraphEd
         const ps = e.route!.points;
         for (let i = 1; i < ps.length; i++) {
           const a = ps[i - 1], c = ps[i];
-          const x0 = Math.min(a.x, c.x) * 1000, x1 = Math.max(a.x, c.x) * 1000;
-          const y0 = Math.min(a.y, c.y) * 1000, y1 = Math.max(a.y, c.y) * 1000;
+          const x0 = Math.min(a.x, c.x) * UNIT, x1 = Math.max(a.x, c.x) * UNIT;
+          const y0 = Math.min(a.y, c.y) * UNIT, y1 = Math.max(a.y, c.y) * UNIT;
           const candidates = new Set<(typeof bounds)[number]>();
           for (let x = Math.floor(x0 / cellSize); x <= Math.floor(x1 / cellSize); x++)
             for (let y = Math.floor(y0 / cellSize); y <= Math.floor(y1 / cellSize); y++)

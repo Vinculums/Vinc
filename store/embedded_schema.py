@@ -122,9 +122,10 @@ _NODE_TABLES: dict[str, dict] = {
     # 검색 표면에 넣었다가 답 불가 질문을 확정하게 만든 적이 있다
     # ([[record:the-episode-summary-is-too-wide-a-search-surface-2026-09-09]]).
     #
-    # ⚠ 채우기는 **드롭 → 벡터와 함께 전량 삽입 → 생성**이다. "없던 벡터가 생기는" 것이
-    # HNSW 삽입이고 그것만 세그폴트를 낸다(`drop_vector_index` 주석의 실측).
-    # 근거: [[record:the-node-semantic-arm-lifts-candidacy-not-answers-2026-09-09]]
+    # ⚠ 채우기는 **드롭 → 벡터와 함께 삽입 → 생성**이다. "없던 벡터가 생기는" 것이
+    # HNSW 삽입이고 그것만 세그폴트를 낸다(`drop_vector_index` 주석의 실측). 바뀌지 않은
+    # 행은 제자리에 두지만 인덱스는 여전히 통째로 다시 만든다.
+    # 근거: [[decision:the-node-mirror-keeps-unchanged-rows-and-rebuilds-its-index-whole-2026-10-02]]
     #
     # 🔴 **키는 소유자와 함께 잡는다**(v18). 처음엔 `node_id` 를 pk 로 뒀는데, 이 스토어는
     # 멀티테넌트고 **같은 논리 id 가 스페이스마다 산다** — 새 스페이스는 전부 같은 네
@@ -144,7 +145,14 @@ _NODE_TABLES: dict[str, dict] = {
                                          # 이 그대로 사용자에게 나간다(1365 중 225 행).
         ("text", "STRING"),              # 임베딩한 그 문자열 — 재현과 FTS 용
         ("model", "STRING"),             # 어느 모델로 만든 벡터인가(혼재 방지)
-        ("embedding", "FLOAT[{dim}]"), ("encoder_runtime", "STRING")]},
+        ("embedding", "FLOAT[{dim}]"), ("encoder_runtime", "STRING"),
+        # v24 — ColBERT 토큰(노드 후보 재채점). 표를 따로 두지 않고 이 행에 싣는다: 노드
+        # 삭제·토픽 이동·소유자 접기가 이 행을 이미 다루므로 토큰도 함께 간다. 색인은 없다 —
+        # 재채점은 상위 20개를 `vec_id` 로 읽는다. 비어 있으면 그 노드는 토큰이 없다.
+        # 근거: [[vinc.plan.vin845-colbert-node-rescoring-implementation-2026-10-30]]
+        ("colbert", "STRING"),           # pq64 코드(n × 64바이트)의 base64
+        ("colbert_books", "STRING"),     # 그 코드를 만든 코드북 id(`vinc_rag.colbert.books_id`)
+        ("colbert_hash", "STRING")]},    # 토큰 텍스트의 sha256 — 글이 바뀌면 다시 만든다
 }
 
 # ── vinc_sync 추적열 (S0) ─────────────────────────────────────────────────────
@@ -257,12 +265,12 @@ _EVIDENCE_RELS: tuple[str, ...] = ("PREREQUISITE_OF", "DERIVES_FROM", "RELATED_T
 # 그것이 v13 이 존재하는 이유와 같다(아래 `DOMAIN_HIERARCHY_VERSION` 주석). 백필은
 # 스토어가 **뒤처져 있을 때만** 도는데, 라이브가 이미 최신을 기록하고 있으면 상수만
 # 올려서는 안 돈다 — 목표 버전이 함께 움직여야 한다.
-SCHEMA_VERSION = 22
+SCHEMA_VERSION = 24
 
 #: v21 — 전문 색인이 `Chunk.lex` 위에 섰다는 표지(`_SchemaMeta` 의 키, 값 `ready`).
 #: **스키마 버전과 분리한다.** 버전은 기동 때 ALTER 와 함께 기록되는데 색인 이관은 기동 뒤에
 #: 돌거나(데스크톱) 사본에서 돈다(허브). 버전을 표지로 쓰면 이관 전 스토어가 없는 색인으로
-#: 질의를 보낸다. 표지가 없으면 색인·질의 모두 오늘처럼 `text` 다.
+#: 질의를 보낸다. 표지가 없는 스토어(`migrate_lex_index` 를 아직 안 돌린 것)는 색인·질의 모두 `text` 다.
 #: 근거: [[vinc.plan.korean-retrieval-p1-p2-2026-10-02 §2.2]]
 LEX_INDEX_KEY = "lex_index"
 
@@ -359,13 +367,13 @@ def migration_statements(from_version: int) -> list[str]:
         # CREATE 는 구 설치에서 'already exists' 로 흡수돼 쌍을 안 열어 준다.
         # 목록은 _REL_TABLES 파생 — 손으로 적으면 다음 쌍에서 빠진다.
         # 근거: [[record:rel-tables-take-multiple-endpoint-pairs]].
+        # v23 이 넓힌 표는 v22 의 쌍까지만 연다. 나머지는 v23 스텝 몫이라 두 번 열지 않는다.
         for lbl, src, dst, _p in _REL_TABLES:
-            srcs = (src,) if isinstance(src, str) else tuple(src)
-            dsts = (dst,) if isinstance(dst, str) else tuple(dst)
-            for s in srcs:
-                for d in dsts:
-                    if "Decision" in (s, d):
-                        stmts.append(f"ALTER TABLE {lbl} ADD FROM {s} TO {d}")
+            for s, d in _rel_pairs(src, dst):
+                if lbl in _V22_PAIRS and (s, d) not in _V22_PAIRS[lbl]:
+                    continue
+                if "Decision" in (s, d):
+                    stmts.append(f"ALTER TABLE {lbl} ADD FROM {s} TO {d}")
     # v13 — 결정을 주제 계층에 넣는다. **DDL 스텝이 없다**: 하는 일은
     # DOMAIN_HIERARCHY_VERSION 을 넘겨 백필을 다시 돌리는 것뿐이다
     # ([[vinc.spec.dataplane §7]] — 데이터 스텝에 자기 버전 상수가 필요한 이유).
@@ -382,7 +390,7 @@ def migration_statements(from_version: int) -> list[str]:
         # 엣지에 근거를 요구하는데 ATTACHES_TO 에 열이 없어, 저작된 문장이 "경고하고
         # 버림"(#117)까지만 갔다. 다중 끝점쌍 rel 의 ALTER 는 v14 의
         # `ATTACHES_TO ADD created` 전례 그대로다.
-        # 근거: [[record:graph-md-requires-evidence-that-ingest-refuses-to-store]]
+        # 근거: [[record:attaches-to-carries-evidence-since-v16]]
         stmts.append("ALTER TABLE ATTACHES_TO ADD evidence STRING DEFAULT ''")
         stmts.append("ALTER TABLE ATTACHES_TO ADD confidence DOUBLE DEFAULT 0.0")
     # v17 — 노드 미러(NodeVec). **ALTER 스텝이 없다**: 신규 노드 테이블은 매 부팅
@@ -397,13 +405,23 @@ def migration_statements(from_version: int) -> list[str]:
     if from_version < 20:  # v20 — 벡터별 인코더 지문. '' 는 구 행이라 판을 모른다.
         stmts.append("ALTER TABLE ChunkVec ADD encoder_runtime STRING DEFAULT ''")
         stmts.append("ALTER TABLE NodeVec ADD encoder_runtime STRING DEFAULT ''")
-    if from_version < 21:  # v21 — 한국어 색인 열. 열이 생길 뿐이고 색인은 아직 `text` 다.
+    if from_version < 21:  # v21: 한국어 색인 열. 이 단계는 열만 만든다(색인은 아래 데이터 단계 전까지 `text` 위).
         # 색인을 옮기는 것은 데이터 단계(`EmbeddedBackend.migrate_lex_index`)이고 그 끝에
         # `LEX_INDEX_KEY` 표지가 선다. 버전은 기동 때 기록되므로 표지가 될 수 없다.
         stmts.append("ALTER TABLE Chunk ADD lex STRING DEFAULT ''")
     if from_version < 22:  # v22 — 문서 유효구간(`_DocMeta` 주석). 백필 없음: '' 는 미기재다.
         for col in ("valid_from", "valid_until", "superseded_by"):
             stmts.append(f"ALTER TABLE _DocMeta ADD {col} STRING DEFAULT ''")
+    if from_version < 23:  # v23 — 공개 위키 쪽 끝점 쌍(`_PAGE_LABELS` 주석). v12 와 같은 ALTER 다.
+        for lbl, src, dst, _p in _REL_TABLES:
+            if lbl not in _V22_PAIRS:
+                continue
+            for s, d in _rel_pairs(src, dst):
+                if (s, d) not in _V22_PAIRS[lbl]:
+                    stmts.append(f"ALTER TABLE {lbl} ADD FROM {s} TO {d}")
+    if from_version < 24:  # v24 — 노드 미러 행의 ColBERT 토큰 열(위 NodeVec 주석). 백필 없음: 다음 재구축이 채운다.
+        for col in ("colbert", "colbert_books", "colbert_hash"):
+            stmts.append(f"ALTER TABLE NodeVec ADD {col} STRING DEFAULT ''")
     return stmts
 
 # 관계 테이블 (label, FROM, TO, [(prop,type)]). 엔진 MERGE 실측:
@@ -432,20 +450,36 @@ EDGE_BIRTH_RELS: tuple[str, ...] = (
 # ([[vinc.spec.dataplane §2.4]]).
 _SEMANTIC_LABELS: tuple[str, ...] = ("Concept", "Decision")
 
-#: **RELATED_TO 만 예외로 개념↔개념에 남는다.** 엔진 제약이다 — `api.query.communities`
-#: 가 이 rel 단일 투영으로 Louvain 을 돌리는데, Decision 을 붙이면 투영 노드 테이블이
-#: 둘이 되어 **커뮤니티 기능이 통째로 죽는다**. 우회로는 없다(전부 실측으로 기각).
-#: ⚠ 이 목록을 넓히려면 `communities` 의 투영도 같이 봐야 한다. 불변식은
-#: tests/core/test_store.py 의 단일 노드테이블 가드가 지킨다.
-#: 오류 문면·기각한 우회로·의미상으로도 맞는 이유: [[record:louvain-projects-one-node-table]].
+#: **개인·팀 그래프에서 RELATED_TO 는 개념↔개념에만 선다.** `api.query.communities` 가 이
+#: rel 하나만 투영해 군집을 잡는다(계산은 `api/graph_algo.py` 의 Leiden). 결정이 개념에
+#: 닿는 자리는 느슨한 연관이 아니라 about 이고, 결정끼리는 계보다.
+#: v23 부터 표 자체는 공개 위키 쪽 끝점(`_PAGE_LABELS`)으로 넓다. 군집이 개념끼리로 남는
+#: 것은 투영이 `_LOUVAIN_PROJECTED_LABELS` 만 읽어서다. tests/core/test_store.py 가드가 지킨다.
+#: 근거: [[vinc.spec.dataplane]] · [[vinc.ops.ladybug-upgrade-review-2026-09-24 §2.3]]
 _LOUVAIN_PROJECTED_REL = "RELATED_TO"
+_LOUVAIN_PROJECTED_LABELS: tuple[str, ...] = ("Concept",)
+
+#: v23 — 공개 위키 쪽(개념·사건·기록·결정)이 서는 노드 표. 위키 관계 네 종과 ABOUT 의
+#: 대상이 이 넷 사이에서 열린다. 새 쌍을 쓰고 읽는 것은 `wiki_pairs_open` 인 소유자뿐이라
+#: 개인·팀 그래프의 어휘와 조회는 그대로다.
+_PAGE_LABELS: tuple[str, ...] = ("Concept", "Decision", "Record", "Episode")
+
+
+def wiki_pairs_open(owner) -> bool:
+    """v23 의 새 끝점 쌍을 쓰고 읽는 소유자인가. 공개 커뮤니티 그래프뿐이다."""
+    return isinstance(owner, str) and owner.lower().startswith("community:")
+
+
+def wiki_only_pair(rel: str, src: str, dst: str) -> bool:
+    """v23 이 연 쌍인가. 동기화·개인 조회 계약은 이 쌍을 모른다(`api.query.SYNC_EDGE_RELS`)."""
+    return rel in _V22_PAIRS and (src, dst) not in _V22_PAIRS[rel]
 
 _REL_TABLES: list[tuple] = [
-    ("PREREQUISITE_OF", _SEMANTIC_LABELS, _SEMANTIC_LABELS, list(_EDGE_EVIDENCE_COLS)),
+    ("PREREQUISITE_OF", _PAGE_LABELS, _PAGE_LABELS, list(_EDGE_EVIDENCE_COLS)),
     # 반려 경로는 역할 Concept 사이에만 선다. 전달 순서 DAG와 별개다.
     ("RETURNS_TO", "Concept", "Concept", list(_EDGE_EVIDENCE_COLS)),
-    ("DERIVES_FROM", _SEMANTIC_LABELS, _SEMANTIC_LABELS, list(_EDGE_EVIDENCE_COLS)),
-    ("RELATED_TO", "Concept", "Concept", list(_EDGE_EVIDENCE_COLS)),   # ↑ 예외 사유
+    ("DERIVES_FROM", _PAGE_LABELS, _PAGE_LABELS, list(_EDGE_EVIDENCE_COLS)),
+    ("RELATED_TO", _PAGE_LABELS, _PAGE_LABELS, list(_EDGE_EVIDENCE_COLS)),   # ↑ 군집 투영
     ("CROSSES", "Bridge", "Domain", []),
     ("CONNECTS", "Bridge", _SEMANTIC_LABELS, [("role", "STRING")]),
     # MCP fragment 엣지(D11 §5) 지원 —
@@ -454,7 +488,7 @@ _REL_TABLES: list[tuple] = [
     #   엣지 타입 보존). ⚠ 이 통합의 근거였던 "rel 테이블은 FROM/TO 고정"은 **이제
     #   틀리다** — 그래도 되돌리지 않는다(type 열이 이미 보존한다):
     #   [[record:rel-tables-take-multiple-endpoint-pairs]].
-    ("INHERITS_FROM", _SEMANTIC_LABELS, _SEMANTIC_LABELS, list(_EDGE_EVIDENCE_COLS)),
+    ("INHERITS_FROM", _PAGE_LABELS, _PAGE_LABELS, list(_EDGE_EVIDENCE_COLS)),
     ("ATTACHES_TO", "Record", _SEMANTIC_LABELS,
      [("type", "STRING")] + list(_EDGE_EVIDENCE_COLS)),   # evidence 는 v16
     # F4 — episodic↔semantic 다리: "이 개념을 배운 에피소드". fragment 엣지 타입
@@ -463,7 +497,7 @@ _REL_TABLES: list[tuple] = [
     # v12 — 출발점에 Decision 이 붙는다. ABOUT 은 "X 는 Y 에 관한 것"이고, 결정이
     # 어떤 개념을 두고 내려졌다는 말이 정확히 그 형태다(라이브 51건이 여태 RELATED_TO
     # 로 그 뜻을 흉내내고 있었다 — 이관이 그것을 ABOUT 으로 옮긴다).
-    ("ABOUT", ("Episode", "Decision"), _SEMANTIC_LABELS, list(_EDGE_EVIDENCE_COLS)),
+    ("ABOUT", ("Episode", "Decision"), _PAGE_LABELS, list(_EDGE_EVIDENCE_COLS)),
     # 범용 관계 캐리어 — 사용자 저작 엣지 타입의 집(Entity→Entity, D11-R2 §4).
     # exact (from, type, to) MERGE 로 rel-property `type` 이 매칭 키에 참여한다.
     ("TYPED", "Entity", "Entity", [("type", "STRING")]),
@@ -493,10 +527,18 @@ _REL_TABLES: list[tuple] = [
     ("IN_DOMAIN", ("Concept", "Record", "Episode", "Decision"), "Domain", []),
 ]
 
+#: v23 이 넓힌 표의 v22 끝점 쌍. 마이그레이션은 이 밖의 쌍만 연다.
+_V22_PAIRS: dict[str, set[tuple[str, str]]] = {
+    **{rel: {(s, d) for s in ("Concept", "Decision") for d in ("Concept", "Decision")}
+       for rel in ("PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM")},
+    "RELATED_TO": {("Concept", "Concept")},
+    "ABOUT": {(s, d) for s in ("Episode", "Decision") for d in ("Concept", "Decision")},
+}
+
 #: 근거 열을 갖는 관계 — `EDGE_BIRTH_RELS` 와 같은 신분이고, **쓰기 경로가 이 하나를
 #: 읽는다.** 여기 없는 rel 에 evidence/confidence 를 실어 보내면 보관할 열이 없으므로
 #: `api/fragment` 가 경고한다(그 전에는 조용히 사라졌다 —
-#: [[record:graph-md-requires-evidence-that-ingest-refuses-to-store]]).
+#: [[record:attaches-to-carries-evidence-since-v16]]).
 #: 손으로 적지 않고 위 표에서 파생시키는 이유: 손으로 적으면 표가 둘이 되고, 스키마가
 #: 열을 늘렸을 때 "저장 안 됨"과 "경고가 표를 못 따라감"이 구분 불가가 된다.
 EDGE_EVIDENCE_RELS: tuple[str, ...] = tuple(

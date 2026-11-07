@@ -96,9 +96,15 @@ def test_account_service_projects_authorized_committed_values(app, op, args):
 
 
 @pytest.mark.parametrize("op,args", [
-    ("delete", {"node": "concept:page"}),
     ("delete", {"node": "episode:talk-../../other"}),
-    ("delete", {"node": "episode:unrelated-" + SOCIAL}),
+    ("delete", {"node": "record:page-"}),
+    ("delete", {"node": "decision:a--b"}),
+    ("delete", {"node": "concept:" + "a" * 81}),
+    ("delete", {"node": "concept:doc.page.example"}),
+    ("delete", {"node": "domain:physics"}),
+    ("delete", {"node": "bridge:page"}),
+    ("delete", {"node": "theory:page"}),
+    ("delete", {"node": "episode:page", "stray_type": "concept"}),
     ("doc-delete", {"id": "page.example"}),
     ("doc-delete", {"id": "graph.md"}),
     ("doc-delete", {"id": "graph.md~1234567890abcdef"}),
@@ -112,6 +118,15 @@ def test_projector_cannot_delete_wiki_or_rules(app, op, args):
     with pytest.raises(PermissionError):
         project(app, op, args)
     assert app.bridge.calls == []
+
+
+@pytest.mark.parametrize("node", ["concept:page", "episode:physics-michelson-morley-experiment",
+                                  "record:null-result", "decision:adopt-relativity",
+                                  "episode:unrelated-" + SOCIAL])
+def test_projector_can_delete_a_wiki_page_node_whose_kind_changed(app, node):
+    # 종류가 바뀌면 접두가 달라진다. 옛 노드는 반영기가 지운다.
+    project(app, "delete", {"node": node})
+    assert app.bridge.calls == [("POST", "/delete", None, {"node": node, "owner": A})]
 
 
 @pytest.mark.parametrize("op", ["job", "delete-edge", "merge-nodes", "domain-rename", "ingest-pack", "pin"])
@@ -129,8 +144,34 @@ def test_projector_can_remove_only_obsolete_wiki_relations(app, rel):
     assert app.bridge.calls == [("POST", "/delete-edge", None, {**args, "owner": A})]
 
 
+@pytest.mark.parametrize("ends", [("episode:event", "record:result"), ("record:result", "decision:choice"),
+                                  ("decision:choice", "concept:page"), ("concept:page", "episode:event"),
+                                  ("concept:agentv-" + SOCIAL + "-1", "record:result")])
+def test_projector_can_remove_relations_between_typed_pages(app, ends):
+    args = {"from": ends[0], "to": ends[1], "type": "derives_from"}
+    project(app, "delete-edge", args)
+    assert app.bridge.calls == [("POST", "/delete-edge", None, {**args, "owner": A})]
+
+
+@pytest.mark.parametrize("rel", ["attaches_to", "ATTACHES_TO"])
+def test_projector_can_remove_a_stale_attachment_from_a_result_page(app, rel):
+    args = {"from": "record:result", "to": "concept:page", "type": rel}
+    project(app, "delete-edge", args)
+    assert app.bridge.calls == [("POST", "/delete-edge", None, {**args, "owner": A})]
+
+
+@pytest.mark.parametrize("src", ["concept:page", "episode:event", "decision:choice"])
+def test_projector_attachment_cleanup_starts_only_at_a_result_page(app, src):
+    with pytest.raises(PermissionError):
+        project(app, "delete-edge", {"from": src, "to": "concept:other", "type": "attaches_to"})
+    assert app.bridge.calls == []
+
+
 @pytest.mark.parametrize("over", [{"from": "concept:doc.graph.md"}, {"to": "episode:talk-"+SOCIAL},
+                                  {"from": "episode:lounge-"+SOCIAL},
                                   {"from": "concept:a--b"}, {"to": "concept:a-"},
+                                  {"from": "record:a--b"}, {"to": "decision:a-"},
+                                  {"from": "bridge:a"}, {"to": "domain:a"}, {"from": "theory:a"},
                                   {"from": "concept:"+"a"*81}, {"type": "about"}, {"type": "TYPED"}])
 def test_projector_relation_cleanup_refuses_other_surfaces(app, over):
     with pytest.raises(PermissionError):
@@ -189,18 +230,18 @@ def test_unnamespaced_store_cannot_accept_community_scope(app, monkeypatch):
                                   and t["name"] != "vinc_community_write"])
 def test_generic_mcp_write_cannot_bypass_revisions(app, name):
     with pytest.raises(PermissionError, match="account revisions"):
-        tools.call(name, {}, app.bridge, forced_owner=A, allow_target=False)
+        tools.call(name, {}, app.bridge, forced_owner=A, hub=True)
     assert app.bridge.calls == []
 
 
 def test_static_bridge_cannot_override_owner_to_write_a_community(app):
     with pytest.raises(PermissionError, match="account revisions"):
-        tools.call("vinc_ingest", {"owner": A, "nodes": []}, app.bridge, allow_target=False)
+        tools.call("vinc_ingest", {"owner": A, "nodes": []}, app.bridge, hub=True)
     assert app.bridge.calls == []
 
 
 def test_generic_mcp_reads_still_stamp_the_community_owner(app):
-    tools.call("vinc_search", {"query": "same", "owner": B}, app.bridge, forced_owner=A, allow_target=False)
+    tools.call("vinc_search", {"query": "same", "owner": B}, app.bridge, forced_owner=A, hub=True)
     assert app.bridge.calls[0][2]["owner"] == A
 
 

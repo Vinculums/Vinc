@@ -45,7 +45,10 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+try:
+    from scripts._root import ROOT  # noqa: F401
+except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
+    from _root import ROOT  # noqa: F401
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from api import docstore as ds                      # noqa: E402
@@ -59,10 +62,6 @@ MODELS = {"e5": "intfloat/multilingual-e5-base", "m3": "BAAI/bge-m3"}
 
 def _hf(name: str) -> str:
     return MODELS.get(name, name)
-
-
-def dim_of(model: str) -> int:
-    return EMBEDDING_DIM_BY_MODEL[_hf(model)]
 
 
 def peak_rss_mb() -> float:

@@ -5,7 +5,7 @@
  *  `props-edit.ts` 가 import 0 인 것이 성립 조건이다. */
 import assert from "node:assert/strict";
 import {
-  kindOf, rowsFrom, propsFrom, convertText, sameProps, propsEditable,
+  kindOf, rowsFrom, propsFrom, convertText, sameProps, propsEditable, propsPatchOf,
 } from "../src/props-edit.ts";
 
 // 형식은 값의 모양에서 고른다. 글만 담은 배열이 목록이고, 섞이면 JSON 이다.
@@ -70,6 +70,36 @@ assert.equal(convertText("{bad", "json", "list"), "{bad");   // 못 풀면 글�
 // 키 순서는 같음 판정에 안 든다. 값이 다르면 다르다.
 assert.ok(sameProps({ a: 1, b: [1, { x: 1, y: 2 }] }, { b: [1, { y: 2, x: 1 }], a: 1 }));
 assert.ok(!sameProps({ a: ["x"] }, { a: ["x", "y"] }));
+
+// 0.9.8 props_patch: 편집 전후의 차이를 merge patch 로. 서버의 합치기(`api/mutation_contract.py`
+// merge_patch)를 여기 옮겨 돌려서 "patch 를 합친 값 = 편집 결과"를 확인한다.
+const mergePatch = (cur: unknown, patch: unknown): unknown => {
+  if (typeof patch !== "object" || patch === null || Array.isArray(patch)) return structuredClone(patch);
+  const out: Record<string, unknown> = typeof cur === "object" && cur !== null && !Array.isArray(cur)
+    ? structuredClone(cur as Record<string, unknown>) : {};
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === null) delete out[k]; else out[k] = mergePatch(out[k], v);
+  }
+  return out;
+};
+const edited: Record<string, unknown> = { ...role, mission: "New mission.",
+  gates: ["scripts/gate_forbidden.py"], extra: { nested: [1, 2], more: true }, added: "x" };
+delete edited.rung;
+const patch = propsPatchOf(role, edited)!;
+assert.deepEqual(patch, { rung: null, mission: "New mission.", gates: ["scripts/gate_forbidden.py"],
+                          extra: { more: true }, added: "x" });
+assert.deepEqual(mergePatch(role, patch), edited);
+// 안의 키를 지우면 null 로 싣는다(객체는 합쳐지므로 빼기만 하면 지운 키가 남는다).
+const shrunk = { ...role, extra: {} };
+assert.deepEqual(propsPatchOf(role, shrunk), { extra: { nested: null } });
+assert.deepEqual(mergePatch(role, propsPatchOf(role, shrunk)), shrunk);
+// 바뀐 것이 없으면 빈 patch 다.
+assert.deepEqual(propsPatchOf(role, structuredClone(role)), {});
+// 값으로서의 null 은 patch 로 못 싣는다: 호출부가 전체를 보내도록 null 을 돌려준다.
+assert.equal(propsPatchOf(role, { ...role, extra: { nested: null } }), null);
+assert.equal(propsPatchOf(role, { ...role, added: null }), null);
+// 배열 안의 null 은 배열이 통째로 교체되므로 실을 수 있다.
+assert.deepEqual(propsPatchOf({ a: [1] }, { a: [null] }), { a: [null] });
 
 // props 를 싣는 종만 편집 단추를 낸다.
 assert.ok(propsEditable("concept") && propsEditable("decision") && propsEditable("record"));
