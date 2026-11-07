@@ -31,7 +31,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-APPS = ("vinc-hub", "vinc-encode", "vinc-account", "vinc-layout")
+# 게이트는 여기 적힌 앱만 읽는다. 목록에 없는 앱은 라이브에 남아 있어도 대조하지 않으므로
+# 앱을 내릴 때는 이 목록과 기준선에서 먼저 빼고, 라이브 삭제는 그 뒤에 해도 게이트가 울지 않는다.
+APPS = ("vinc-hub", "vinc-account", "vinc-layout")
 RG = "vincsRG"
 BASELINE = Path(__file__).resolve().parent / "app-config-baseline.json"
 
@@ -69,8 +71,6 @@ def project_app(show: dict, auth: dict) -> dict:
         # cooldownPeriod 는 배포가 아니라 운영자가 정하는 값이라 여기 든다. 아래
         # test_배포마다_바뀌는_필드는_없다 가 막는 것(이미지·리비전)과는 반대편이다 —
         # 매 배포 저절로 바뀌지 않으므로 기준선에 들어가도 게이트가 매번 울지 않는다.
-        # 그리고 이 값이 곧 vinc-encode 콜드창이 열리는 빈도다(마지막 호출 뒤 N 초에
-        # 레플리카가 내려간다). 근거: [[vinc.plan.encode-cold-start-declaration]]
         "scale": {k: (tmpl.get("scale") or {}).get(k)
                   for k in ("minReplicas", "maxReplicas", "cooldownPeriod")},
         "ingress": {

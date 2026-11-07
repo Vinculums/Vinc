@@ -470,7 +470,7 @@ def keyform(s) -> tuple[dict, list[str]]:
     return out, problems
 
 
-#: 허브 이미지(사이드카·vinc-encode 가 같은 이미지로 뜬다)의 설치 줄 — 인코더 판의 정본.
+#: 허브 이미지(사이드카와 인코더가 이 이미지 하나에서 돈다)의 설치 줄 — 인코더 판의 정본.
 _DOCKERFILE = ROOT / "Dockerfile.hub"
 _VEC_TABLES = ("ChunkVec", "NodeVec")
 

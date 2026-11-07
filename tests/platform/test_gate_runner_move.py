@@ -183,14 +183,9 @@ class ThisRepo(unittest.TestCase):
         때문이다. 그래서 이 목록에서 유일하게 그룹 이름이 파일 이름과 다르고,
         막히는 방식도 다르다: 큐가 막히면 이관과 배포가 **서로** 밀린다.
 
-        다섯이 된 경위: `encode-m3-probe.yml`(2026-09-08)은 앞의 넷과 **성질이 다르다.**
-        제품의 상태를 바꾸지 않는다 — 임시 앱 하나와 임시 ACR 리포지토리 하나를 만들었다
-        지운다. 그래서 큐가 막혀도 밀리는 것은 측정뿐이고 사용자에게 가는 것은 없다.
-        직렬화하는 이유는 **이름이 고정이라서**다: 둘이 겹치면 뒤의 `create` 가 이미 있는
-        앱에 부딪혀 죽거나, 한쪽의 정리가 다른 쪽이 재는 중인 앱을 지운다.
-        그리고 이쪽은 **취소가 더 나쁘다** — 중간에 끊기면 정리가 못 돌아 앱과 이미지가
-        남는다(그래서 워크플로 자신도 시작 전에 잔여를 지운다). `cancel-in-progress: false`
-        가 여기서는 "밀려도 좋으니 끊지 마라" 다.
+        다섯째 자리였던 `encode-m3-probe.yml` 은 `vinc-encode` 앱을 내리면서 함께 지웠다(그
+        앱의 토큰과 이미지를 대조하던 측정이라 앱 없이는 돌 수 없다). 그래서 아래 경위는
+        여섯부터 이어지지만 목록에는 그 파일이 없다.
 
         여섯이 된 경위: `hub-store-recover.yml`(2026-09-11)은 pk-migrate 와 같은 모양으로
         `hub-deploy` 의 그룹 키를 빌려 쓴다 — 허브를 다른 스토어 파일로 갈아타는 도중에
@@ -209,8 +204,8 @@ class ThisRepo(unittest.TestCase):
         모양이고 같은 이유로 `hub-deploy` 의 그룹 키를 빌려 쓴다 — 허브를 내리고 수리본으로
         갈아타는 도중에 배포가 끼어들면 내려 둔 허브가 다시 뜬다. dispatch 로만 돈다.
 
-        열하나가 된 경위: `prefetch-bench.yml`(2026-10-07, #676)은 encode-m3-probe 와 같은
-        성질이다 — 제품 상태를 바꾸지 않고 라이브 허브의 지연을 잰다. 직렬화하는 이유는
+        열하나가 된 경위: `prefetch-bench.yml`(2026-10-07, #676)은 제품 상태를 바꾸지 않고
+        라이브 허브의 지연을 잰다. 직렬화하는 이유는
         **측정끼리 겹치면 서로를 오염시키기 때문**이다: 1코어 허브에 벤치 둘이 동시에
         붙으면 둘 다 느려진다. 큐가 막혀도 밀리는 것은 측정뿐이고, dispatch 로만 돈다.
         근거: [[vinc.plan.vin397-prefetch-half-latency-2026-10-07]]
@@ -231,7 +226,7 @@ class ThisRepo(unittest.TestCase):
             c = (doc or {}).get("concurrency")
             if isinstance(c, dict) and c.get("cancel-in-progress") is False:
                 serial.append(p.name)
-        self.assertEqual(serial, ["azure-ops.yml", "encode-m3-probe.yml", "hub-capacity-trial.yml", "hub-data-repair.yml", "hub-deploy.yml", "hub-durability-latency.yml",
+        self.assertEqual(serial, ["azure-ops.yml", "hub-capacity-trial.yml", "hub-data-repair.yml", "hub-deploy.yml", "hub-durability-latency.yml",
                                   "hub-handoff-rehearsal.yml", "hub-relevance-measure.yml", "hub-store-rebuild.yml",
                                   "hub-store-recover.yml", "hub-verify-current.yml", "infra.yml", "integrations-publish.yml", "layout-deploy.yml", "pk-migrate.yml",
                                   "prefetch-bench.yml", "release.yml", "topic-copy-rehearsal.yml", "topic-snapshot-audit.yml"], serial)

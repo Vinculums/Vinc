@@ -10,7 +10,7 @@ import subprocess
 import yaml
 
 REQUIRED = (
-    "두 앱이 같은 이미지인가 (인코더 공간 일치)",
+    "허브가 이 커밋의 이미지로 서 있는가",
     "Verify health (MCP tools/list)",
     "Verify temporal search through the existing read only account key",
     "Verify connector surface (OAuth discovery)",
@@ -60,22 +60,21 @@ def main():
         raise ValueError("invalid deployment commit")
     subprocess.run(["git", "merge-base", "--is-ancestor", args.sha, "origin/main"], check=True)
     expected = "vincacr.azurecr.io/vinc-hub:" + args.sha
-    for name in ("vinc-hub", "vinc-encode"):
-        result = subprocess.run(["az", "containerapp", "show", "-n", name, "-g", "vincsRG", "-o", "json"],
-                                check=True, capture_output=True, text=True)
-        app = json.loads(result.stdout)
-        if not ready(app, expected):
-            raise ValueError("current revision is not the expected ready image")
-        revision = app["properties"]["latestRevisionName"]
-        state = subprocess.run(["az", "containerapp", "revision", "show", "-n", name, "-g", "vincsRG",
-                                "--revision", revision, "--query", "properties.runningState", "-o", "tsv"],
-                               check=True, capture_output=True, text=True).stdout.strip()
-        if state not in ("Running", "RunningAtMaxScale"):
-            raise ValueError("current revision is not running")
+    result = subprocess.run(["az", "containerapp", "show", "-n", "vinc-hub", "-g", "vincsRG", "-o", "json"],
+                            check=True, capture_output=True, text=True)
+    app = json.loads(result.stdout)
+    if not ready(app, expected):
+        raise ValueError("current revision is not the expected ready image")
+    revision = app["properties"]["latestRevisionName"]
+    state = subprocess.run(["az", "containerapp", "revision", "show", "-n", "vinc-hub", "-g", "vincsRG",
+                            "--revision", revision, "--query", "properties.runningState", "-o", "tsv"],
+                           check=True, capture_output=True, text=True).stdout.strip()
+    if state not in ("Running", "RunningAtMaxScale"):
+        raise ValueError("current revision is not running")
     source = subprocess.run(["git", "show", args.sha + ":.github/workflows/hub-deploy.yml"],
                             check=True, capture_output=True, text=True).stdout
     document = yaml.safe_load(source)
-    environment = {**os.environ, "DEPLOY_SHA": args.sha, "ENCODE_PRESENT": "1"}
+    environment = {**os.environ, "DEPLOY_SHA": args.sha}
     warnings = []
     for step in verification_steps(document):
         print("Verifying: " + step["name"], flush=True)

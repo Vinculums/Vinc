@@ -180,10 +180,11 @@ def test_historical_verify_success_preserves_mirror_warning():
 
 def test_observed_images_bind_deployment_independently_of_trigger_head():
     log = f"timestamp hub    = vincacr.azurecr.io/vinc-hub:{HEAD}\n"
-    log += f"timestamp encode = vincacr.azurecr.io/vinc-hub:{HEAD}\n"
     assert parse_images(log) == HEAD
     with pytest.raises(ValueError):
         parse_images(log + log)
     with pytest.raises(ValueError):
-        parse_images(log.replace("encode = vincacr.azurecr.io/vinc-hub:" + HEAD,
-                                 "encode = vincacr.azurecr.io/vinc-hub:" + "b" * 40))
+        parse_images("timestamp nothing observed\n")
+    # 인코더 앱을 함께 갱신하던 배포의 로그에는 `encode = ...` 줄이 더 있다. 허브 줄만 읽는다.
+    old = log + f"timestamp encode = vincacr.azurecr.io/vinc-hub:{'b' * 40}\n"
+    assert parse_images(old) == HEAD

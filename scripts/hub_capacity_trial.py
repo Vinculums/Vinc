@@ -195,7 +195,6 @@ def run(args):
     initial = show()["properties"]
     if (actual != baseline or images["vinc-hub"] != [args.expected_image]
             or initial["latestRevisionName"] != args.expected_revision
-            or images["vinc-hub"] != images["vinc-encode"]
             or initial["template"].get("revisionSuffix")
             or baseline["vinc-hub"]["resources"].get("cpu") != 1):
         raise RuntimeError("Preflight baseline, revision or image mismatch; no mutation")

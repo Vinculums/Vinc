@@ -18,7 +18,7 @@
 #
 # ── 무엇을 넣지 않았나, 그리고 왜 ──────────────────────────────────────────────
 #
-# ⚠ **컨테이너 앱 셋(vinc-hub · vinc-account · vinc-encode)이 없다.** 두 이유다:
+# ⚠ **컨테이너 앱(vinc-hub · vinc-account · vinc-layout)이 없다.** 두 이유다:
 #
 #   ① 시크릿. 허브 env 필수 아홉 중 다섯이 시크릿이다(`check_hub_env.py` REQUIRED —
 #      VINC_SIDECAR_TOKEN · VINC_MCP_TOKEN · VINC_OAUTH_ADMIN_KEY ·

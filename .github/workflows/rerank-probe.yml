@@ -38,10 +38,9 @@
 #
 # ## 이 프로브가 못 내는 것 (요약에도 찍는다)
 #
-# 인증된 end to end 검색 지연 · `vinc-encode` cold start(minReplicas 0 이라 콜드 경로는
-# 배포된 리비전에만 있다) · 실제 ACA CPU 모델과 스로틀링 · 허브↔인코드 RTT · 동거(이미
-# e5 세션이 올라간 같은 2GiB 안에서 리랭커가 도는 상황). GitHub 호스티드 러너는 Azure
-# 위에 있지만 ACA 그 자체는 아니다.
+# 인증된 end to end 검색 지연 · 실제 ACA CPU 모델과 스로틀링 · 동거(인코더 세션이 이미
+# 올라간 같은 컨테이너 안에서 리랭커가 도는 상황). GitHub 호스티드 러너는 Azure 위에
+# 있지만 ACA 그 자체는 아니다.
 #
 # ⚠ GitHub 분을 쓴다. 그래서 `workflow_dispatch` 전용이고 자동으로 도는 경로가 없다.
 name: rerank-probe
@@ -68,8 +67,8 @@ on:
       app:
         description: "어느 앱의 형상으로 가둘까 (scripts/app-config-baseline.json 의 키)"
         type: choice
-        options: ["vinc-encode", "vinc-hub", "vinc-account"]
-        default: "vinc-encode"
+        options: ["vinc-hub", "vinc-account"]
+        default: "vinc-hub"
 
 permissions:
   contents: read
@@ -289,9 +288,8 @@ jobs:
           print("147ms 와 271ms 로 잰다(2026-09-04, 세 런에 CPU 세 종). 이 표를 다른 런의 표와")
           print("나란히 놓고 모델 간 비를 내지 말 것 — 위의 CPU 줄이 같은지 먼저 볼 것.")
           print()
-          print("⚠ **이 수치가 못 말하는 것**: 인증된 end to end 검색 지연 · `vinc-encode` 콜드스타트")
-          print("(minReplicas 0 이라 콜드 경로는 배포된 리비전에만 있다) · 실제 ACA CPU 모델과 스로틀링 ·")
-          print("허브↔인코드 RTT · 동거(같은 2GiB 에 e5 세션이 이미 올라간 상태). GitHub 호스티드 러너는")
+          print("⚠ **이 수치가 못 말하는 것**: 인증된 end to end 검색 지연 · 실제 ACA CPU 모델과 스로틀링 ·")
+          print("동거(같은 컨테이너에 인코더 세션이 이미 올라간 상태). GitHub 호스티드 러너는")
           print("Azure 위에 있지만 ACA 그 자체는 아니다.")
           sp = d.get("spread_pct")
           if sp is not None and sp > 25:
