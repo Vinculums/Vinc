@@ -481,7 +481,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     if (e.key === "Escape") {
       // 가장 나중에 뜬 것부터 접는다. 카드가 렌즈 패널보다 앞이다 — 카드는 방금
       // 고른 노드에 딸린 것이고, 패널은 그보다 오래 떠 있던 크롬이다(D70).
-      // 여기서 접었으면 나침반이 같은 Esc 로 뿌리까지 되감지 않게 표시한다(나침반은 defaultPrevented 를 본다)
+      // 여기서 접었으면 나침반이 같은 Esc 로 뿌리로 돌아가지 않게 표시한다(나침반은 defaultPrevented 를 본다)
       if (isFloatPanelOpen()) { e.preventDefault(); closeFloatPanel(); return; }
       if (!detail.hidden) { e.preventDefault(); closeRail(); return; }
       if (trail.length > 1) { e.preventDefault(); trail.pop(); void show(trail[trail.length - 1]); }
