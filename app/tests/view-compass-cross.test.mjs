@@ -113,3 +113,15 @@ test('an end topic shows the bridges that touch it, named with the other ends', 
     assert.ok(g.innerHTML.includes('↔') && g.innerHTML.includes(other), `${id} names the other end`);
   }
 });
+
+test('an opened bridge keeps the junction mark of the legend, not a pill', () => {
+  // 다리를 눌러 가운데로 오면 종류의 기본 모양으로 떨어져 알약(둥근 사각형)이 됐다. 범례와 같은 호와 점이어야 한다
+  const { h, host } = bridged();
+  h.open('bridge:inner');
+  const hub = host.querySelectorAll('.node[data-role="hub"]').find((g) => g.getAttribute('data-id') === 'bridge:inner');
+  assert.ok(hub, 'the bridge is the hub');
+  const html = hub.innerHTML;
+  assert.ok(!/<rect class="shape"/.test(html), 'no pill');
+  assert.ok(/<path class="shape" d="M[^"]*A/.test(html), 'arcs toward its end topics');
+  assert.ok(!/Inner junction/.test(html), 'the hub name drops the word junction like the layer label');
+});

@@ -117,7 +117,9 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
     if (kind === 'decision') { const d = r * 1.25; return `<path class="shape" d="M${x} ${y - d}L${x + d} ${y}L${x} ${y + d}L${x - d} ${y}Z" ${st}/>`; }
     if (kind === 'record') { const s = r * .9; return `<rect class="shape" x="${x - s}" y="${y - s}" width="${2 * s}" height="${2 * s}" rx="${r * .25}" ${st}/>`; }
     if (kind === 'episode') { const h = r * 1.2; return `<path class="shape" d="M${x} ${y - h}L${x + h * 1.05} ${y + h * .75}L${x - h * 1.05} ${y + h * .75}Z" ${st} stroke-linejoin="round"/>`; }
-    if (kind === 'bridge') return `<rect class="shape" x="${x - r * 1.5}" y="${y - r * .6}" width="${r * 3}" height="${r * 1.2}" rx="${r * .6}" ${st}/>`;
+    // 다리는 범례와 같은 이음 표식(위아래 호 둘과 가운데 점)이다. 끝 주제 색을 아는 자리는 `junction` 이 그린다
+    if (kind === 'bridge') { const k = r * .7, w = Math.max(1.6, r * .36).toFixed(2);
+      return `<g class="shape"><path d="M${x - k} ${y - k}A${r} ${r} 0 0 1 ${x + k} ${y - k}M${x + k} ${y + k}A${r} ${r} 0 0 1 ${x - k} ${y + k}" fill="none" stroke="${fill}" stroke-width="${w}" stroke-linecap="round"/><circle cx="${x}" cy="${y}" r="${(r * .33).toFixed(2)}" fill="${fill}"/></g>`; }
     return `<circle class="shape" cx="${x}" cy="${y}" r="${r}" ${st}/>`;
   }
   // 빛살: 가운데 쪽이 굵고 바깥으로 가늘다. 양끝은 노드와 같은 중심의 원호로, 틈만큼 떨어져 잘린다
@@ -424,7 +426,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
       return `<text class="${cls}" x="${ox.toFixed(1)}" y="${oy.toFixed(1)}" dy="4" text-anchor="${flip ? 'end' : 'start'}" transform="rotate(${rr.toFixed(1)} ${ox.toFixed(1)} ${oy.toFixed(1)})">${esc(short(o.label, n))}</text>`; };
     const lbl = (o) => {
       if (o.role === 'hub') { const a = o.parentHub ? Math.atan2(o.y - o.parentHub.y, o.x - o.parentHub.x) : rad(135), dx = Math.cos(a + Math.PI / 2), dy = Math.sin(a + Math.PI / 2);
-        return o.k === 'topic' ? `<text class="hub" x="0" y="${o.r + 20}" text-anchor="middle">${esc(short(o.label, 28))}</text><text class="badge" x="0" y="${o.r + 34}" text-anchor="middle">${esc(C.topicCount(o.src.count))}</text>` : `<text class="hub" x="${(-o.r * .7 - 8)}" y="${o.r + 16}" text-anchor="end">${esc(short(o.label, 28))}${o.k === 'topic' ? `<tspan class="badge" dx="6">${esc(C.topicCount(o.src.count))}</tspan>` : ''}</text>`; }
+        return o.k === 'topic' ? `<text class="hub" x="0" y="${o.r + 20}" text-anchor="middle">${esc(short(o.label, 28))}</text><text class="badge" x="0" y="${o.r + 34}" text-anchor="middle">${esc(C.topicCount(o.src.count))}</text>` : `<text class="hub" x="${(-o.r * .7 - 8)}" y="${o.r + 16}" text-anchor="end">${esc(short(o.k === 'bridge' ? o.label.replace(/ junction$/i, '') : o.label, 28))}${o.k === 'topic' ? `<tspan class="badge" dx="6">${esc(C.topicCount(o.src.count))}</tspan>` : ''}</text>`; }
       if (o.role === 'right' && o.k === 'topic') { const flip = Math.cos(o.ang) < 0; return `<text class="l1" x="${flip ? -(o.r + 7) : o.r + 7}" y="4" text-anchor="${flip ? 'end' : 'start'}">${esc(short(o.label, 18))}<tspan class="badge" dx="5">${o.src.count}</tspan></text>`; }
       if (o.role === 'up' || o.role === 'left' || o.role === 'right') return rot(o, 7, 'l1', o.farEnds ? 40 : 24);
       if (o.role === 'bridge') return `<text class="l2" x="0" y="${o.r + 13}" text-anchor="middle">${esc(short(o.label.replace(/ junction$/i, ''), 20))}</text>`;
@@ -446,7 +448,11 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
       const arc = (a, c) => { const a0 = a - half, a1 = a + half, P = (q) => `${(Math.cos(q) * R).toFixed(2)} ${(Math.sin(q) * R).toFixed(2)}`;
         return `<path class="shape" d="M${P(a0)}A${R} ${R} 0 0 1 ${P(a1)}" fill="none" style="stroke:${c}" stroke-width="${w}" stroke-linecap="round"/>`; };
       return ts.map((q) => arc(q.a, q.c)).join('') + `<circle class="shape" r="${(R * .32).toFixed(2)}" style="fill:${mix(o.c, 80)}"/>`; };
-    const body = (o) => o.k === 'bridge' && (o.role === 'bridge' || o.farEnds) ? junction(o) : crescent(o) + (o.k === 'topic' ? ringS(o.r, o.role === 'hub' || fresh(o.src) ? o.c : mix(o.c, 70), o.role === 'hub' ? 2.6 : 2)
+    // 다리는 어느 자리에서나 이음 표식이다. 층 안의 다리(`role: bridge`)와 끝 주제의 별칭(`farEnds`)은 이미 끝을 알고,
+    // 눌러 가운데(허브)가 된 다리는 CONNECTS 끝들의 주제 색으로 호를 그린다(알약 모양이 남지 않게)
+    const bridgeBody = (o) => o.role === 'bridge' || o.farEnds ? junction(o)
+      : junction({ ...o, farEnds: [...new Set(bridgeEnds(o.src).map((m) => m.d).filter(Boolean))] });
+    const body = (o) => o.k === 'bridge' ? bridgeBody(o) : crescent(o) + (o.k === 'topic' ? ringS(o.r, o.role === 'hub' || fresh(o.src) ? o.c : mix(o.c, 70), o.role === 'hub' ? 2.6 : 2)
       : shape(o.k, 0, 0, o.r, o.src.vu ? o.c : fresh(o.src) ? o.c : mix(o.c, 55), !!o.src.vu)) + '';
     const compOf = new Map(L.comps.map((c) => [c.hub.id, c]));
     const filtTag = (o) => { const f = FILT.get(o.id); return o.role === 'hub' && f ? `<text class="badge ftag" x="0" y="${-o.r - 9}" text-anchor="middle">${[...f].map((k) => GROUPS.find((g) => g[0] === k)[1]).join(' · ')}${esc(C.only)}</text>` : ''; };

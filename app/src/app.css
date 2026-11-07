@@ -230,6 +230,7 @@ body {
   /* 머리와 본문이 나눠 쓰는 칼럼. 본문 672 + 사이 32 + 읽기 칸 256 = 960, 좌우 안쪽 32. */
   --page-col: 60rem;
   --page-inset: 2rem;
+  --head-inset: var(--space-4, 1rem);   /* 머리의 앞 · 뒤 묶음과 카드 테두리 사이 */
   --aside-w: 16rem;
   /* 상단 바 높이. 여태 3.25rem 리터럴이 네 곳에 흩어져 있었고 그중 둘은 렌즈 패널의
      top 이었다 — 바의 기하가 바뀌면 패널이 바 아래에 안 붙는다(부유로 바꾸는 이번이
@@ -757,8 +758,12 @@ body {
 /* GNB 는 공홈 어느 페이지에서나 같은 자리에 선다 — 앱 안에서도 사이트 프레임(1540 + 거터)이다.
    셸에 맞추면 앱으로 넘어올 때마다 로고가 옆으로 튄다. 값은 Vinc-homepage site.css 의
    `--site-frame`·`--site-gutter`·`--gnb-max` 와 같아야 한다(앱은 site.css 를 부르지 않는다). */
-[data-skin="web"] #site-gnb { --site-gutter: 20px; --gnb-max: calc(1540px + var(--site-gutter) * 2); }
-@media (max-width: 640px) { [data-skin="web"] #site-gnb { --site-gutter: 16px; } }
+[data-skin="web"] { --site-gutter: 20px; --gnb-max: calc(1540px + var(--site-gutter) * 2); }
+@media (max-width: 640px) { [data-skin="web"] { --site-gutter: 16px; } }
+/* 셸도 같은 틀에 선다(2026-11-07 소유자): 사이드바 왼쪽은 GNB 로고와, 내용 카드 오른쪽은 GNB 오른쪽
+   단추와 같은 세로선이다. 틀보다 넓은 창에서는 양옆이 바탕(셸과 같은 면)으로 빈다. */
+[data-skin="web"] body { background: hsl(var(--surface-0)); }
+[data-skin="web"] #shell { max-width: var(--gnb-max); margin: 0 auto; padding-left: var(--site-gutter); padding-right: var(--site-gutter); }
 /* 웹 빌드는 index.html 에 빈 `#site-gnb` 를 미리 둔다(vite.config.ts `webShell`). gnb.js 가 갈아
    끼우기 전까지 그 자리를 같은 높이(52 + 테두리 1)로 잡아, 주입 순간 셸이 밀리지 않게 한다. */
 [data-skin="web"] #site-gnb:empty {
@@ -829,12 +834,17 @@ body {
   /* 펼친 검색의 결과·Ask 판이 표면 위로 내려온다 — 표면 · 문서 열보다 위. */
   position: relative; z-index: 41;
 }
+/* 머리 안의 가로 규칙(2026-11-07 소유자): 뒤 묶음(검색 · 문서 | 그래프)은 **늘 카드 안쪽 오른쪽 끝**에
+   선다(`--head-inset`). 창이 늘고 줄어도 카드 끝을 따라가므로 웹에서는 GNB 오른쪽 단추와 같은 세로선이다.
+   앞자리(지금 자리)는 본문을 따른다: 문서 · Agents · 검색은 본문 칼럼의 첫 글자선(`--page-col`), 그래프는
+   본문이 카드 전체를 쓰므로 카드 안쪽 왼쪽 끝. 칼럼 계산의 100cqi 는 머리(`container: topbar`)의 폭이다. */
 .tb-col {
   height: 100%; box-sizing: border-box;
   display: flex; align-items: center; gap: var(--space-2, .5rem);
-  max-width: calc(var(--page-col) + var(--page-inset) * 2); margin: 0 auto;
-  padding: 0 var(--page-inset);
+  padding: 0 var(--head-inset)
+    0 max(var(--page-inset), calc((100cqi - var(--page-col) - var(--page-inset) * 2) / 2 + var(--page-inset)));
 }
+#shell[data-surface="view"] .tb-col { padding-left: var(--head-inset); }
 /* 앞자리 — 지금 자리. 좁으면 자기 폭 안에서 말줄임으로 줄어든다(뒤 묶음은 줄지 않는다). */
 .tb-lead {
   flex: 1 1 auto; min-width: 0; overflow: hidden;
@@ -2481,6 +2491,8 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
      296 을 먹어 지도에 64px 만 남는다(실측) — 트리도 지도도 못 쓰는 폭이다.
      천장은 위 900 블록이 행으로 정해 두었으므로 여기서 다시 적지 않는다. */
   #shell[data-lnb="open"] #lnb { width: calc(100vw - var(--shell-gap) * 2); }
+  /* 웹은 셸 여백이 GNB 거터다(위 공홈 GNB 레이아웃) — 서랍도 그만큼만 쓴다. */
+  [data-skin="web"] #shell[data-lnb="open"] #lnb { width: calc(100vw - var(--site-gutter) * 2); }
 
 }
 
