@@ -1390,8 +1390,11 @@ TOOLS: list[dict] = [
                 (
                 "Gather the nodes, edges and conflicts around a topic before a decision. Returns {kind, "
                 "executed, topic, depth, found, nodes, edges, conflicts, cross_domain}. A conflict is "
-                "decisions_on_same_subject, opposite_direction or duplicate_decision_title; domain crossings "
-                "go to cross_domain. It never picks a side. `topic` must be an exact id or full title; a miss "
+                "opposite_direction (flow both ways between two nodes; derives_from and inherits_from "
+                "read reversed), cycle (three or more nodes in a loop, with nodes and members), "
+                "duplicate_decision_title or decisions_on_same_subject, in that order; decisions whose "
+                "props.valid_until has passed are left out and counted in retired_decisions_excluded. "
+                "Domain crossings go to cross_domain. It never picks a side. `topic` must be an exact id or full title; a miss "
                 "returns found:false with candidates, so use vinc_search first. Read-only."
             )
             ),

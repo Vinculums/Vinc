@@ -358,11 +358,137 @@ class DecideConflicts(unittest.TestCase):
         self.assertEqual(len(conflicts), q._CONFLICT_CAP)
         self.assertTrue(cut)
 
-    def test_설명이_세_상충과_크로스도메인_필드를_말한다(self):
+    def test_설명이_네_상충과_크로스도메인_필드를_말한다(self):
         desc = REF["vinc_decide"]
-        for token in ("decisions_on_same_subject", "opposite_direction",
-                      "duplicate_decision_title", "cross_domain"):
+        for token in ("decisions_on_same_subject", "opposite_direction", "cycle",
+                      "duplicate_decision_title", "cross_domain",
+                      "retired_decisions_excluded"):
             self.assertIn(token, desc)
+
+
+def _e(s, t, rel):
+    return {"source": s, "target": t, "type": rel}
+
+
+# ── 흐름 방향 — DERIVES_FROM·INHERITS_FROM 은 흐름과 반대로 저장된다 ──────────
+class DecideFlowConflicts(unittest.TestCase):
+    """저장 방향 그대로 비교하던 때는 일치하는 혼합 쌍을 상충으로 내고, 모순인 혼합
+    쌍과 셋 이상의 고리는 놓쳤다."""
+
+    def _reasons(self, edges, decisions=()):
+        conflicts, _ = q._decide_conflicts(list(edges), list(decisions))
+        return conflicts
+
+    def test_흐름이_같은_혼합_쌍은_상충이_아니다(self):
+        # A 가 B 의 선행이고 B 는 A 에서 파생됐다 — 둘 다 A→B 흐름이다.
+        for rel in ("DERIVES_FROM", "INHERITS_FROM"):
+            self.assertEqual(self._reasons([_e("a", "b", "PREREQUISITE_OF"),
+                                            _e("b", "a", rel)]), [], rel)
+
+    def test_흐름이_반대인_혼합_쌍은_상충이다(self):
+        # A 가 B 의 선행인데 A 는 B 에서 파생됐다 — 흐름이 B→A 로도 간다.
+        got = self._reasons([_e("a", "b", "PREREQUISITE_OF"), _e("a", "b", "DERIVES_FROM")])
+        self.assertEqual(got, [{"source": "a", "target": "b", "type": "PREREQUISITE_OF",
+                                "reason": "opposite_direction",
+                                "reverse_type": "DERIVES_FROM"}])
+
+    def test_셋_이상의_고리를_낸다(self):
+        got = self._reasons([_e("a", "b", "PREREQUISITE_OF"),
+                             _e("b", "c", "PREREQUISITE_OF"),
+                             _e("a", "c", "DERIVES_FROM")])   # 흐름 c→a
+        self.assertEqual(len(got), 1, got)
+        self.assertEqual(got[0]["reason"], "cycle")
+        self.assertEqual(got[0]["nodes"], ["a", "b", "c"])
+        self.assertEqual(got[0]["members"], ["a", "b", "c"])
+        self.assertEqual((got[0]["source"], got[0]["target"], got[0]["type"]),
+                         ("a", "b", "PREREQUISITE_OF"))
+
+    def test_고리는_가장_짧은_것을_대표로_싣고_구성원은_전부_싣는다(self):
+        edges = [_e("a", "b", "PREREQUISITE_OF"), _e("b", "c", "PREREQUISITE_OF"),
+                 _e("c", "d", "PREREQUISITE_OF"), _e("d", "a", "PREREQUISITE_OF"),
+                 _e("c", "a", "PREREQUISITE_OF")]
+        got = [c for c in self._reasons(edges) if c["reason"] == "cycle"]
+        self.assertEqual(len(got), 1, got)
+        self.assertEqual(got[0]["nodes"], ["a", "b", "c"])
+        self.assertEqual(got[0]["members"], ["a", "b", "c", "d"])
+
+    def test_자기_고리와_사슬은_상충이_아니다(self):
+        self.assertEqual(self._reasons([_e("a", "a", "PREREQUISITE_OF")]), [])
+        self.assertEqual(self._reasons([_e("a", "b", "PREREQUISITE_OF"),
+                                        _e("b", "c", "PREREQUISITE_OF"),
+                                        _e("a", "c", "PREREQUISITE_OF")]), [])
+
+    def test_순서는_입력_순서와_무관하다(self):
+        edges = [_e("x", "y", "PREREQUISITE_OF"), _e("y", "x", "PREREQUISITE_OF"),
+                 _e("a", "b", "PREREQUISITE_OF"), _e("b", "c", "PREREQUISITE_OF"),
+                 _e("c", "a", "PREREQUISITE_OF")]
+        self.assertEqual(self._reasons(edges), self._reasons(list(reversed(edges))))
+
+    def test_구조_상충은_결정_쌍_폭증에_잘리지_않는다(self):
+        decs = [{"id": f"decision:d{i:02}", "title": f"T{i}", "subject": "concept:x"}
+                for i in range(20)]   # ① 190쌍
+        conflicts, cut = q._decide_conflicts(
+            [_e("a", "b", "PREREQUISITE_OF"), _e("b", "a", "PREREQUISITE_OF")], decs)
+        self.assertTrue(cut)
+        self.assertEqual(len(conflicts), q._CONFLICT_CAP)
+        self.assertEqual(conflicts[0]["reason"], "opposite_direction")
+
+
+# ── 은퇴한 결정은 상충 판정에 들어가지 않는다 ────────────────────────────────
+class DecideRetiredDecisions(unittest.TestCase):
+    """시간 정책은 대체된 결정을 남기라고 한다. 남긴 결정이 판정에 그대로 들어가면
+    대체할 때마다 옛 결정과 새 결정이 영원히 상충으로 보고된다."""
+
+    def setUp(self):
+        self.store, self.cfg, self._keep = _fresh_store()
+        res = frag.merge_fragment({
+            "owner": OWNER,
+            "nodes": [
+                {"id": "concept:cache", "type": "concept", "title": "Cache",
+                 "domain": "vinc/engineering"},
+                {"id": "decision:old", "type": "decision", "title": "Keep the cache",
+                 "domain": "vinc/engineering",
+                 "props": {"valid_from": "2025-01-01", "valid_until": "2026-01-01"}},
+                {"id": "decision:new", "type": "decision", "title": "Keep the cache",
+                 "domain": "vinc/engineering", "props": {"valid_from": "2026-01-01"}},
+                {"id": "decision:later", "type": "decision", "title": "Shard the cache",
+                 "domain": "vinc/engineering", "props": {"valid_until": "2999-01-01"}},
+            ],
+            "edges": [
+                {"from": "decision:old", "to": "concept:cache", "type": "about"},
+                {"from": "decision:new", "to": "concept:cache", "type": "about"},
+                {"from": "decision:later", "to": "concept:cache", "type": "about"},
+            ],
+        }, store=self.store)
+        self.assertFalse(res.get("warnings"), res.get("warnings"))
+
+    def tearDown(self):
+        self.store.close()
+        _restore(self._keep)
+
+    def test_은퇴한_결정은_빠지고_뺀_수를_말한다(self):
+        got = q.decide("concept:cache", depth=2, owner=OWNER, cfg=self.cfg,
+                       store=self.store)
+        self.assertTrue(got["found"], got)
+        involved = {x for c in got["conflicts"] for x in (c["source"], c["target"])}
+        self.assertNotIn("decision:old", involved, got["conflicts"])
+        same = [c for c in got["conflicts"] if c["reason"] == "decisions_on_same_subject"]
+        # 끝나는 날이 미래인 결정은 현재다.
+        self.assertEqual([(c["source"], c["target"]) for c in same],
+                         [("decision:later", "decision:new")])
+        # 제목이 같던 옛 결정이 빠졌으므로 중복 제목도 없다.
+        self.assertFalse([c for c in got["conflicts"]
+                          if c["reason"] == "duplicate_decision_title"])
+        self.assertEqual(got.get("retired_decisions_excluded"), 1)
+
+    def test_빈_끝날과_문자열_props_를_다룬다(self):
+        rows = [{"id": "decision:a", "props": {"valid_until": ""}},
+                {"id": "decision:b", "props": None}]
+        keep, retired = q._current_decisions(rows, "2026-11-07")
+        self.assertEqual((len(keep), retired), (2, 0))
+        keep, retired = q._current_decisions(
+            [{"id": "decision:c", "props": '{"valid_until": "2026-11-07"}'}], "2026-11-07")
+        self.assertEqual((keep, retired), ([], 1))
 
 
 # ── 결정도 토픽이다 — 해석이 Concept 만 물어 결정 id 가 제 자신을 후보로 냈다 ────────

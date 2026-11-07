@@ -7912,6 +7912,7 @@ def decide(topic: str, *, depth: int = 2, owner: str | None = None,
     _order_graph_result(shaped)
     dec_res = execute(decisions_about_plan(ids, owner=owner), cfg, store=store)
     decisions = list(dec_res.get("rows", [])) if dec_res.get("executed") else []
+    decisions, retired = _current_decisions(decisions, _dt.date.today().isoformat())
     conflicts, cut = _decide_conflicts(shaped["edges"], decisions)
     out = {**base, "nodes": shaped["nodes"], "edges": shaped["edges"],
            "conflicts": conflicts,
@@ -7921,6 +7922,9 @@ def decide(topic: str, *, depth: int = 2, owner: str | None = None,
                             for e in shaped["edges"] if e.get("cross_domain")]}
     if cut:
         out["conflicts_truncated"] = True
+    if retired:
+        # 뺀 것을 말한다(F6). 받는 쪽이 "결정이 하나뿐"으로 읽지 않게.
+        out["retired_decisions_excluded"] = retired
     return out
 
 
@@ -7937,10 +7941,31 @@ def decisions_about_plan(ids: list[str], *, owner: str | None = None) -> QueryPl
     if owner:
         where += " AND c.owner_id = $owner AND d.owner_id = $owner"
         params["owner"] = owner
+    # props 는 은퇴 판정용이다. Decision 은 유효구간 열이 없고 `props.valid_until` 에 둔다.
     cypher = (f"MATCH (d:Decision)-[:ABOUT]->(c:Concept) WHERE {where} "
-              "RETURN d.decision_id AS id, d.title AS title, c.concept_id AS subject")
+              "RETURN d.decision_id AS id, d.title AS title, c.concept_id AS subject, "
+              "d.props AS props")
     return QueryPlan("decisions_about", cypher, params,
                      note="decisions attached to the id set")
+
+
+def _current_decisions(rows: list[dict], today: str) -> tuple[list[dict], int]:
+    """은퇴한 결정(`props.valid_until` 이 오늘이나 그 전)을 상충 판정 입력에서 뺀다.
+
+    시간 정책은 대체된 결정을 지우지 말고 남기라고 한다. 그런데 남긴 결정이 판정에
+    그대로 들어가면 대체할 때마다 옛 결정과 새 결정이 `decisions_on_same_subject` 로
+    영원히 보고된다 — 정책을 지킬수록 신호가 소음이 된다. 기준은 `decide_paths` 와 같은
+    :func:`_retired_claim` 하나다. 반환 ``(현재 결정, 뺀 수)``."""
+    keep: list[dict] = []
+    retired = 0
+    for r in rows:
+        props = _props_to_obj(r.get("props")) or {}
+        until = props.get("valid_until") if isinstance(props, dict) else None
+        if _retired_claim({"valid_until": until}, today):
+            retired += 1
+            continue
+        keep.append(r)
+    return keep, retired
 
 
 #: 방향이 곧 의미인 엣지. RELATED_TO 는 무방향이라(역방향이 같은 간선으로 접힌다)
@@ -7957,14 +7982,28 @@ def _decide_conflicts(edges: list[dict],
 
       ① ``decisions_on_same_subject`` — 같은 개념을 두고 내려진 결정이 둘 이상.
          결정을 하나 더 쓰기 전에 읽어야 하는 바로 그것이다.
-      ② ``opposite_direction`` — 한 쌍에 방향이 반대인 유향 엣지가 둘 다 있다.
+      ② ``opposite_direction`` — 한 쌍 사이에 **흐름**이 양쪽으로 다 있다.
          방향이 의미인 관계에서 이건 둘 중 하나가 틀렸다는 뜻이다.
+      ④ ``cycle`` — 셋 이상의 개념이 흐름으로 고리를 이룬다(강연결요소).
       ③ ``duplicate_decision_title`` — 제목이 같은 결정 둘. 같은 것을 두 번
          결정했거나, 하나가 다른 하나를 대체하는데 그렇게 적히지 않았다.
 
+    **흐름**은 저장 방향이 아니다. `DERIVES_FROM`·`INHERITS_FROM` 은 흐름과 반대로
+    저장되므로(:data:`_REVERSED_RELS`, 레이아웃·좌측 트리와 같은 규약) 뒤집어 읽는다.
+    저장 방향 그대로 비교하면 "A 가 B 의 선행, B 는 A 에서 파생"(일치)을 상충으로
+    내고 "A 가 B 의 선행, A 는 B 에서 파생"(모순)은 놓친다. ②의 ``type`` 은 흐름
+    source→target 을 실은 관계, ``reverse_type`` 은 그 반대 흐름을 실은 관계다.
+    자기 고리(A→A)는 내지 않는다(종전과 같다).
+
+    싣는 순서는 구조 상충(②·④) → ③ → ① 이다. ①은 결정 수의 제곱으로 늘어
+    상한(:data:`_CONFLICT_CAP`)을 혼자 채우므로, 드물고 확실한 상충이 그 뒤에서
+    잘리지 않게 맨 뒤에 둔다.
+
     반환 ``(conflicts, truncated)``. 순서는 결정론이다 — 같은 그래프를 두 번 물으면
     같은 순서로 답해야 한다."""
-    out: list[dict] = []
+    structural = _flow_conflicts(edges)
+    by_title_out: list[dict] = []
+    same_subject: list[dict] = []
 
     # ① 같은 주제에 걸린 결정들.
     by_subject: dict[str, set[str]] = {}
@@ -7977,21 +8016,8 @@ def _decide_conflicts(edges: list[dict],
         titles[did] = str(r.get("title") or "")
     for subj, dec_ids in sorted(by_subject.items()):
         for a, b in itertools.combinations(sorted(dec_ids), 2):
-            out.append({"source": a, "target": b, "type": "ABOUT",
-                        "reason": "decisions_on_same_subject", "subject": subj})
-
-    # ② 같은 쌍 위의 역방향 유향 엣지. 쌍당 한 번만 낸다(정렬로 고정).
-    directed: dict[tuple[str, str], set[str]] = {}
-    for e in edges:
-        t = str(e.get("type") or "")
-        if t in _DIRECTED_RELS and e.get("source") and e.get("target"):
-            directed.setdefault((str(e["source"]), str(e["target"])), set()).add(t)
-    for (s, t), fwd in sorted(directed.items()):
-        back = directed.get((t, s))
-        if back and s < t:
-            out.append({"source": s, "target": t, "type": sorted(fwd)[0],
-                        "reason": "opposite_direction",
-                        "reverse_type": sorted(back)[0]})
+            same_subject.append({"source": a, "target": b, "type": "ABOUT",
+                                 "reason": "decisions_on_same_subject", "subject": subj})
 
     # ③ 제목이 같은 결정. 공백·대소문자만 정규화한다(그 이상은 판단이다).
     by_title: dict[str, set[str]] = {}
@@ -8003,10 +8029,128 @@ def _decide_conflicts(edges: list[dict],
         if len(dec_ids) < 2:
             continue
         for a, b in itertools.combinations(sorted(dec_ids), 2):
-            out.append({"source": a, "target": b, "type": "",
-                        "reason": "duplicate_decision_title", "title": titles[a]})
+            by_title_out.append({"source": a, "target": b, "type": "",
+                                 "reason": "duplicate_decision_title", "title": titles[a]})
 
+    out = structural + by_title_out + same_subject
     return out[:_CONFLICT_CAP], len(out) > _CONFLICT_CAP
+
+
+def _flow_conflicts(edges: list[dict]) -> list[dict]:
+    """유향 관계를 흐름 방향으로 맞춘 뒤 ②(양방향 쌍)와 ④(셋 이상의 고리)를 낸다.
+
+    순수 함수다. 순서는 정렬로 고정한다: ②는 (source, target) 순, ④는 고리 구성원의
+    최소 id 순."""
+    # 흐름 (u→v) 마다 그 흐름을 실은 저장 관계 이름들.
+    flow: dict[tuple[str, str], set[str]] = {}
+    for e in edges:
+        rel = str(e.get("type") or "")
+        s, t = str(e.get("source") or ""), str(e.get("target") or "")
+        if rel not in _DIRECTED_RELS or not s or not t or s == t:
+            continue
+        u, v = (t, s) if rel in _REVERSED_RELS else (s, t)
+        flow.setdefault((u, v), set()).add(rel)
+
+    out: list[dict] = []
+    # ② 쌍당 한 번(s < t).
+    for (s, t), fwd in sorted(flow.items()):
+        back = flow.get((t, s))
+        if back and s < t:
+            out.append({"source": s, "target": t, "type": sorted(fwd)[0],
+                        "reason": "opposite_direction",
+                        "reverse_type": sorted(back)[0]})
+
+    # ④ 크기 3 이상의 강연결요소. 2짜리는 ②가 이미 말했다.
+    succ: dict[str, list[str]] = {}
+    for (u, v) in flow:
+        succ.setdefault(u, []).append(v)
+        succ.setdefault(v, [])
+    for k in succ:
+        succ[k].sort()
+    for comp in _strongly_connected(succ):
+        if len(comp) < 3:
+            continue
+        members = sorted(comp)
+        path = _shortest_cycle(members[0], succ, set(members))
+        out.append({"source": path[0], "target": path[1],
+                    "type": sorted(flow[(path[0], path[1])])[0],
+                    "reason": "cycle", "nodes": path, "members": members})
+    return out
+
+
+def _strongly_connected(succ: dict[str, list[str]]) -> list[list[str]]:
+    """반복형 Tarjan. 서브그래프가 depth 4 까지 커질 수 있어 재귀 한도를 피한다.
+    노드는 정렬 순으로 방문해 결과가 결정론이다."""
+    index: dict[str, int] = {}
+    low: dict[str, int] = {}
+    on_stack: set[str] = set()
+    stack: list[str] = []
+    comps: list[list[str]] = []
+    counter = 0
+    for root in sorted(succ):
+        if root in index:
+            continue
+        work: list[tuple[str, int]] = [(root, 0)]
+        index[root] = low[root] = counter
+        counter += 1
+        stack.append(root)
+        on_stack.add(root)
+        while work:
+            node, i = work[-1]
+            nbrs = succ.get(node, [])
+            if i < len(nbrs):
+                work[-1] = (node, i + 1)
+                nxt = nbrs[i]
+                if nxt not in index:
+                    index[nxt] = low[nxt] = counter
+                    counter += 1
+                    stack.append(nxt)
+                    on_stack.add(nxt)
+                    work.append((nxt, 0))
+                elif nxt in on_stack:
+                    low[node] = min(low[node], index[nxt])
+                continue
+            work.pop()
+            if work:
+                parent = work[-1][0]
+                low[parent] = min(low[parent], low[node])
+            if low[node] == index[node]:
+                comp: list[str] = []
+                while True:
+                    w = stack.pop()
+                    on_stack.discard(w)
+                    comp.append(w)
+                    if w == node:
+                        break
+                comps.append(comp)
+    comps.sort(key=lambda c: min(c))
+    return comps
+
+
+def _shortest_cycle(start: str, succ: dict[str, list[str]], within: set[str]) -> list[str]:
+    """`start` 에서 나가 `start` 로 돌아오는 가장 짧은 고리(구성원 안에서만, BFS).
+    반환은 `start` 로 시작하고 되돌아오는 마지막 `start` 는 뺀 노드 열이다.
+    강연결요소 안이라 고리는 반드시 있다."""
+    prev: dict[str, str] = {}
+    queue = [start]
+    seen = {start}
+    head = 0
+    while head < len(queue):
+        node = queue[head]
+        head += 1
+        for nxt in succ.get(node, []):
+            if nxt not in within:
+                continue
+            if nxt == start:
+                path = [node]
+                while path[-1] != start:
+                    path.append(prev[path[-1]])
+                return list(reversed(path))
+            if nxt not in seen:
+                seen.add(nxt)
+                prev[nxt] = node
+                queue.append(nxt)
+    return [start]   # 도달 불가(강연결요소면 일어나지 않는다)
 
 
 # ── 삭제 / 병합 (T3c C3 — 오염 정리 쓰기 표면) ────────────────────────────────
