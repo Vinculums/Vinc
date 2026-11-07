@@ -93,6 +93,17 @@ test('the graph has no All button: it opens one layer at a time', () => {
   assert.equal(h.snapshot().mode, 'path');
 });
 
+test('pressing a node opens it at once: no expand menu, no drag handles, no edge markers for pins', () => {
+  const { h, host } = mount([node('concept:a', 'concept', 'root/a'), node('concept:b', 'concept', 'root/b')]);
+  h.open('topic:root/a');
+  const g = host.querySelector('.node[data-id="concept:a"]');
+  assert.ok(g, 'the concept is drawn in the open layer');
+  assert.equal(host.querySelector('#cmp-menu'), null, 'no expand menu in the page');
+  assert.equal(host.querySelector('.pedge'), null, 'no pin edge markers');
+  h.open('concept:a'); assert.equal(h.centre(), 'concept:a');
+  assert.deepEqual(h.snapshot().filt, [], 'no per-node branch filter is kept');
+});
+
 test('an Escape the view already handled does not also send the compass back to the root', () => {
   winOn.length = 0;
   const { h } = mount([node('concept:a', 'concept', 'root/a')]);
