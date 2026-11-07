@@ -866,7 +866,8 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
   const measSig = `${ROOT}|${topics.size}|${[...topics.values()].reduce((h, t) => (h * 31 + (t.count || 0) + t.path.length) % 1000000007, 7)}`;
   function settleArms() {
     if (ARMS_FIXED || !CANONL) return;
-    clearTimeout(measIdle); (globalThis.cancelIdleCallback || clearTimeout)(measIdle);
+    // measIdle 은 requestIdleCallback 의 번호다(없을 때만 setTimeout). clearTimeout 에 넘기면 번호가 같은 남의 타이머가 지워진다
+    (globalThis.cancelIdleCallback || clearTimeout)(measIdle);
     let meas = MEAS_CACHE.get(measSig);
     if (!meas) { meas = measureCross(); MEAS_CACHE.set(measSig, meas); if (MEAS_CACHE.size > 8) MEAS_CACHE.delete(MEAS_CACHE.keys().next().value); }
     const r = crossCanon(CANONL, meas); TPOS = r.out; ARMS_OF = r.arms; ARMS_FIXED = MEASURED = true;
@@ -1063,7 +1064,7 @@ prevPos = new Map(); render(); treeChanged(); return; }
   pop.addEventListener("pointermove", (e) => { if (br == null) return; const b2 = day(e); TSEL = [val(Math.min(br, b2)), val(Math.max(br, b2), true)]; dimLens(); });
   pop.addEventListener("pointerup", () => { if (br == null) return; br = null; TWIN = null; paintSide(); treeChanged(); });
   { const _r3 = render; render = function () { _r3(); paintSide(); }; }
-  const destroy = () => { AC.abort(); clearTimeout(measIdle); (globalThis.cancelIdleCallback || clearTimeout)(measIdle); cancelAnimationFrame(flyRaf); cancelAnimationFrame(traf); cancelAnimationFrame(flipRaf); clearTimeout(flipTo); host.innerHTML = ""; side.remove(); tools.remove(); pop.remove(); ctx.onDestroy?.(); };
+  const destroy = () => { AC.abort(); (globalThis.cancelIdleCallback || clearTimeout)(measIdle); cancelAnimationFrame(flyRaf); cancelAnimationFrame(traf); cancelAnimationFrame(flipRaf); clearTimeout(flipTo); host.innerHTML = ""; side.remove(); tools.remove(); pop.remove(); ctx.onDestroy?.(); };
   if (import.meta.env?.DEV) (window as any).__compass = { open: (ids) => setPath(ids.map(byAny)), lz: () => LZ, pin: togglePin, range: (r) => { TSEL = r; dimLens(); } };
   // 목록에서 고른 노드로: 지금 렌즈에 이미 사슬이 있으면 그 사슬로(맥락 유지), 없으면 주제 사슬을 따라 편다
   function goTo(id) { const n = byAny(id); if (!n) return; const o = LZ && LZ.items.find((q) => q.id === n.id && q.chain);
