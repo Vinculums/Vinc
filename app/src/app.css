@@ -760,7 +760,7 @@ body {
    `--site-frame`·`--site-gutter`·`--gnb-max` 와 같아야 한다(앱은 site.css 를 부르지 않는다). */
 [data-skin="web"] { --site-gutter: 20px; --gnb-max: calc(1540px + var(--site-gutter) * 2); }
 @media (max-width: 640px) { [data-skin="web"] { --site-gutter: 16px; } }
-/* 셸도 같은 틀에 선다(2026-11-07 소유자): 사이드바 왼쪽은 GNB 로고와, 내용 카드 오른쪽은 GNB 오른쪽
+/* 셸도 같은 틀에 선다: 사이드바 왼쪽은 GNB 로고와, 내용 카드 오른쪽은 GNB 오른쪽
    단추와 같은 세로선이다. 틀보다 넓은 창에서는 양옆이 바탕(셸과 같은 면)으로 빈다. */
 [data-skin="web"] body { background: hsl(var(--surface-0)); }
 [data-skin="web"] #shell { max-width: var(--gnb-max); margin: 0 auto; padding-left: var(--site-gutter); padding-right: var(--site-gutter); }
@@ -834,7 +834,7 @@ body {
   /* 펼친 검색의 결과·Ask 판이 표면 위로 내려온다 — 표면 · 문서 열보다 위. */
   position: relative; z-index: 41;
 }
-/* 머리 안의 가로 규칙(2026-11-07 소유자): 뒤 묶음(검색 · 문서 | 그래프)은 **늘 카드 안쪽 오른쪽 끝**에
+/* 머리 안의 가로 규칙: 뒤 묶음(검색 · 문서 | 그래프)은 **늘 카드 안쪽 오른쪽 끝**에
    선다(`--head-inset`). 창이 늘고 줄어도 카드 끝을 따라가므로 웹에서는 GNB 오른쪽 단추와 같은 세로선이다.
    앞자리(지금 자리)는 본문을 따른다: 문서 · Agents · 검색은 본문 칼럼의 첫 글자선(`--page-col`), 그래프는
    본문이 카드 전체를 쓰므로 카드 안쪽 왼쪽 끝. 칼럼 계산의 100cqi 는 머리(`container: topbar`)의 폭이다. */
