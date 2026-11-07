@@ -196,9 +196,12 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   const REL = { up: [-26, 26], left: [-135, -45], right: [45, 135] };   // 12시 방향(θ12)에서 잰 각도(도)
   const rad = (d) => d * Math.PI / 180, todeg = (r) => r * 180 / Math.PI;
   let path = [], prevPos = new Map(), LZ = null, VIEW = null, MODE = 'path', WIDE = false, KEEPCAM = false, PINCHAIN = new Set();
-  let CANON = false, TPOS = null, CANONL = null, MEASURED = false, ARMS_OF = null;
+  let TPOS = null, CANONL = null, MEASURED = false, ARMS_OF = null;
   let ARMS_FIXED = false, measIdle = 0;   // ARMS_FIXED: 잰 크기로 팔을 골랐다. 그 뒤로는 팔을 바꾸지 않는다
-  const useT = () => !CANON && TPOS && MODE === 'all';   // TPOS: 주제마다 정해진 자리(전부 펼친 배치에서 한 번 잰다). CANON: 그 배치를 재는 중
+  // 배치 한 번이 읽는 상태(S). 그리기는 지금 상태로(curS), 재기 · 정해진 자리 짓기는 따로 만든 S 로 부른다: 전역(MODE · path · TPOS ·
+  // RANGE · KOFF · FILT)을 바꿨다 되돌리지 않는다. place: 주제 층의 허브를 이 표의 자리에 둔다(전체 펼치기는 TPOS, 하나씩 열기는 묶음 배치).
+  // dirs: 부모 기준으로 놓는 층의 방향(th12)을 읽는 표. canon: 정해진 자리를 처음 짓는 중(거르기 · 밀어내기를 하지 않는다)
+  const curS = () => ({ mode: MODE, path, place: MODE === 'all' ? TPOS : null, dirs: TPOS, canon: false, range: RANGE, koff: KOFF, filt: FILT });
   const FILT = new Map();
 const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(긴 목록은 20개씩 더 연다)
   const KOFF = new Set();   // 범례에서 잠시 끈 종류. 저장하지 않는다: 그래프를 열 때마다 모두 켠 채 시작한다
@@ -207,7 +210,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
   const fullDate = (s) => (!s ? '' : s.length === 4 ? s + '-01-01' : s.length === 7 ? s + '-01' : s.slice(0, 10));   // '2026' · '2026-03' 같은 덜 적힌 날짜는 그 첫날로
   // 날짜 = 그 일이 있었던 날: 내용 시간 → 유효 시작(→ 사건은 그날). 마지막으로 고친 때만 있는 노드는 날짜가 없는 것으로 본다(막대에 넣지 않고 흐리지도 않는다).
   const when = (n) => fullDate(n.ct || n.vf || (n.k === 'episode' ? n.ts : '') || '');
-  const inRange = (n) => { const w = when(n); return !RANGE || !w || (w >= RANGE[0] && w <= RANGE[1]); };
+  const inRange = (n, rg = RANGE) => { const w = when(n); return !rg || !w || (w >= rg[0] && w <= rg[1]); };
   function fanPlace(list, center, a0, a1, rMin, gap, size) {
     const need = list.reduce((s, u) => s + 2 * size(u) + gap, 0), span = rad(a1 - a0), R = Math.max(rMin, need / span);
     let acc = rad(a0) + (span - need / R) / 2;
@@ -224,22 +227,22 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
     return { R: Math.max(acc[0], acc[1]), pos };
   }
   // 한 층(나침반 하나)의 내용. 부모는 이미 12시에 있으므로 뺀다
-  function compassOf(node, parentId) {
+  function compassOf(node, parentId, S = curS()) {
     const G = gather(node), drop = (l) => l.filter((u) => u.n.id !== parentId);
     G.up = drop(G.up); G.left = drop(G.left); G.right = drop(G.right);
     // 기간: 시간 막대에서 고른 구간 밖의 노드는 뺀다(주제와 지나온 길의 노드는 남긴다)
-    const keep = (n) => CANON || n.k === 'topic' || path.some((q) => q.id === n.id) || PINS.has(n.id) || (inRange(n) && !KOFF.has(kindKey(n)));
+    const keep = (n) => S.canon || n.k === 'topic' || S.path.some((q) => q.id === n.id) || PINS.has(n.id) || (inRange(n, S.range) && !S.koff.has(kindKey(n)));
     G.up = G.up.filter((u) => keep(u.n)); G.left = G.left.filter((u) => keep(u.n)); G.right = G.right.filter((u) => keep(u.n));
     for (const k of Object.keys(G.shelf)) G.shelf[k] = G.shelf[k].filter(keep);
     G.bridges = G.bridges.filter((b) => keep(b.n));
     // 부채가 받는 수: 위 11 · 왼쪽 20 · 오른쪽 16. 지나온 길의 노드와 하위 주제는 넘쳐도 남긴다(잘리면 그 노드를 열 수 없고,
     // 전체 펼치기에서 주제가 빠진다). 순서는 그대로다
-    const onPathU = (u) => path.some((q) => q.id === u.n.id);
+    const onPathU = (u) => S.path.some((q) => q.id === u.n.id);
     const cap = (l, n, must) => { if (l.length <= n) return l; let room = n - l.slice(n).filter(must).length; return l.filter((u) => must(u) || room-- > 0); };
     G.up = cap(G.up, 11, onPathU); G.left = cap(G.left, 20, onPathU); G.right = cap(G.right, 16, (u) => onPathU(u) || u.n.k === 'topic');
     // 넓힐 관계: 이 노드를 펼칠 때 고른 갈래만 남긴다(부모와 다음 층으로 가는 노드는 늘 남긴다)
-    const F0 = CANON ? null : FILT.get(node.id);
-    if (F0) { const must = (u) => path.some((q) => q.id === u.n.id);
+    const F0 = S.canon ? null : S.filt.get(node.id);
+    if (F0) { const must = onPathU;
       if (!F0.has('up')) G.up = G.up.filter(must); if (!F0.has('left')) G.left = G.left.filter(must); if (!F0.has('right')) { G.right = G.right.filter(must); G.bridges = []; }
       if (!F0.has('shelf')) for (const k of Object.keys(G.shelf)) G.shelf[k] = []; }
     const probe = { x: 0, y: 0, r: 22 };
@@ -255,40 +258,44 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
   // 펼친 나무: 펼칠 노드들(expand: 부모 id → 펼칠 자식 id 들)을 BFS 로 놓는다. 펼친 노드는 부모 부채의 자기 자리에서 바깥으로 빠져나와
   // 같은 나침반을 편다. 부모 기준으로 놓은 층은 앞서 놓인 층의 항목(이름표까지)과 겹치지 않을 때까지 자기 방향으로 더 나간다(settle). 목록은 focus 층만 펴고 나머지는 수로 접는다.
 
-  function layoutTree(root, expand, focusId) {
-    const items = [], comps = [], placed = new Map(), onPath = new Set(path.map((n) => n.id)), queued = new Set([root.id]);
+  function layoutTree(root, expand, focusId, S = curS()) {
+    const items = [], comps = [], placed = new Map(), onPath = new Set(S.path.map((n) => n.id)), queued = new Set([root.id]);
     const mk = (n, x, y, r, extra) => { const o = { id: n.id, src: n, k: n.k, x, y, r, c: colv(n), label: titleOf(n), ...extra }; items.push(o); placed.set(n.id, o); return o; };
     const queue = [{ node: root, parent: null }];
     // 겹침 풀기: 부모 기준으로 놓은 층이 앞서 놓인 어느 층(부모 · 형제 · 지나온 층 · 고정 층)과 겹치면, 자기 방향으로 한 칸씩 밀어낸다.
     // 상자는 항목마다 따로 잰다(노드와 이름표 끝까지, extentPts). 층 전체를 상자 하나로 보면 비스듬한 부채의 빈 모서리까지 막혀
     // 이미 떨어진 층도 밀려난다. 지금 층(focus)은 6시 목록이 설 자리까지 센다
     const own = (c) => [c.hub, ...c.items.filter((o) => o.id && !o.link && o.comp === c.hub.id)];
-    const boxes = (c) => { const out = own(c).map((o) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-        for (const [x, y] of extentPts(o)) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); } return [x0, y0, x1, y1]; });
+    const boxOf = (o) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const [x, y] of extentPts(o)) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); } return [x0, y0, x1, y1]; };
+    const boxes = (c) => { const out = own(c).map(boxOf);
       if (c.stub) out.push([c.stub.x - 20, c.stub.y - 14, c.stub.x + 170, c.stub.y + 14]);
-      if (c.focus && MODE !== 'all' && c.kinds && c.kinds.length) { const a = rad(c.th12 + 180), ux = Math.cos(a), uy = Math.sin(a), d = Math.max(c.cp.FP, c.hub.r + 80), w = Math.max(c.cp.E, c.kinds.length * 105 + 60);
+      if (c.focus && S.mode !== 'all' && c.kinds && c.kinds.length) { const a = rad(c.th12 + 180), ux = Math.cos(a), uy = Math.sin(a), d = Math.max(c.cp.FP, c.hub.r + 80), w = Math.max(c.cp.E, c.kinds.length * 105 + 60);
         const xs = [-1, 1].map((k) => c.hub.x + ux * d - uy * w * k), ys = [-1, 1].map((k) => c.hub.y + uy * d + ux * w * k), x0 = c.hub.x + ux * (c.hub.r + 30), y0 = c.hub.y + uy * (c.hub.r + 30);
         out.push([Math.min(x0, ...xs), Math.min(y0, ...ys), Math.max(x0, ...xs), Math.max(y0, ...ys)]); }
       return out; };
     const hit = (A, B, m = 12) => A.some((a) => B.some((b) => a[0] < b[2] + m && b[0] < a[2] + m && a[1] < b[3] + m && b[1] < a[3] + m));
     const shift = (c, dx, dy) => { for (const o of own(c)) { o.x += dx; o.y += dy; } if (c.stub) { c.stub.x += dx; c.stub.y += dy; } };
     const settle = (c, dir) => { const ux = Math.cos(dir), uy = Math.sin(dir); let mine = boxes(c); const others = comps.map(boxes);
-      for (let k = 0; k < 80 && others.some((B) => hit(mine, B)); k++) { shift(c, ux * 60, uy * 60); mine = boxes(c); } };
+      for (let k = 0; k < 80 && others.some((B) => hit(mine, B)); k++) { shift(c, ux * 60, uy * 60); mine = boxes(c); }
+      if (c.hub.route) c.hub.route[c.hub.route.length - 1] = [c.hub.x, c.hub.y]; };   // 마지막 토막은 팔 방향이라 끝점만 옮기면 곧게 남는다
     while (queue.length) {
       const { node, parent } = queue.shift(); const i = comps.length, kids = expand.get(node.id) || new Set();
-      const cp = compassOf(node, parent ? parent.hub.id : null), focus = node.id === focusId;
+      const ck = S.cps && `${node.id}|${parent ? parent.hub.id : ''}`, cp = (ck && S.cps.get(ck)) || compassOf(node, parent ? parent.hub.id : null, S), focus = node.id === focusId;
+      if (ck) S.cps.set(ck, cp);
       // 고정 노드로 가는 길에만 있는 층(지금 길 밖): 다음 사슬 노드와 고정 노드만 남긴다(길만 잇는다)
-      const pinOnly = MODE !== 'all' && !onPath.has(node.id) && PINCHAIN.has(node.id);
+      const pinOnly = S.mode !== 'all' && !onPath.has(node.id) && PINCHAIN.has(node.id);
       if (pinOnly) { const ok = (u) => kids.has(u.n.id) || PINS.has(u.n.id); cp.G.up = cp.G.up.filter(ok); cp.G.left = cp.G.left.filter(ok); cp.G.right = cp.G.right.filter(ok); cp.G.bridges = [];
         for (const k of Object.keys(cp.G.shelf)) cp.G.shelf[k] = cp.G.shelf[k].filter((n) => PINS.has(n.id)); cp.shelfN = 0; }
       let hub, th12, free = null;   // free: 정해진 자리 없이 부모 기준으로 놓은 층이면 밀어낼 방향(라디안)
-      const T0 = useT() && parent ? TPOS.get(node.id) : null;
+      const T0 = !S.canon && S.place && parent ? S.place.get(node.id) : null;
       if (!parent) { hub = mk(node, 0, 0, node.k === 'topic' ? 24 : 15, { role: 'hub', level: 0 }); th12 = -90; }
       else if (T0) { const slot = parent.slots.get(node.id);   // 정해진 자리(어떤 길로 와도 같다)
-        hub = mk(node, T0.x, T0.y, 22, { role: 'hub', level: i, parentHub: parent.hub, viaE: slot && slot.e, route: T0.route }); th12 = T0.th12; }
+        hub = mk(node, T0.x, T0.y, 22, { role: 'hub', level: i, parentHub: parent.hub, viaE: slot && slot.e, route: T0.route && [...T0.route] }); th12 = T0.th12;
+        if (S.mode !== 'all') free = rad(th12 + 180); }   // 묶음이 모르는 층(주제가 아닌 노드로 들어간 층)과 겹치면 팔 방향으로 비킨다
       else {
         const slot = parent.slots.get(node.id) || { ang: rad(parent.th12 + 180), r: parent.cp.E - 70 };
-        const Tc = TPOS && TPOS.get(node.id), Tp = TPOS && TPOS.get(parent.hub.id), extra = { role: 'hub', level: i, parentHub: parent.hub, viaE: slot.e };
+        const Tc = S.dirs && S.dirs.get(node.id), Tp = S.dirs && S.dirs.get(parent.hub.id), extra = { role: 'hub', level: i, parentHub: parent.hub, viaE: slot.e };
         if (parent.slots.size > 1 && Tc && Tp) {
           // 한 층에서 여럿을 펼치면(고정한 노드로 가는 길이 갈라질 때) 전체 배치에서의 상대 자리를 그대로 쓴다: 형제가 한 자리에 겹치지 않는다
           hub = mk(node, parent.hub.x + Tc.x - Tp.x, parent.hub.y + Tc.y - Tp.y, 22, extra); th12 = Tc.th12;
@@ -307,7 +314,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
       }
       const chain = parent ? [...parent.chain, node] : [node];
       hub.chain = chain;
-      const comp = { cp, hub, th12, slots: new Map(), focus, level: i, items: [], chain, parent, pinOnly };
+      const comp = { cp, hub, th12, slots: new Map(), focus, level: i, items: [], chain, parent, pinOnly, free };
       const put = (p, role, extra = {}) => { const r = Math.hypot(p.x - hub.x, p.y - hub.y);
         // 지나온 길의 노드는 반드시 자기 층(허브)으로 펼쳐져야 한다. 앞 층의 부채에 먼저 나와도 여기서 그리지 않고, 나중에 그 허브로 빛살만 잇는다.
         // (이걸 안 하면 길의 노드가 앞 층의 잎으로 먼저 놓여 펼쳐지지 못하고, 지금 층을 잃어 맨 위 vinc 로 돌아간 것처럼 보였다)
@@ -349,9 +356,9 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
         queued.add(n.id); comp.slots.set(n.id, { ang: rad(th12 + 180), r: hub.r + 46 }); queue.push({ node: n, parent: comp }); return false; });
       const kinds = [['decision', KIND.decision], ['record', KIND.record], ['episode', KIND.episode], ['doc', KIND.doc]].filter(([k]) => G.shelf[k].length);
       comp.kinds = kinds.map(([k, name]) => ({ k, name, all: G.shelf[k] }));
-      if (!focus && kinds.length && MODE !== 'all') { const a = rad(th12 + 180 + (comp.slots.size ? 22 : 0)), r = hub.r + 46;   // 펼친 층으로 가는 선(6시)이 있으면 조금 비켜 둔다
+      if (!focus && kinds.length && S.mode !== 'all') { const a = rad(th12 + 180 + (comp.slots.size ? 22 : 0)), r = hub.r + 46;   // 펼친 층으로 가는 선(6시)이 있으면 조금 비켜 둔다
         comp.stub = { x: hub.x + Math.cos(a) * r, y: hub.y + Math.sin(a) * r, text: kinds.map(([k, name]) => `${name} ${G.shelf[k].length}`).join(' · '), ang: a }; }
-      if (free != null && !CANON) settle(comp, free);
+      if (free != null && !S.canon) settle(comp, free);
       comps.push(comp);
     }
     // 미뤄 둔 빛살을 실제 허브에 잇는다
@@ -392,8 +399,14 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
       return { hub: F.hub, comp: F, shelves, Q, BY, mode, side, a6 };
     };
     const fset = setFor(F), sets = [fset];
-    if (MODE === 'all') for (const c of comps) if (c !== F && !c.pinOnly && c.kinds.length) sets.push(setFor(c));
-    return { items, comps, focus: F, shelves: fset.shelves, sets, Q: fset.Q, BY: fset.BY, mode: fset.mode, side: fset.side, a6: fset.a6 };
+    // 지금 층의 목록은 층을 다 놓은 뒤에 선다. 그 목록이 앞서 놓인 층에 닿으면 지금 층을 목록째 자기 방향으로 더 민다
+    if (S.mode !== 'all' && !S.canon && F.free != null) {
+      const ux = Math.cos(F.free) * 60, uy = Math.sin(F.free) * 60, list = () => fset.shelves.flatMap((sh) => sh.items), others = comps.filter((c) => c !== F).map(boxes);
+      for (let k = 0; k < 80 && others.some((B) => hit([...boxes(F), ...list().map(boxOf)], B)); k++) { shift(F, ux, uy); for (const o of list()) { o.x += ux; o.y += uy; }
+        for (const sh of fset.shelves) sh.x += ux; fset.Q = { ...fset.Q, x: fset.Q.x + ux, y: fset.Q.y + uy }; fset.BY += uy; }
+      if (F.hub.route) F.hub.route[F.hub.route.length - 1] = [F.hub.x, F.hub.y]; }
+    if (S.mode === 'all') for (const c of comps) if (c !== F && !c.pinOnly && c.kinds.length) sets.push(setFor(c));
+    return { items, comps, focus: F, shelves: fset.shelves, sets, Q: fset.Q, BY: fset.BY, mode: fset.mode, side: fset.side, a6: fset.a6, boxes };
   }
 
   // ── 그리기 ──────────────────────────────────────────────────────────────────────────────
@@ -412,15 +425,20 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
       if (o.pinned) return [[o.x - 60, o.y - 50], [o.x + 180, o.y + 50]];   // 고정 노드: 이름표까지 들어오게
       // 이름표가 실제로 차지하는 만큼만 잡는다: 가로로 쓰는 고리 주제는 옆으로 약 110px·위아래로 30px, 비스듬한 부채 이름은 이름 길이만큼
       if (o.role === 'hub') return o.k === 'topic' ? [[o.x - o.r - 30, o.y - o.r - 10], [o.x + o.r + 30, o.y + o.r + 40]] : [[o.x - o.r - 170, o.y - o.r - 20], [o.x + o.r + 20, o.y + o.r + 30]];
-      const a = o.ang ?? 0, L = o.r + 12 + 6.6 * Math.min(24, o.label.length); return [[o.x - o.r, o.y - o.r], [o.x + o.r, o.y + o.r], [o.x + Math.cos(a) * L, o.y + Math.sin(a) * L]]; };
+      const a = o.ang ?? 0;
+      // 하위 주제 이름은 기울이지 않고 가로로 쓴다(수 배지까지): 부채 방향이 아니라 왼쪽이나 오른쪽으로 길어진다
+      if (o.role === 'right' && o.k === 'topic') { const s = Math.cos(a) < 0 ? -1 : 1, L = o.r + 12 + 6.6 * (Math.min(18, o.label.length) + 4); return [[o.x - o.r, o.y - o.r - 4], [o.x + o.r, o.y + o.r + 4], [o.x + s * L, o.y]]; }
+      const L = o.r + 12 + 6.6 * Math.min(24, o.label.length); return [[o.x - o.r, o.y - o.r], [o.x + o.r, o.y + o.r], [o.x + Math.cos(a) * L, o.y + Math.sin(a) * L]]; };
   // 옮겨 가는 움직임(FLIP)의 프레임과 끝난 뒤 가지를 키우는 타이머. 새 render 와 destroy 가 지운다: 늦게 온 타이머가 새 배치를 지난 배치의 가지로 덮지 않게
   let flipRaf = 0, flipTo = 0;
   let render = function () {
     cancelAnimationFrame(flipRaf); clearTimeout(flipTo);
     // 전체 펼치기를 그릴 때 층의 실제 크기로 다시 놓는다. 팔(가지가 서는 방향)은 마운트 직후 잰 크기로 한 번 고르고(settleArms)
     // 그 뒤로는 바꾸지 않는다: 하나씩 열기도 그 방향을 따르므로, 여기서 다시 고르면 전체 펼치기를 누른 뒤 같은 주제가 다른 쪽으로 열린다
-    if (MODE === 'all' && !MEASURED && CANONL) { if (!ARMS_FIXED) settleArms(); else { TPOS = crossCanon(CANONL, measureCross(), true); MEASURED = true; } }
-    const L = pinLayout(layoutTree(path[0], expandMap(), path[path.length - 1].id));
+    if (MODE === 'all' && !MEASURED && CANONL) { if (!ARMS_FIXED) settleArms(); else { TPOS = crossCanon(CANONL, measureCross(), ARMS_OF).out; MEASURED = true; } }
+    const S0 = curS(), ex = expandMap(), fid = path[path.length - 1].id; let L = layoutTree(path[0], ex, fid, S0);
+    if (MODE !== 'all') { const place = packPath(L); if (place) L = layoutTree(path[0], ex, fid, { ...S0, place }); }
+    L = pinLayout(L);
     const F = L.focus;
     for (const c of L.comps) c.far = MODE === 'all' ? false : c !== F; LZ = { hub: L.focus.hub, ...L }; let defs = '', rays = '', nodesS = '', deco = '', i0 = 0;
     const drawRay = (inner, outer, e, w0, w1 = .5, cls = '') => { const r = ray(inner, outer, i0++, w0, w1); defs += r.def; rays += cls ? r.svg.replace('class="ray"', `class="ray ${cls}"`) : r.svg;
@@ -430,7 +448,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
     const at = new Map(L.items.map((o) => [o.id, o]));
     // 전체 펼치기의 부모 선: 상자 사이의 빈 길(줄기·통로)을 따라가되, 꺾는 곳마다 양옆 구간의 절반까지 굴려 곧은 토막 없이
     // 한 줄기 곡선으로 그린다. 지나가는 자리는 통로 안이라 다른 층의 상자를 거의 지나지 않는다. 양끝은 두 허브의 둘레에서 자른다
-    const routeS = (pts, h, p) => { const q = pts.map(([x, y]) => [x, y]), n = q.length, f = (a) => `${a[0].toFixed(1)} ${a[1].toFixed(1)}`;
+    const routeS = (pts, h, p, cls = 'path') => { const q = pts.map(([x, y]) => [x, y]), n = q.length, f = (a) => `${a[0].toFixed(1)} ${a[1].toFixed(1)}`;
       const unit = (a, b) => { const d = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / d, (b[1] - a[1]) / d, d]; };
       const u0 = unit(q[0], q[1]), u1 = unit(q[n - 1], q[n - 2]);
       q[0] = [q[0][0] + u0[0] * (p.r + 5), q[0][1] + u0[1] * (p.r + 5)]; q[n - 1] = [q[n - 1][0] + u1[0] * (h.r + 5), q[n - 1][1] + u1[1] * (h.r + 5)];
@@ -438,10 +456,12 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
       for (let i = 1; i < n - 1; i++) { const a = q[i - 1], b = q[i], c = q[i + 1], [ax, ay, l1] = unit(b, a), [cx, cy, l2] = unit(b, c);
         const r1 = i === 1 ? l1 : l1 / 2, r2 = i === n - 2 ? l2 : l2 / 2;   // 끝 구간은 통째로, 가운데 구간은 이웃 모서리와 반씩 나눈다
         d += `L${f([b[0] + ax * r1, b[1] + ay * r1])}Q${f(b)} ${f([b[0] + cx * r2, b[1] + cy * r2])}`; }
-      return `<path class="ray path" data-a="${esc(p.id)}" data-b="${esc(h.id)}" d="${d}L${f(q[n - 1])}" fill="none" style="stroke:${mix(h.c, 80)}" stroke-width="${themeMode() === 'light' ? 2.6 : 2}" stroke-linejoin="round" stroke-linecap="round"/>`; };
+      return `<path class="ray ${cls}" data-a="${esc(p.id)}" data-b="${esc(h.id)}" d="${d}L${f(q[n - 1])}" fill="none" style="stroke:${mix(h.c, 80)}" stroke-width="${themeMode() === 'light' ? 2.6 : 2}" stroke-linejoin="round" stroke-linecap="round"/>`; };
     for (const comp of L.comps) {
       const far = comp.far ? 'far' : '', hub = comp.hub;
-      if (hub.parentHub && MODE === 'all' && hub.route) rays += routeS(hub.route, hub, hub.parentHub);
+      // 부모 선의 모양: 묶음 배치가 상자를 격자로 놓은 주제 층(hub.route 가 있다)은 두 모드 모두 상자 사이 통로를 따라 굴린 선(routeS),
+      // 부모 기준으로 놓은 층(주제가 아닌 노드로 들어간 층, 그 아래의 주제)은 곧은 빛살(ray)로 잇는다
+      if (hub.parentHub && hub.route) rays += routeS(hub.route, hub, hub.parentHub, comp.pinOnly ? 'pinpath' : 'path');
       else if (hub.parentHub) drawRay(hub.parentHub, hub, hub.viaE, comp.pinOnly ? 2.2 : 3.4, comp.pinOnly ? .8 : 1.2, comp.pinOnly ? 'pinpath' : 'path');          // 펼쳐 들어온 길: 굵게(고정 노드로 가는 길은 조금 가늘게)
       for (const o of comp.items) { if (o.link) { drawRay(hub, o.link, o.e, 1.4, .5, `${far} link`); continue; }
         if (o.role === 'bridge' && MODE === 'all') { for (const d of BENDS.get(o.id) || []) { const t = at.get(`topic:${d}`); if (!t) continue;
@@ -747,13 +767,14 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
   // 가지 하나는 상자 하나다: 자기 층(폭 2·HW, 깊이 TOP + DEP) 아래에 자식 상자들을 열을 맞춘 격자로 둔다. 격자의 열 사이와
   // 줄 사이는 비어 있는 통로이고, 부모에서 자식으로 가는 선(route)은 그 통로만 따라 꺾는다. 열 수는 상자가 화면 비율에 가깝게 고른다.
   // 좌표: u 는 팔 방향(부모에서 멀어지는 쪽), v 는 그 3시 쪽. 가로 팔에서는 이름표가 u 쪽으로 길어 앞뒤 여유를 더 준다
-  function crossCanon(L, meas = null, keepArms = false) {
-    const GAP = 80, ASP = 1.6, OUT = new Map(), KO = new Map(), q = (c, hz) => meas && meas.get(c.hub.id) && meas.get(c.hub.id)[hz ? 'h' : 'v'];
+  function crossCanon(L, meas = null, armsOf = null, straight = false) {
+    const GAP = 80, ASP = 1.6, OUT = new Map(), KO = new Map(), q = (c, o) => meas && meas.get(c.hub.id) && meas.get(c.hub.id)[o];
     for (const c of L.comps) if (c.parent && c.hub.k === 'topic') { if (!KO.has(c.parent)) KO.set(c.parent, []); KO.get(c.parent).push(c); }
     const rowsOf = (c) => Math.min(ROWS, Math.max(0, ...Object.values(c.cp.G.shelf).map((l) => l.length)));
     // 잰 크기가 있으면 그것에 여유를 더하고, 없으면(처음 열 때) 나침반 반지름과 목록 수로 어림한다
-    const HW = (c, hz) => (q(c, hz) ? q(c, hz).hw + 40 : Math.max(c.cp.E + 90, (c.cp.FP > c.cp.E ? c.cp.FP - c.cp.E * .6 : 0) / 2 + 150, hz ? 46 + rowsOf(c) * 17 + 70 : 0));
-    const TOP = (c, hz) => (q(c, hz) ? q(c, hz).top + 24 : c.cp.E * .75 + (hz ? 170 : 0)), DEP = (c, hz) => (q(c, hz) ? q(c, hz).dep + 24 : c.cp.FP + (hz ? 120 : 0));
+    // o: 층을 세운 방향. v 는 아래 팔, u 는 위 팔(목록이 부모 쪽으로 늘어지므로 따로 잰다), h 는 가로 팔
+    const HW = (c, o, hz = o === 'h') => (q(c, o) ? q(c, o).hw + 40 : Math.max(c.cp.E + 90, (c.cp.FP > c.cp.E ? c.cp.FP - c.cp.E * .6 : 0) / 2 + 150, hz ? 46 + rowsOf(c) * 17 + 70 : 0));
+    const TOP = (c, o, hz = o === 'h') => (q(c, o) ? q(c, o).top + 24 : c.cp.E * .75 + (hz ? 170 : 0)), DEP = (c, o, hz = o === 'h') => (q(c, o) ? q(c, o).dep + 24 : c.cp.FP + (hz ? 120 : 0));
     const grid = (ks, k, B) => { const rows = Math.ceil(ks.length / k), cw = Array(k).fill(0), rh = Array(rows).fill(0);
       ks.forEach((c, i) => { const b = B.get(c); cw[i % k] = Math.max(cw[i % k], b.w); rh[Math.floor(i / k)] = Math.max(rh[Math.floor(i / k)], b.h); });
       return { k, cw, rh, W: cw.reduce((x, w) => x + w, 0) + GAP * (k - 1), H: rh.reduce((x, h) => x + h, 0) + GAP * (rows - 1) }; };
@@ -761,61 +782,84 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
       for (let k = 1; k <= ks.length; k++) { const g = grid(ks, k, B), w = Math.max(w0, g.W), h = h0 + (h0 ? GAP : 0) + g.H, sc = w * h * (1 + Math.abs(Math.log(w / h / asp)));
         if (!b || sc < b.sc) b = { ...g, w, h, sc }; }
       return b; };
-    const measure = (c, hz, B) => { const ks = KO.get(c) || []; ks.forEach((k) => measure(k, hz, B)); const w0 = 2 * HW(c, hz), h0 = TOP(c, hz) + DEP(c, hz);
-      B.set(c, ks.length ? { ...best(ks, B, hz ? 1 / ASP : ASP, w0, h0), w0, h0 } : { w: w0, h: h0, w0, h0 }); };
+    const measure = (c, o, B) => { const ks = KO.get(c) || []; ks.forEach((k) => measure(k, o, B)); const w0 = 2 * HW(c, o), h0 = TOP(c, o) + DEP(c, o);
+      B.set(c, ks.length ? { ...best(ks, B, o === 'h' ? 1 / ASP : ASP, w0, h0), w0, h0 } : { w: w0, h: h0, w0, h0 }); };
     const S = (A, v, u) => [A.O[0] + A.g[0] * u + A.p[0] * v, A.O[1] + A.g[1] * u + A.p[1] * v];
     // 격자 하나를 놓는다. pre 는 부모 허브에서 이 격자 위 통로(bus0)까지 온 길이다
-    const lay = (ks, b, x0, g0, A, pre) => {
+    // straight(하나씩 열기): 부모 바로 앞(팔 축 위)에 홀로 선 층은 통로를 돌지 않고 부모에서 곧게 잇는다
+    const lay = (ks, b, x0, g0, A, pre, vp = 0) => {
       const colL = []; for (let j = 0, x = x0; j < b.k; j++) { colL.push(x); x += b.cw[j] + GAP; }
       const rowT = []; for (let r = 0, y = g0; r < b.rh.length; r++) { rowT.push(y); y += b.rh[r] + GAP; }
       const bus0 = g0 - GAP / 2;
       ks.forEach((c, i) => { const j = i % b.k, r = Math.floor(i / b.k), vc = colL[j] + b.cw[j] / 2, uT = rowT[r];
         // 둘째 줄부터는 열 사이 통로로 내려간다. 마지막 열은 왼쪽 통로를 쓰고, 열이 하나면 상자 오른쪽 바깥(부모 통로와 겹치지 않게 1/3 지점)으로
         const vk = j < b.k - 1 ? colL[j] + b.cw[j] + GAP / 2 : b.k > 1 ? colL[j] - GAP / 2 : colL[j] + b.cw[j] + GAP / 3;
-        put(c, vc, uT, A, r === 0 ? [...pre, S(A, vc, bus0)] : [...pre, S(A, vk, bus0), S(A, vk, uT - GAP / 2), S(A, vc, uT - GAP / 2)]); }); };
-    const put = (c, vc, uT, A, route) => { const b = A.B.get(c), hu = uT + TOP(c, A.hz), hub = S(A, vc, hu);
+        put(c, vc, uT, A, r === 0 && straight && b.k === 1 && Math.abs(vc - vp) < .5 ? [pre[0]] : r === 0 ? [...pre, S(A, vc, bus0)] : [...pre, S(A, vk, bus0), S(A, vk, uT - GAP / 2), S(A, vc, uT - GAP / 2)]); }); };
+    const put = (c, vc, uT, A, route) => { const b = A.B.get(c), hu = uT + TOP(c, A.o), hub = S(A, vc, hu);
       OUT.set(c.hub.id, { x: hub[0], y: hub[1], th12: A.th12, route: [...route, hub] });
       const ks = KO.get(c) || []; if (!ks.length) return;
       const g0 = uT + b.h0 + GAP, port = vc + b.w0 / 2 - 12;   // 자기 층의 3시 쪽 가장자리로 나가 그 줄을 따라 자식 격자 위 통로로
-      lay(ks, b, vc - b.W / 2, g0, A, [hub, S(A, port, hu), S(A, port, g0 - GAP / 2)]); };
+      lay(ks, b, vc - b.W / 2, g0, A, [hub, S(A, port, hu), S(A, port, g0 - GAP / 2)], vc); };
     const R = L.comps[0], kids = KO.get(R) || [];
     OUT.set(R.hub.id, { x: R.hub.x, y: R.hub.y, th12: -90 });
-    if (!kids.length) return OUT;
-    const Bv = new Map(), Bh = new Map(); for (const k of kids) { measure(k, false, Bv); measure(k, true, Bh); }
-    const hwR = HW(R, false), Ht = TOP(R, false) + 16, Hb = DEP(R, false) + 16;   // 맨 위 주제의 상자: 개념은 9시, 목록은 6시
-    const ARMS = [{ g: [0, 1], p: [1, 0], hz: false, th12: -90, B: Bv }, { g: [1, 0], p: [0, -1], hz: true, th12: 180, B: Bh },
-                  { g: [0, -1], p: [-1, 0], hz: false, th12: 90, B: Bv }, { g: [-1, 0], p: [0, 1], hz: true, th12: 0, B: Bh }];
+    if (!kids.length) return { out: OUT, arms: new Map(armsOf || []) };
+    const Bv = new Map(), Bu = new Map(), Bh = new Map(); for (const k of kids) { measure(k, 'v', Bv); measure(k, 'u', Bu); measure(k, 'h', Bh); }
+    const hwR = HW(R, 'v'), Ht = TOP(R, 'v') + 16, Hb = DEP(R, 'v') + 16;   // 맨 위 주제의 상자: 개념은 9시, 목록은 6시
+    const ARMS = [{ g: [0, 1], p: [1, 0], hz: false, o: 'v', th12: -90, B: Bv }, { g: [1, 0], p: [0, -1], hz: true, o: 'h', th12: 180, B: Bh },
+                  { g: [0, -1], p: [-1, 0], hz: false, o: 'u', th12: 90, B: Bu }, { g: [-1, 0], p: [0, 1], hz: true, o: 'h', th12: 0, B: Bh }];
     // 팔의 격자(폭 W = 팔에 수직인 길이, 깊이 H)에서 팔이 차지하는 화면 상자와 격자의 시작 v
-    const span = (A, P, i) => { if (!P) return null; const { W, H } = P;
-      if (i === 0) { const x1 = Math.min(hwR, W / 2); return { box: [x1 - W, Hb + GAP, x1, Hb + GAP + H], O: [0, Hb + GAP], v0: x1 - W }; }
-      if (i === 1) { const y0 = Math.max(-Ht, -W / 2); return { box: [hwR + GAP, y0, hwR + GAP + H, y0 + W], O: [hwR + GAP, 0], v0: -(y0 + W) }; }
-      if (i === 2) { const x0 = Math.max(-hwR, -W / 2); return { box: [x0, -Ht - GAP - H, x0 + W, -Ht - GAP], O: [0, -Ht - GAP], v0: -(x0 + W) }; }
-      const y1 = Math.min(Hb, W / 2); return { box: [-hwR - GAP - H, y1 - W, -hwR - GAP, y1], O: [-hwR - GAP, 0], v0: y1 - W }; };
+    // 팔 격자는 바람개비처럼 맨 위 주제 상자의 한쪽 모서리에 맞춘다(이웃 팔과 엇갈리게). solo: 쓰는 팔이 하나뿐이면 가운데에 둔다
+    const span = (A, P, i, solo = false) => { if (!P) return null; const { W, H } = P, hw = solo ? Infinity : hwR;
+      if (i === 0) { const x1 = Math.min(hw, W / 2); return { box: [x1 - W, Hb + GAP, x1, Hb + GAP + H], O: [0, Hb + GAP], v0: x1 - W }; }
+      if (i === 1) { const y0 = Math.max(solo ? -Infinity : -Ht, -W / 2); return { box: [hwR + GAP, y0, hwR + GAP + H, y0 + W], O: [hwR + GAP, 0], v0: -(y0 + W) }; }
+      if (i === 2) { const x0 = Math.max(-hw, -W / 2); return { box: [x0, -Ht - GAP - H, x0 + W, -Ht - GAP], O: [0, -Ht - GAP], v0: -(x0 + W) }; }
+      const y1 = Math.min(solo ? Infinity : Hb, W / 2); return { box: [-hwR - GAP - H, y1 - W, -hwR - GAP, y1], O: [-hwR - GAP, 0], v0: y1 - W }; };
     const order = new Map(kids.map((k, i) => [k, i])), members = ARMS.map(() => []);
     const packArm = (i, ks) => (ks.length ? best(ks, ARMS[i].B, ARMS[i].hz ? 1 / ASP : ASP, 0, 0) : null);
     const score = (packs) => { let x0 = -hwR, y0 = -Ht, x1 = hwR, y1 = Hb;
       packs.forEach((P, i) => { const sp = span(ARMS[i], P, i); if (sp) { x0 = Math.min(x0, sp.box[0]); y0 = Math.min(y0, sp.box[1]); x1 = Math.max(x1, sp.box[2]); y1 = Math.max(y1, sp.box[3]); } });
       const w = x1 - x0, h = y1 - y0; return w * h * (1 + Math.abs(Math.log(w / h / ASP))); };
     // 큰 가지부터, 전체 상자가 가장 작고 화면 비율에 가까워지는 팔에 넣는다. 팔은 마운트 때 어림한 크기로 한 번만 고르고,
-    // 잰 크기로 다시 놓을 때(keepArms)는 그대로 두어 하나씩 열기와 전체 펼치기가 같은 방향을 쓴다
+    // 잰 크기로 다시 놓거나 하나씩 열기를 놓을 때(armsOf)는 그대로 두어 하나씩 열기와 전체 펼치기가 같은 방향을 쓴다
     const area = (k) => Bv.get(k).w * Bv.get(k).h;
-    if (keepArms && ARMS_OF) for (const k of kids) { const i = ARMS_OF.get(k.hub.id); if (i != null) members[i].push(k); }
-    for (const k of [...kids].filter((k) => !keepArms || !ARMS_OF || ARMS_OF.get(k.hub.id) == null).sort((a, b) => area(b) - area(a))) { let bi = 0, bs = Infinity;
+    if (armsOf) for (const k of kids) { const i = armsOf.get(k.hub.id); if (i != null) members[i].push(k); }
+    for (const k of [...kids].filter((k) => !armsOf || armsOf.get(k.hub.id) == null).sort((a, b) => area(b) - area(a))) { let bi = 0, bs = Infinity;
       for (let i = 0; i < 4; i++) { const packs = members.map((m, j) => packArm(j, (j === i ? [...m, k] : m).sort((a, b) => order.get(a) - order.get(b)))), sc = score(packs); if (sc < bs) { bs = sc; bi = i; } }
       members[bi].push(k); members[bi].sort((a, b) => order.get(a) - order.get(b)); }
-    ARMS_OF = new Map(members.flatMap((m, i) => m.map((k) => [k.hub.id, i])));
+    const arms = new Map([...(armsOf || []), ...members.flatMap((m, i) => m.map((k) => [k.hub.id, i]))]);
     // 맨 위 주제에서 나가는 길: 3시 쪽(하위 주제 자리, 비어 있다)으로 나가 상자 둘레의 통로를 돌아 그 팔의 첫 통로로
     const E1 = [hwR + GAP / 2, 0], hub0 = [R.hub.x, R.hub.y], port0 = [hwR - 12, 0];
     const lead = [[hub0, port0, E1], [hub0, port0, E1], [hub0, port0, E1, [hwR + GAP / 2, -Ht - GAP / 2]], [hub0, port0, E1, [hwR + GAP / 2, Hb + GAP / 2], [-hwR - GAP / 2, Hb + GAP / 2]]];
     lead[0].push([hwR + GAP / 2, Hb + GAP / 2]);
-    ARMS.forEach((A, i) => { const ks = members[i]; if (!ks.length) return; const P = packArm(i, ks), sp = span(A, P, i); A.O = sp.O; lay(ks, P, sp.v0, 0, A, lead[i]); });
-    return OUT;
+    const solo = straight && members.filter((m) => m.length).length === 1;
+    ARMS.forEach((A, i) => { const ks = members[i]; if (!ks.length) return; const P = packArm(i, ks), sp = span(A, P, i, solo); A.O = sp.O; lay(ks, P, sp.v0, 0, A, lead[i]); });
+    return { out: OUT, arms };
+  }
+  // 하나씩 열기의 배치: 전체 펼치기와 같은 묶음 배치(crossCanon)에 지금 펼친 층들(지나온 길과 고정 노드로 가는 길)만 넘긴다.
+  // 층의 크기는 방금 부모 기준으로 놓아 본 배치(L)에서 층마다 자기 방향으로 잰다(접힌 목록 표 · 지금 층의 목록 자리까지).
+  // 팔은 전체 펼치기가 고른 것(ARMS_OF)을 그대로 쓰므로 주제마다 방향(th12)이 두 모드에서 같다. 주제 층만 묶음에 들어가고,
+  // 주제가 아닌 노드로 들어간 층과 그 아래는 부모 기준 자리(settle)에 남는다
+  function packPath(L) {
+    if (!ARMS_OF || !L.comps.some((c) => c.parent && c.hub.k === 'topic' && c.parent.hub.k === 'topic')) return null;
+    const meas = new Map(), shelfOf = new Map(L.sets.map((st) => [st.comp, st.shelves.flatMap((s) => s.items)]));
+    for (const c of L.comps) { if (c.hub.k !== 'topic') continue;
+      const a = rad(c.th12 + 180), g = [Math.cos(a), Math.sin(a)], pv = [g[1], -g[0]]; let u0 = 0, u1 = 0, v0 = 0, v1 = 0;
+      const pts = [...L.boxes(c).flatMap(([x0, y0, x1, y1]) => [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]), ...(shelfOf.get(c) || []).flatMap(extentPts)];
+      for (const [x, y] of pts) { const dx = x - c.hub.x, dy = y - c.hub.y, u = dx * g[0] + dy * g[1], v = dx * pv[0] + dy * pv[1];
+        u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
+      const m = { top: -u0, dep: u1, hw: Math.max(-v0, v1) }; meas.set(c.hub.id, { v: m, u: m, h: m }); }
+    // 층 사이는 적어도 부모 기준으로 놓던 거리만큼 둔다(세로 팔은 두 반지름 합의 3/4, 가로 팔은 6할에 이름표 폭): 작은 층끼리 붙지 않게
+    for (const c of L.comps) { const p = c.parent, m = meas.get(c.hub.id); if (!p || !m || !meas.has(p.hub.id)) continue;
+      const hz = Math.abs(Math.cos(rad(c.th12 + 180))) > .5, D0 = hz ? (p.cp.E + c.cp.E) * .62 + 320 : (p.cp.E + c.cp.E) * .75 + 40;
+      m.v.top = Math.max(m.v.top, D0 - meas.get(p.hub.id).v.dep - (p === L.comps[0] ? 40 : 24) - 80 - 24); }
+    return crossCanon(L, meas, ARMS_OF, true).out;
   }
   // 정해진 자리: 모든 주제를 지금과 같은 규칙으로 한꺼번에 펼쳐(목록 자리까지 비워) 한 번 잰다. 하나씩 들어가든 전체를 펼치든 주제는 이 자리에 선다
   const allExpand = () => { const m = new Map(); for (const tp of topics.values()) { const set = new Set(); for (const s2 of tp.sub) set.add(`topic:${s2}`); m.set(tp.id, set); } return m; };
-  (function buildCanon() { const saveM = MODE, saveP = path; CANON = true; MODE = 'all'; path = [topics.get(ROOT)];
-    try { CANONL = layoutTree(topics.get(ROOT), allExpand(), null); TPOS = crossCanon(CANONL); }
-    finally { CANON = false; MODE = saveM; path = saveP; } })();
+  // 재기 · 정해진 자리 짓기의 상태: 전부 펼치고 거르기 없이(지금 화면의 상태는 읽지도 바꾸지도 않는다)
+  // cps: 층마다의 나침반(compassOf). 거르기가 없으니 정해진 자리 짓기와 세 방향 재기가 같은 것을 한 번만 모은다
+  const MCPS = new Map(), measS = (place, canon = false) => ({ mode: 'all', path: [topics.get(ROOT)], place, dirs: place, canon, range: null, koff: new Set(), filt: new Map(), cps: MCPS });
+  { CANONL = layoutTree(topics.get(ROOT), allExpand(), null, measS(null, true)); const r = crossCanon(CANONL); TPOS = r.out; ARMS_OF = r.arms; }
   // 팔 정하기: 층의 실제 크기를 재서 팔을 한 번 고른다. 어림한 크기로 고르면 전체 펼치기가 3할 넘게 넓어지고, 전체 펼치기를 처음 누를 때
   // 고르면 그 뒤 하나씩 열기의 방향이 바뀐다. 그래서 마운트 직후 한가할 때 재고(같은 주제 나무는 MEAS_CACHE), 그 전에 전체 펼치기를
   // 누르면 그 자리에서 잰다. 이미 깊이 들어가 있으면 한 번 다시 그려 방향을 맞춘다
@@ -825,25 +869,23 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
     clearTimeout(measIdle); (globalThis.cancelIdleCallback || clearTimeout)(measIdle);
     let meas = MEAS_CACHE.get(measSig);
     if (!meas) { meas = measureCross(); MEAS_CACHE.set(measSig, meas); if (MEAS_CACHE.size > 8) MEAS_CACHE.delete(MEAS_CACHE.keys().next().value); }
-    TPOS = crossCanon(CANONL, meas, false); ARMS_FIXED = MEASURED = true;
+    const r = crossCanon(CANONL, meas); TPOS = r.out; ARMS_OF = r.arms; ARMS_FIXED = MEASURED = true;
   }
   if (MEAS_CACHE.has(measSig)) settleArms();
   else measIdle = (globalThis.requestIdleCallback || ((f) => setTimeout(f, 300)))(() => { if (ARMS_FIXED || !root.isConnected) return;
     settleArms(); if (MODE !== 'all' && path.length > 1) render(); });
-  // 층의 실제 크기: 모든 층을 한 방향(세로 팔, 가로 팔)으로 세워 그려 보고, 층마다 허브에서 잰 범위를 남긴다.
-  // 기간·종류·갈래 거르기는 잠시 끈다(거른 뒤에 다시 켜도 상자가 모자라지 않게)
+  // 층의 실제 크기: 모든 층을 세 방향(아래 팔, 위 팔, 가로 팔)으로 세워 그려 보고, 층마다 허브에서 잰 범위를 남긴다.
+  // 기간·종류·갈래 거르기 없이 잰다(거른 뒤에 다시 켜도 상자가 모자라지 않게)
   function measureCross() {
-    const save = { M: MODE, P: path, T: TPOS, R: RANGE, K: [...KOFF], F: new Map(FILT) }, out = new Map(), rootId = topics.get(ROOT).id;
-    try { MODE = 'all'; path = [topics.get(ROOT)]; RANGE = null; KOFF.clear(); FILT.clear();
-      for (const hz of [false, true]) {
-        TPOS = new Map([...save.T].map(([id, t]) => [id, { x: t.x, y: t.y, th12: id === rootId || !hz ? -90 : 180 }]));
-        const L = layoutTree(topics.get(ROOT), allExpand(), null), own = new Map(L.comps.map((c) => [c.hub.id, [c.hub, ...c.items.filter((o) => o.id && !o.link)]]));
+    const out = new Map(), rootId = topics.get(ROOT).id;
+    for (const [o, t12] of [['v', -90], ['u', 90], ['h', 180]]) {
+        const T = new Map([...TPOS].map(([id, t]) => [id, { x: t.x, y: t.y, th12: id === rootId ? -90 : t12 }])), a = rad(t12 + 180), g = [Math.cos(a), Math.sin(a)];
+        const L = layoutTree(topics.get(ROOT), allExpand(), null, measS(T)), own = new Map(L.comps.map((c) => [c.hub.id, [c.hub, ...c.items.filter((o) => o.id && !o.link)]]));
         for (const st of L.sets) for (const sh of st.shelves) own.get(st.hub.id)?.push(...sh.items);
         for (const [id, list] of own) { const h = list[0]; let u0 = 0, u1 = 0, v0 = 0, v1 = 0;
-          for (const [x, y] of list.flatMap(extentPts)) { const dx = x - h.x, dy = y - h.y, u = hz ? dx : dy, v = hz ? -dy : dx;
+          for (const [x, y] of list.flatMap(extentPts)) { const dx = x - h.x, dy = y - h.y, u = dx * g[0] + dy * g[1], v = dx * g[1] - dy * g[0];
             u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
-          if (!out.has(id)) out.set(id, {}); out.get(id)[hz ? 'h' : 'v'] = { top: -u0, dep: u1, hw: Math.max(-v0, v1) }; } }
-    } finally { MODE = save.M; path = save.P; TPOS = save.T; RANGE = save.R; for (const k of save.K) KOFF.add(k); for (const [k, v] of save.F) FILT.set(k, v); }
+          if (!out.has(id)) out.set(id, {}); out.get(id)[o] = { top: -u0, dep: u1, hw: Math.max(-v0, v1) }; } }
     return out; }
 
   { const R = ctx.restore, rp = R ? R.path.map(byAny).filter(Boolean) : [];
