@@ -68,6 +68,15 @@ const EN = {
     unreachable: "Can't reach your account right now. Your graph is in your account, so screens stay empty until the connection is back.",
     retry: "Try again",
   },
+  teamKey: {
+    title: "Connect this team's key",
+    hint: "Issue a key for this active team in your account, then paste it here. Your personal key continues to open your personal graph.",
+    manage: "Open account keys", label: "Team key", save: "Connect team", cancel: "Cancel",
+    checking: "Checking the key's account and team…",
+    rejected: "This key cannot open this team for your signed-in account. Check its team, membership, and revocation status.",
+    unavailable: "Key verification is unavailable. Try again later.",
+    vaultUnavailable: "The OS key store is unavailable. Restore it before connecting a team key on this computer.",
+  },
   // 업데이트 뒤 사이드카가 검색 색인을 새로 만드는 동안 거는 한 줄(VIN-272). 그동안 검색과
   // 저장이 기다리거나 잠깐 실패할 수 있어서, 말하지 않으면 고장으로 읽힌다.
   searchIndex: {
@@ -1536,6 +1545,15 @@ const KO: Deck = {
   accountMode: {
     unreachable: "지금 계정에 연결할 수 없어요. 그래프가 계정에 있어서 연결이 돌아올 때까지 화면이 비어 있어요",
     retry: "다시 시도하기",
+  },
+  teamKey: {
+    title: "이 팀의 키 연결하기",
+    hint: "계정에서 이 팀의 키를 새로 발급한 뒤 붙여 넣어 주세요. 개인 키는 계속 개인 그래프에서 사용해요",
+    manage: "계정의 키 관리 열기", label: "팀 키", save: "팀 연결하기", cancel: "취소",
+    checking: "키의 계정과 팀을 확인하고 있어요",
+    rejected: "이 키로는 로그인한 계정에서 해당 팀을 열 수 없어요. 키의 팀, 멤버 권한, 폐기 여부를 확인해 주세요",
+    unavailable: "지금 키를 확인할 수 없어요. 잠시 뒤 다시 시도해 주세요",
+    vaultUnavailable: "OS 키 저장소를 사용할 수 없어요. 이 컴퓨터의 키 저장소를 복구한 뒤 팀 키를 연결해 주세요",
   },
   searchIndex: {
     migrating: "업데이트 뒤라 검색 색인을 새로 만들고 있어요. 1~2분쯤 걸리고, 끝날 때까지 검색이나 저장이 잠시 멈출 수 있어요",

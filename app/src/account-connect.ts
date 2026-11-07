@@ -40,6 +40,27 @@ async function secretStore(): Promise<((c: string, a?: any) => Promise<any>) | n
   return secretOk ? invoke : null;
 }
 
+// Team keys never replace the login or device MCP keys or add a plaintext fallback.
+function teamKeyName(subject: string, team: string): string {
+  if (!/^user:[0-9a-f-]{36}$/i.test(subject)
+      || !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(team))
+    throw new Error("key_graph_scope_mismatch");
+  return `vinc.team.key.${subject}.${team}`;
+}
+export async function teamAccountKey(subject: string, team: string): Promise<string> {
+  const name = teamKeyName(subject, team);
+  const store = await secretStore();
+  if (!store) return "";
+  const held = await store("secret_get", { name });
+  return typeof held === "string" ? held.trim() : "";
+}
+export async function setTeamAccountKey(subject: string, team: string, key: string): Promise<void> {
+  const name = teamKeyName(subject, team);
+  const store = await secretStore();
+  if (!store) throw new Error("team_key_vault_unavailable");
+  await store("secret_set", { name, value: key });
+}
+
 /** 이 기기에 OS 저장소가 없어 키가 앱 프로파일에 눕는가. 설정 화면이 이걸 적는다. */
 export function keyIsOnDisk(): boolean {
   return secretOk === false && !!(localStorage.getItem(K_KEY) || "").trim();

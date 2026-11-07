@@ -195,6 +195,9 @@ DIALOGS = {
     "surfaces/agents-board.ts:confirmDestructive": "App · View · node-delete-confirm / dark",
     "surfaces/agents-board.ts:openContextMenu": None,
     "connect.ts:A.connectTitle": None,
+    # The owner excluded Figma work for this package. Reuse the existing action
+    # sheet; record its missing design counterpart without inventing a node id.
+    "team-key.ts:c.title": None,
     "authoring.ts:openContextMenu": None,
     # 빈 화면에 파일 여럿을 끌어다 놓으면 뜨는 일괄 가져오기(여태 없는 라우트로 가 사라졌다).
     "empty-invite.ts:COPY.author.menuImport": None,

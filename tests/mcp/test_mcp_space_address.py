@@ -393,7 +393,7 @@ class VerifyKeyCacheTests(unittest.TestCase):
             calls.append(body.get("team"))
             if body.get("team"):
                 return _Resp({"sub": "u1", "plan": "team",
-                              "graph_owner": f"team:{body['team']}", "role": "viewer"})
+                              "graph_owner": f"team:{body['team']}", "role": "viewer", "key_space": body["team"]})
             return _Resp({"sub": "u1", "plan": "pro"})
 
         real_open, real_seed = entitlement.hubhttp.urlopen, entitlement._seed
@@ -402,7 +402,7 @@ class VerifyKeyCacheTests(unittest.TestCase):
             entitlement.hubhttp.urlopen = fake_urlopen
             entitlement._seed = lambda: b"\x01" * 32
             a = entitlement.verify_key("vinc_sk_x")
-            b = entitlement.verify_key("vinc_sk_x", TEAM)
+            b = entitlement.verify_key("vinc_sk_team_x", TEAM)
             self.assertEqual(len(calls), 2, "팀 질문이 개인 캐시에 먹히면 안 된다")
             self.assertEqual(a["owner"], "user:u1")
             self.assertEqual(b["owner"], f"team:{TEAM}")

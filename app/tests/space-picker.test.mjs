@@ -16,9 +16,9 @@ const U = { space: 'Space', spacePersonal: 'Personal', spacePersonalHint: 'Only 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const isCommunitySpace = (t) => Boolean(t && t.startsWith('community:'));
 
-function fixture({ team = '', teams = [], communities = [], failTeams = false, failCommunities = false } = {}) {
+function fixture({ team = '', teams = [], communities = [], failTeams = false, failCommunities = false, ensureTeam } = {}) {
   const calls = [], cfg = { team };
-  const d = { cfg, isCommunitySpace,
+  const d = { cfg, isCommunitySpace, ...(ensureTeam ? { ensureTeam: async (id, name) => { calls.push(`team:${id}:${name}`); return ensureTeam(id); } } : {}),
     retainBeforeSwitch: async () => { calls.push('retain'); return true; },
     reload: () => calls.push('reload'),
     teamsApi: { list: async (o) => { assert.equal(o.throwOnError, true); if (failTeams) throw new Error('offline'); return teams; } },
@@ -118,4 +118,30 @@ test('teamRows and communityRows keep only what can be shown', () => {
   assert.equal(teamRows(TEAMS, 'active').length, 3);
   assert.equal(teamRows([{ id: 'p', name: 'P', status: 'pending' }], 'p')[0].current, false, 'a pending team is never current');
   assert.deepEqual(communityRows([{ id: 'c', name: 'C' }], 'c'), [{ id: 'c', name: 'C', state: 'active', current: true }]);
+});
+
+test('a team switch waits for the team credential and stays put when it is refused', async () => {
+  for (const accepted of [false, true]) {
+    let painted = 0;
+    const s = fixture({ team: '', teams: TEAMS, ensureTeam: async () => accepted });
+    await s.picker.load();
+    s.picker.setKind('team');
+    assert.equal(await s.picker.choose('active', () => painted++), accepted);
+    assert.equal(s.cfg.team, accepted ? 'active' : '');
+    assert.deepEqual(s.calls, accepted ? ['team:active:Active', 'retain', 'reload'] : ['team:active:Active']);
+    assert.equal(s.picker.model.busy, accepted, 'a refused switch unlocks the picker');
+    if (!accepted) assert.equal(painted, 2, 'locked, then unlocked');
+  }
+});
+
+test('a failing credential check counts as refused, and personal never asks for a team key', async () => {
+  const s = fixture({ team: 'active', teams: TEAMS, ensureTeam: async () => { throw new Error('offline'); } });
+  await s.picker.load();
+  s.picker.setKind('personal');
+  assert.equal(await s.picker.choose(''), true);
+  assert.deepEqual(s.calls, ['retain', 'reload']);
+  const t = fixture({ team: '', teams: [{ id: 'next', name: 'Next', status: 'active' }], ensureTeam: async () => { throw new Error('offline'); } });
+  await t.picker.load(); t.picker.setKind('team');
+  assert.equal(await t.picker.choose('next'), false);
+  assert.equal(t.cfg.team, '');
 });

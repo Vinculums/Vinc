@@ -167,12 +167,17 @@ def verify_key(raw: str, team: str | None = None) -> dict | None:
 
     `team` 없음: owner 는 `user:{public_id}`. 기존과 바이트 동일하다.
     `team` 있음(publicId): **스페이스 스코프 질문**이다 — 이 키의 사람이 그 팀의 활성
-    멤버인가. 맞으면 owner 는 계정이 서명해 준 `team:{uuid}` 이고 `role` 이 함께 온다.
+    멤버인가. 키가 어디에 묶였는지(`key_space`)도 본다: 그 팀에 묶인 키와 개인 키(`"personal"`, 또는 필드 없음)는 받고 다른 팀에 묶인 키는 거절한다.
+    개인 키가 멤버십으로 팀에 닿는 것은 채택된 동작이다(아래 스페이스 인자 결정). 팀 키는 따로 발급되고
+    자기 팀에만 묶인다. 계정이 엄격 모드(`KEY_GRAPH_SCOPE_STRICT`, 기본 꺼짐)를 켜면 개인 키의 팀 질문을
+    나쁜 키와 같이 거절하므로 여기까지 오지 않는다. 켜는 것은 그 결정을 뒤집는 일이라 소유자가 먼저 새로 정해야 한다.
+    맞으면 owner 는 계정이 서명해 준 `team:{uuid}` 이고 `role` 이 함께 온다.
     아니면 None 이고, **모르는 팀·비멤버·정지된 팀이 나쁜 키와 구분되지 않는다**
     (계정이 같은 404 를 낸다 — 구분되면 팀의 존재가 샌다).
 
     ⚠ **캐시 키에 team 이 들어간다.** 안 넣으면 개인 스코프 답이 팀 질문을 TTL 동안
-    만족시킨다 — 같은 키로 두 스페이스를 묻는 것이 정상 흐름이라 이건 이론이 아니다.
+    만족시킨다 — 같은 키로 두 스페이스를 묻는 것이 정상 흐름이라 이건 이론이 아니다. 다른 공간에 대한
+    거절도 원래 키의 정상 조회를 막으면 안 된다.
     근거: [[decision:the-space-is-an-argument-and-the-default-is-personal]]
     """
     if not raw or not raw.startswith(KEY_PREFIXES):
@@ -181,7 +186,7 @@ def verify_key(raw: str, team: str | None = None) -> dict | None:
     if seed is None:
         return None
 
-    ckey = hashlib.sha256(raw.encode("utf-8")).hexdigest() + "|" + (team or "")
+    ckey = "key-space-v2|" + hashlib.sha256(raw.encode("utf-8")).hexdigest() + "|" + (team or "")
     now = time.time()
     with _lock:
         hit = _cache.get(ckey)
@@ -199,6 +204,10 @@ def verify_key(raw: str, team: str | None = None) -> dict | None:
             plan = normalize_plan(body.get("plan"), source="verify-key")
             scope = normalize_scope(body.get("scope"), raw)
             if team:
+                # 다른 팀에 묶인 키는 멤버여도 이 팀에 들이지 않는다. 개인 키와 필드 없는 답은 받는다
+                # (개인 키의 팀 접근은 계정의 멤버십 검사와 엄격 모드가 가른다).
+                if (body.get("key_space") or "personal") not in ("personal", team):
+                    raise ValueError("key bound to another team")
                 # 팀 질문에는 계정이 서명한 graph_owner 와 role 이 함께 와야 한다.
                 # 하나라도 없으면 **개인으로 떨어뜨리지 않고 거절한다** — 팀 쓰기가
                 # 조용히 개인 그래프에 쌓이는 것이 여기서 가장 나쁜 고장이다.
@@ -209,6 +218,8 @@ def verify_key(raw: str, team: str | None = None) -> dict | None:
                               "role": role, "member": f"user:{sub}",
                               **_team_plan_field(body, source="verify-key")}
             else:
+                if (body.get("key_space") or "personal") != "personal":
+                    raise ValueError("team credential cannot access personal graph")
                 result = {"owner": f"user:{sub}", "plan": plan, "scope": scope}
         if result is None:
             raise ValueError("invalid verification response")

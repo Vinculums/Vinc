@@ -10,6 +10,7 @@ import { disposeEditorsIn } from "../doc-editor";
 import { mountStorage } from "../storage-mode";
 import { mountTopicConversion } from "../topic-conversion";
 import { mountSpacePicker } from "../space-picker";
+import { ensureTeamCredential } from "../team-key";
 
 /** Settings — 왼쪽 분류 레일 + 본문(2026-09-22).
  *  종 레일 바닥의 설정 버튼이 예전 Settings · GRAPH.md · Tools(쓰기/가져오기/공유)
@@ -304,7 +305,7 @@ async function renderSettings(
       // 종류(개인 · 팀 · 커뮤니티)를 탭으로 보고, 그 안의 하나를 줄로 고른다(`space-picker.ts`).
       const pick = body.querySelector<HTMLElement>("#space-pick");
       if (pick) mountSpacePicker(pick, { cfg, teamsApi, communitiesApi, isCommunitySpace, retainBeforeSwitch,
-        reload: () => location.reload(), copy: U, esc });
+        ensureTeam: ensureTeamCredential, reload: () => location.reload(), copy: U, esc });
       return;
     }
     if (WEB) return;

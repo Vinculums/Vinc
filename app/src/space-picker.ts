@@ -32,6 +32,8 @@ export type SpaceDeps = {
   isCommunitySpace: (team: string | null | undefined) => boolean;
   retainBeforeSwitch: () => Promise<unknown>;
   reload: () => void;
+  /** 팀으로 옮기기 전에 그 팀을 열 자격을 갖춘다(`team-key.ts`). 거짓이면 옮기지 않는다. 없으면 묻지 않는다. */
+  ensureTeam?: (team: string, name: string) => Promise<boolean>;
 };
 
 type Teams = { load: "loading" } | { load: "failed" } | { load: "ok"; rows: SpaceRow[] };
@@ -87,6 +89,11 @@ export function createSpacePicker(d: SpaceDeps) {
       if (!row || row.state !== "active" || row.current) return false;
       model.busy = true;   // 보관하는 동안 두 번째 선택이 끼어 다른 스페이스로 열리지 않게
       repaint();
+      // 팀 키가 있어야 하는 계정이면 여기서 받는다. 받지 못하면 보관도 전환도 하지 않는다.
+      if (model.kind === "team" && d.ensureTeam && !await d.ensureTeam(id, row.name).catch(() => false)) {
+        model.busy = false; repaint();
+        return false;
+      }
       // 떠나는 스페이스의 완료 항목을 잠깐 보관한다: 돌아왔을 때 다시 읽지 않도록.
       // 최선 노력이고 오래 걸리면 기다리지 않는다. 쓰는 때는 이 한 번뿐이다.
       await d.retainBeforeSwitch().catch(() => false);

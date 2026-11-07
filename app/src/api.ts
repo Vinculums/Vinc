@@ -247,27 +247,41 @@ const sidecarOnly = (path: string): boolean =>
 
 // 멤버 키 — OS 키체인에서 한 번 읽어 이 창이 사는 동안 들고 있는다. 호출마다 IPC 를
 // 태우면 화면 하나에 수십 번이다. 계정이 키를 거절하거나 로그아웃하면 비운다.
-let memberKeyCache = "";
-async function memberKey(): Promise<string> {
-  if (memberKeyCache) return memberKeyCache;
-  // 동적 import: account-connect 가 이 모듈을 읽으므로 정적으로 쓰면 순환이다.
-  const { accountKey } = await import("./account-connect");
-  memberKeyCache = await accountKey().catch(() => "");
-  return memberKeyCache;
+import { ScopedCredentials, type CredentialIdentity } from "./credential-scope";
+const credentials = new ScopedCredentials({
+  personal: async () => (await import("./account-connect")).accountKey(),
+  team: async (subject, team) => (await import("./account-connect")).teamAccountKey(subject, team),
+  save: async (subject, team, key) => (await import("./account-connect")).setTeamAccountKey(subject, team, key),
+  inspect: async key => {
+    const response = await viaProxy(key, "GET", "/spaces", { identity: "1" }, undefined, "");
+    if (!response.ok) throw new Error(response.status === 401 ? "invalid_key" : "credential_identity_unavailable");
+    return response.json() as Promise<CredentialIdentity>;
+  },
+});
+async function memberKey(team = ""): Promise<string> {
+  return team ? credentials.forTeam(team) : credentials.personal();
+}
+export async function hasTeamCredential(team: string): Promise<boolean> {
+  return !!await memberKey(team);
+}
+export async function bindTeamCredential(team: string, key: string): Promise<void> {
+  await credentials.bind(team, key);
+  viewSessionCache.purge();
 }
 /** 들고 있던 멤버 키를 버린다(로그아웃·키 교체·거절 뒤). */
-export function forgetMemberKey(): void { viewSessionCache.purge(); memberKeyCache = ""; }
+export function forgetMemberKey(): void { viewSessionCache.purge(); credentials.forget(); }
 
 /** 계정 모드의 실패 종류. 화면은 이것으로 가르고 영어 서버 문자열을 읽지 않는다.
  *  `signIn` = 키가 더는 통하지 않는다(로그인 시트) · `unreachable` = 계정·허브에 못
  *  닿았다(조용히 빈 결과로 떨어지지 않고 그 상태를 말한다). */
-function accountFailure(message: string, kind: "signIn" | "unreachable" | "other",
+function accountFailure(message: string, kind: "signIn" | "teamKey" | "unreachable" | "other",
                         status = 0, code = "unknown"): Error {
   const err: any = new Error(message);
   err.account = kind;
   err.status = status;
   err.code = code;
   if (kind === "signIn") dispatchEvent(new CustomEvent("vinc:signin-required"));
+  if (kind === "teamKey") dispatchEvent(new CustomEvent("vinc:team-key-required"));
   return err;
 }
 
@@ -281,7 +295,7 @@ async function confirmAccountConnectivity(key: string, team: string): Promise<vo
   const promise = (async () => {
     const probe = await viaProxy(key, "GET", "/changes", {}, undefined, team).catch(() => null);
     // 모드·스페이스·키가 바뀌었거나 다른 호출이 성공했다면 늦은 실패로 배너를 띄우지 않는다.
-    if (!accountMode() || cfg.team !== team || memberKeyCache !== key) return;
+    if (!accountMode() || cfg.team !== team || await memberKey(team).catch(() => "") !== key) return;
     if (probe && probe.status < 500) {
       dispatchEvent(new CustomEvent("vinc:account-reachable"));
     } else if (accountSuccess === before) {
@@ -335,12 +349,18 @@ async function viaProxy(key: string, method: "GET" | "POST", path: string,
  *  사이드카 통과로가 `/api/graph` 접두를 붙여 계정으로 넘긴다. */
 async function accountCall(path: string, params: Record<string, string | number | undefined> | undefined,
                            body: unknown, scope?: Scope, signal?: AbortSignal): Promise<any> {
-  const key = await memberKey();
-  if (!key) throw accountFailure("sign in required", "signIn", 401);
+  const team = scope ? scope.team || "" : cfg.team;
+  const key = await memberKey(team).catch(error => {
+    if (error?.message === "personal_key_required") throw accountFailure("sign in required", "signIn", 401);
+    if (team) throw accountFailure(String(error?.message || "team key required"), "teamKey", 401);
+    throw error;
+  });
+  if (!key) throw accountFailure(team ? "team key required" : "sign in required", team ? "teamKey" : "signIn", 401);
+  // 팀을 묶인 팀 키로 여는가, 계정이 허락해 개인 키로 여는가. 거절됐을 때 다시 받을 키가 갈린다.
+  const bound = !!team && key !== await credentials.personal().catch(() => "");
   const q: Record<string, string> = {};
   for (const [k, v] of Object.entries(params || {}))
     if (v !== undefined && v !== "") q[k] = String(v);
-  const team = scope ? scope.team || "" : cfg.team;
   const method = body !== undefined ? "POST" : "GET";
   let res: Response;
   try {
@@ -370,13 +390,20 @@ async function accountCall(path: string, params: Record<string, string | number 
     throw accountFailure(detail || "account unreachable", "unreachable", res.status, code);
   }
   if (res.status === 401 && code === "not_authenticated") {
+    const reason = b?.error?.extra?.reason || b?.error?.reason;
+    // 팀 키가 거절됐거나, 계정이 개인 키로 팀을 여는 것을 막았다(엄격 모드): 팀 키를 받는다.
+    // 개인 키 자체가 거절된 것이면 아래에서 로그인을 다시 받을지 가린다.
+    if (team && (reason === "key_graph_scope_mismatch" || (bound && reason === "invalid_key"))) {
+      forgetMemberKey();
+      throw accountFailure(detail, "teamKey", 401, code);
+    }
     // 계정은 **키 거절**과 **권한 거절**(팀 역할·읽기 전용 키)을 같은 코드로 준다.
     // 둘을 가르지 않으면 팀에서 권한 없는 일을 한 번 눌렀다고 로그아웃된다. 그래서
     // 키만 보는 가벼운 읽기(`/spaces`)로 한 번 더 묻는다: 그것도 거절이면 키가 죽은 것이다.
     const probe = await viaProxy(key, "GET", "/spaces", {}, undefined, "").catch(() => null);
     if (probe && probe.status === 401) {
       forgetMemberKey();
-      throw accountFailure(detail, "signIn", 401, code);
+      throw accountFailure(detail, bound ? "teamKey" : "signIn", 401, code);
     }
     throw accountFailure(detail, "other", 401, code);
   }
@@ -413,7 +440,7 @@ async function searchCall(query: string, top_k: number, options: SearchOptions =
       if (attempt === 0 && status >= 500 && status < 600 && dataMode.get() === mode
           && cfg.team === (scope.team || "")) continue;
       if (failure?.account === "unreachable" && accountMode()) {
-        const key = await memberKey();
+        const key = await memberKey(scope.team || "").catch(() => "");
         if (key && dataMode.get() === mode && cfg.team === (scope.team || ""))
           await confirmAccountConnectivity(key, scope.team || "");
       }
@@ -1193,7 +1220,7 @@ export const teamsApi = {
     // 평면(`/api/graph/spaces`, 키로 열린다)에서 통과로로 받는다(VIN-127).
     try {
       if (accountMode()) {
-        const data = await call("/spaces") as { teams?: unknown };
+        const data = await call("/spaces", undefined, undefined, { team: null }) as { teams?: unknown };
         if (!Array.isArray(data.teams)) throw new Error("team_list_unavailable");
         return data.teams;
       }
