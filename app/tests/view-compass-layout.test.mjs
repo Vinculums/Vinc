@@ -68,23 +68,6 @@ function areas() {
   }
   return nodes;
 }
-test('opening one topic at a time points the same way before and after All', async () => {
-  const nodes = areas();
-  const dirs = (h, host) => { const out = {};
-    for (const a of ['alpha', 'beta', 'gamma', 'delta', 'eps', 'zeta', 'eta', 'theta']) {
-      h.open(`topic:root/${a}/two`);
-      const at = new Map(placed(host).map((o) => [o.id, o]));
-      const p = at.get(`topic:root/${a}`), c = at.get(`topic:root/${a}/two`);
-      out[a] = Math.round(Math.atan2(c.y - p.y, c.x - p.x) / (Math.PI / 2)); }
-    return out; };
-  const { h, host } = mount(nodes);
-  await new Promise((r) => setTimeout(r, 400));   // 마운트 직후 한가할 때 층 크기를 재고 팔을 고른다(앱에서는 첫 화면 뒤 곧바로)
-  const before = dirs(h, host);
-  const all = h.tools.querySelector('[data-all]');
-  all.click(); all.click();   // 전체 펼치기를 켰다가 끈다(이때 층의 실제 크기를 잰다)
-  assert.deepEqual(dirs(h, host), before);
-});
-
 // 다각형이 스스로 꼬이지 않았는가(이웃하지 않은 두 변이 교차하지 않는다)
 const pts = (s) => s.trim().split(/\s+/).map((p) => p.split(',').map(Number));
 const cross = (a, b, c, d) => { const o = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
@@ -119,11 +102,11 @@ test('the topic ring is the same mark in the graph, the legend and the sidebar',
   }
 });
 
-test('in All, the parent lines carry both ends so hovering a node lights them', () => {
+test('the parent lines of an opened path carry both ends so hovering a node lights them', () => {
   const nodes = []; for (const a of ['alpha', 'beta', 'gamma']) for (const s of ['one', 'two']) nodes.push(node(`concept:${a}-${s}`, 'concept', `root/${a}/${s}`));
   const { h, host } = mount(nodes);
-  h.tools.querySelector('[data-all]').click();
-  const routes = host.querySelectorAll('#cmp-rays path.ray.path');
+  h.open('topic:root/beta/two');
+  const routes = host.querySelectorAll('#cmp-rays .ray.path');
   assert.ok(routes.length > 0);
   for (const p of routes) { assert.ok(p.getAttribute('data-a'), 'data-a'); assert.ok(p.getAttribute('data-b'), 'data-b'); }
 });
