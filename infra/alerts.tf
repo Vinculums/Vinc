@@ -256,3 +256,42 @@ resource "azurerm_monitor_metric_alert" "hub_replica_overlap" {
     action_group_id = local.action_group_id
   }
 }
+
+# ── 허브 공유가 차기 전에 ──────────────────────────────────────────────────
+# 허브는 60초마다 DB 전체를 공유(vinchubssd01/hub-data)에 복사한다. 운영 묶음은 DB 크기의 약
+# 네 배를 차지하고(DB · .prev · 세대 둘), 수리·재구축 워크플로는 원본 옆에 새 묶음을 하나 더
+# 만든다. 공유가 차면 스냅샷이 실패하고 단일 writer 의 내구 사본이 끊긴다. 그 전에 사람이
+# 할당량을 늘리거나(언제든 늘릴 수 있다) 남은 묶음을 정리할 시간을 번다.
+#
+# 임계값은 할당량 64 GiB 의 70% 다. 할당량을 바꾸면 hub_share_quota_gib 도 같이 바꾼다.
+# 용량 메트릭은 한 시간에 한 번 나오므로 평가도 한 시간, 창은 여섯 시간이다.
+#
+# severity 2 인 이유: 아직 아무것도 망가지지 않았지만, 넘기면 쓰기 유실로 이어진다.
+# 근거: [[vinc.manual.platform]]
+locals {
+  hub_share_quota_gib = 64
+  hub_file_service_id = "/subscriptions/${var.subscription_id}/resourceGroups/${var.resource_group_name}/providers/Microsoft.Storage/storageAccounts/vinchubssd01/fileServices/default"
+}
+
+resource "azurerm_monitor_metric_alert" "hub_share_capacity" {
+  name                = "hub-share-capacity"
+  resource_group_name = var.resource_group_name
+  scopes              = [local.hub_file_service_id]
+  description         = "허브 공유(vinchubssd01/hub-data)가 할당량의 70% 를 넘었다. 차면 60초 스냅샷이 실패한다. 할당량을 늘리거나 남은 DB 묶음을 정리할 것."
+  severity            = 2
+  frequency           = "PT1H"
+  window_size         = "PT6H"
+  auto_mitigate       = true
+
+  criteria {
+    metric_namespace = "Microsoft.Storage/storageAccounts/fileServices"
+    metric_name      = "FileCapacity"
+    aggregation      = "Average"
+    operator         = "GreaterThan"
+    threshold        = floor(local.hub_share_quota_gib * 1073741824 * 0.7)
+  }
+
+  action {
+    action_group_id = local.action_group_id
+  }
+}
