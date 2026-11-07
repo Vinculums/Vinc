@@ -3644,6 +3644,10 @@ details.pe-group[open] > summary::before { transform: rotate(90deg); }
 .cmp svg.g .pinmark:not(.self) circle { fill: color-mix(in srgb, var(--c-point) 55%, var(--c-card)); }
 .cmp #cmp-tip { position: fixed; pointer-events: none; background: var(--c-card); border: 1px solid var(--c-line); border-radius: 8px; padding: 4px 8px; font-size: 12.5px; max-width: 460px; display: none; z-index: 3; box-shadow: var(--shadow-elev-2); }
 .cmp #cmp-tip small { color: var(--c-mute); display: block; } .cmp #cmp-tip small.hint { color: var(--c-point); margin-top: 2px; }
+/* 엿보기: 잠깐 머문 노드의 풍선이 카드로 커진다 */
+.cmp #cmp-tip .peek { margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--c-line); display: grid; gap: 1px; }
+.cmp #cmp-tip .peek .pr { color: var(--c-soft); font-size: 11.5px; margin-bottom: 2px; } .cmp #cmp-tip .peek .pn { font-size: 12px; color: var(--c-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cmp #cmp-tip .peek .pn::before { content: "· "; color: var(--c-mute); }
 
 /* LNB 의 나침반 칸(view-compass.ts 의 side). 셸의 LNB 폭과 글자를 따른다 */
 .cmp-side { --c-bg: hsl(var(--background)); --c-card: hsl(var(--card)); --c-ink: hsl(var(--foreground)); --c-soft: hsl(var(--muted-foreground));

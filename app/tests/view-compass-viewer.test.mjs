@@ -146,6 +146,36 @@ test('the side summary says what replaced a node', () => {
   assert.ok(h.side.querySelector('#cmp-sum [data-follow="SUPERSEDES|out"]'), 'the newer one can follow what it replaced');
 });
 
+test('the summary opens the shortest path from the middle to a pinned node as one chain', () => {
+  localStorage.setItem('vinc.pins:me|path', JSON.stringify(['concept:e']));
+  const ids = ['a', 'b', 'c', 'd', 'e'], nodes = ids.map((x) => node(`concept:${x}`, 'concept', 'root/x'));
+  const R = (a, b) => ({ source: `concept:${a}`, target: `concept:${b}`, type: 'RELATED_TO' });
+  const { h } = mount(nodes, [R('a', 'b'), R('b', 'c'), R('c', 'e'), R('a', 'd'), R('d', 'b')], { store: 'me|path' });
+  h.open('concept:a');
+  const btn = h.side.querySelector('#cmp-sum [data-path="concept:e"]');
+  assert.ok(btn, 'a path button for the pinned node'); btn.click();
+  assert.equal(h.centre(), 'concept:e');
+  assert.deepEqual(h.snapshot().path.slice(-4), ['concept:a', 'concept:b', 'concept:c', 'concept:e'], 'a → b → c → e, the shortest');
+  // 이어지지 않으면 그렇다고 말한다
+  localStorage.setItem('vinc.pins:me|nopath', JSON.stringify(['concept:z']));
+  const two = mount([node('concept:y', 'concept', 'root/x'), node('concept:z', 'concept', 'root/x')], [], { store: 'me|nopath' });
+  two.h.open('concept:y'); two.h.side.querySelector('#cmp-sum [data-path="concept:z"]').click();
+  assert.equal(two.h.centre(), 'concept:y'); assert.ok(two.h.side.querySelector('#cmp-sum .sr'), 'says there is no path');
+});
+
+test('resting on a node grows its tip into a peek card without moving the compass', async () => {
+  const R = (a, b) => ({ source: `concept:${a}`, target: `concept:${b}`, type: 'DERIVES_FROM' });
+  const { h, host } = mount(['a', 'b', 'c'].map((x) => node(`concept:${x}`, 'concept', 'root/x')), [R('a', 'b'), R('b', 'c')]);
+  h.open('concept:a');
+  const g = host.querySelector('.node[data-id="concept:b"]'); assert.ok(g);
+  g.fire('pointerover');
+  const tip = host.querySelector('#cmp-tip');
+  assert.ok(!String(tip.innerHTML).includes('peek'), 'the plain tip first');
+  await new Promise((r) => setTimeout(r, 520));
+  assert.ok(String(tip.innerHTML).includes('peek'), 'then the peek card');
+  assert.equal(h.centre(), 'concept:a', 'the compass did not move');
+});
+
 test('an Escape the view already handled does not also send the compass back to the root', () => {
   winOn.length = 0;
   const { h } = mount([node('concept:a', 'concept', 'root/a')]);

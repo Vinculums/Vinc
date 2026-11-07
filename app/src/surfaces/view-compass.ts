@@ -187,7 +187,7 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   const ROWS = 18;
   const REL = { up: [-26, 26], left: [-135, -45], right: [45, 135] };   // 12시 방향(θ12)에서 잰 각도(도)
   const rad = (d) => d * Math.PI / 180, todeg = (r) => r * 180 / Math.PI;
-  let path = [], prevPos = new Map(), LZ = null, VIEW = null, WIDE = false, KEEPCAM = false, PINCHAIN = new Set();
+  let path = [], prevPos = new Map(), LZ = null, VIEW = null, WIDE = false, KEEPCAM = false, PINCHAIN = new Set(), CHAINCAM = null;   // CHAINCAM: 따라가기 · 길 찾기로 방금 연 사슬의 허브들. 그 사슬만 화면에 담는다
   let TPOS = null, CANONL = null, ARMS_OF = null;
   let ARMS_FIXED = false, measIdle = 0;   // ARMS_FIXED: 잰 크기로 팔을 골랐다. 그 뒤로는 팔을 바꾸지 않는다
   // 배치 한 번이 읽는 상태(S). 그리기는 지금 상태로(curS), 재기 · 정해진 자리 짓기는 따로 만든 S 로 부른다: 전역(path · TPOS ·
@@ -494,6 +494,9 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
     const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
     // 넓게 보기: 지나온 허브들 + 지금 층만 담는다(옆 갈래의 잎까지 담으면 너무 멀어진다)
     if (KEEPCAM) KEEPCAM = false;
+    else if (CHAINCAM) { const ids = CHAINCAM; CHAINCAM = null; WIDE = false;
+      const pts = L.items.filter((o) => (o.role === 'hub' && ids.has(o.id)) || o.comp === F.hub.id).flatMap(extentPts), qx = pts.map((q) => q[0]), qy = pts.map((q) => q[1]);
+      flyView({ x: Math.min(...qx) - 40, y: Math.min(...qy) - 40, w: Math.max(...qx) - Math.min(...qx) + 80, h: Math.max(...qy) - Math.min(...qy) + 80 }); }
     else if (WIDE) { const pinHub = new Set(L.comps.filter((c) => c.pinOnly).map((c) => c.hub.id)), all = L.items.filter((o) => (o.role === 'hub' && !pinHub.has(o.id)) || o.comp === F.hub.id || o.role === 'shelf' || nearPin(o, F)), ax = all.flatMap((o) => [o.x - 160, o.x + 200]), ay = all.flatMap((o) => [o.y - 40, o.y + 40]), c = F.hub;
       const hw = Math.max(c.x - Math.min(...ax), Math.max(...ax) - c.x), hh = Math.max(c.y - Math.min(...ay), Math.max(...ay) - c.y);
       flyView({ x: c.x - hw, y: c.y - hh, w: 2 * hw, h: 2 * hh }); WIDE = false;   // 고른 노드를 가운데 두고, 펼친 길 전체가 보이게 물러난다
@@ -598,12 +601,15 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   svg.addEventListener('click', (e) => { const mb = e.target.closest('[data-more]'); if (mb) { MORE.set(mb.dataset.more, (MORE.get(mb.dataset.more) || 0) + 20); MEASURED = false; prevPos = new Map(); render(); return; } const st = e.target.closest('.stub'); if (st) { setPath(st.dataset.chain.split('|').map(byAny)); return; } act(e.target.closest('.node'), e); });
   svg.addEventListener('keydown', (e) => { if (e.key !== 'Enter' && e.key !== ' ') return; const g = e.target.closest('.node'); if (!g) return; e.preventDefault(); const r = g.getBoundingClientRect(); act(g, { clientX: r.right, clientY: r.top }); });
   const tip = $id('tip');
-  svg.addEventListener('pointerover', (e) => { const g = e.target.closest('.node'); svg.classList.toggle('hot', !!g);
+  let peekId = null, peekT = 0;   // 엿보기: 노드 위에 잠깐(PEEK_MS) 머물면 풍선이 그 노드의 관계 수 · 붙은 것 · 가까운 이웃을 담은 카드로 커진다
+  const PEEK_MS = 450;
+  svg.addEventListener('pointerover', (e) => { const g = e.target.closest('.node'); if (g && g.dataset.id === peekId) return; svg.classList.toggle('hot', !!g);
     svg.querySelectorAll('.ray').forEach((r) => r.classList.toggle('near', !!g && (r.dataset.a === g?.dataset.id || r.dataset.b === g?.dataset.id)));
+    clearTimeout(peekT); peekId = g ? g.dataset.id : null;
     if (g) { const n = byAny(g.dataset.id), o = LZ.items.find((q) => q.id === g.dataset.id); tip.style.display = 'block';
-      tip.innerHTML = `${esc(n.t || n.path)}<small>${KIND[n.k] || n.k}${o?.rel ? ' · ' + esc(o.rel) : ''}${n.d ? ' · ' + esc(n.d) : ''}${n.ts ? ' · ' + n.ts : ''}</small>${g.classList.contains('sel') && ctx.onOpen ? `<small class="hint">${esc(C.detailHint)}</small>` : ''}`; } else tip.style.display = 'none'; });
+      tip.innerHTML = `${esc(n.t || n.path)}<small>${KIND[n.k] || n.k}${o?.rel ? ' · ' + esc(o.rel) : ''}${n.d ? ' · ' + esc(n.d) : ''}${n.ts ? ' · ' + n.ts : ''}</small>${g.classList.contains('sel') && ctx.onOpen ? `<small class="hint">${esc(C.detailHint)}</small>` : ''}`;  const gid = g.dataset.id; peekT = setTimeout(() => { if (peekId === gid && tip.style.display === 'block') tip.insertAdjacentHTML('beforeend', peekHTML(byAny(gid))); }, PEEK_MS); } else tip.style.display = 'none'; });
   svg.addEventListener('pointermove', (e) => { tip.style.left = `${e.clientX + 14}px`; tip.style.top = `${e.clientY + 12}px`; });
-  svg.addEventListener('pointerleave', () => { tip.style.display = 'none'; svg.classList.remove('hot'); });
+  svg.addEventListener('pointerleave', () => { tip.style.display = 'none'; svg.classList.remove('hot'); clearTimeout(peekT); peekId = null; });
   onWin('keydown', (e) => { if (e.defaultPrevented || e.target.closest?.('input,textarea,[contenteditable],dialog') || !root.isConnected || root.closest('[hidden]')) return; if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) e.preventDefault(); if (e.altKey && e.key === 'ArrowLeft') { if (hi > 0) { hi--; setPath(hist[hi].map(byAny).filter(Boolean), false); } } else if (e.altKey && e.key === 'ArrowRight') { if (hi < hist.length - 1) { hi++; setPath(hist[hi].map(byAny).filter(Boolean), false); } }
     else if (e.key === 'Escape' || (e.key === 'Backspace' && path.length > 1)) { if (e.key === 'Escape') setPath([topics.get(ROOT)]); else setPath(path.slice(0, -1)); } });
   // 찾기: 주제 사슬을 따라 펼친 다음 그 노드를 편다
@@ -705,7 +711,23 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
       const nx = (adj.get(cur.id) || []).filter((e) => e.t === type && (dir === 'out' ? e.a === cur : e.b === cur)).map((e) => (dir === 'out' ? e.b : e.a));
       cur = nx.length === 1 ? nx[0] : null; }
     return out; }
-  const SUMOPEN = new Set();
+  const SUMOPEN = new Set(); let NOPATH = null;
+  // 두 노드 사이 가장 짧은 길(관계의 방향은 보지 않는다). 주제는 이음에 없으므로 노드끼리만 걷는다. 10칸 넘게 걸리면 없는 것으로 본다
+  function shortest(a, b, max = 10) { const prev = new Map([[a.id, null]]), dist = new Map([[a.id, 0]]), q = [a];
+    while (q.length) { const x = q.shift(); if (x === b) break; if (dist.get(x.id) >= max) continue;
+      for (const e of adj.get(x.id) || []) { const y = e.a === x ? e.b : e.a; if (!y || prev.has(y.id)) continue; prev.set(y.id, x); dist.set(y.id, dist.get(x.id) + 1); q.push(y); } }
+    if (!prev.has(b.id)) return null; const out = []; for (let x = b; x; x = prev.get(x.id)) out.unshift(x); return out; }
+  // 엿보기 카드: 관계 종류별 수(나침반 선의 표) · 관련 · 붙은 것 · 많이 이어진 이웃 넷. 주제면 종류별 수와 하위 주제 수
+  function peekHTML(n) { if (!n) return ''; const S = SC(); let h = '<div class="peek">';
+    if (n.k === 'topic') { const c = {}; for (const m of nodes) if (m.d === n.path || (n.path && m.d.startsWith(n.path + '/'))) c[m.k] = (c[m.k] || 0) + 1;
+      h += `<div class="pr">${Object.entries(c).map(([k, v]) => `${esc(KIND[k] || k)} ${v}`).join(' · ')}${n.sub && n.sub.size ? ' · ' + esc(S.subtopics(n.sub.size)) : ''}</div>`; }
+    else { const R = relOf(n), G = { pre: '›', der: '∘›', inh: '|›', sup: '⇢', ret: '↩' }, parts = [];
+      for (const [, key] of RELT) { const k = (R.out.get(`${key}:in`) || []).length + (R.out.get(`${key}:out`) || []).length; if (k) parts.push(`${G[key]} ${k}`); }
+      if (R.rel.length) parts.push(S.related(R.rel.length)); const at = Object.values(R.att).reduce((x, y) => x + y, 0); if (at) parts.push(`${S.attached} ${at}`);
+      if (parts.length) h += `<div class="pr">${parts.map(esc).join(' · ')}</div>`;
+      const nb4 = [...new Set([...(adj.get(n.id) || [])].map((e) => (e.a === n ? e.b : e.a)).filter((o) => o && isMean(o)))].sort((a, b) => (b.g || 0) - (a.g || 0)).slice(0, 4);
+      for (const o of nb4) h += `<span class="pn">${esc(short(titleOf(o), 40))}</span>`; }
+    return h + '</div>'; }
   const ico = (n) => `<svg viewBox="-7 -7 14 14">${n.k === 'topic' ? topicRing(5, colv(n), 1.8) : shape(n.k, 0, 0, 5, colv(n), !!n.vu)}</svg>`;
   const nb = (o, extra = '') => `<button class="sn" data-go="${esc(o.id)}" title="${esc(o.t || o.path || o.id)}" ${extra}>${ico(o)}<span>${esc(short(titleOf(o), 34))}</span></button>`;
   function drawSum() {
@@ -733,17 +755,25 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
       if (R.rel.length) h += `<div class="sl">${esc(S.related(R.rel.length))}</div>${R.rel.sort((a, b) => (b.g || 0) - (a.g || 0)).slice(0, 5).map((o) => nb(o)).join('')}`;
       const at = Object.entries(R.att).filter(([, v]) => v); if (at.length) h += `<div class="sr">${esc(S.attached)} ${at.map(([k, v]) => `${esc(KIND[k] || k)} ${v}`).join(' · ')}</div>`;
     }
+    const pinsTo = [...PINS].filter((id) => id !== n.id).map(byAny).filter(Boolean).slice(0, 3);
+    if (pinsTo.length) { h += `<div class="sl">${esc(S.pathTo)}</div>` + pinsTo.map((o) => `<button class="sn" data-path="${esc(o.id)}">${ico(o)}<span>${esc(short(titleOf(o), 34))}</span></button>`).join('');
+      if (NOPATH === n.id) h += `<div class="sr">${esc(S.noPath)}</div>`; }
     if (ctx.onOpen) h += `<button class="btn btn-sm sdet" data-sopen="1">${esc(S.details)}</button>`;
     sum.innerHTML = h; }
   sum && sum.addEventListener('click', (e) => { const n = path[path.length - 1]; if (!n) return;
     const x = e.target.closest('[data-sx]'); if (x) { SUMOPEN.has(x.dataset.sx) ? SUMOPEN.delete(x.dataset.sx) : SUMOPEN.add(x.dataset.sx); drawSum(); return; }
     if (e.target.closest('[data-sopen]')) { ctx.onOpen?.(n.id); return; }
+    const pp = e.target.closest('[data-path]');
+    if (pp) { const o = byAny(pp.dataset.path); if (!o) return;
+      if (o.k === 'topic' || n.k === 'topic') { goTo(o.id); return; }   // 주제는 노드 이음에 없다: 주제 사슬로 간다
+      const r = shortest(n, o); if (!r) { NOPATH = n.id; drawSum(); return; }
+      NOPATH = null; CHAINCAM = new Set(r.map((q) => q.id)); setPath([...path, ...r.slice(1)]); return; }
     const f = e.target.closest('[data-follow]'), g = e.target.closest('[data-go]');
     if (f || (g && g.dataset.chain)) { const [type, dir] = (f ? f.dataset.follow : g.dataset.chain).split('|');
       const firsts = (adj.get(n.id) || []).filter((q) => q.t === type && (dir === 'out' ? q.a === n : q.b === n)).map((q) => (dir === 'out' ? q.b : q.a));
       const first = g ? byAny(g.dataset.go) : firsts.length === 1 ? firsts[0] : null;
       if (!first) { const id = `${RELT.find(([t]) => t === type)[1]}:${dir}`; SUMOPEN.add(id); drawSum(); return; }   // 갈래가 여럿이면 먼저 고르게 편다
-      WIDE = true; setPath([...path, ...chainFrom(n, type, dir, first)]); return; }
+      const ch = chainFrom(n, type, dir, first); CHAINCAM = new Set([n.id, ...ch.map((q) => q.id)]); setPath([...path, ...ch]); return; }
     if (g) { const o = byAny(g.dataset.go); if (!o) return; const inLayer = LZ && LZ.items.some((q) => q.id === o.id && q.comp === n.id);
       if (inLayer) setPath([...path, o]); else goTo(o.id); } });
   { const _r2 = render; render = function () { _r2(); drawDock(); markPins(); drawSum(); }; }
@@ -976,7 +1006,7 @@ prevPos = new Map(); render(); treeChanged(); return; }
   pop.addEventListener("pointermove", (e) => { if (br == null) return; const b2 = day(e); TSEL = [val(Math.min(br, b2)), val(Math.max(br, b2), true)]; dimLens(); });
   pop.addEventListener("pointerup", () => { if (br == null) return; br = null; paintSide(); treeChanged(); });
   { const _r3 = render; render = function () { _r3(); paintSide(); }; }
-  const destroy = () => { AC.abort(); (globalThis.cancelIdleCallback || clearTimeout)(measIdle); cancelAnimationFrame(flyRaf); cancelAnimationFrame(traf); cancelAnimationFrame(flipRaf); clearTimeout(flipTo); host.innerHTML = ""; side.remove(); tools.remove(); pop.remove(); ctx.onDestroy?.(); };
+  const destroy = () => { AC.abort(); (globalThis.cancelIdleCallback || clearTimeout)(measIdle); cancelAnimationFrame(flyRaf); cancelAnimationFrame(traf); cancelAnimationFrame(flipRaf); clearTimeout(flipTo); clearTimeout(peekT); host.innerHTML = ""; side.remove(); tools.remove(); pop.remove(); ctx.onDestroy?.(); };
   if (import.meta.env?.DEV) (window as any).__compass = { open: (ids) => setPath(ids.map(byAny)), lz: () => LZ, pin: togglePin, range: (r) => { TSEL = r; dimLens(); } };
   // 목록에서 고른 노드로: 지금 렌즈에 이미 사슬이 있으면 그 사슬로(맥락 유지), 없으면 주제 사슬을 따라 편다
   function goTo(id) { const n = byAny(id); if (!n) return; const o = LZ && LZ.items.find((q) => q.id === n.id && q.chain);
