@@ -27,13 +27,12 @@ def _block(src: str, start: str, end: str) -> str:
 
 
 class MapClick(unittest.TestCase):
-    def test_a_map_click_opens_the_card_and_the_side_pane(self):
-        body = _block(VIEW, "function openFromMap(", "\n  }")
-        self.assertIn("focusOnMap(nd, true);", body)
+    def test_the_3d_click_route_is_gone_from_the_graph_tab(self):
+        # 그래프 탭은 나침반 하나다. 3D 의 지도 클릭 길(openFromMap)은 걷었고, 노드 상세는 openDetail 이 연다
+        self.assertNotIn("function openFromMap(", VIEW)
+        body = _block(VIEW, "function openDetail(", "\n  }")
+        self.assertIn("focusOnMap(nd);", body)
         self.assertIn("railFor(nd);", body)
-
-    def test_the_click_handler_still_routes_through_it(self):
-        self.assertIn("else openFromMap(nd);", VIEW)
 
 
 class AreaNames(unittest.TestCase):

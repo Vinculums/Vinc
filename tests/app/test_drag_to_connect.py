@@ -92,14 +92,9 @@ class RendererWiringTests(unittest.TestCase):
 class ViewWiringTests(unittest.TestCase):
     view = _read("surfaces/view.ts")
 
-    def test_마운트가_손잡이를_넘긴다(self):
-        self.assertEqual(self.view.count("onConnect: connectByDrag, canConnect: canLinkPair,"), 1)
-
-    def test_같은_관계_고르기를_연다(self):
-        body = _fn(self.view, "function connectByDrag(")
-        self.assertIn("m.openRelationPicker(a, b)", body)
-        self.assertIn("dropPick()", body)
-        self.assertNotIn("ingestFragment", body)
+    def test_그래프_탭은_끌어_잇지_않는다(self):
+        # 끌어 잇기는 3D 렌더러의 손짓이었다. 나침반에는 없으므로 그래프 탭은 그 손잡이를 넘기지 않는다
+        self.assertNotIn("connectByDrag", self.view)
 
     def test_쓰는_길은_connect_ts_하나(self):
         """앱 전체에서 엣지를 쓰는 잇기 호출은 관계 고르기 안의 하나뿐이다."""

@@ -54,9 +54,9 @@ class MountReadsTheSharedGrammar(unittest.TestCase):
         self.assertIn('sel?.kind === "doc" ? sel.id', self.src)
         self.assertRegex(self.src, r"else if \(landReader\) await openDocAt\(landReader\)")
 
-    def test_ids_는_집합을_점등한다(self):
-        self.assertIn('sel?.kind === "ids" ? sel.ids', self.src)
-        self.assertRegex(self.src, r"else if \(landIds\.length\) spotIds\(landIds\)")
+    def test_ids_는_전체로_받는다(self):
+        # 점등(올가미 집합)은 3D 의 것이었다. 옛 `#view/ids/…` 주소는 깨지지 않고 전체 그래프로 열린다
+        self.assertNotIn("spotIds", self.src)
 
     def test_node_는_착지한다(self):
         self.assertIn('sel?.kind === "node" ? sel.id', self.src)

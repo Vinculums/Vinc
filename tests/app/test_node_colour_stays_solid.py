@@ -75,7 +75,7 @@ class CardTests(unittest.TestCase):
     def test_3D_는_전량_주제로_순위를_매긴다(self):
         """3D 가 받는 노드는 고아 숨김으로 걸러진 것이다. 거기서 순위를 매기면 주제
         하나가 빠질 때 나머지 색이 밀린다."""
-        self.assertIn("keepCam, curNodes.map((n) => n.domain))", _read("surfaces/view.ts"))
+        # 그래프 탭은 나침반이라 3D 를 마운트하지 않는다. 3D 는 커뮤니티 그래프 페이지만 쓰고 순위 규칙은 그대로다
         self.assertIn("tintPlan(tintDomains ?? nodes.map((n) => n.domain), themeMode())",
                       _read("surfaces/view3d.ts"))
 

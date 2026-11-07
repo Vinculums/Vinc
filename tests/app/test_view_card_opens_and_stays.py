@@ -44,37 +44,20 @@ def _code(body: str) -> str:
     return "\n".join(re.sub(r"//.*$", "", ln) for ln in body.splitlines())
 
 
-class NothingInsideClosesThePanel(unittest.TestCase):
-    def test_show_no_longer_closes_the_panel(self):
-        body = _code(_fn(VIEW, "async function show("))
-        self.assertNotIn("closePanel(", body)
-        # 열린 채로 층이 바뀌면 새 옵션으로 다시 그린다.
-        self.assertIn("openPanel({ focus: false })", body)
+class TheLensPanelIsGone(unittest.TestCase):
+    """그래프의 보기 옵션 · 범례 패널은 3D 렌더러와 함께 걷었다. 손잡이는 나침반 머리의 시간 · 범례 · 전체다."""
 
-    def test_outside_press_keeps_the_lens_button(self):
-        body = _fn(VIEW, "function openPanel(")
-        # 버튼은 show() 마다 새로 그려지므로 노드가 아니라 그 자리(슬롯)를 예외로 쥔다.
-        self.assertIn("void closePanel({ outside: true }),\n      legend);", body)
-        self.assertIn("panel.contains(t)", COMPONENTS)
+    def test_no_lens_panel_in_the_view(self):
+        code = _code(VIEW)
+        for gone in ("view-lens-panel", "function openPanel(", "function closePanel(", "viewPanel"):
+            self.assertNotIn(gone, code, gone)
 
-
-class TheFourWaysOut(unittest.TestCase):
-    def test_close_button_in_the_panel_head(self):
-        self.assertIn("data-lensclose", VIEW)
-        self.assertIn('querySelector<HTMLElement>("[data-lensclose]")', VIEW)
-        self.assertIn('close: "Close",', COPY)
-        self.assertIn('close: "닫기",', COPY)
-
-    def test_lens_button_toggles_and_reopens_mid_close(self):
-        self.assertIn("if (viewPanel.hidden || panelClosing) openPanel(); else void closePanel();", VIEW)
-
-    def test_escape_still_closes(self):
-        self.assertIn("if (!viewPanel.hidden) { void closePanel(); return; }", VIEW)
-
-    def test_an_outside_close_does_not_take_focus(self):
-        body = _fn(VIEW, "async function closePanel(")
-        self.assertIn("if (!opts?.outside", body)
-        self.assertIn("void closePanel({ outside: true })", VIEW)
+    def test_escape_still_folds_what_is_open(self):
+        # Esc 는 가장 나중에 뜬 것부터 접는다: 카드, 그다음 상세 열, 그다음 지나온 층
+        body = _code(_fn(VIEW, "const onKey = (e: KeyboardEvent) =>"))
+        self.assertIn("closeFloatPanel()", body)
+        self.assertIn("closeRail()", body)
+        self.assertIn("trail.pop()", body)
 
 
 class TheCardIsTheLensButton(unittest.TestCase):

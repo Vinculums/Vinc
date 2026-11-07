@@ -518,10 +518,7 @@ body {
   min-width: 0; overflow-x: auto; scrollbar-width: none;
 }
 #shell[data-doc="open"][data-doc-size="side"] #view-metrics::-webkit-scrollbar { display: none; }
-/* 아래 가운데 알약(선택 안내 · 선택 바)도 카드가 남긴 지도 폭의 가운데로 옮긴다. */
-#shell[data-doc="open"][data-doc-size="side"] :is(#view-float, #view-hint) {
-  transform: translateX(calc(-50% - (var(--rail-size, 20rem) + var(--shell-gap) * 2) / 2));
-}
+
 /* 넓어져도 글줄은 읽는 폭에 둔다 — 머리만 끝까지 가고 나머지는 가운데 한 단이다. */
 #shell[data-doc-size="full"] #view-detail > :not(.rail-head) {
   max-width: 52rem; margin-inline: auto;
@@ -760,7 +757,7 @@ body {
    `--site-frame`·`--site-gutter`·`--gnb-max` 와 같아야 한다(앱은 site.css 를 부르지 않는다). */
 [data-skin="web"] { --site-gutter: 20px; --gnb-max: calc(1540px + var(--site-gutter) * 2); }
 @media (max-width: 640px) { [data-skin="web"] { --site-gutter: 16px; } }
-/* 셸도 같은 틀에 선다(2026-11-07 소유자): 사이드바 왼쪽은 GNB 로고와, 내용 카드 오른쪽은 GNB 오른쪽
+/* 셸도 같은 틀에 선다: 사이드바 왼쪽은 GNB 로고와, 내용 카드 오른쪽은 GNB 오른쪽
    단추와 같은 세로선이다. 틀보다 넓은 창에서는 양옆이 바탕(셸과 같은 면)으로 빈다. */
 [data-skin="web"] body { background: hsl(var(--surface-0)); }
 [data-skin="web"] #shell { max-width: var(--gnb-max); margin: 0 auto; padding-left: var(--site-gutter); padding-right: var(--site-gutter); }
@@ -834,7 +831,7 @@ body {
   /* 펼친 검색의 결과·Ask 판이 표면 위로 내려온다 — 표면 · 문서 열보다 위. */
   position: relative; z-index: 41;
 }
-/* 머리 안의 가로 규칙(2026-11-07 소유자): 뒤 묶음(검색 · 문서 | 그래프)은 **늘 카드 안쪽 오른쪽 끝**에
+/* 머리 안의 가로 규칙: 뒤 묶음(검색 · 문서 | 그래프)은 **늘 카드 안쪽 오른쪽 끝**에
    선다(`--head-inset`). 창이 늘고 줄어도 카드 끝을 따라가므로 웹에서는 GNB 오른쪽 단추와 같은 세로선이다.
    앞자리(지금 자리)는 본문을 따른다: 문서 · Agents · 검색은 본문 칼럼의 첫 글자선(`--page-col`), 그래프는
    본문이 카드 전체를 쓰므로 카드 안쪽 왼쪽 끝. 칼럼 계산의 100cqi 는 머리(`container: topbar`)의 폭이다. */
@@ -913,7 +910,6 @@ body {
 :is(#tb-lens, #tb-docopts) > .lens-btn { border-radius: var(--shell-ctl-r); background: hsl(var(--background)); }
 /* 숨긴 버튼만 담은 묶음은 자리를 먹지 않는다 — 폭 0 이어도 바의 gap 이 한 칸 붙는다. */
 #tb-right:not(:has(> :not([hidden]))) { display: none; }
-
 
 /* 상시 검색 — 조회 동선의 제1 진입점(D57). 모드 2종(D73).
    바가 **주변과 확실히 구분**돼야 한다. 상단 바가 반투명 muted 인데 검색바까지
@@ -1782,17 +1778,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   right: calc(var(--rail-w, 0px) + var(--space-6, 1.5rem));
   display: flex; gap: .5rem;
 }
-#view-float, #view-hint {
-  position: absolute; left: 50%; bottom: var(--space-6, 1.5rem);
-  transform: translateX(calc(-50% - var(--rail-w, 0px) / 2));
-}
-#view-float { z-index: 3; }
-#view-hint {
-  z-index: 2; pointer-events: none; white-space: nowrap; font-size: .72rem;
-  color: hsl(var(--caption-foreground)); background: hsl(var(--card) / .72);
-  border: 1px solid hsl(var(--border)); border-radius: var(--radius-pill, 999px);
-  padding: .25rem .7rem;
-}
+
 /* 레일 머리 — 제목 캡션 + 닫기(✕). 닫는 수단이 없어 상세를 열면 크럼을 찾아
    눌러야만 빠져나올 수 있던 비대칭을 없앤다(Esc 도 같은 자리에서 받는다). */
 .rail-head {
@@ -2188,17 +2174,6 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
   border-color: hsl(var(--muted-foreground) / .45); background: hsl(var(--muted));
   color: hsl(var(--foreground));
 }
-.card-step {
-  display: inline-flex; height: 28px; overflow: hidden;
-  border: 1px solid hsl(var(--border)); border-radius: .5rem; background: hsl(var(--muted) / .7);
-}
-.card-step > button {
-  display: grid; place-items: center; width: 38px; height: 100%;
-  border: 0; background: none; font: inherit; font-size: 16px; line-height: 1;
-  color: hsl(var(--muted-foreground)); cursor: pointer;
-}
-.card-step > button + button { border-left: 1px solid hsl(var(--border)); }
-.card-step > button:hover { background: hsl(var(--card)); color: hsl(var(--foreground)); }
 
 /* 프롬프트 메뉴 — **카드면이지 유리가 아니다.** 지도 위 카드 위에 또 유리를 얹으면
    글자가 배경을 통과한다(디자인 2b 주석). */
@@ -2238,17 +2213,7 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
 /* ── 지도 크롬 바(D65) — 렌즈 · 관점 · 지표를 한 줄에 모은다 ────────────────
    근접성: 같은 대상(지도)을 다루는 손잡이가 세 모서리에 흩어져 있던 것을 한 자리로.
    선택적 주의: 떠 있는 알약은 배너로 읽혀 무시되므로 상태 표시줄로 눕힌다. */
-/* 1회 코치마크 — 크롬 바 바로 위에서 왼쪽 아래를 가리킨다. 길을 막지 않는다. */
-.coach {
-  position: absolute; left: var(--space-4, 1rem); bottom: 3.4rem; z-index: 7;
-  width: 19rem; padding: .8rem .9rem;
-  background: hsl(var(--card)); border: 1px solid hsl(var(--muted-foreground) / .5);
-  border-radius: var(--radius); box-shadow: var(--shadow-elev-3, none);
-  animation: lensRise .2s var(--ease-settle);
-}
-.coach-line { margin: 0 0 .45rem; font-size: var(--fs-sm); line-height: 1.5; color: hsl(var(--muted-foreground)); }
-.coach-line b { color: hsl(var(--foreground)); }
-.coach-ok { margin-top: .2rem; }
+
 #view-chrome {
   position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
   display: flex; align-items: center; gap: var(--space-3, .75rem);
@@ -2264,7 +2229,7 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
 /* 연결 없음 = 누를 수 있는 수치(세어만 놓고 해소할 길을 안 주지 않는다). */
 .metric-act { cursor: pointer; border-bottom: 1px dashed hsl(var(--border)); }
 .metric-act:hover { color: hsl(var(--foreground)); }
-#view-legend { flex: 0 0 auto; }
+
 /* 렌즈 = 아이콘 하나. 지도 위 크롬은 최소 잉크로 — 이름표는 툴팁이 맡는다. */
 .lens-btn {
   /* 규격 밖에 남아 있던 값(2.15rem = 34.4px)이었다. 그 2px 때문에 보기·범례 묶음의
@@ -2297,24 +2262,7 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
 .lg-item { display: flex; align-items: center; gap: .5rem; font-size: var(--fs-sm); }
 .lg-focus { display: flex; align-items: center; gap: .45rem; text-transform: none; letter-spacing: 0; font-size: var(--fs-sm); }
 .lg-dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--ring)); flex: 0 0 auto; }
-/* D74 — 범례 항목이 스위치일 때. 읽는 자리와 누르는 자리가 같아야 하므로 생김새는
-   그대로 두고 **눌리는 티**(커서·호버 바탕·포커스 링)만 얹는다. 꺼진 항목은 지우지
-   않고 물러난다: 무엇을 껐는지 보여야 다시 켤 수 있다(사라진 스위치는 못 켠다). */
-.lg-sw {
-  width: 100%; margin: 0; padding: .12rem .3rem; border: 0; border-radius: var(--radius-sm, .5rem);
-  background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
-}
-.lg-sw:hover { background: hsl(var(--muted) / .7); }
-.lg-sw:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
-.lg-sw .lg-name { flex: 1 1 auto; }
-.lg-sw .lg-n { color: hsl(var(--caption-foreground)); font-size: .68rem; }
-.lg-sw.off { opacity: .42; }
-.lg-sw.off .lg-name { text-decoration: line-through; }
-/* 캡션 옆 안내 — 항목마다 반복하면 소음이라 한 번만, 아주 작게. */
-.lg-tip {
-  margin-left: .4rem; text-transform: none; letter-spacing: 0;
-  font-size: .6rem; color: hsl(var(--caption-foreground));
-}
+
 /* 메시지 층은 캔버스를 통째로 덮는 오버레이(inset:0)다. 문구만 얹는 층이 그 아래
    그려진 차트의 hover·click 을 전부 삼키면(예: 씨앗 혼자일 때 점 하나 + 안내 문구)
    보이는 마크가 아무 반응도 하지 않는다 → 층은 포인터를 통과시키고, 층 안의 실제
@@ -2343,7 +2291,7 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
    버튼이 상단 바 오른쪽으로 옮겨 갔으므로 패널도 자동으로 그쪽에 선다.
    아래 left/top 은 그 값이 오기 전 한 프레임의 기본값일 뿐이다.
    등장·퇴장 모션은 motion.ts 가 준다(렌즈 버튼에서 자라나고 그리로 빨려 든다). */
-#view-lens-panel, #doc-opts-panel {
+#doc-opts-panel {
   position: fixed; left: var(--space-4, 1rem); top: 4rem;
   /* 영역 상자가 생기며 좌우 여백이 한 겹 늘어 세그가 두 줄로 접혔다 — 그만큼 넓힌다.
      v2(견본 타일 + 개수 막대)에서 1rem 더: 타일 4장 + 활성값 이름이 한 줄에 선다. */
@@ -2360,7 +2308,7 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
   box-shadow: 0 1.5rem 3rem hsl(0 0% 0% / .32);
 }
 /* 유리 층 — 내용과 **남매**다(조상이 아니다). 스크롤은 이 층을 건드리지 않는다. */
-#view-lens-panel::before, #doc-opts-panel::before {
+#doc-opts-panel::before {
   content: ""; position: absolute; inset: 0; z-index: 0; border-radius: inherit;
   background: hsl(var(--card) / .78);
   /* 18px → 12px(F7, 2026-08-17). backdrop-filter 는 뒤의 캔버스를 **매 프레임** 다시
@@ -2373,7 +2321,7 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
 }
 /* 투명도를 줄여 달라는 사용자에겐 불투명 카드로 — 블러 자체를 안 한다. */
 @media (prefers-reduced-transparency: reduce) {
-  #view-lens-panel::before, #doc-opts-panel::before {
+  #doc-opts-panel::before {
     background: hsl(var(--card));
     backdrop-filter: none; -webkit-backdrop-filter: none;
   }
@@ -2443,11 +2391,6 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
     position: relative; z-index: 45; width: var(--lnb-w);
     box-shadow: var(--shadow-elev-3), 0 0 0 100vmax hsl(var(--background) / .35);
   }
-  /* 안내 카드는 왼쪽에 붙어 있는데, 그 자리가 이제 서랍 자리다 — 서랍이 열리면
-     카드가 그 뒤로 들어가 **글자가 중간에서 잘린 것처럼** 보인다(실측 2026-09-13,
-     창 768: 카드 16~320 · 서랍 80~312). 오른쪽으로 붙여 지도 위에 세운다.
-     19rem 고정폭도 푼다 — 좁은 창에서 그 폭이 화면을 넘는다. */
-  .coach { left: auto; right: var(--space-4, 1rem); width: auto; max-width: 22rem; }
 
   /* 지표 줄은 `nowrap` 이라 좁은 창에서 지도 카드 밖으로 밀려났다(실측 R435 / 화면
      375). 줄이되 **버리지 않는다** — 넷 중 무엇이 덜 중요한지는 읽는 사람이 정할
@@ -2457,7 +2400,7 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
     min-width: 0; overflow-x: auto; scrollbar-width: none;
   }
   #view-metrics::-webkit-scrollbar { display: none; }
-  #view-lens-panel, #doc-opts-panel {
+  #doc-opts-panel {
     top: calc(var(--topbar-h) + var(--shell-gap) * 2); left: 0; right: 0; bottom: 0;
     width: auto; max-height: none;
     border-radius: 0; border-left: none; border-right: none; border-bottom: none;
@@ -2465,8 +2408,8 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
   }
   /* 상단 바 위에 무엇이 더 있는지가 스킨마다 다르다 — 데스크탑은 타이틀바,
      웹은 공홈 GNB(둘 다 상단 바 3.25rem 위에 얹힌다). */
-  [data-shell] :is(#view-lens-panel, #doc-opts-panel) { top: calc(var(--topbar-h) + var(--shell-gap) * 2 + var(--titlebar-h)); }
-  [data-skin="web"] :is(#view-lens-panel, #doc-opts-panel) { top: 6.5rem; }
+  [data-shell] #doc-opts-panel { top: calc(var(--topbar-h) + var(--shell-gap) * 2 + var(--titlebar-h)); }
+  [data-skin="web"] #doc-opts-panel { top: 6.5rem; }
 }
 
 /* ── 좁은 창(≤600) — 검색이 자리를 되찾는다 ────────────────────────────
@@ -2510,7 +2453,7 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
   #tb-find[data-expanded] { width: calc(100cqi - var(--sb-w, 0px) - var(--page-inset) * 2); }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  #view-lens-panel::before, #doc-opts-panel::before { background: hsl(var(--card)); }
+  #doc-opts-panel::before { background: hsl(var(--card)); }
 }
 /* 옵션 묶음 = **영역**(노드 · 선 · 기타). 제목 한 줄만 두면 어디까지가 그 묶음인지
    경계가 없어 마지막 컨트롤이 다음 제목에 붙어 읽힌다. 얕은 면 하나로 묶는다 —
@@ -2528,7 +2471,7 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
 }
 /* 영역 안에서는 첫 행의 위 여백을 없앤다(제목이 이미 간격을 만든다). */
 .opt-sec > :nth-child(2) { margin-top: .1rem; }
-.opt-sec .slider-row:last-child { margin-bottom: 0; }
+
 /* 패널의 옵션/범례 탭.
    ⚠ 설정의 `.settings-tab` 을 빌려 쓰지 말 것 — PR 393 이 그 규칙을 지우자 이 버튼이
    브라우저 기본 버튼(흰 바탕·검은 글자)으로 떨어졌다. 이 자리의 규칙은 여기 있다.
@@ -2542,12 +2485,6 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
 }
 .lg-tab:hover { background: hsl(var(--muted-foreground) / .1); color: hsl(var(--foreground)); }
 .lg-tab.active { background: hsl(var(--ring) / .14); color: hsl(var(--foreground)); font-weight: 600; }
-/* 옵션 밑에 붙는 해설 한 줄(배치가 무슨 순서로 세우는지). 위의 캡션(.hint)과 같은
-   무게로 두면 둘 다 라벨처럼 읽히므로 한 단계 더 물러난다. */
-#view-lens-panel .hint.sub {
-  margin: -.15rem 0 .1rem; font-size: .68rem; line-height: 1.45;
-  color: hsl(var(--caption-foreground));
-}
 
 /* ── 렌즈 패널 v2 — 옵션은 견본으로, 범례는 그리는 그대로 ─────────────────────
    다값 행 = 결과를 그린 견본 타일(활성값 이름은 캡션 오른쪽에 상시), on/off 행 =
@@ -2567,42 +2504,7 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
   padding: 0 var(--space-4, 1rem) var(--space-4, 1rem);
 }
 .lg-tabrow .lg-tabs { flex: 1 1 auto; margin: 0; }
-.lens-qhelp {
-  flex: 0 0 auto; display: grid; place-items: center; width: 1.6rem; height: 1.6rem;
-  padding: 0; border: 1px solid hsl(var(--border)); border-radius: 50%;
-  background: hsl(var(--card) / .7); color: hsl(var(--muted-foreground));
-  font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer;
-}
-.lens-qhelp:hover { border-color: hsl(var(--muted-foreground)); color: hsl(var(--foreground)); }
-.lens-qhelp.active { background: hsl(var(--foreground) / .16); color: hsl(var(--foreground)); }
-.opt-caprow { display: flex; align-items: baseline; gap: .4rem; margin: .5rem 0 0; }
-.opt-caprow .hint {
-  flex: 1 1 auto; min-width: 0; margin: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.tile-active {
-  flex: 0 0 auto; white-space: nowrap; font-size: .7rem; font-weight: 600;
-  color: hsl(var(--foreground));
-}
-.tile-grid { display: flex; gap: .3rem; flex-wrap: wrap; margin: .3rem 0 0; }
-.tile {
-  display: grid; place-items: center; width: 3rem; height: 2.35rem; padding: 0;
-  border: 1px solid hsl(var(--border) / .7); border-radius: var(--radius-sm, .5rem);
-  background: hsl(var(--card) / .45); color: hsl(var(--muted-foreground)); cursor: pointer;
-}
-.tile:hover { border-color: hsl(var(--muted-foreground) / .7); color: hsl(var(--foreground)); }
-.tile:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
-.tile.active {
-  border-color: hsl(var(--ring)); background: hsl(var(--foreground) / .1);
-  color: hsl(var(--foreground));
-}
-.tile svg { width: 28px; height: 24px; }
-.opt-swrow { display: flex; align-items: center; gap: .5rem; margin: .5rem 0 0; }
-.opt-swrow .hint {
-  flex: 1 1 auto; min-width: 0; margin: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.opt-swrow .seg { flex: 0 0 auto; }
+
 /* 진짜 on/off 는 **스위치 하나**다(발주자 지시 2026-09-10). 여태 알약 두 칸이었고
    그 두 칸의 어휘가 행마다 달랐다 — 켬/끔 · 표시/숨김 · 가리킬 때만/끔. 같은 종류의
    결정을 세 벌의 말로 물으면 읽는 쪽이 매번 다시 판정한다. 스위치는 그 어휘를
@@ -2620,87 +2522,15 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
   transition: background-color var(--dur-hover) var(--ease-out),
               border-color var(--dur-hover) var(--ease-out);
 }
-.switch-knob {
-  position: absolute; top: 50%; left: 1px; width: 1rem; height: 1rem;
-  margin-top: -.5rem; border-radius: 999px;
-  background: hsl(var(--foreground) / .5);
-  transition: transform var(--dur-hover) var(--ease-out),
-              background-color var(--dur-hover) var(--ease-out);
-}
+
 .switch:hover { border-color: hsl(var(--muted-foreground) / .6); }
 .switch[aria-checked="true"] {
   background: hsl(var(--ring)); border-color: hsl(var(--ring));
 }
-/* 이동 거리 = 트랙 안쪽(36 − 테두리 2 − 여백 2) − 손잡이 16 = 16px. 값을 적지 않고
-   빼는 이유는 트랙 폭을 바꾸는 날 손잡이가 밖으로 나가지 않게 하려는 것이다. */
-.switch[aria-checked="true"] .switch-knob {
-  transform: translateX(calc(2.25rem - 2px - 2px - 1rem));
-  background: hsl(var(--card));
-}
+
 .switch:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) {
-  .switch, .switch-knob { transition: none; }
-}
-/* 바닥 고정 설명 줄 — 자리를 비워 두어(min-height) 줄이 바뀌어도 아래가 안 민다.
-   패널 안의 고정 자리라 WCAG 1.4.13 을 구조로 만족한다(뜨는 툴팁 아님). */
-.lens-help {
-  display: flex; gap: .35rem; min-height: 3em; margin: .6rem 0 0; padding: .45rem 0 0;
-  border-top: 1px solid hsl(var(--border) / .5);
-  font-size: .72rem; line-height: 1.45; color: hsl(var(--caption-foreground));
-}
-.lens-help b {
-  flex: 0 0 auto; white-space: nowrap; font-weight: 600;
-  color: hsl(var(--muted-foreground));
-}
-.lens-help span { min-width: 0; }
-.lens-help b:empty { display: none; }
-/* 범례 v2 — 마크는 크게(24px), 실루엣 그대로. */
-.lg-shape {
-  display: grid; grid-template-columns: 1.6rem 1fr; gap: .1rem .55rem;
-  align-items: center; font-size: var(--fs-sm);
-}
-.lg-mark2 { width: 24px; height: 24px; color: hsl(var(--foreground)); fill: currentColor; }
-.lg-shape-t { min-width: 0; }
-.lg-note {
-  display: block; font-size: .68rem; line-height: 1.45;
-  color: hsl(var(--caption-foreground));
-}
-.lg-tiers { display: flex; gap: .3rem; margin: .25rem 0 .1rem; }
-.lg-tier {
-  flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: .15rem;
-  padding: .3rem 0; border: 1px solid hsl(var(--border) / .45);
-  border-radius: var(--radius-sm, .5rem); background: hsl(var(--muted) / .3);
-  font-size: .68rem; color: hsl(var(--caption-foreground));
-}
-.lg-tier svg { width: 22px; height: 22px; color: hsl(var(--foreground)); }
-.lg-line { width: 18px; height: 12px; flex: 0 0 auto; color: hsl(var(--foreground)); }
-.lg-rowwrap { display: flex; align-items: center; gap: .3rem; }
-.lg-rowwrap .lg-sw { flex: 1 1 auto; }
-.lg-bar {
-  width: 2.4rem; height: 4px; flex: 0 0 auto; border-radius: 999px;
-  background: hsl(var(--border) / .6); overflow: hidden;
-}
-.lg-bar > span {
-  display: block; height: 100%; border-radius: 999px;
-  background: hsl(var(--muted-foreground) / .75);
-}
-/* `이것만`(솔로) — 행을 가리키거나 키보드가 그 행에 있을 때만 보인다. */
-.lg-solo {
-  flex: 0 0 auto; visibility: hidden; padding: .15rem .4rem;
-  border: 1px solid hsl(var(--border)); border-radius: .4rem;
-  background: hsl(var(--card) / .7); color: hsl(var(--muted-foreground));
-  font: inherit; font-size: .68rem; cursor: pointer;
-}
-.lg-rowwrap:hover .lg-solo, .lg-rowwrap:focus-within .lg-solo { visibility: visible; }
-.lg-solo:hover { color: hsl(var(--foreground)); border-color: hsl(var(--muted-foreground)); }
-/* 행을 가리키면 다른 행이 물러난다 — 지도의 물러남과 같은 문법(꺼진 행은 이미
-   .off 로 물러나 있어 건드리지 않는다). */
-.lens-scroll:has(.lg-rowwrap:hover) .lg-rowwrap:not(:hover) .lg-sw:not(.off) { opacity: .55; }
-.lg-status { display: flex; align-items: baseline; gap: .4rem; margin: .35rem 0 .1rem; }
-.lg-status span:first-child { flex: 1 1 auto; min-width: 0; }
-.lg-reset {
-  flex: 0 0 auto; padding: 0; border: 0; background: none; font: inherit;
-  font-size: .7rem; color: hsl(var(--link)); cursor: pointer; text-decoration: underline;
+  .switch { transition: none; }
 }
 
 /* 상태 줄의 수치 — 숫자는 고정폭으로 세운다(줄이 다시 그려져도 칸이 흔들리지 않게). */
@@ -2957,11 +2787,11 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 .btn:active { transform: scale(.97); filter: brightness(.97); }
 /* 누르면 눌린다 — 버튼꼴만. 목록 행(.lnb-*, .palette-row, .card-row)은 크기를 건드리면 글줄이
    흔들리므로 색만 전이한다(위 규칙). 전이는 여기서 transform 을 더해 앞선 선언을 잇는다. */
-.tb-icon, .btn, .chip:not(.chip-static), .lens-btn, .card-ctl, .tile {
+.tb-icon, .btn, .chip:not(.chip-static), .lens-btn, .card-ctl {
   transition: background-color .16s ease, color .16s ease, border-color .16s ease,
               transform var(--dur-fast) var(--ease-out);
 }
-.tb-icon:active, .chip:not(.chip-static):active, .lens-btn:active, .card-ctl:active, .tile:active { transform: scale(.96); }
+.tb-icon:active, .chip:not(.chip-static):active, .lens-btn:active, .card-ctl:active { transform: scale(.96); }
 .btn-primary {
   background: linear-gradient(hsl(var(--primary) / .92), hsl(var(--primary)));
   box-shadow: 0 1px 2px hsl(var(--foreground) / .28), inset 0 1px 0 hsl(0 0% 100% / .22);
@@ -3007,7 +2837,6 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
   to   { opacity: 1; transform: translate(-50%, 0); }
 }
 @media (prefers-reduced-motion: reduce) { .update-toast { animation: fadeOnly .18s ease; } }
-
 
 /* ── 저장 위치(VIN-130, `storage-mode.ts`) ─────────────────────────────────
    ⚠ 선택자가 전부 `.settings-body` 로 시작한다. 이 패널에는 두 규칙이 이미 걸려 있고
@@ -3735,13 +3564,7 @@ details.pe-group[open] > summary::before { transform: rotate(90deg); }
 .cmp { --c-bg: hsl(var(--background)); --c-card: hsl(var(--card)); --c-ink: hsl(var(--foreground)); --c-soft: hsl(var(--muted-foreground));
   --c-mute: hsl(var(--caption-foreground)); --c-line: hsl(var(--border)); --c-point: hsl(var(--point));
   position: absolute; inset: 0; display: grid; grid-template-rows: 1fr; background: var(--c-bg); color: var(--c-ink); font-family: var(--font-ui); }
-.cmp-bar { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; padding: var(--space-2) var(--space-4); padding-right: 4.5rem; border-bottom: 1px solid var(--c-line); background: var(--c-card); }
-.cmp-bar .btn:disabled { opacity: .4; }
-.cmp-bar .cmp-find { width: 15rem; margin-left: auto; height: var(--ctl-h, 2rem); border: 1px solid var(--c-line); background: var(--c-bg); color: var(--c-ink); border-radius: var(--radius-sm); padding: 0 var(--space-2); font: var(--fs-sm) var(--font-ui); }
-.cmp-bar .cmp-find:focus-visible { outline: 2px solid var(--c-point); outline-offset: 1px; }
-.cmp-side #cmp-trail { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
-.cmp-side #cmp-trail button { border: 1px solid var(--c-line); background: var(--c-card); color: var(--c-soft); border-radius: 999px; padding: 2px 10px; font: 500 var(--fs-sm) var(--font-ui); cursor: pointer; max-width: 15rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cmp-side #cmp-trail button.cur { color: var(--c-ink); border-color: var(--c-point); } .cmp-side #cmp-trail span { color: var(--c-mute); font-size: var(--fs-sm); }
+
 .cmp-stage { position: relative; overflow: hidden; }
 .cmp svg.g { position: absolute; inset: 0; width: 100%; height: 100%; }
 .cmp #cmp-menu .mi { display: flex; justify-content: space-between; width: 100%; border: 0; background: none; color: var(--c-ink); font: var(--fs-sm) var(--font-ui); padding: 6px 8px; border-radius: 8px; cursor: pointer; text-align: left; }
@@ -3765,8 +3588,7 @@ details.pe-group[open] > summary::before { transform: rotate(90deg); }
 .cmp-lr { display: grid; grid-template-columns: 48px 1fr; gap: 8px; align-items: center; margin: 6px 0; color: hsl(var(--muted-foreground)); font-size: var(--fs-sm); }
 .cmp-lr svg { width: 44px; height: 16px; color: hsl(var(--muted-foreground)); } .cmp-lr b { color: hsl(var(--foreground)); margin-right: 6px; font-weight: 600; }
 .cmp-sws { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: var(--fs-sm); color: hsl(var(--muted-foreground)); } .cmp-sw i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
-.cmp-side #cmp-trail { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; } #cmp-trail button { border: 1px solid var(--c-line); background: var(--c-card); color: var(--c-soft); border-radius: 999px; padding: 2px 10px; font: 500 12px var(--font-ui); cursor: pointer; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cmp-side #cmp-trail button.cur { color: var(--c-ink); border-color: var(--c-point); } #cmp-trail span { color: var(--c-mute); font-size: 12px; }
+
 .cmp svg.g { display: block; width: 100%; height: 100%; overflow: visible; }
 .cmp svg.g text { font: 12px var(--font-ui); fill: var(--c-ink); paint-order: stroke; stroke: var(--c-bg); stroke-width: 4px; stroke-linejoin: round; }
 .cmp svg.g text.hub { font-size: 17px; font-weight: 700; } svg.g text.l1 { font-size: 12.5px; font-weight: 600; } svg.g text.l2 { font-size: 11px; fill: var(--c-soft); }
@@ -3795,7 +3617,7 @@ details.pe-group[open] > summary::before { transform: rotate(90deg); }
 .cmp svg.g .node.out { opacity: .16; }
 .cmp svg.g .more-btn { font: 600 11.5px var(--font-ui); fill: var(--c-point); cursor: pointer; } .cmp svg.g .more-btn:hover { text-decoration: underline; } svg.g.hot .node.pick { opacity: 1; } svg.g .node.pick .ring { opacity: 1; }
 .cmp-side #cmp-dock { }
-.cmp-side #cmp-dock[hidden] { display: none; } #cmp-dock .dh { font: 700 12px var(--font-ui); color: var(--c-soft); padding: 4px 6px 6px; }
+.cmp-side #cmp-dock[hidden] { display: none; }
 .cmp-side #cmp-dock .pi { display: flex; align-items: center; border-radius: 8px; } #cmp-dock .pi:hover { background: color-mix(in srgb, var(--c-point) 9%, var(--c-card)); }
 .cmp-side #cmp-dock .pg { flex: 1; display: grid; grid-template-columns: 14px 1fr auto; gap: 7px; align-items: center; border: 0; background: none; color: var(--c-ink); font: 12.5px/1.3 var(--font-ui); text-align: left; padding: 4px 6px; cursor: pointer; min-width: 0; }
 .cmp-side #cmp-dock .pg span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } #cmp-dock .pg em { font-style: normal; font-size: 11px; color: var(--c-point); } #cmp-dock svg { width: 12px; height: 12px; overflow: visible; }
@@ -3803,7 +3625,6 @@ details.pe-group[open] > summary::before { transform: rotate(90deg); }
 .cmp svg.g .pinmark circle { fill: var(--c-point); stroke: var(--c-bg); stroke-width: 1.4; } .cmp svg.g .pinmark svg { color: var(--c-bg); }
 /* 고정한 노드는 그래프 안 제자리에 남는다(view-compass.ts pinLayout). 화면 밖으로 나가면 가장자리에 방향 표가 선다 */
 .cmp #cmp-pins { position: absolute; inset: 0; pointer-events: none; }
-.cmp #cmp-pins .pl { display: none; }
 .cmp #cmp-pins .pedge { position: absolute; transform: translate(-50%, -50%); pointer-events: auto; display: inline-flex; align-items: center; gap: 4px; max-width: 14rem;
   padding: 3px 9px 3px 6px; border-radius: 999px; border: 1px solid var(--c); background: var(--c-card);
   color: var(--c-ink); font: 600 12px var(--font-ui); cursor: pointer; box-shadow: var(--shadow-elev-2); }
@@ -3830,15 +3651,9 @@ details.pe-group[open] > summary::before { transform: rotate(90deg); }
 .cmp-sec + .cmp-sec { border-top: 1px solid var(--c-line); padding-top: var(--space-3); }
 .cmp-sec-h { font: 700 11.5px var(--font-ui); letter-spacing: .04em; color: var(--c-mute); text-transform: none; }
 .cmp-sec-h small { font-weight: 400; letter-spacing: 0; margin-left: 4px; }
-.cmp-nav { display: flex; gap: var(--space-1); } .cmp-nav .btn:disabled { opacity: .4; }
-.cmp-side #cmp-trail { flex-direction: column; align-items: stretch; gap: 2px; }
-.cmp-side #cmp-trail button { max-width: none; text-align: left; border-radius: var(--radius-sm); }
-.cmp-side #cmp-trail span { display: none; }
-.cmp-side .cmp-find { width: 100%; height: var(--ctl-h, 2rem); border: 1px solid var(--c-line); background: var(--c-bg); color: var(--c-ink); border-radius: var(--radius-sm); padding: 0 var(--space-2); font: var(--fs-sm) var(--font-ui); box-sizing: border-box; }
-.cmp-side .cmp-find:focus-visible { outline: 2px solid var(--c-point); outline-offset: 1px; }
-.cmp-side .cmp-howto summary { cursor: pointer; list-style: none; } .cmp-side .cmp-howto summary::after { content: " ▸"; } .cmp-side .cmp-howto[open] summary::after { content: " ▾"; }
+
 .cmp-side .btn { white-space: nowrap; height: 1.75rem; min-height: 0; padding: 0 var(--space-2); font-size: var(--fs-sm); }
-.cmp-side .cmp-nav .btn:last-child { flex: 1; } .cmp-side .cmp-seg { margin: 0; } .cmp-side .cmp-seg .btn { flex: 1; }
+.cmp-side .cmp-seg { margin: 0; } .cmp-side .cmp-seg .btn { flex: 1; }
 .cmp-side .cmp-kinds { grid-template-columns: 1fr 1fr; } .cmp-side .cmp-lk { padding: 3px 6px; }
 /* 시간 · 범례 창(view-compass.ts 의 pop). 머리의 버튼 바로 아래에 왼쪽 끝을 맞춰 뜬다(left·top·max-width 는 스크립트가 준다).
    시간 창은 화면이 클수록 넓어져 격자가 더 길게 나열된다 */
@@ -3885,7 +3700,6 @@ details.pe-group[open] > summary::before { transform: rotate(90deg); }
 .cmp-side .tgrp { display: flex; gap: 6px; align-items: baseline; width: 100%; border: 0; background: none; color: var(--c-ink); font: 600 12px var(--font-ui); text-align: left; padding: 5px 4px 2px calc(4px + var(--lv, 0) * 12px); cursor: pointer; border-left: 2px solid var(--c, transparent); }
 .cmp-side .tgrp em { font-style: normal; font-weight: 400; color: var(--c-mute); margin-left: auto; } .cmp-side .tgrp.anc { color: var(--c-soft); font-weight: 600; cursor: default; border-left-color: transparent; }
 .cmp-side .tmore { font-size: 11px; color: var(--c-mute); padding: 1px 4px 2px calc(26px + var(--lv, 0) * 12px); }
-.cmp-side .cmp-howto .cmp-kinds { margin: var(--space-2) 0; }
 
 /* 검색 칸은 LNB 맨 위(topbar.ts 가 옮겨 심는다). 늘 펼친 모습, 드롭다운은 칸 아래로, 묻기 답은 LNB 오른쪽으로 */
 .lnb-search { padding: var(--space-2) var(--space-3) var(--space-1); position: relative; z-index: 50; }

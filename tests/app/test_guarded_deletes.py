@@ -51,9 +51,10 @@ class CallSites(unittest.TestCase):
     def test_node_and_edge_deletes_preview_while_the_confirmation_is_open(self):
         previews = [m.start() for m in re.finditer(r"api\.previewDelete(Node|Edge)\(", VIEW)]
         applies = [m.start() for m in re.finditer(r"api\.delete(Node|Edge)\(", VIEW)]
-        self.assertEqual(len(previews), 4)
-        self.assertEqual(len(applies), 4)
-        self.assertEqual(len(re.findall(r"api\.delete(Node|Edge)\([^)]*await guard\)", VIEW)), 4)
+        # 3D 우클릭 메뉴의 지우기는 그 렌더러와 함께 빠졌다. 남은 셋(레일 · 카드 · 엣지)이 모두 미리본다
+        self.assertEqual(len(previews), 3)
+        self.assertEqual(len(applies), 3)
+        self.assertEqual(len(re.findall(r"api\.delete(Node|Edge)\([^)]*await guard\)", VIEW)), 3)
         for p, a in zip(previews, applies):
             between = VIEW[p:a]
             self.assertLess(p, a)

@@ -77,9 +77,9 @@ class Renderers(unittest.TestCase):
         self.assertIn('nodesOnly = prefs.edges === "none";', live_update)
         self.assertIn("if (nodesOnly) return pal.link.base + ALPHA0;", v3)
 
-    def test_패널에_노드만_칩이_있다(self):
+    def test_노드만_이름이_남고_데려오기는_없다(self):
+        # 보기 옵션 패널(견본 칩)은 3D 와 함께 걷었다. 노드만이라는 이름과 데려오기가 없다는 것은 그대로 잡는다
         v = _read("surfaces/view.ts")
-        self.assertIn("none: ART.edgeNone", v)
         self.assertNotIn("edgeBring", v)
         c = _read("copy.ts")
         self.assertIn('none: "nodes only"', c)
