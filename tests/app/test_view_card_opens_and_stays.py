@@ -69,7 +69,7 @@ class TheFourWaysOut(unittest.TestCase):
         self.assertIn("if (viewPanel.hidden || panelClosing) openPanel(); else void closePanel();", VIEW)
 
     def test_escape_still_closes(self):
-        self.assertIn("if (!viewPanel.hidden) { void closePanel(); return; }", VIEW)
+        self.assertIn("if (!viewPanel.hidden) { e.preventDefault(); void closePanel(); return; }", VIEW)
 
     def test_an_outside_close_does_not_take_focus(self):
         body = _fn(VIEW, "async function closePanel(")
