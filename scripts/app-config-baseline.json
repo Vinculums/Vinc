@@ -114,8 +114,6 @@
       "VINC_EMBED_APPLY_PAUSED",
       "VINC_EVENTS_WEBHOOK",
       "VINC_KEEP_VECTOR_INDEX",
-      "VINC_LAYOUT_REMOTE",
-      "VINC_LAYOUT_TOKEN",
       "VINC_MCP_ED25519_SEED",
       "VINC_MCP_ISSUER",
       "VINC_MCP_TOKEN",
@@ -157,8 +155,6 @@
     },
     "secret_names": [
       "acr-password",
-      "encode-token",
-      "layout-token",
       "mcp-ed25519-seed",
       "mcp-token",
       "oauth-admin-key",

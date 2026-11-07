@@ -214,10 +214,6 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # 주소와 시크릿 참조만 준비한다. 실제 env 변경은 구 리비전을 내린 뒤의 update에서 한다.
-      - name: 배치 앱의 구조와 공용 시크릿 준비 여부
-        run: python scripts/layout_app.py hub-env --out "$GITHUB_ENV"
-
       # ⚠ 배포 **전** env 게이트. 허브 런타임 env 는 IaC 가 아니라 손으로 넣은 값이라
       # 앱을 재생성하면 조용히 빠진다 — 실제로 `VINC_MCP_ISSUER` 하나가 빠져 커넥터가
       # 전면 불가였는데 `/health` 는 200 이었다(2026-07-30). 빠진 채로 배포하면
@@ -442,11 +438,13 @@ jobs:
           prev=$(az containerapp show $APP --query "properties.latestRevisionName" -o tsv)
           echo "PREV_REV=$prev" >> "$GITHUB_ENV"
           echo "serving revision: $prev"
-          # 인코더는 허브 컨테이너 안에서 돈다(2 CPU·4 GiB). 원격 인코더 env 가 아직 있으면 이번
-          # 갱신에서 뺀다 — 있을 때만 넘긴다(없는 이름을 지우라고 하지 않는다).
+          # 인코더는 허브 컨테이너 안에서 돈다(2 CPU·4 GiB). 배치는 브라우저가 계산하고 허브는 배치
+          # 서비스를 부르지 않는다. 그 원격 env 가 아직 있으면 이번 갱신에서 뺀다 — 있을 때만 넘긴다
+          # (없는 이름을 지우라고 하지 않는다). `--set-env-vars` 는 기존 env 를 지우지 않는다.
+          # 이 이름들의 시크릿은 이 갱신으로 참조가 끊긴 뒤 아래 시크릿 정리 스텝이 지운다.
           RMARGS=()
           have=$(az containerapp show $APP --query "properties.template.containers[0].env[].name" -o tsv)
-          for n in VINC_EMBED_REMOTE VINC_EMBED_ENCODE_TOKEN; do
+          for n in VINC_EMBED_REMOTE VINC_EMBED_ENCODE_TOKEN VINC_LAYOUT_REMOTE VINC_LAYOUT_TOKEN; do
             if printf '%s\n' "$have" | grep -qx "$n"; then RMARGS+=("$n"); fi
           done
           [ "${#RMARGS[@]}" = 0 ] || RMARGS=(--remove-env-vars "${RMARGS[@]}")
@@ -476,9 +474,6 @@ jobs:
           # 근거: [[vinc.spec.retrieval-knobs-storage]] · [[vinc.spec.retrieval-knobs-brief]]
           ENVVARS+=("VINC_NODE_COLBERT=${{ vars.VINC_NODE_COLBERT || 'off' }}")
           ENVVARS+=("VINC_BRIEF_RULE=${{ vars.VINC_BRIEF_RULE || 'production' }}")
-          if [ "${LAYOUT_PRESENT:-0}" = '1' ]; then
-            ENVVARS+=("VINC_LAYOUT_REMOTE=$LAYOUT_REMOTE" "VINC_LAYOUT_TOKEN=secretref:layout-token")
-          fi
           # Azure keeps only the last occurrence of this option. Pass all values once.
           ENVARGS=(--set-env-vars "${ENVVARS[@]}")
           if ! az containerapp update $APP --image "$IMAGE" --termination-grace-period 60 --cpu 2 --memory 4Gi ${RMARGS[@]+"${RMARGS[@]}"} "${ENVARGS[@]}" --output none; then
@@ -630,6 +625,36 @@ jobs:
           grep -q unauthorized /tmp/internal.b || { echo "::error::401 본문에 unauthorized 가 없다" >&2; exit 1; }
           echo "  internal path answered by the app"
 
+      # 허브가 더 이상 참조하지 않는 시크릿을 지운다: 원격 배치의 layout-token 과 원격 인코더의
+      # encode-token. 순서가 곧 조건이다. Azure 는 컨테이너 env 가 아직 가리키는 시크릿의 삭제를
+      # 거절하므로, 배포 스텝이 그 env 를 뺀 뒤에만 지울 수 있다(헬스 확인 뒤이고 드리프트 게이트 앞).
+      # env 가 아직 가리키는 이름은 지우려 들지 않고 오류로 남긴다. 시크릿은 앱 수준 설정이라
+      # 지워도 새 리비전이 생기지 않아야 한다: 허브는 리비전 사이에 writer 인계가 있어서
+      # 의도하지 않은 리비전은 오류로 남긴다. 이름만 읽고 값은 읽지 않으며, 없는 것은 건너뛴다.
+      # 실패해도 서비스는 그대로이고 남은 시크릿은 아래 드리프트 게이트가 잡는다.
+      - name: 허브가 쓰지 않는 시크릿을 지운다 (env 참조를 뺀 갱신 뒤)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          APP="--name vinc-hub -g vincsRG"
+          before=$(az containerapp show $APP --query "properties.latestRevisionName" -o tsv)
+          have=$(az containerapp secret list $APP --query "[].name" -o tsv)
+          used=$(az containerapp show $APP --query "properties.template.containers[].env[].secretRef" -o tsv)
+          RM=()
+          for n in layout-token encode-token; do
+            printf '%s\n' "$have" | grep -qx "$n" || continue
+            if printf '%s\n' "$used" | grep -qx "$n"; then
+              echo "::error::시크릿 $n 을 env 가 아직 참조한다. 지우지 않는다" >&2
+              exit 1
+            fi
+            RM+=("$n")
+          done
+          if [ "${#RM[@]}" = 0 ]; then echo "지울 시크릿이 없다"; exit 0; fi
+          az containerapp secret remove $APP --secret-names "${RM[@]}" --output none
+          echo "지운 시크릿: ${RM[*]}"
+          after=$(az containerapp show $APP --query "properties.latestRevisionName" -o tsv)
+          [ "$after" = "$before" ] || { echo "::error::시크릿을 지우자 새 리비전($after)이 생겼다" >&2; exit 1; }
+
       # ── 레지스트리 정리 ─────────────────────────────────────────────────────
       # 왜 여기 생겼나. 배포마다 `:latest` 와 `:<sha>` 두 태그를 밀고 **아무것도 안
       # 지웠다**. 2026-09-01 실측: vincacr 가 23.51GB / 포함분 11GB = **219%**,
@@ -651,27 +676,6 @@ jobs:
       # 의도한 변경이면 `python scripts/gate_app_config.py --write` 로 기준선을
       # 같은 커밋에 갱신한다. 08-30 사고(excludedPaths 소실, 경보도 배포도 초록)가
       # 이 게이트의 존재 이유다. 포털 수동 변경은 다음 배포의 이 스텝에서 걸린다.
-      - name: 저장 배치가 계정 경로에서 ready이고 그래프 표식과 맞는가
-        id: v_layout
-        continue-on-error: true
-        if: env.LAYOUT_PRESENT == '1'
-        env:
-          VINC_GRAPH_READONLY_KEY: ${{ secrets.VINC_GRAPH_READONLY_KEY }}
-        run: python scripts/verify_layout_remote.py
-
-      - name: 새 앱을 포함한 라이브 기준선 수집 (시크릿 값 제외)
-        if: env.LAYOUT_PRESENT == '1'
-        run: |
-          python scripts/gate_app_config.py --write --require-present --apps vinc-hub vinc-account vinc-layout \
-            --baseline "$RUNNER_TEMP/layout-app-config.json"
-
-      - uses: actions/upload-artifact@v4
-        if: env.LAYOUT_PRESENT == '1'
-        with:
-          name: layout-app-config-${{ github.run_id }}
-          path: ${{ runner.temp }}/layout-app-config.json
-          retention-days: 7
-
       - name: App config drift gate (구조 기준선 대조)
         id: v_drift
         continue-on-error: true
@@ -865,7 +869,6 @@ jobs:
             v_search=${{ steps.v_search.outcome }}
             v_oauth=${{ steps.v_oauth.outcome }}
             v_internal=${{ steps.v_internal.outcome }}
-            v_layout=${{ steps.v_layout.outcome }}
             v_drift=${{ steps.v_drift.outcome }}
             v_cite=${{ steps.v_cite.outcome }}
             v_handoff=${{ steps.v_handoff.outcome }}
@@ -974,7 +977,7 @@ jobs:
           - 실행: $RUN_URL
           - 커밋: \`$SHA\`
 
-          v_layout 은 저장 배치가 앱의 재시도 창 안에 ready 가 되지 않은 것, v_handoff 는 writer 표식, v_drift 는 설정 기준선, v_cite 는 라이브 인용이다. 다시 배포하지 말고 그 확인만 다시 본다(Actions → hub-verify-current). 다음 배포에서 확인이 모두 통과하면 이 이슈는 닫힌다."
+          v_handoff 는 writer 표식, v_drift 는 설정 기준선, v_cite 는 라이브 인용이다. 다시 배포하지 말고 그 확인만 다시 본다(Actions → hub-verify-current). 다음 배포에서 확인이 모두 통과하면 이 이슈는 닫힌다."
           gh issue create -R "$REPO" --title "$title" --body "$body" >/dev/null && echo "opened: $title" || echo "::warning::could not open the verification issue"
 
   close-report:
