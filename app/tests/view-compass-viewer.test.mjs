@@ -118,6 +118,34 @@ test('pressing the middle again asks the view to open its details, pressing anot
   assert.deepEqual(opened, ['concept:a', 'topic:root/a'], 'a topic in the middle opens too');
 });
 
+test('the side summary names the middle and follows a directed relation as one chain until it branches', () => {
+  const ids = ['a', 'b', 'c', 'd', 'e'], nodes = ids.map((x) => node(`concept:${x}`, 'concept', 'root/x'));
+  const P = (a, b) => ({ source: `concept:${a}`, target: `concept:${b}`, type: 'PREREQUISITE_OF' });
+  const { h } = mount(nodes, [P('a', 'b'), P('b', 'c'), P('c', 'd'), P('c', 'e')]);
+  h.open('concept:a');
+  const sum = () => h.side.querySelector('#cmp-sum');
+  assert.ok(sum().querySelector('.sh b'), 'the summary names the middle');
+  const row = sum().querySelector('[data-follow="PREREQUISITE_OF|out"]');
+  assert.ok(row, 'a row for what comes next');
+  row.click();
+  assert.equal(h.centre(), 'concept:c', 'followed a → b → c and stopped where it branches');
+  assert.deepEqual(h.snapshot().path.slice(-3), ['concept:a', 'concept:b', 'concept:c'], 'the chain is on the open path');
+  sum().querySelector('[data-follow="PREREQUISITE_OF|out"]').click();   // 갈래가 둘이면 고르게 편다
+  const pick = sum().querySelector('[data-go="concept:e"][data-chain]');
+  assert.ok(pick, 'both branches are listed'); pick.click();
+  assert.equal(h.centre(), 'concept:e');
+});
+
+test('the side summary says what replaced a node', () => {
+  const { h } = mount([node('decision:old', 'decision', 'root/x'), node('decision:new', 'decision', 'root/x')],
+    [{ source: 'decision:new', target: 'decision:old', type: 'SUPERSEDES' }]);
+  h.open('decision:old');
+  const s = h.side.querySelector('#cmp-sum');
+  assert.ok(s.querySelector('[data-go="decision:new"]'), 'the newer decision is linked from the older one');
+  h.open('decision:new');
+  assert.ok(h.side.querySelector('#cmp-sum [data-follow="SUPERSEDES|out"]'), 'the newer one can follow what it replaced');
+});
+
 test('an Escape the view already handled does not also send the compass back to the root', () => {
   winOn.length = 0;
   const { h } = mount([node('concept:a', 'concept', 'root/a')]);
