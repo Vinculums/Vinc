@@ -115,7 +115,7 @@ def recall_plan(query: str = "", *, owner: str | None = None, tenant: str | None
         ors = []
         for i, t in enumerate(dict.fromkeys(tags)):
             params[f"tag{i}"] = t
-            ors.append(f"list_contains(coalesce(e.tags, []), $tag{i})")
+            ors.append(f"$tag{i} IN coalesce(e.tags, [])")
         where.append("(" + " OR ".join(ors) + ")")
     if tenant:
         where.append("e.tenant_id = $tenant")

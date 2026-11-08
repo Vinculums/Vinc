@@ -31,15 +31,15 @@ _DRIVER, _NAME = _import_driver()
 class RecallPlanShape(unittest.TestCase):
     def test_tags_become_an_any_overlap_filter_on_recency(self):
         plan = q.recall_plan(owner="u", tags=["a", "b", "a"])
-        self.assertIn("list_contains(coalesce(e.tags, []), $tag0)", plan.cypher)
-        self.assertIn("list_contains(coalesce(e.tags, []), $tag1)", plan.cypher)
+        self.assertIn("$tag0 IN coalesce(e.tags, [])", plan.cypher)
+        self.assertIn("$tag1 IN coalesce(e.tags, [])", plan.cypher)
         self.assertNotIn("$tag2", plan.cypher)            # 중복 태그는 한 번
         self.assertEqual((plan.params["tag0"], plan.params["tag1"]), ("a", "b"))
 
     def test_preference_keeps_tags_as_a_boost_not_a_filter(self):
         """컨텍스트 팩(activate)은 preference 로 내보낸다 — 걸러 버리면 팩이 준다."""
         plan = q.recall_plan(owner="u", tags=["a"], rank="preference")
-        self.assertNotIn("list_contains", plan.cypher)
+        self.assertNotIn("IN coalesce(e.tags, [])", plan.cypher)
 
     def test_offset_adds_skip_only_when_positive(self):
         self.assertNotIn("SKIP", q.recall_plan(owner="u", offset=0).cypher)

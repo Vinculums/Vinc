@@ -2445,7 +2445,7 @@ def backfill_evidence(store, *, owner: str, doc_id: str | None = None,
                     and all(isinstance(x, str) for x in after)):
                 raise ValueError("invalid_cursor: cursor has no edge position")
             scope += (" AND (a.concept_id > $a0 OR (a.concept_id = $a0 AND (b.concept_id > $b0 "
-                      "OR (b.concept_id = $b0 AND label(r) > $r0)))) ")
+                      "OR (b.concept_id = $b0 AND type(r) > $r0)))) ")
             # 커서는 읽은 행의 **논리** id 를 담는다(백엔드가 반환값의 물리 키를 벗긴다).
             # 비교 상대 a.concept_id 는 물리 키이므로 바인딩할 때 합성한다. 양 끝이 같은
             # owner 라 물리 순서와 논리 순서가 같다. 근거: [[vinc.plan.node-pk-namespacing]] §7
@@ -2456,7 +2456,7 @@ def backfill_evidence(store, *, owner: str, doc_id: str | None = None,
             "WHERE a.owner_id = $owner AND b.owner_id = $owner "
             f"AND (r.evidence IS NULL OR r.evidence = ''){scope}"
             "RETURN a.concept_id AS aid, a.title AS at, "
-            "b.concept_id AS bid, b.title AS bt, label(r) AS rel "
+            "b.concept_id AS bid, b.title AS bt, type(r) AS rel "
             f"ORDER BY aid, bid, rel LIMIT {lim + 1}", params) or []
     except Exception as exc:
         msg = str(exc) if str(exc).startswith("invalid_cursor") else f"{type(exc).__name__}: {exc}"
