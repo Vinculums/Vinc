@@ -689,6 +689,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       compass = mountCompass(canvas, compassDataFrom(nodes, curEdges), { startPath: chain, restore,
         store: `${cfg.owner}|${cfg.team || ""}`,
         onTree: (o) => repaintLnbGraph(o),
+        onOpen: (id) => openFromCompass(id),
         onChange: () => { if (ready && compass) setLnbGraphActive(compass.centre()); },
         onDestroy: () => { setLnbGraphSource(null); setTopbarLeadTools(null); } });
       const cmp = compass;
@@ -1130,6 +1131,17 @@ export async function renderView(el: HTMLElement, resume = false) {
     else closeFloatPanel();
   }
 
+
+  /** 나침반의 가운데를 한 번 더 누르면: 그 노드(또는 주제)의 상세를 옆 레일에 연다. 나침반 자리는 그대로다.
+   *  카드는 띄우지 않는다(가운데가 이미 그 노드다). 주제는 `domain:` 상세로 연다. */
+  function openFromCompass(id: string) {
+    const nd: N3 = id.startsWith("topic:")
+      ? ({ id: `domain:${id.slice(6)}`, label: id.slice(6).split("/").pop() || id.slice(6), domain: id.slice(6), degree: 0 } as N3)
+      : (() => { const raw = curNodes.find((n) => n.id === id);
+          return raw ? toN3([raw])[0] : ({ id, label: id.replace(/^[a-z]+:/, ""), domain: "", degree: 0 } as N3); })();
+    focusOnMap(nd, false);
+    railFor(nd);
+  }
 
   /** 지도 밖 진입점이 쓰는 것 — 고르고(카드·원뿔·주소) **레일까지 연다**. */
   function openDetail(nd: N3) {

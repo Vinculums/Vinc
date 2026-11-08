@@ -93,6 +93,89 @@ test('the graph has no All button: it opens one layer at a time', () => {
   assert.equal(h.snapshot().mode, 'path');
 });
 
+test('pressing a node opens it at once: no expand menu, no drag handles, no edge markers for pins', () => {
+  const { h, host } = mount([node('concept:a', 'concept', 'root/a'), node('concept:b', 'concept', 'root/b')]);
+  h.open('topic:root/a');
+  const g = host.querySelector('.node[data-id="concept:a"]');
+  assert.ok(g, 'the concept is drawn in the open layer');
+  assert.equal(host.querySelector('#cmp-menu'), null, 'no expand menu in the page');
+  assert.equal(host.querySelector('.pedge'), null, 'no pin edge markers');
+  h.open('concept:a'); assert.equal(h.centre(), 'concept:a');
+  assert.deepEqual(h.snapshot().filt, [], 'no per-node branch filter is kept');
+});
+
+test('pressing the middle again asks the view to open its details, pressing another node only unfolds it', () => {
+  const opened = [];
+  const { h, host } = mount([node('concept:a', 'concept', 'root/a'), node('concept:b', 'concept', 'root/a')], [], { onOpen: (id) => opened.push(id) });
+  h.open('topic:root/a');
+  host.querySelector('.node[data-id="concept:a"]').click();
+  assert.equal(h.centre(), 'concept:a', 'the first press unfolds the node');
+  assert.deepEqual(opened, [], 'no details yet');
+  host.querySelector('.node.sel').click();
+  assert.deepEqual(opened, ['concept:a'], 'the second press on the middle opens its details');
+  assert.equal(h.centre(), 'concept:a', 'the compass stays where it is');
+  h.open('topic:root/a'); host.querySelector('.node.sel').click();
+  assert.deepEqual(opened, ['concept:a', 'topic:root/a'], 'a topic in the middle opens too');
+});
+
+test('the side summary names the middle and follows a directed relation as one chain until it branches', () => {
+  const ids = ['a', 'b', 'c', 'd', 'e'], nodes = ids.map((x) => node(`concept:${x}`, 'concept', 'root/x'));
+  const P = (a, b) => ({ source: `concept:${a}`, target: `concept:${b}`, type: 'PREREQUISITE_OF' });
+  const { h } = mount(nodes, [P('a', 'b'), P('b', 'c'), P('c', 'd'), P('c', 'e')]);
+  h.open('concept:a');
+  const sum = () => h.side.querySelector('#cmp-sum');
+  assert.ok(sum().querySelector('.sh b'), 'the summary names the middle');
+  const row = sum().querySelector('[data-follow="PREREQUISITE_OF|out"]');
+  assert.ok(row, 'a row for what comes next');
+  row.click();
+  assert.equal(h.centre(), 'concept:c', 'followed a → b → c and stopped where it branches');
+  assert.deepEqual(h.snapshot().path.slice(-3), ['concept:a', 'concept:b', 'concept:c'], 'the chain is on the open path');
+  sum().querySelector('[data-follow="PREREQUISITE_OF|out"]').click();   // 갈래가 둘이면 고르게 편다
+  const pick = sum().querySelector('[data-go="concept:e"][data-chain]');
+  assert.ok(pick, 'both branches are listed'); pick.click();
+  assert.equal(h.centre(), 'concept:e');
+});
+
+test('the side summary says what replaced a node', () => {
+  const { h } = mount([node('decision:old', 'decision', 'root/x'), node('decision:new', 'decision', 'root/x')],
+    [{ source: 'decision:new', target: 'decision:old', type: 'SUPERSEDES' }]);
+  h.open('decision:old');
+  const s = h.side.querySelector('#cmp-sum');
+  assert.ok(s.querySelector('[data-go="decision:new"]'), 'the newer decision is linked from the older one');
+  h.open('decision:new');
+  assert.ok(h.side.querySelector('#cmp-sum [data-follow="SUPERSEDES|out"]'), 'the newer one can follow what it replaced');
+});
+
+test('the summary opens the shortest path from the middle to a pinned node as one chain', () => {
+  localStorage.setItem('vinc.pins:me|path', JSON.stringify(['concept:e']));
+  const ids = ['a', 'b', 'c', 'd', 'e'], nodes = ids.map((x) => node(`concept:${x}`, 'concept', 'root/x'));
+  const R = (a, b) => ({ source: `concept:${a}`, target: `concept:${b}`, type: 'RELATED_TO' });
+  const { h } = mount(nodes, [R('a', 'b'), R('b', 'c'), R('c', 'e'), R('a', 'd'), R('d', 'b')], { store: 'me|path' });
+  h.open('concept:a');
+  const btn = h.side.querySelector('#cmp-sum [data-path="concept:e"]');
+  assert.ok(btn, 'a path button for the pinned node'); btn.click();
+  assert.equal(h.centre(), 'concept:e');
+  assert.deepEqual(h.snapshot().path.slice(-4), ['concept:a', 'concept:b', 'concept:c', 'concept:e'], 'a → b → c → e, the shortest');
+  // 이어지지 않으면 그렇다고 말한다
+  localStorage.setItem('vinc.pins:me|nopath', JSON.stringify(['concept:z']));
+  const two = mount([node('concept:y', 'concept', 'root/x'), node('concept:z', 'concept', 'root/x')], [], { store: 'me|nopath' });
+  two.h.open('concept:y'); two.h.side.querySelector('#cmp-sum [data-path="concept:z"]').click();
+  assert.equal(two.h.centre(), 'concept:y'); assert.ok(two.h.side.querySelector('#cmp-sum .sr'), 'says there is no path');
+});
+
+test('resting on a node grows its tip into a peek card without moving the compass', async () => {
+  const R = (a, b) => ({ source: `concept:${a}`, target: `concept:${b}`, type: 'DERIVES_FROM' });
+  const { h, host } = mount(['a', 'b', 'c'].map((x) => node(`concept:${x}`, 'concept', 'root/x')), [R('a', 'b'), R('b', 'c')]);
+  h.open('concept:a');
+  const g = host.querySelector('.node[data-id="concept:b"]'); assert.ok(g);
+  g.fire('pointerover');
+  const tip = host.querySelector('#cmp-tip');
+  assert.ok(!String(tip.innerHTML).includes('peek'), 'the plain tip first');
+  await new Promise((r) => setTimeout(r, 520));
+  assert.ok(String(tip.innerHTML).includes('peek'), 'then the peek card');
+  assert.equal(h.centre(), 'concept:a', 'the compass did not move');
+});
+
 test('an Escape the view already handled does not also send the compass back to the root', () => {
   winOn.length = 0;
   const { h } = mount([node('concept:a', 'concept', 'root/a')]);
