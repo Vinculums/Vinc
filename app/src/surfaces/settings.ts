@@ -11,6 +11,7 @@ import { mountStorage } from "../storage-mode";
 import { mountTopicConversion } from "../topic-conversion";
 import { mountSpacePicker } from "../space-picker";
 import { ensureTeamCredential } from "../team-key";
+import { mountPushSettings } from "../web-push-ui";
 
 /** Settings — 왼쪽 분류 레일 + 본문(2026-09-22).
  *  종 레일 바닥의 설정 버튼이 예전 Settings · GRAPH.md · Tools(쓰기/가져오기/공유)
@@ -264,7 +265,8 @@ async function renderSettings(
       <label>${U.space}</label>
       <p class="hint">${U.spaceHint}</p>
       <div id="space-pick" class="space-pick"></div>
-      ${!cfg.team ? '<div id="topic-conversion"></div>' : ""}` : ""}
+      ${!cfg.team ? '<div id="topic-conversion"></div>' : ""}
+      ${WEB ? `<label>${COPY.push.title}</label><div id="push-box"></div>` : ""}` : ""}
       ${!remote() ? `
       <label>${U.account}</label>
       <div id="acct-box"></div>` : ""}`;
@@ -273,6 +275,13 @@ async function renderSettings(
     if (remote()) {
       const conversion = body.querySelector<HTMLElement>("#topic-conversion");
       if (conversion) cleanup = mountTopicConversion(conversion);
+      // 이 기기의 알림(웹 푸시). 웹에서만 그린다: 데스크톱 셸은 서비스 워커를 쓰지 않는다.
+      const pushBox = body.querySelector<HTMLElement>("#push-box");
+      if (pushBox) {
+        const before = cleanup;
+        const stop = mountPushSettings(pushBox);
+        cleanup = () => { before?.(); stop(); };
+      }
       // 웹모드: /api/me 로 로그인 계정 표시(@username 우선). 연결/동기화 섹션은 없음(셸 전용).
       // 셸 계정 모드: 쿠키가 없어 /api/me 를 못 부른다. 기기 플로우가 남긴 이름을 쓰고,
       // 로그아웃을 여기 둔다(로그아웃하면 로그인 시트로 돌아간다, VIN-128).

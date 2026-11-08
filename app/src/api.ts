@@ -931,6 +931,17 @@ export const api = {
    *  셸의 키 통과로로 보내면 계정이 `person_session_required` 로 거절한다. `ask` 는 목록이 준 값 그대로다. */
   runAnswer: (body: { run: string; ask: number; answer: "approve" | "decline" | "reply"; text?: string }) =>
     call("/runs/answer", undefined, body),
+  /** 이 기기의 알림(계정 `/api/push/*`). 웹의 쿠키 세션 전용이라 같은 출처에서만 뜻이 있다.
+   *  키는 기기를 구독시키지 못한다(계정이 Authorization 을 거절한다). 응답을 그대로 돌려준다. */
+  pushDevices: (): Promise<Response> =>
+    fetch(new URL("/api/push/devices", location.origin), { credentials: "include", cache: "no-store" }),
+  pushPost: (op: "subscribe" | "unsubscribe" | "test", body: unknown): Promise<Response> => {
+    const url = new URL("/api/push/" + op, location.origin);
+    return fetch(url, {
+      method: "POST", credentials: "include", cache: "no-store",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() }, body: JSON.stringify(body),
+    });
+  },
   viewL0: (owner: string) => call("/view", { owner }),
   //: `domains` 는 **주제 여럿**(쉼표 결합). 스코프는 하위 트리 포함이다 —
   //: `domains=vinc` 하나면 `vinc/design` 까지 함께 온다(api/query.normalize_domains).
