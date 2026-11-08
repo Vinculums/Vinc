@@ -1648,6 +1648,78 @@
           }
         }
       }
+    },
+    "/api/push/devices": {
+      "get": {
+        "operationId": "account_push_devices",
+        "summary": "This person's devices that get notifications for waiting runs. Web session only.",
+        "x-internal": false,
+        "x-served-by": "account",
+        "security": [
+          {
+            "accountSession": []
+          }
+        ],
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/api/push/subscribe": {
+      "post": {
+        "operationId": "account_push_subscribe",
+        "summary": "Subscribe this browser to notifications for waiting runs. Web session and CSRF; keys are refused.",
+        "x-internal": false,
+        "x-served-by": "account",
+        "security": [
+          {
+            "accountSession": []
+          }
+        ],
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/api/push/unsubscribe": {
+      "post": {
+        "operationId": "account_push_unsubscribe",
+        "summary": "Stop notifications on one of this person's devices. Web session and CSRF.",
+        "x-internal": false,
+        "x-served-by": "account",
+        "security": [
+          {
+            "accountSession": []
+          }
+        ],
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/api/push/test": {
+      "post": {
+        "operationId": "account_push_test",
+        "summary": "Send a test notification to this person's devices. Web session and CSRF.",
+        "x-internal": false,
+        "x-served-by": "account",
+        "security": [
+          {
+            "accountSession": []
+          }
+        ],
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
     }
   },
   "components": {
