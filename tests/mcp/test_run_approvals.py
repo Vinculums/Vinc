@@ -252,6 +252,14 @@ def test_expires_in_is_bounded():
     assert (until - asked).total_seconds() == 600
 
 
+def test_expires_in_takes_the_same_number_in_any_host_form():
+    # 호스트에 따라 3600 이 3600.0 이나 "3600" 으로 온다(Claude 의 MCP 호출이 정수 하나로 거절당했다).
+    for raw in (3600, 3600.0, "3600", " 3600 "):
+        assert run_protocol._expires_in({"expires_in_s": raw}) == (3600, None), raw
+    for raw in (3600.5, "1h", "", "-60", 59.0, "43201", [3600]):
+        assert run_protocol._expires_in({"expires_in_s": raw})[1], raw
+
+
 def test_an_expired_request_refuses_the_person_and_ends_the_run():
     bridge = _Bridge()
     run, _ = waiting(bridge, "e-2")
