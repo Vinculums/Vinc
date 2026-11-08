@@ -456,6 +456,10 @@ jobs:
       # 이 게이트가 없던 동안 인용 24건 중 19건이 조용히 끊어져 있었다(2026-08-18).
       - name: Graph citation gate
         run: python -X utf8 scripts/gate_graph_refs.py
+      # LadybugDB 전용 구문이 어댑터 밖에서 늘지 않는가. 외부 엔진(Neo4j) 어댑터를
+      # 붙이려면 방언이 어댑터 안에만 있어야 한다. 허용 목록은 줄기만 한다.
+      - name: Engine dialect gate
+        run: python -X utf8 scripts/gate_engine_dialect.py
       - name: OpenAPI v1 drift gate
         run: python -X utf8 scripts/gen_openapi.py --check
 
