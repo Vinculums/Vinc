@@ -447,6 +447,11 @@ def _expires_in(args: dict):
     raw = args.get("expires_in_s")
     if raw is None:
         return EXPIRES_DEFAULT_S, None
+    # 호스트마다 같은 수를 다른 꼴로 보낸다(3600 · 3600.0 · "3600"). 정수로 읽히는 값만 받고 3600.5 · "1h" 는 거절한다.
+    if isinstance(raw, float) and raw.is_integer():
+        raw = int(raw)
+    elif isinstance(raw, str) and raw.strip().isdigit():
+        raw = int(raw.strip())
     if isinstance(raw, bool) or not isinstance(raw, int) or not EXPIRES_MIN_S <= raw <= EXPIRES_MAX_S:
         return 0, (f"Invalid: expires_in_s is a whole number of seconds from {EXPIRES_MIN_S} to "
                    f"{EXPIRES_MAX_S} (12 hours).")
