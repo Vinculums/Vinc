@@ -42,7 +42,7 @@ EVENTS_SPEC = ("modelcontextprotocol/experimental-ext-triggers-events "
 EXTENSION = "io.modelcontextprotocol/events"
 #: api/events.py 의 KINDS 와 같아야 한다(테스트가 대조한다). vinc_mcp 는 api 를 못 들인다.
 KINDS = ("role.reading_changed", "run.citation_superseded", "role.lesson_added",
-         "run.answered")
+         "run.waiting", "run.answered")
 RESERVED: tuple[str, ...] = ()
 
 INVALID_PARAMS = -32602
@@ -135,12 +135,20 @@ _DESCRIPTIONS = {
         "An edit to the same lesson repeats its eventId; drop repeats by eventId.",
         {"role": _STR, "lesson": _STR,
          "lesson_kind": {"type": "string", "enum": ["record", "decision"]}, "title": _STR}),
+    "run.waiting": (
+        "One of the role's runs stopped for a person's decision. The data carries no action text: "
+        "read the run with vinc_runs to see the question, and expires_at says when it lapses.",
+        {"run": _STR, "role": _STR, "space": _STR, "title": _STR, "ask": {"type": "integer"},
+         "asked_at": _STR, "expires_at": _STR}),
     "run.answered": (
-        "A person answered a run that was waiting for them (vinc_run_submit with answer approve "
-        "or decline). Call vinc_run_submit or vinc_run_start with the run id to continue it, or "
-        "read the ended run with vinc_runs.",
-        {"run": _STR, "role": _STR, "answer": {"type": "string", "enum": ["approve", "decline"]},
-         "answered_at": _STR, "actions": {"type": "array", "items": _STR}}),
+        "A run that was waiting for a person was answered: approve, decline or a reply. via is "
+        "person for a signed-in person in the Vinc app, agent for vinc_run_submit. Call "
+        "vinc_run_submit or vinc_run_start with the run id to continue it, or read the ended run "
+        "with vinc_runs.",
+        {"run": _STR, "role": _STR,
+         "answer": {"type": "string", "enum": ["approve", "decline", "reply"]},
+         "answered_at": _STR, "actions": {"type": "array", "items": _STR},
+         "via": {"type": "string", "enum": ["person", "agent"]}, "space": _STR, "title": _STR}),
 }
 
 

@@ -14,7 +14,7 @@ import pytest
 from api import fragment as frag, runs
 from store.backend import open_store
 from store.config import load_config
-from vinc_mcp import tools
+from vinc_mcp import run_protocol, tools
 from vinc_mcp.bridge import Bridge
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -84,7 +84,23 @@ def test_a_run_survives_the_store_and_lands_in_the_runs_list(store):
     assert waiting["state"] == "waiting" and waiting["pending_actions"] == ["merge"]
     shown = runs.list_runs(store, owner=OWNER, run="live-1")["runs"][0]["props"]
     assert shown["state"] == "waiting" and shown["pending"]["actions"] == ["merge"]
-    tools.call("vinc_run_submit", {"run": "live-1", "answer": "approve"}, bridge)
+    # 사람만 하는 행동이다: 도구의 답은 거절되고, 기다리는 실행은 실행 기록에서 바로 목록이 된다.
+    refused = tools.call("vinc_run_submit", {"run": "live-1", "answer": "approve"}, bridge)
+    assert refused["error"] == "person_answer_required"
+    inbox = runs.waiting_runs(store, owner=OWNER)
+    assert [r["run_id"] for r in inbox["runs"]] == ["live-1"]
+    item = inbox["runs"][0]
+    assert item["decision"]["kind"] == "person_only" and item["ask"] == 1 and not item["expired"]
+    assert item["decision"]["requests"] == [{"action": "merge", "reason": "green",
+                                             "kind": "person_only"}]
+    assert item["space"] == OWNER and item["expires_at"] > item["asked_at"]
+    answered = run_protocol.person_answer({"run": "live-1", "ask": 1, "answer": "approve"},
+                                          bridge, OWNER, actor="user:person")
+    assert answered["executed"] and answered["state"] == "working"
+    assert runs.waiting_runs(store, owner=OWNER)["runs"] == []
+    again_answer = run_protocol.person_answer({"run": "live-1", "ask": 1, "answer": "approve"},
+                                              bridge, OWNER, actor="user:person")
+    assert again_answer["error"] == "already_answered"
     done = tools.call("vinc_run_submit", {
         "run": "live-1", "output": "The change reads correctly; two findings follow.",
         "cited_ids": ["record:claim-x"]}, bridge)
@@ -113,3 +129,20 @@ def test_a_citing_role_checks_its_ids_against_the_real_store(store):
     assert passed["status"] == "passed"
     shown = runs.list_runs(store, owner=OWNER, run="cite-1")["runs"][0]
     assert shown["cited_ids"] == [ROLE]
+
+
+def test_the_waiting_list_marks_expired_requests_and_drops_them_a_day_later(store):
+    import datetime
+    bridge = _StoreBridge(store)
+    tools.call("vinc_run_start", {"role": ROLE, "task": "Review it.", "run_id": "live-2"}, bridge)
+    tools.call("vinc_run_submit", {
+        "run": "live-2", "output": "Ready to merge.", "expires_in_s": 600,
+        "person_only_requests": [{"action": "merge", "reason": "green"}]}, bridge)
+    item = runs.waiting_runs(store, owner=OWNER)["runs"][0]
+    until = datetime.datetime.strptime(item["expires_at"], "%Y-%m-%dT%H:%M:%SZ").replace(
+        tzinfo=datetime.timezone.utc)
+    later = runs.waiting_runs(store, owner=OWNER, now=until + datetime.timedelta(minutes=1))
+    assert [r["expired"] for r in later["runs"]] == [True]
+    gone = runs.waiting_runs(store, owner=OWNER, now=until + datetime.timedelta(days=1, minutes=1))
+    assert gone["runs"] == [] and gone["total"] == 0
+    assert runs.waiting_runs(store, owner="user:someone-else")["runs"] == []

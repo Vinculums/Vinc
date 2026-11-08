@@ -81,6 +81,10 @@ _PROXY_OPS: dict[str, tuple[str, str | None]] = {
     "node-edges": ("GET", "/node-edges"),
     "roles": ("GET", "/roles"),
     "eval-cards": ("GET", "/eval-cards"),   # 역할 편집 면의 평가 카드(조회 전용, owner 는 프록시가 강제)
+    # 승인함: 사람의 답을 기다리는 실행(조회 전용)과 그 답. 답은 사이드카가 아니라 허브의 실행
+    # 프로토콜이 받고(`run_protocol.person_answer`), 서명에 `auth: "session"` 이 있을 때만 받는다.
+    "runs-waiting": ("GET", "/runs/waiting"),
+    "run-answer": ("POST", None),
     # 에이전트 쓰기 검토(A5) — 최근 쓰기를 출처별로 묶은 조회. owner 는 프록시가 강제한다.
     "agent-writes": ("GET", "/agent-writes"),
     "community-agent-export": ("POST", "/community-agent/export"),
@@ -186,6 +190,8 @@ _EDITOR_OPS = frozenset({
     "doc-put", "doc-put-file", "doc-extract", "doc-reembed",
     "topic-description",
     "evidence-backfill", "conventions-build",
+    # 팀 실행의 대기에 답하는 것은 쓰기다. 열람자는 목록만 본다.
+    "run-answer",
 })
 _PURE_POST_OPS = frozenset({"community-agent-export", "community-agent-import-preview", "community-pack-inspect"})
 #: 팀 그래프에서는 **어느 역할로도** 못 하는 op. 공유 Agent 가져오기·미리보기·내보내기와
@@ -1086,6 +1092,26 @@ class MCPHTTPApp:
         # 내부를 보여 줄 이유가 없다. 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] S13.
         args.pop("debug", None)
 
+        if op == "run-answer":
+            # 사람만 답하는 대기의 유일한 문이다. 계정의 그래프 프록시는 멤버 키(데스크톱·스크립트)도
+            # 받으므로 서명만으로는 사람인지 모른다. 계정은 쿠키 세션으로 온 요청에만
+            # `auth: "session"` 을 싣고, 그것이 없으면 여기서 거절한다(fail-closed).
+            from . import run_protocol
+            if payload.get("auth") != "session":
+                return {"kind": "run.answer", "executed": False, "error": "person_session_required",
+                        "note": ("Refused: only a person's signed-in session can answer a run. "
+                                 "A key or an agent connection cannot. Nothing changed.")}
+            return run_protocol.person_answer(args, self.bridge, owner, actor=f"user:{sub}")
+        if op in ("ingest-fragment", "ingest-pack"):
+            # 이 평면은 멤버 키도 지난다. 실행 기록의 대기·승인·답은 `run-answer` 로만 바꾼다.
+            pack = args.get("pack") if isinstance(args.get("pack"), dict) else {}
+            frag = pack.get("fragment") if isinstance(pack.get("fragment"), dict) else {}
+            blocked = tools._run_state_writes(args.get("nodes")) + tools._run_state_writes(
+                frag.get("nodes"))
+            if blocked:
+                return {"kind": "ingest", "executed": False, "error": "run_state_protected",
+                        "nodes": blocked, "note": "Refused: a run record's protocol state changes "
+                        "only through an answer. Nothing was written."}
         if op == "job":   # /jobs/{id} 폴링 — id 는 토큰꼴만(경로주입·타 라우트 차단)
             jid = str(args.get("id") or "")
             if not _JOB_ID_RE.fullmatch(jid):

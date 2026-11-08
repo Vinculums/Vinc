@@ -35,7 +35,8 @@ class _Bridge(Bridge):
         if path == "/roles":
             props = dict(PROFILES[ROLE])
             props.update({"mission": "m", "tier": "execute", "rung": "strong", "never": ["merge"],
-                          "reads": []})
+                          "reads": [], "act_policy": {"notify": "ask_first",
+                                                      "announce": "ask_first"}})
             return {"executed": True, "found": True, "relations": [], "peers": [],
                     "node": {"id": params["role"], "title": "Agent role",
                              "domain": "vinc/agent/roles", "props": props}}
@@ -63,11 +64,12 @@ def payload(reply):
     return json.loads(reply["result"]["content"][0]["text"])
 
 
-def waiting_run(disp, caps, run_id):
+def waiting_run(disp, caps, run_id, action="notify"):
+    """먼저 묻는(ask_first) 대기. 호스트가 사람에게 물어 답할 수 있는 종류다."""
     start = payload(tool(disp, "vinc_run_start", {"role": ROLE, "task": "Review.", "run_id": run_id}, caps))
     return start["run"], tool(disp, "vinc_run_submit", {
-        "run": start["run"], "output": "Ready to merge once approved.",
-        "person_only_requests": [{"action": "merge", "reason": "all checks are green"}]}, caps)
+        "run": start["run"], "output": PLAIN,
+        "person_only_requests": [{"action": action, "reason": "tell the channel"}]}, caps)
 
 
 def test_a_waiting_submit_becomes_a_task_for_a_client_that_declares_the_extension():
@@ -76,7 +78,7 @@ def test_a_waiting_submit_becomes_a_task_for_a_client_that_declares_the_extensio
     result = reply["result"]
     assert result["resultType"] == "task" and result["status"] == "input_required"
     assert result["taskId"] == run + ".q1" and result["ttlMs"] is None
-    assert "merge" in result["statusMessage"]
+    assert "notify" in result["statusMessage"]
     got = rpc_call(disp, "tasks/get", {"taskId": result["taskId"]}, TASKS)["result"]
     assert got["resultType"] == "complete" and got["status"] == "input_required"
     ask = got["inputRequests"]["decision"]
@@ -138,8 +140,8 @@ def test_a_second_question_is_a_new_task_and_the_first_stays_completed():
     tid1 = first["result"]["taskId"]
     tool(disp, "vinc_run_submit", {"run": run, "answer": "approve"}, TASKS)
     second = tool(disp, "vinc_run_submit", {
-        "run": run, "output": "Now the migration.",
-        "person_only_requests": [{"action": "migration", "reason": "schema change"}]}, TASKS)
+        "run": run, "output": PLAIN,
+        "person_only_requests": [{"action": "announce", "reason": "post the release note"}]}, TASKS)
     tid2 = second["result"]["taskId"]
     assert tid2 == run + ".q2" and tid1 == run + ".q1"
     assert rpc_call(disp, "tasks/get", {"taskId": tid1}, TASKS)["result"]["status"] == "completed"
@@ -165,7 +167,7 @@ def test_mrtr_asks_through_the_original_call_and_resumes_on_the_retry():
     assert result["resultType"] == "input_required"
     assert result["inputRequests"]["decision"]["method"] == "elicitation/create"
     assert bridge.runs[run]["state"] == "waiting"
-    retry = tool(disp, "vinc_run_submit", {"run": run, "output": "Ready to merge once approved."},
+    retry = tool(disp, "vinc_run_submit", {"run": run, "output": PLAIN},
                  ELICIT, inputResponses={"decision": {"action": "accept",
                                                       "content": {"answer": "approve"}}})
     assert payload(retry)["state"] == "working" and bridge.runs[run]["answer"] == "approve"
@@ -175,7 +177,7 @@ def test_a_closed_form_on_the_retry_returns_the_run_unchanged():
     bridge = _Bridge()
     disp = rpc.Dispatcher(bridge)
     run, _ = waiting_run(disp, ELICIT, "t-8")
-    retry = tool(disp, "vinc_run_submit", {"run": run, "output": "Ready to merge once approved."},
+    retry = tool(disp, "vinc_run_submit", {"run": run, "output": PLAIN},
                  ELICIT, inputResponses={"decision": {"action": "cancel"}})
     assert retry["result"]["isError"] is False
     assert bridge.runs[run]["state"] == "waiting" and "answer" not in bridge.runs[run]
@@ -198,3 +200,49 @@ def test_the_routing_header_for_task_methods_is_the_task_id():
                "Mcp-Name": "episode:run-x-00000000.q1"}
     assert modern.check_headers(headers, msg, VERSION) is None
     assert modern.check_headers({**headers, "Mcp-Name": "other"}, msg, VERSION) is not None
+
+
+def person_only_run(disp, caps, run_id):
+    """사람만 하는(person_only) 대기. 호스트는 답하지 못한다."""
+    start = payload(tool(disp, "vinc_run_start", {"role": ROLE, "task": "Review.", "run_id": run_id}, caps))
+    return start["run"], tool(disp, "vinc_run_submit", {
+        "run": start["run"], "output": "Ready to merge once approved.",
+        "person_only_requests": [{"action": "merge", "reason": "all checks are green"}]}, caps)
+
+
+def test_a_person_only_task_keeps_working_until_the_person_answers_in_the_app():
+    from vinc_mcp import run_protocol
+    bridge = _Bridge()
+    disp = rpc.Dispatcher(bridge)
+    run, reply = person_only_run(disp, TASKS, "p-1")
+    result = reply["result"]
+    assert result["resultType"] == "task" and result["status"] == "working"
+    assert "Vinc app" in result["statusMessage"]
+    tid = result["taskId"]
+    got = rpc_call(disp, "tasks/get", {"taskId": tid}, TASKS)["result"]
+    assert got["status"] == "working" and "inputRequests" not in got
+    # 호스트가 입력창 답을 실어 보내도 사람만 하는 대기는 풀리지 않는다.
+    refused = rpc_call(disp, "tasks/update", {"taskId": tid, "inputResponses": {
+        "decision": {"action": "accept", "content": {"answer": "approve"}}}}, TASKS)
+    assert "error" in refused and bridge.runs[run]["state"] == "waiting"
+    out = run_protocol.person_answer({"run": run, "ask": 1, "answer": "approve"}, bridge,
+                                     "user:test", actor="user:test")
+    assert out["executed"] and out["state"] == "working"
+    done = rpc_call(disp, "tasks/get", {"taskId": tid}, TASKS)["result"]
+    assert done["status"] == "completed"
+    view = json.loads(done["result"]["content"][0]["text"])
+    assert view["last_answer"]["via"] == "person"
+
+
+def test_a_person_only_wait_is_not_elicited_and_an_mrtr_answer_is_refused():
+    bridge = _Bridge()
+    disp = rpc.Dispatcher(bridge)
+    run, reply = person_only_run(disp, ELICIT, "p-2")
+    view = payload(reply)
+    assert reply["result"]["resultType"] == "complete"
+    assert view["state"] == "waiting" and view["decision"]["kind"] == "person_only"
+    retry = tool(disp, "vinc_run_submit", {"run": run, "output": "Ready to merge once approved."},
+                 ELICIT, inputResponses={"decision": {"action": "accept",
+                                                      "content": {"answer": "approve"}}})
+    assert payload(retry)["error"] == "person_answer_required"
+    assert bridge.runs[run]["state"] == "waiting" and "answer" not in bridge.runs[run]

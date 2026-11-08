@@ -29,9 +29,14 @@ pass the skill's hash as `expected_hash` to `vinc_role` and read again when it i
 4. Read the answer's `state`:
    - `working`: do the next step and submit again.
    - `waiting`: a person decides first. Stop. Show the person the `question` and the
-     `pending_actions`, and wait. This is where your own approval step goes: in Grok Bot, the
-     approval it asks before an irreversible action. Then call `vinc_run_submit` with `run` and
-     `answer` set to `approve` or `decline`, exactly as the person chose. Never answer for them.
+     `pending_actions`, then read `decision.kind`:
+     - `person_only`: only the person answers, signed in to the Vinc app (Approvals). Tell them
+       so and wait; your own `answer` is refused with `person_answer_required`. Call `vinc_runs`
+       with `run` later to see the answer.
+     - `ask_first`: this is where your own approval step goes: in Grok Bot, the approval it asks
+       before an irreversible action. Then call `vinc_run_submit` with `run` and `answer` set to
+       `approve` or `decline`, exactly as the person chose.
+     Never answer for them. A question expires at `expires_at` and the run then ends blocked.
    - `done`: report `outcome` and `end_reason`.
 
 A `blocked` status names the gate that failed. Fix the output and submit again, or report it.

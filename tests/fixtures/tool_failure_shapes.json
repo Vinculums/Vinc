@@ -29,7 +29,7 @@
     "vinc_diagnose": [{"shape": "executed:false algorithm unavailable", "code": "upstream_unavailable"}, {"shape": "executed:true components:[]", "code": "success"}],
     "vinc_conventions": [{"shape": "fallback default conventions", "code": "success"}],
     "vinc_whoami": [{"shape": "spaces_source:unavailable", "code": "success"}],
-    "vinc_ingest": [{"shape": "partial:true with warnings and id_conflicts", "code": "success"}, {"shape": "executed:false no store", "code": "upstream_unavailable"}],
+    "vinc_ingest": [{"shape": "partial:true with warnings and id_conflicts", "code": "success"}, {"shape": "executed:false no store", "code": "upstream_unavailable"}, {"shape": "a run record node carrying protocol state (state, pending, approved, answer...) in props or props_patch (REST 403)", "code": "run_state_protected"}],
     "vinc_delete": [{"shape": "executed:false unknown node", "code": "not_found"}],
     "vinc_delete_edge": [{"shape": "executed:false unknown edge", "code": "not_found"}],
     "vinc_merge_nodes": [{"shape": "executed:false unknown keep/drop node", "code": "not_found"}, {"shape": "executed:false invalid merge pair", "code": "invalid_argument"}],
@@ -42,6 +42,6 @@
     "vinc_runs": [{"shape": "executed:true runs:[] (no run cited the claim, or none recorded)", "code": "success"}, {"shape": "cited without a type prefix, before quota", "code": "invalid_argument"}, {"shape": "executed:false no reachable store", "code": "upstream_unavailable"}],
     "vinc_eval_cards": [{"shape": "executed:true cards:[] (the role has no card yet)", "code": "success"}, {"shape": "limit outside 1..100, before quota", "code": "invalid_argument"}, {"shape": "executed:false no reachable store", "code": "upstream_unavailable"}],
     "vinc_run_start": [{"shape": "executed:true state working (a retry with the same run_id returns the open run)", "code": "success"}, {"shape": "missing role or task, or a malformed run_id", "code": "invalid_argument"}, {"shape": "executed:false unknown role", "code": "not_found"}, {"shape": "run state could not be saved", "code": "upstream_unavailable"}],
-    "vinc_run_submit": [{"shape": "executed:true state working, waiting or done (status blocked is a normal answer)", "code": "success"}, {"shape": "not exactly one of output, answer, abandon, or the run is not in the state the input needs", "code": "invalid_argument"}, {"shape": "executed:false found:false unknown run", "code": "not_found"}, {"shape": "run state could not be saved", "code": "upstream_unavailable"}]
+    "vinc_run_submit": [{"shape": "executed:true state working, waiting or done (status blocked is a normal answer)", "code": "success"}, {"shape": "not exactly one of output, answer, abandon, or the run is not in the state the input needs", "code": "invalid_argument"}, {"shape": "executed:false found:false unknown run", "code": "not_found"}, {"shape": "run state could not be saved", "code": "upstream_unavailable"}, {"shape": "answer to a person_only decision from an agent credential (REST 403)", "code": "person_answer_required"}, {"shape": "the waiting request expired; the run ends blocked (REST 410)", "code": "request_expired"}]
   }
 }
