@@ -113,27 +113,15 @@ test('a start path inside the data is honoured', () => {
   assert.equal(h.centre(), 'topic:work/alpha');
 });
 
-test('the time popup rows and its topic list hang below the real root, not below a made-up vinc', () => {
-  const rect0 = El.prototype.getBoundingClientRect;
-  // 개념은 id 끝의 날짜(…-2026-11-01)가 내용 시간이다. 사건을 뿌리에 직접 붙이면 mini-dom 이 못 그리는 선반 경로를 타서 쓰지 않는다
+test('the time popup keeps the period and the bars, and invents no vinc', () => {
   const D = '-2026-11-01';
-  for (const [spec, rows, heads] of [
-    [[['work/alpha', 'a' + D], ['research', 'b' + D], ['', 'loose' + D]], ['work', 'research', '(All topics)'], ['work', 'alpha']],
-    [[['notes/daily', 'a' + D], ['notes/weekly', 'b' + D], ['', 'loose' + D]], ['daily', 'weekly', '(notes)'], ['daily']],
-    [[['vinc/design', 'a' + D], ['vinc/eng', 'b' + D]], ['design', 'eng'], ['design']],
-  ]) {
+  for (const spec of [[['work/alpha', 'a' + D], ['research', 'b' + D], ['', 'loose' + D]], [['notes/daily', 'a' + D], ['notes/weekly', 'b' + D]]]) {
     const { h } = mount(spec);
-    // 격자는 폭이 있어야 칸을 센다. 폭은 창을 여는 동안에만 준다(마운트 중 폭이 있으면 mini-dom 이 못 그리는 SVG 경로를 탄다)
-    El.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, right: 600, bottom: 400, width: 600, height: 400 });
     h.tools.querySelector('[data-pop="time"]').click();
     const pop = document.body.querySelectorAll('.cmp-pop').pop();
-    for (const r of rows) assert.ok(pop.querySelector(`[data-row="${r}"]`), `${JSON.stringify(spec[0][0])}: the grid has a row ${r}`);
-    pop.querySelector(`[data-row="${rows[0]}"]`).parent.querySelector('[data-cell]').click();   // 첫 칸을 눌러 그 칸의 주제 목록을 연다
-    const list = pop.querySelector('.cmp-tlist');
-    assert.ok(list, 'the topic list opens');
-    for (const w of heads) assert.ok(list.innerHTML.includes(`>${w}<`) || list.innerHTML.includes(` ${w}<`), `the list names ${w}`);
-    assert.ok(!pop.innerHTML.includes('vinc') || spec[0][0].startsWith('vinc'), 'no vinc is invented');
+    assert.ok(pop.querySelector('[data-cmp-r="7"]') && pop.querySelector('[data-bars]'), 'period buttons and bars');
+    assert.equal(pop.querySelector('[data-cell]'), null, 'no area by time grid');
+    assert.ok(!pop.innerHTML.includes('vinc'), 'no vinc is invented');
     h.destroy();
   }
-  El.prototype.getBoundingClientRect = rect0;
 });

@@ -40,4 +40,5 @@ jobs:
           EXPECTED_SHA: ${{ inputs.expected_sha }}
           VINC_MCP_TOKEN: ${{ secrets.VINC_MCP_TOKEN }}
           VINC_GRAPH_READONLY_KEY: ${{ secrets.VINC_GRAPH_READONLY_KEY }}
+          VINC_GRAPH_SPACE: ${{ vars.VINC_GRAPH_SPACE }}
         run: python scripts/verify_current_hub.py --sha "$EXPECTED_SHA"

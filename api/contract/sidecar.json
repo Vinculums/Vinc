@@ -791,8 +791,26 @@
       "get": {
         "operationId": "read_waiting_runs",
         "summary": "Runs waiting for a person's answer, with each pending decision.",
-        "x-internal": true,
+        "x-internal": false,
         "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/runs/answer": {
+      "post": {
+        "operationId": "account_run_answer",
+        "summary": "A person's answer to a waiting run (approve, decline or reply). Web session only: the account refuses key credentials and signs auth session for the hub.",
+        "x-internal": false,
+        "x-served-by": "account",
+        "security": [
+          {
+            "accountSession": []
+          }
+        ],
         "responses": {
           "default": {
             "$ref": "#/components/responses/Json"

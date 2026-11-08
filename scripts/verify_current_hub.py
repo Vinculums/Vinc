@@ -14,12 +14,13 @@ REQUIRED = (
     "Verify health (MCP tools/list)",
     "Verify temporal search through the existing read only account key",
     "Verify connector surface (OAuth discovery)",
-    "저장 배치가 계정 경로에서 ready이고 그래프 표식과 맞는가",
     "App config drift gate (구조 기준선 대조)",
     "Node mirror rebuild result (재구축이 실제로 돌았는가)",
     "Graph citation liveness (라이브 인용 대조)",
 )
 SECRETS = {"VINC_MCP_TOKEN", "VINC_GRAPH_READONLY_KEY"}
+# 검증 단계가 env 로 읽는 리포 변수. 값은 비밀이 아니고, hub-verify-current 가 같은 이름의 env 로 넘긴다.
+VARS = {"VINC_GRAPH_SPACE"}
 
 
 def ready(app, expected):
@@ -38,6 +39,17 @@ def verification_steps(document):
     if missing:
         raise ValueError("verification stage missing")
     return [found[name] for name in REQUIRED]
+
+
+def step_env(step, environment):
+    """검증 단계의 env 를 이 실행의 값으로 푼다. 허용된 비밀(SECRETS)과 리포 변수(VARS) 참조만 받고, 그 밖의 식은 거절한다."""
+    selected = dict(environment)
+    for name, value in (step.get("env") or {}).items():
+        match = re.fullmatch(r"\$\{\{\s*(secrets|vars)\.([A-Z_]+)\s*\}\}", str(value))
+        if not match or match[2] not in (SECRETS if match[1] == "secrets" else VARS):
+            raise ValueError("unsupported verification environment")
+        selected[name] = environment.get(match[2], "")
+    return selected
 
 
 def render(script):
@@ -78,12 +90,7 @@ def main():
     warnings = []
     for step in verification_steps(document):
         print("Verifying: " + step["name"], flush=True)
-        selected = dict(environment)
-        for name, value in step.get("env", {}).items():
-            match = re.fullmatch(r"\$\{\{\s*secrets\.([A-Z_]+)\s*\}\}", str(value))
-            if not match or match[1] not in SECRETS:
-                raise ValueError("unsupported verification environment")
-            selected[name] = environment.get(match[1], "")
+        selected = step_env(step, environment)
         completed = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", render(step["run"])],
                                    env=selected, timeout=900)
         if completed.returncode:

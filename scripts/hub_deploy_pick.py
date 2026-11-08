@@ -70,7 +70,6 @@ HUB_PATHS = (
     "packaging/bake_embed_model.py",
     "pyproject.toml",
     "scripts/check_hub_env.py",
-    "scripts/layout_app.py",
     "scripts/verify_layout_remote.py",
     "scripts/verify_search_temporal_remote.py",
     ".github/workflows/hub-deploy.yml",

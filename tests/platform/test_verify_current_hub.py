@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from scripts.verify_current_hub import ready, render, verification_steps, REQUIRED
+from scripts.verify_current_hub import ready, render, step_env, verification_steps, REQUIRED
 
 
 def test_ready_requires_exact_image_and_ready_latest_revision():
@@ -38,3 +38,23 @@ def test_credentials_are_environment_references_never_embedded_values():
         render('${{ secrets.UNREVIEWED_KEY }}')
     with pytest.raises(ValueError):
         render('${{ vars.UNKNOWN }}')
+
+
+def test_every_canonical_step_environment_resolves():
+    """시간 검색 단계가 env 로 리포 변수 VINC_GRAPH_SPACE 를 읽어서, 비밀만 받던 해석이 그 단계에서 멈췄다."""
+    source=Path(__file__).resolve().parents[2]/".github/workflows/hub-deploy.yml"
+    environment={"VINC_MCP_TOKEN":"t","VINC_GRAPH_READONLY_KEY":"k","VINC_GRAPH_SPACE":"s"}
+    for step in verification_steps(yaml.safe_load(source.read_text(encoding="utf8"))):
+        selected=step_env(step,environment)
+        for name,value in (step.get("env") or {}).items():
+            assert selected[name] in environment.values(),(step["name"],name)
+
+
+def test_unreviewed_variables_and_expressions_are_refused():
+    with pytest.raises(ValueError):
+        step_env({"env":{"X":"${{ vars.UNKNOWN }}"}},{})
+    with pytest.raises(ValueError):
+        step_env({"env":{"X":"${{ github.token }}"}},{})
+    with pytest.raises(ValueError):
+        step_env({"env":{"X":"literal"}},{})
+    assert step_env({"env":{"SPACE":"${{ vars.VINC_GRAPH_SPACE }}"}},{"VINC_GRAPH_SPACE":"abc"})["SPACE"]=="abc"

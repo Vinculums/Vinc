@@ -1,4 +1,4 @@
-import { api, cfg, isCommunitySpace } from "./api";
+import { api, cfg, isCommunitySpace, remote } from "./api";
 import type { GraphEdge, GraphNode, NavGroup, NavTreeRes } from "./api";
 import { COPY } from "./copy";
 import { docTitle } from "./doc-title";
@@ -930,6 +930,23 @@ export function mountLnb(opts: { deferLoad?: boolean } = {}) {
   }
   settingsBtn?.addEventListener("click", () =>
     void import("./surfaces/settings").then((m) => m.openSettings("general", undefined, true)));
+  // 승인함. 계정 그래프(웹 · 셸의 계정 모드)에만 실행의 대기가 있다. 숫자는 열린 대기 수다.
+  const approvalsBtn = $("rail-approvals");
+  if (approvalsBtn && remote()) {
+    const A = COPY.approvals;
+    approvalsBtn.hidden = false;
+    approvalsBtn.setAttribute("aria-label", A.nav);
+    approvalsBtn.setAttribute("data-tip", A.navTip);
+    approvalsBtn.insertAdjacentHTML("afterbegin",
+      `${icon("decide", 18)}<span class="rail-name">${esc(A.nav)}</span>`);
+    approvalsBtn.addEventListener("click", () => {
+      if (!/^#approvals$/.test(location.hash)) location.hash = "#approvals";
+      if (compact()) setOpen(false, false);
+    });
+    const pressed = () => approvalsBtn.setAttribute("aria-pressed", String(/^#approvals(\/|$)/.test(location.hash)));
+    pressed();
+    window.addEventListener("hashchange", pressed);
+  }
   $("lnb-top")?.addEventListener("click", (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>(".rail-btn");
     // ⚠ `if (b?.dataset.rail)` 이면 홈의 빈 값이 falsy 라 걸러진다 — 있는지를 묻는다.
