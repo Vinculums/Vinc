@@ -3775,7 +3775,10 @@ details.pe-group[open] > summary::before { transform: rotate(90deg); }
   .ap-reason { padding: var(--space-2, .5rem); }
 }
 /* LNB 바닥의 승인 버튼과 그 수. 수는 설정 뱃지와 같은 자리 · 모양이다. */
-#rail-approvals { position: relative; flex: 0 0 auto; }
+/* 바닥 줄은 승인 · 설정 · 접기 손잡이가 나눠 쓴다. 승인은 손잡이처럼 아이콘과 수만 둔다: 이름을 달면
+   영어("Approvals")에서 설정이 밀려 잘린다. 이름은 툴팁(data-tip)과 aria-label 이 말하고, 설정이 남은 폭을 쓴다. */
+#rail-approvals { position: relative; flex: 0 0 auto; width: var(--ctl-h); padding: 0; justify-content: center; }
+#rail-approvals .rail-name { display: none; }
 #rail-approvals-badge {
   position: absolute; top: .1rem; left: 1.4rem; min-width: .9rem; height: .9rem;
   padding: 0 .18rem; border-radius: .5rem; background: hsl(var(--ring));
