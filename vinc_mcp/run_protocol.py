@@ -29,7 +29,7 @@ import threading
 import uuid
 import zlib
 
-from . import role_output_gate
+from . import role_output_gate, run_notify
 from .capability_maps import capability_verdict
 from .roles import contract
 
@@ -705,6 +705,10 @@ def _output(args, bridge, owner, eid, props, policy, flags=()) -> dict:
                             "asked_at": asked_at, "kind": kind, "requests": requests,
                             "expires_at": _stamp(now + datetime.timedelta(seconds=ttl))}
         failed = _saved(bridge, owner, eid, props)
-        return failed or _view(props, eid, policy)
+        if failed:
+            return failed
+        # 저장된 대기만 알린다(계정 → 웹 푸시). 행동·질문은 싣지 않고, 실패해도 실행은 그대로다.
+        run_notify.waiting(owner, eid, props)
+        return _view(props, eid, policy)
     _end(props, "success", "gates passed")
     return _finish(bridge, owner, eid, props, status="passed")

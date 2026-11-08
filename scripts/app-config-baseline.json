@@ -7,6 +7,7 @@
         "/internal/mcp/community-read",
         "/internal/mcp/community-resolve",
         "/internal/mcp/plan",
+        "/internal/mcp/run-waiting",
         "/internal/mcp/spaces",
         "/internal/mcp/team-membership",
         "/internal/mcp/verify-key"
@@ -57,6 +58,9 @@
       "TEAM_SPACE_ALLOWANCE_OVERRIDES",
       "TOPIC_CONVERSION_ENABLED",
       "TRIAL_UNTIL",
+      "VAPID_PRIVATE_KEY",
+      "VAPID_PUBLIC_KEY",
+      "VAPID_SUBJECT",
       "VINC_MCP_INTERNAL_URL"
     ],
     "ingress": {
@@ -95,6 +99,8 @@
       "reviewer-login-password",
       "server-pepper",
       "session-secret",
+      "vapid-private-key",
+      "vapid-public-key",
       "vincacrazurecrio-vincacr"
     ],
     "volumes": []
