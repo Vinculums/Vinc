@@ -925,6 +925,12 @@ export const api = {
   health: () => call("/health"),
   /** 변경 표식(VIN-129). 값은 비교만 한다: 같으면 그대로, 다르면 다시 읽는다(`live.ts`). */
   changes: (owner: string): Promise<{ marker?: string }> => call("/changes", { owner }),
+  /** 사람의 답을 기다리는 실행(`api/runs.py` `waiting_runs`). 조회 전용이라 키로도 읽힌다. */
+  runsWaiting: (limit = 100) => call("/runs/waiting", { limit }),
+  /** 사람의 답. 계정의 전용 라우트(`POST /api/graph/runs/answer`)는 쿠키 세션만 받는다: 웹에서만 들어가고,
+   *  셸의 키 통과로로 보내면 계정이 `person_session_required` 로 거절한다. `ask` 는 목록이 준 값 그대로다. */
+  runAnswer: (body: { run: string; ask: number; answer: "approve" | "decline" | "reply"; text?: string }) =>
+    call("/runs/answer", undefined, body),
   viewL0: (owner: string) => call("/view", { owner }),
   //: `domains` 는 **주제 여럿**(쉼표 결합). 스코프는 하위 트리 포함이다 —
   //: `domains=vinc` 하나면 `vinc/design` 까지 함께 온다(api/query.normalize_domains).

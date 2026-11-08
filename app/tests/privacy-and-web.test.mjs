@@ -63,7 +63,7 @@ test('the app sends no usage, crash or analytics data', async () => {
 });
 
 test('outbound addresses are the graph and the site pages only', async () => {
-  const allowed = [/^https:\/\/vincs\.io\/(terms|privacy|connect-app|account)\//, /^https:\/\/mcp\.vincs\.io\/mcp$/,
+  const allowed = [/^https:\/\/vincs\.io\/(terms|privacy|connect-app|account|app)\//, /^https:\/\/mcp\.vincs\.io\/mcp$/,
     /^http:\/\/127\.0\.0\.1:/, /^http:\/\/tauri\.localhost$/, /^http:\/\/www\.w3\.org\/2000\/svg$/,
     /^https:\/\/modelcontextprotocol\.io\/favicon\.svg$/];
   const found = [];

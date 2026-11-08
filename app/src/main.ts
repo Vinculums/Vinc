@@ -18,21 +18,31 @@ import { showNotice } from "./components";
 import { blocksSurfaceShortcuts } from "./keys";
 import { disposeEditorsIn, docEditorOpen } from "./doc-editor";
 import { mountAuthoringKeys, startNewDoc, startNewNode } from "./authoring";
+import { deepLinkTarget } from "./approvals";
 
 // 표면 3종: Home(문서) / View(그래프) / Search(+Records). Packs(+Intake)는 표면이 아니라
 // Tools 모달로 갔다(P15) — 다섯 기능이 전부 거기 산다.
 // 첫 화면은 문서 홈이다. 그래프는 오른쪽 위의 전환 버튼이 연다. 그래프의
 // 코드명은 계속 `view`(해시·딥링크·모듈)이고 화면 이름도 View 다.
 // 근거: [[decision:the-desktop-shell-is-documents-first]]
-type Surface = "home" | "view" | "search";
+// 승인함(`#approvals`)은 표면이지만 숫자 단축키(ORDER)에는 넣지 않는다. LNB 바닥의 승인 버튼이 연다.
+type Surface = "home" | "view" | "search" | "approvals";
+// 승인함은 지연 로드라 처음 연 뒤에만 떠날 손잡이가 생긴다(만료 시계를 멈춘다).
+let leaveApprovals: (() => void) | null = null;
 const SURFACES: Record<Surface, (el: HTMLElement) => void | Promise<void>> = {
   home: renderHome,
   view: renderView,
   search: renderSearch,
+  approvals: async (el) => {
+    const m = await import("./surfaces/approvals");
+    leaveApprovals = m.leaveApprovals;
+    await m.renderApprovals(el);
+  },
 };
 const ORDER: Surface[] = ["home", "view", "search"];
 const SURFACE_LABEL: Record<Surface, string> = {
   home: COPY.ui.home.nav, view: COPY.ui.topbar.home, search: COPY.ui.topbar.search,
+  approvals: COPY.approvals.nav,
 };
 // 구 표면 해시 → 통합 표면(딥링크·구 CTA 하위호환). 그래프를 가리키던 옛 주소는
 // 그래프로 간다 — 문서 홈이 첫 화면이 된 뒤에도 밖에 나간 지도 주소는 지도를 연다.
@@ -102,6 +112,13 @@ function current(): Surface {
 
 let activeSurface: Surface | undefined;
 
+// 경로형 딥링크(`/app/approvals/<run>`, 알림과 공유가 여는 주소)를 해시 주소로 옮긴다. 앱은 해시로
+// 라우팅하고, 웹의 그 경로는 정적 호스트가 `/app/index.html` 로 돌려준다(Vinc-homepage staticwebapp 설정).
+{
+  const to = deepLinkTarget(location.pathname, import.meta.env.BASE_URL || "/");
+  if (to) history.replaceState(null, "", to.path + location.search + to.hash);
+}
+
 async function route() {
   // 구 표면 해시로 진입 시 정본 해시로 정규화(활성 하이라이트·딥링크 일치).
   const rawHead = location.hash.replace(/^#/, "").split("/")[0];
@@ -121,6 +138,7 @@ async function route() {
   activeSurface = s;
   leaveView();
   leaveHome();
+  leaveApprovals?.();
   // 문서 홈은 편집기를 표면 안에 세운다 — 비우기 전에 확정·해제한다(아래 문서 열과 같은 이유).
   disposeEditorsIn(surfaceEl);
   surfaceEl.innerHTML = "";
@@ -394,6 +412,8 @@ document.documentElement.lang = cfg.lang;
   // 데이터보다 먼저 읽어야 그 사이의 쓰기가 이미 본 것으로 묻히지 않는다.
   mountLiveRefresh();
   route();
+  // 승인함 메뉴의 숫자. 계정 그래프일 때만 묻는다. 그 뒤로는 변경 표식이 바뀔 때 다시 읽는다(live.ts).
+  void import("./surfaces/approvals").then((m) => m.refreshApprovalsBadge());
   if (refusedSpace) {
     const U = COPY.ui.settingsUi;
     void showNotice(refusedSpace === "local" ? U.spaceLinkLocal : U.spaceLinkRefused,
