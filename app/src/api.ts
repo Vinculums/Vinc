@@ -935,12 +935,21 @@ export const api = {
    *  키는 기기를 구독시키지 못한다(계정이 Authorization 을 거절한다). 응답을 그대로 돌려준다. */
   pushDevices: (): Promise<Response> =>
     fetch(new URL("/api/push/devices", location.origin), { credentials: "include", cache: "no-store" }),
+  // 경로와 메서드는 호출마다 글자 그대로 쓴다: 계약 검사(app/dev/sidecar-contract-check.ts)는 변수로 만든
+  // 주소나 밖에서 받은 옵션을 읽지 못한다.
   pushPost: (op: "subscribe" | "unsubscribe" | "test", body: unknown): Promise<Response> => {
-    const url = new URL("/api/push/" + op, location.origin);
-    return fetch(url, {
-      method: "POST", credentials: "include", cache: "no-store",
-      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() }, body: JSON.stringify(body),
-    });
+    const headers = { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() };
+    const json = JSON.stringify(body);
+    if (op === "subscribe") {
+      return fetch(new URL("/api/push/subscribe", location.origin),
+        { method: "POST", credentials: "include", cache: "no-store", headers, body: json });
+    }
+    if (op === "unsubscribe") {
+      return fetch(new URL("/api/push/unsubscribe", location.origin),
+        { method: "POST", credentials: "include", cache: "no-store", headers, body: json });
+    }
+    return fetch(new URL("/api/push/test", location.origin),
+      { method: "POST", credentials: "include", cache: "no-store", headers, body: json });
   },
   viewL0: (owner: string) => call("/view", { owner }),
   //: `domains` 는 **주제 여럿**(쉼표 결합). 스코프는 하위 트리 포함이다 —
