@@ -43,10 +43,10 @@ export function compassDataFrom(nodes: any[], edges: any[]): CompassData {
 /** 고정 핀(압정). 45° 기운 머리 · 목 · 깃 · 바늘. 채움은 currentColor 라 놓인 자리의 색을 따른다. */
 const PIN_PATHS = `<g transform="rotate(45 12 12)"><rect x="7.2" y="1.6" width="9.6" height="4" rx="2" fill="currentColor"/><path d="M9.3 5.4h5.4v3.9l3.4 3.9H5.9l3.4-3.9z" fill="currentColor"/><path d="M12 13.2V21.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></g>`;
 const pinIcon = (s = 14) => `<svg class="pin-ic" viewBox="0 0 24 24" width="${s}" height="${s}" aria-hidden="true">${PIN_PATHS}</svg>`;
-const CMP_HTML = () => `<div class="cmp-stage"><svg class="g" id="cmp-g" role="group" aria-label="${escHtml(COPY.ui.compass.lens)}"></svg><div id="cmp-pins"><div class="pcs"></div></div></div><div id="cmp-menu" role="menu" hidden></div><div id="cmp-tip"></div>`;
+const CMP_HTML = () => `<div class="cmp-stage"><svg class="g" id="cmp-g" role="group" aria-label="${escHtml(COPY.ui.compass.lens)}"></svg></div><div id="cmp-tip"></div>`;
 /** LNB 맨 위의 검색 칸(topbar.ts, setSearchFilter) · 시간 · 범례의 종류가 한 거르개다: 함께 건 결과가 나침반과 LNB 트리(lnb.ts
  *  setLnbGraphSource)에 같이 나온다. LNB 에는 고정 판만 서고, 시간과 범례는 머리의 "그래프" 글자 오른쪽 버튼이 여는 창이다. */
-const SIDE_HTML = `<div class="cmp-sec" id="cmp-dock" hidden></div>`;
+const SIDE_HTML = `<div class="cmp-sec" id="cmp-sum"></div><div class="cmp-sec" id="cmp-dock" hidden></div>`;
 const TOOLS_HTML = () => `<button class="cmp-tbtn" type="button" data-pop="time" aria-haspopup="dialog" aria-expanded="false">${escHtml(COPY.ui.compass.time)}</button><button class="cmp-tbtn" type="button" data-pop="legend" aria-haspopup="dialog" aria-expanded="false">${escHtml(COPY.ui.compass.legend)}</button>`;
 
 const C0 = () => COPY.ui.compass;
@@ -98,11 +98,6 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   const topicColour = (p) => { if (!p || p === ROOT) return 'hsl(var(--muted-foreground))';   // 뿌리는 어느 영역도 아니라 중립색
     const s = p.split('/'); for (let i = s.length; i >= 1; i--) { const c = TOPIC_COL.get(s.slice(0, i).join('/')); if (c) return c; } return 'hsl(var(--muted-foreground))'; };
   const topicOf = (n) => (n.k === 'topic' ? n.path : n.d);
-  // 끝 주제 → 그 주제에 닿은(그러나 다른 층에 선) 다리들. 이름표는 '다리 이름 ↔ 반대편 끝들'
-  const FARB = new Map();
-  for (const [id, ds] of BENDS) { const b = byId.get(id), name = (b.t || id).replace(/ junction$/i, '');
-    for (const d of ds) { if (d === b.d) continue; const others = [...new Set(ds.filter((x) => x !== d).map((x) => x.split('/').pop()))];
-      if (!FARB.has(d)) FARB.set(d, []); FARB.get(d).push({ n: b, rel: C.rel.bridge, label: `${name} ↔ ${others.join(', ')}`, farEnds: ds.filter((x) => x !== d) }); } }
   // 섞기: 주제 색을 카드색 쪽으로 바랜다. 라이트는 카드가 거의 흰색이고 보석 토큰의 대비 바닥도 3:1(다크 5.5:1)이라
   // 같은 비율로 바래면 빛살 끝이 배경 대비 1.3 안팎으로 사라진다. 그래서 라이트에서는 바래는 몫을 45%만 쓴다(30% → 69%, 55% → 80%)
   const colv = (n) => topicColour(topicOf(n)), mix = (c, p) => `color-mix(in srgb, ${c} ${themeMode() === 'light' ? Math.round(100 - (100 - p) * .45) : p}%, var(--c-card))`;
@@ -167,8 +162,6 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
       left.sort((a, b) => b.n.m - a.n.m || b.n.g - a.n.g);
       for (const n of c.direct.filter((x) => !isMean(x))) (shelf[n.k] || shelf.record).push(n);
       for (const p of [...c.sub].sort((a, b) => topics.get(b).count - topics.get(a).count)) right.push({ n: topics.get(p), rel: C.rel.subtopic });
-      // 이 주제에 끝이 닿은 다리(다리가 선 곳은 다른 층이다): 반대편 끝 주제의 이름을 붙여 3시에 둔다. 누르면 그 다리를 편다
-      for (const b of FARB.get(c.path) || []) right.push(b);
     } else {
       up.push({ n: topics.get(c.d), rel: C.rel.topic, main: true });
       for (const e of adj.get(c.id)) {
@@ -182,8 +175,7 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
       left.sort((a, b) => (b.n.m || 0) - (a.n.m || 0));
     }
     for (const k of Object.keys(shelf)) shelf[k].sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
-    // 자르지 않고 다 돌려준다: 부채 크기는 compassOf 가 기간 · 종류 · 고른 갈래로 거른 **뒤에** 자른다(지나온 길의 노드는 자르지 않는다).
-    // 메뉴의 수(countsOf)도 이 전체를 센다
+    // 자르지 않고 다 돌려준다: 부채 크기는 compassOf 가 기간 · 종류로 거른 **뒤에** 자른다(지나온 길의 노드는 자르지 않는다).
     return { up, left, right, bridges, shelf };
   }
 
@@ -195,17 +187,16 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   const ROWS = 18;
   const REL = { up: [-26, 26], left: [-135, -45], right: [45, 135] };   // 12시 방향(θ12)에서 잰 각도(도)
   const rad = (d) => d * Math.PI / 180, todeg = (r) => r * 180 / Math.PI;
-  let path = [], prevPos = new Map(), LZ = null, VIEW = null, WIDE = false, KEEPCAM = false, PINCHAIN = new Set();
+  let path = [], prevPos = new Map(), LZ = null, VIEW = null, WIDE = false, KEEPCAM = false, PINCHAIN = new Set(), CHAINCAM = null;   // CHAINCAM: 따라가기 · 길 찾기로 방금 연 사슬의 허브들. 그 사슬만 화면에 담는다
   let TPOS = null, CANONL = null, ARMS_OF = null;
   let ARMS_FIXED = false, measIdle = 0;   // ARMS_FIXED: 잰 크기로 팔을 골랐다. 그 뒤로는 팔을 바꾸지 않는다
   // 배치 한 번이 읽는 상태(S). 그리기는 지금 상태로(curS), 재기 · 정해진 자리 짓기는 따로 만든 S 로 부른다: 전역(path · TPOS ·
-  // RANGE · KOFF · FILT)을 바꿨다 되돌리지 않는다. place: 주제 층의 허브를 이 표의 자리에 둔다(하나씩 열기의 묶음 배치).
+  // RANGE · KOFF)을 바꿨다 되돌리지 않는다. place: 주제 층의 허브를 이 표의 자리에 둔다(하나씩 열기의 묶음 배치).
   // dirs: 부모 기준으로 놓는 층의 방향(th12)을 읽는 표. canon: 정해진 자리를 처음 짓는 중(거르기 · 밀어내기를 하지 않는다)
-  const curS = () => ({ mode: 'path', path, place: null, dirs: TPOS, canon: false, range: RANGE, koff: KOFF, filt: FILT });
-  const FILT = new Map();
-const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(긴 목록은 20개씩 더 연다)
+  const curS = () => ({ mode: 'path', path, place: null, dirs: TPOS, canon: false, range: RANGE, koff: KOFF });
+  const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(긴 목록은 20개씩 더 연다)
   const KOFF = new Set();   // 범례에서 잠시 끈 종류. 저장하지 않는다: 그래프를 열 때마다 모두 켠 채 시작한다
-  const kindKey = (n) => (n.k === 'decision' || n.k === 'record' || n.k === 'episode' || n.k === 'bridge' ? n.k : n.k === 'doc' ? 'doc' : 'concept');   // 노드 id → 펼칠 때 고른 갈래 {up, left, right, shelf}. 없으면 모두
+  const kindKey = (n) => (n.k === 'decision' || n.k === 'record' || n.k === 'episode' || n.k === 'bridge' ? n.k : n.k === 'doc' ? 'doc' : 'concept');   // 범례의 종류 키(끄고 켜는 단위)
   let RANGE = null;         // [시작, 끝] 날짜 문자열(YYYY-MM-DD). 없으면 전체 기간
   const fullDate = (s) => (!s ? '' : s.length === 4 ? s + '-01-01' : s.length === 7 ? s + '-01' : s.slice(0, 10));   // '2026' · '2026-03' 같은 덜 적힌 날짜는 그 첫날로
   // 날짜 = 그 일이 있었던 날: 내용 시간 → 유효 시작(→ 사건은 그날). 마지막으로 고친 때만 있는 노드는 날짜가 없는 것으로 본다(막대에 넣지 않고 흐리지도 않는다).
@@ -240,11 +231,6 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
     const onPathU = (u) => S.path.some((q) => q.id === u.n.id);
     const cap = (l, n, must) => { if (l.length <= n) return l; let room = n - l.slice(n).filter(must).length; return l.filter((u) => must(u) || room-- > 0); };
     G.up = cap(G.up, 11, onPathU); G.left = cap(G.left, 20, onPathU); G.right = cap(G.right, 16, (u) => onPathU(u) || u.n.k === 'topic');
-    // 넓힐 관계: 이 노드를 펼칠 때 고른 갈래만 남긴다(부모와 다음 층으로 가는 노드는 늘 남긴다)
-    const F0 = S.canon ? null : S.filt.get(node.id);
-    if (F0) { const must = onPathU;
-      if (!F0.has('up')) G.up = G.up.filter(must); if (!F0.has('left')) G.left = G.left.filter(must); if (!F0.has('right')) { G.right = G.right.filter(must); G.bridges = []; }
-      if (!F0.has('shelf')) for (const k of Object.keys(G.shelf)) G.shelf[k] = []; }
     const probe = { x: 0, y: 0, r: 22 };
     const rL = G.left.length ? Math.max(fanPlace(G.left, probe, 0, REL.left[1] - REL.left[0], 150, 9, sizeU).R, colPlace(G.left, probe, 90, 0, sizeU).R) : 0;
     const shelfN = Object.values(G.shelf).reduce((x, l) => x + l.length, 0);
@@ -318,9 +304,6 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
       const put = (p, role, extra = {}) => { const r = Math.hypot(p.x - hub.x, p.y - hub.y);
         // 지나온 길의 노드는 반드시 자기 층(허브)으로 펼쳐져야 한다. 앞 층의 부채에 먼저 나와도 여기서 그리지 않고, 나중에 그 허브로 빛살만 잇는다.
         // (이걸 안 하면 길의 노드가 앞 층의 잎으로 먼저 놓여 펼쳐지지 못하고, 지금 층을 잃어 맨 위 vinc 로 돌아간 것처럼 보였다)
-        // 끝 층의 다리 항목은 다리가 선 층(다른 곳)에 이미 그려져도 여기에 따로 둔다: 같은 노드의 별칭(id@@층)이라 그 층의 다리를 가리지 않는다
-        if (p.u.farEnds && !kids.has(p.u.n.id)) { const o = { id: `${p.u.n.id}@@${node.id}`, src: p.u.n, k: p.u.n.k, x: p.x, y: p.y, r: sizeU(p.u), c: colv(p.u.n), label: p.u.label, farEnds: p.u.farEnds,
-            role, rel: p.u.rel, ang: p.ang, level: i, comp: hub.id, chain }; items.push(o); comp.items.push(o); return; }
         if (onPath.has(p.u.n.id) && !kids.has(p.u.n.id)) { comp.items.push({ linkId: p.u.n.id, e: p.u.e }); return; }
         if (kids.has(p.u.n.id) && queued.has(p.u.n.id)) { comp.items.push({ linkId: p.u.n.id, e: p.u.e }); return; }   // 같은 노드가 두 관계로 두 번 나오면 한 번만 편다
         if (kids.has(p.u.n.id) && !placed.has(p.u.n.id)) { queued.add(p.u.n.id); comp.slots.set(p.u.n.id, { ang: Math.atan2(p.y - hub.y, p.x - hub.x), r, e: p.u.e }); queue.push({ node: p.u.n, parent: comp }); return; }
@@ -494,16 +477,15 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
       const arc = (a, c) => { const a0 = a - half, a1 = a + half, P = (q) => `${(Math.cos(q) * R).toFixed(2)} ${(Math.sin(q) * R).toFixed(2)}`;
         return `<path class="shape" d="M${P(a0)}A${R} ${R} 0 0 1 ${P(a1)}" fill="none" style="stroke:${c}" stroke-width="${w}" stroke-linecap="round"/>`; };
       return ts.map((q) => arc(q.a, q.c)).join('') + `<circle class="shape" r="${(R * .32).toFixed(2)}" style="fill:${mix(o.c, 80)}"/>`; };
-    // 다리는 어느 자리에서나 이음 표식이다. 층 안의 다리(`role: bridge`)와 끝 주제의 별칭(`farEnds`)은 이미 끝을 알고,
+    // 다리는 어느 자리에서나 이음 표식이다. 층 안의 다리(`role: bridge`)는 이미 끝을 알고,
     // 눌러 가운데(허브)가 된 다리는 CONNECTS 끝들의 주제 색으로 호를 그린다(알약 모양이 남지 않게)
     const bridgeBody = (o) => o.role === 'bridge' || o.farEnds ? junction(o)
       : junction({ ...o, farEnds: [...new Set(bridgeEnds(o.src).map((m) => m.d).filter(Boolean))] });
     const body = (o) => o.k === 'bridge' ? bridgeBody(o) : crescent(o) + (o.k === 'topic' ? ringS(o.r, o.role === 'hub' || fresh(o.src) ? o.c : mix(o.c, 70), o.role === 'hub' ? 2.6 : 2)
       : shape(o.k, 0, 0, o.r, o.src.vu ? o.c : fresh(o.src) ? o.c : mix(o.c, 55), !!o.src.vu)) + '';
     const compOf = new Map(L.comps.map((c) => [c.hub.id, c]));
-    const filtTag = (o) => { const f = FILT.get(o.id); return o.role === 'hub' && f ? `<text class="badge ftag" x="0" y="${-o.r - 9}" text-anchor="middle">${[...f].map((k) => GROUPS.find((g) => g[0] === k)[1]).join(' · ')}${esc(C.only)}</text>` : ''; };
     for (const o of L.items) { const oc = o.role === 'hub' ? compOf.get(o.id) : compOf.get(o.comp), far = oc && oc.far && o.role !== 'hub' ? ' far' : '', cur = o.role === 'hub' && oc === F ? ' sel' : o.role === 'hub' && path.some((n) => n.id === o.id) ? ' onpath' : '';
-      nodesS += `<g class="node${far}${cur}" data-id="${esc(o.id)}" data-role="${o.role}" data-chain="${esc((o.role === 'hub' ? (compOf.get(o.id)?.chain || []) : (o.chain || [])).map((n) => n.id).join('|'))}" data-level="${o.level}" tabindex="0" role="button" aria-label="${esc((KIND[o.k] || o.k) + ' ' + o.label)}" style="transform: translate(${o.x}px, ${o.y}px)"><circle class="ring" r="${o.r + 4.5}"/><circle class="hit" r="${o.r + 5}" fill="transparent"/>${body(o)}${lbl(o)}${filtTag(o)}</g>`; }
+      nodesS += `<g class="node${far}${cur}" data-id="${esc(o.id)}" data-role="${o.role}" data-chain="${esc((o.role === 'hub' ? (compOf.get(o.id)?.chain || []) : (o.chain || [])).map((n) => n.id).join('|'))}" data-level="${o.level}" tabindex="0" role="button" aria-label="${esc((KIND[o.k] || o.k) + ' ' + o.label)}" style="transform: translate(${o.x}px, ${o.y}px)"><circle class="ring" r="${o.r + 4.5}"/><circle class="hit" r="${o.r + 5}" fill="transparent"/>${body(o)}${lbl(o)}</g>`; }
     svg.innerHTML = `<defs>${defs}</defs><g id="cmp-deco">${deco}</g><g id="cmp-rays">${rays}</g><g id="cmp-tree"></g><g id="cmp-nodes">${nodesS}</g>`;
     // 카메라: 지금 층(허브·부채·목록)과 바로 위 허브가 들어오게
     const inFocus = (o) => { const c = o.role === 'hub' ? compOf.get(o.id) : compOf.get(o.comp); return o.role === 'shelf' || (!!c && c === F); };
@@ -512,6 +494,9 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
     const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
     // 넓게 보기: 지나온 허브들 + 지금 층만 담는다(옆 갈래의 잎까지 담으면 너무 멀어진다)
     if (KEEPCAM) KEEPCAM = false;
+    else if (CHAINCAM) { const ids = CHAINCAM; CHAINCAM = null; WIDE = false;
+      const pts = L.items.filter((o) => (o.role === 'hub' && ids.has(o.id)) || o.comp === F.hub.id).flatMap(extentPts), qx = pts.map((q) => q[0]), qy = pts.map((q) => q[1]);
+      flyView({ x: Math.min(...qx) - 40, y: Math.min(...qy) - 40, w: Math.max(...qx) - Math.min(...qx) + 80, h: Math.max(...qy) - Math.min(...qy) + 80 }); }
     else if (WIDE) { const pinHub = new Set(L.comps.filter((c) => c.pinOnly).map((c) => c.hub.id)), all = L.items.filter((o) => (o.role === 'hub' && !pinHub.has(o.id)) || o.comp === F.hub.id || o.role === 'shelf' || nearPin(o, F)), ax = all.flatMap((o) => [o.x - 160, o.x + 200]), ay = all.flatMap((o) => [o.y - 40, o.y + 40]), c = F.hub;
       const hw = Math.max(c.x - Math.min(...ax), Math.max(...ax) - c.x), hh = Math.max(c.y - Math.min(...ay), Math.max(...ay) - c.y);
       flyView({ x: c.x - hw, y: c.y - hh, w: 2 * hw, h: 2 * hh }); WIDE = false;   // 고른 노드를 가운데 두고, 펼친 길 전체가 보이게 물러난다
@@ -534,7 +519,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
     const to = { x, y, w, h }, from = VIEW || to, t0 = performance.now(), ms = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 520;
     cancelAnimationFrame(flyRaf);
     const step = () => { const u = ms ? Math.min(1, (performance.now() - t0) / ms) : 1, e = 1 - (1 - u) ** 3, v = { x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e, w: from.w + (to.w - from.w) * e, h: from.h + (to.h - from.h) * e };
-      svg.setAttribute('viewBox', `${v.x.toFixed(1)} ${v.y.toFixed(1)} ${v.w.toFixed(1)} ${v.h.toFixed(1)}`); VIEW = v; drawPins(); lod(); if (u < 1) flyRaf = requestAnimationFrame(step); };
+      svg.setAttribute('viewBox', `${v.x.toFixed(1)} ${v.y.toFixed(1)} ${v.w.toFixed(1)} ${v.h.toFixed(1)}`); VIEW = v; lod(); if (u < 1) flyRaf = requestAnimationFrame(step); };
     step();
   }
 
@@ -606,42 +591,25 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
 
   // ── 다니기: 누르면 그 자리에서 펼친다. 지나온 층의 노드를 누르면 그 층으로 접고 거기서 새로 펼친다 ─────────────────
   let hist = [], hi = -1;
-  const byAny = (id) => byId.get(id) || byId.get(String(id).split('@@')[0]) || (id.startsWith('topic:') ? topics.get(id.slice(6)) : null);   // '다리id@@층id' 는 끝 층에 둔 다리의 별칭
+  const byAny = (id) => byId.get(id) || byId.get(String(id).split('@@')[0]) || (id.startsWith('topic:') ? topics.get(id.slice(6)) : null);   // 'id@@…' 별칭은 앞의 id 로 찾는다
   function setPath(P, push = true) { path = P; if (push) { hist = hist.slice(0, hi + 1); hist.push(P.map((n) => n.id)); hi = hist.length - 1; } render(); }
-  // 누르면 바로 펼치지 않고 무엇을 넓힐지 묻는다(Neo4j·Palantir 의 '관계 종류별로 넓히기'). 갈래마다 수가 붙고, 0 인 갈래는 흐리다
-  const GROUPS = [['all', C.groups.all], ['left', C.groups.left], ['up', C.groups.up], ['right', C.groups.right], ['shelf', C.groups.shelf]];
-  function countsOf(n, parentId) { const G = gather(n), not = (l) => l.filter((u) => u.n.id !== parentId && (u.n.k === 'topic' || inRange(u.n))).length;
-    return { up: not(G.up), left: not(G.left), right: not(G.right) + G.bridges.length, shelf: Object.values(G.shelf).reduce((s, l) => s + l.filter(inRange).length, 0) }; }
-  const menu = $id('menu');
-  function openMenu(g, e, onPick) {
-    const n = byAny(g.dataset.id), chain = (g.dataset.chain || '').split('|').filter(Boolean), parentId = g.dataset.role === 'hub' ? chain[chain.length - 2] : chain[chain.length - 1];
-    const c = countsOf(n, parentId), tot = c.up + c.left + c.right + c.shelf, cur = FILT.get(n.id);
-    menu.innerHTML = `<div class="mh">${esc(short(titleOf(n), 40))}<small>${KIND[n.k] || n.k}</small></div>` + GROUPS.map(([k, name]) => {
-      const v = k === 'all' ? tot : c[k], on = cur ? (k !== 'all' && cur.has(k)) : k === 'all';
-      return `<button class="mi${on ? ' on' : ''}" data-g="${k}" ${v ? '' : 'disabled'}><span>${name}</span><b>${v}</b></button>`; }).join('') + `<button class="mi pin" data-pin="1"><span>${PINS.has(n.id) ? esc(C.unpin) : esc(C.pin)}</span><b class="pin-b">${pinIcon(16)}</b></button>`;
-    const r = root.getBoundingClientRect(); menu.style.left = `${Math.min(e.clientX + 10, innerWidth - 260)}px`; menu.style.top = `${Math.min(e.clientY + 10, innerHeight - 260)}px`; menu.hidden = false;
-    menu.onclick = (ev) => { if (ev.target.closest('[data-pin]')) { togglePin(n.id); menu.hidden = true; return; } const b = ev.target.closest('[data-g]'); if (!b || b.disabled) return; const k = b.dataset.g;
-      if (k === 'all') FILT.delete(n.id); else { const s = ev.shiftKey && FILT.get(n.id) ? new Set(FILT.get(n.id)) : new Set(); s.has(k) && ev.shiftKey ? s.delete(k) : s.add(k); FILT.set(n.id, s); }
-      if (ev.shiftKey && k !== 'all') { openMenu(g, e, onPick); return; } menu.hidden = true; onPick(); };
-    menu.querySelector('.mi:not([disabled])')?.focus();
-  }
-  onWin('pointerdown', (e) => { if (!menu.hidden && !e.target.closest('#cmp-menu')) menu.hidden = true; }, true);
-  menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { menu.hidden = true; e.stopPropagation(); } });
   function act(g, e) { if (!g) return; const chain = (g.dataset.chain || '').split('|').filter(Boolean).map(byAny), n = byAny(g.dataset.id);
     const isFocus = g.classList.contains('sel');
     if (g.dataset.role === 'hub' && !isFocus) { setPath(chain.length ? chain : [n]); return; }   // 지나온 층의 허브: 그 층으로 접는다
-    const go2 = () => (g.dataset.role === 'hub' ? setPath(chain.length ? chain : [n], false) : setPath([...chain, n]));
-    if (e && e.altKey) { FILT.delete(n.id); go2(); return; }
-    openMenu(g, e || { clientX: innerWidth / 2, clientY: innerHeight / 2 }, go2); }
+    if (isFocus) { ctx.onOpen?.(String(g.dataset.id).split('@@')[0]); return; }   // 가운데를 다시 누르면 자세히(상세 레일)
+    setPath([...chain, n]); }
   svg.addEventListener('click', (e) => { const mb = e.target.closest('[data-more]'); if (mb) { MORE.set(mb.dataset.more, (MORE.get(mb.dataset.more) || 0) + 20); MEASURED = false; prevPos = new Map(); render(); return; } const st = e.target.closest('.stub'); if (st) { setPath(st.dataset.chain.split('|').map(byAny)); return; } act(e.target.closest('.node'), e); });
   svg.addEventListener('keydown', (e) => { if (e.key !== 'Enter' && e.key !== ' ') return; const g = e.target.closest('.node'); if (!g) return; e.preventDefault(); const r = g.getBoundingClientRect(); act(g, { clientX: r.right, clientY: r.top }); });
   const tip = $id('tip');
-  svg.addEventListener('pointerover', (e) => { const g = e.target.closest('.node'); svg.classList.toggle('hot', !!g);
+  let peekId = null, peekT = 0;   // 엿보기: 노드 위에 잠깐(PEEK_MS) 머물면 풍선이 그 노드의 관계 수 · 붙은 것 · 가까운 이웃을 담은 카드로 커진다
+  const PEEK_MS = 450;
+  svg.addEventListener('pointerover', (e) => { const g = e.target.closest('.node'); if (g && g.dataset.id === peekId) return; svg.classList.toggle('hot', !!g);
     svg.querySelectorAll('.ray').forEach((r) => r.classList.toggle('near', !!g && (r.dataset.a === g?.dataset.id || r.dataset.b === g?.dataset.id)));
+    clearTimeout(peekT); peekId = g ? g.dataset.id : null;
     if (g) { const n = byAny(g.dataset.id), o = LZ.items.find((q) => q.id === g.dataset.id); tip.style.display = 'block';
-      tip.innerHTML = `${esc(n.t || n.path)}<small>${KIND[n.k] || n.k}${o?.rel ? ' · ' + esc(o.rel) : ''}${n.d ? ' · ' + esc(n.d) : ''}${n.ts ? ' · ' + n.ts : ''}</small>`; } else tip.style.display = 'none'; });
+      tip.innerHTML = `${esc(n.t || n.path)}<small>${KIND[n.k] || n.k}${o?.rel ? ' · ' + esc(o.rel) : ''}${n.d ? ' · ' + esc(n.d) : ''}${n.ts ? ' · ' + n.ts : ''}</small>${g.classList.contains('sel') && ctx.onOpen ? `<small class="hint">${esc(C.detailHint)}</small>` : ''}`;  const gid = g.dataset.id; peekT = setTimeout(() => { if (peekId === gid && tip.style.display === 'block') tip.insertAdjacentHTML('beforeend', peekHTML(byAny(gid))); }, PEEK_MS); } else tip.style.display = 'none'; });
   svg.addEventListener('pointermove', (e) => { tip.style.left = `${e.clientX + 14}px`; tip.style.top = `${e.clientY + 12}px`; });
-  svg.addEventListener('pointerleave', () => { tip.style.display = 'none'; svg.classList.remove('hot'); });
+  svg.addEventListener('pointerleave', () => { tip.style.display = 'none'; svg.classList.remove('hot'); clearTimeout(peekT); peekId = null; });
   onWin('keydown', (e) => { if (e.defaultPrevented || e.target.closest?.('input,textarea,[contenteditable],dialog') || !root.isConnected || root.closest('[hidden]')) return; if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) e.preventDefault(); if (e.altKey && e.key === 'ArrowLeft') { if (hi > 0) { hi--; setPath(hist[hi].map(byAny).filter(Boolean), false); } } else if (e.altKey && e.key === 'ArrowRight') { if (hi < hist.length - 1) { hi++; setPath(hist[hi].map(byAny).filter(Boolean), false); } }
     else if (e.key === 'Escape' || (e.key === 'Backspace' && path.length > 1)) { if (e.key === 'Escape') setPath([topics.get(ROOT)]); else setPath(path.slice(0, -1)); } });
   // 찾기: 주제 사슬을 따라 펼친 다음 그 노드를 편다
@@ -649,11 +617,11 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
   let QUERY = '';
   const norm = (s) => String(s || '').toLowerCase();
   const matchQ = (n) => !QUERY || norm(n.t || n.path || n.id).includes(QUERY) || norm(n.id).includes(QUERY);
-  const setQuery = (q) => { const was = QUERY; QUERY = norm(q); TCELL = null; TWIN = null; paintSide(); treeChanged(!QUERY && !!was); };
+  const setQuery = (q) => { const was = QUERY; QUERY = norm(q); paintSide(); treeChanged(!QUERY && !!was); };
   // 굴려서 확대·끌어서 이동: viewBox 를 직접 옮긴다(펼친 그림이 화면보다 클 때)
   // 멀리서 볼수록 덜 그린다: 1단(노드 이름·목록 줄 글자 숨김), 2단(목록 줄과 잎 노드 숨김, 주제와 선만)
   const lod = () => { const z = VIEW ? VIEW.w / (svg.clientWidth || 1) : 1; svg.classList.toggle('lod1', z > 2.4); svg.classList.toggle('lod2', z > 5); };
-  const setVB = (v) => { VIEW = v; svg.setAttribute('viewBox', `${v.x.toFixed(1)} ${v.y.toFixed(1)} ${v.w.toFixed(1)} ${v.h.toFixed(1)}`); drawPins(); lod(); };
+  const setVB = (v) => { VIEW = v; svg.setAttribute('viewBox', `${v.x.toFixed(1)} ${v.y.toFixed(1)} ${v.w.toFixed(1)} ${v.h.toFixed(1)}`); lod(); };
   svg.addEventListener('wheel', (e) => { e.preventDefault(); cancelAnimationFrame(flyRaf); const r = svg.getBoundingClientRect(), f = Math.exp(e.deltaY * .0015), v = VIEW;
     const px = v.x + (e.clientX - r.left) / r.width * v.w, py = v.y + (e.clientY - r.top) / r.height * v.h; setVB({ x: px - (px - v.x) * f, y: py - (py - v.y) * f, w: v.w * f, h: v.h * f }); }, { passive: false });
   let pan = null;
@@ -679,17 +647,16 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
   const PINS = new Set((Array.isArray(readJSON(PKEY, [])) ? readJSON(PKEY, []) : []).filter((id) => typeof id === 'string' && byAny(id)));
   const dock = $id('dock');
   // ── 고정: 고른 노드를 **그래프 안의 그 자리**(배치 좌표)에 박아 둔다. 가운데를 옮겨 다시 배치해도 그 노드는 같은 자리에 남고,
-  // 새로 펼친 노드 가운데 이어진 것으로 빛살이 간다. 겹치는 새 노드는 비켜 선다. 끌면 자리를 옮긴다. 이 기기에만 저장한다.
-  const PW = new Map(Object.entries(readJSON(`${PKEY}.w`, {})).filter(([id]) => PINS.has(id)));
+  // 새로 펼친 노드 가운데 이어진 것으로 빛살이 간다. 겹치는 새 노드는 비켜 선다. 이 기기에만 저장한다.
   localStorage.removeItem('vinc.pins.at');   // 앞선 시안의 화면 좌표 자리는 쓰지 않는다
-  function savePins() { localStorage.setItem(PKEY, JSON.stringify([...PINS])); localStorage.setItem(`${PKEY}.w`, JSON.stringify(Object.fromEntries(PW))); }
+  function savePins() { localStorage.setItem(PKEY, JSON.stringify([...PINS])); localStorage.removeItem(`${PKEY}.w`); }   // .w: 끌어 옮긴 자리(걷어냄)
   const LASTPIN = new Map();   // 이번 세션에서 고정 노드가 마지막으로 놓였던 자리(배치 좌표)
   function pinLayout(L) {
     if (!PINS.size) return L;
     const at = new Map(L.items.map((o) => [o.id, o])), pinned = [];
-    for (const id of PINS) { const n = byAny(id); if (!n) continue; let o = at.get(id); const w = PW.get(id);
-      if (o) { if (w) { o.x = w.x; o.y = w.y; } LASTPIN.set(id, { x: o.x, y: o.y }); o.pinned = true; pinned.push(o); continue; }
-      const w2 = w || LASTPIN.get(id); if (!w2) continue;   // 길로 못 잇는 경우(배치가 그 노드를 못 놓을 때)는 마지막으로 놓였던 자리에
+    for (const id of PINS) { const n = byAny(id); if (!n) continue; let o = at.get(id);
+      if (o) { LASTPIN.set(id, { x: o.x, y: o.y }); o.pinned = true; pinned.push(o); continue; }
+      const w2 = LASTPIN.get(id); if (!w2) continue;   // 길로 못 잇는 경우(배치가 그 노드를 못 놓을 때)는 마지막으로 놓였던 자리에
       const chain = chainTo(n).slice(0, -1);
       o = { id, src: n, k: n.k, x: w2.x, y: w2.y, r: n.k === 'topic' ? 13 : 6, c: colv(n), label: titleOf(n), role: 'pin', chain, comp: '', level: chain.length, pinned: true };
       L.items.push(o); pinned.push(o); }
@@ -700,31 +667,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
     L.pinned = pinned; return L; }
   // 카메라: 지금 층에서 너무 멀지 않은 고정 노드는 함께 담는다(멀면 무대 가장자리에 방향 표만 둔다)
   const nearPin = (o, F) => !!o.pinned && Math.hypot(o.x - F.hub.x, o.y - F.hub.y) < 520;
-  const stage = root.querySelector('.cmp-stage'), pinBox = $id('pins'), pinCards = pinBox.querySelector('.pcs');
-  const scr = (o) => ({ x: (o.x - VIEW.x) / VIEW.w * (svg.clientWidth || 1), y: (o.y - VIEW.y) / VIEW.h * (svg.clientHeight || 1) });
-  // 방향 표: 화면 밖에 있는 고정 노드를 가장자리에 화살과 이름으로. 누르면 그 자리로 화면을 옮긴다.
-  function drawPins() {
-    if (!LZ || !VIEW) return;
-    const W = stage.clientWidth, H = stage.clientHeight, M = 30; let h = '';
-    for (const o of LZ.pinned || []) { const q = scr(o); if (q.x >= 0 && q.x <= W && q.y >= 0 && q.y <= H) continue;
-      const cx = W / 2, cy = H / 2, dx = q.x - cx, dy = q.y - cy, t = Math.min((W / 2 - M) / Math.abs(dx || 1e-6), (H / 2 - M) / Math.abs(dy || 1e-6));
-      const x = cx + dx * t, y = cy + dy * t, ang = Math.atan2(dy, dx) * 180 / Math.PI;
-      h += `<button class="pedge" type="button" data-id="${esc(o.id)}" style="left:${x.toFixed(0)}px;top:${y.toFixed(0)}px;--c:${o.c}" title="${esc(o.src.t || o.src.path || o.id)}"><i style="transform:rotate(${ang.toFixed(0)}deg)">➜</i>${pinIcon(13)}<span>${esc(short(o.label, 22))}</span></button>`; }
-    pinCards.innerHTML = h; }
-  pinCards.addEventListener('click', (e) => { const b = e.target.closest('.pedge'); if (!b) return; const o = LZ && LZ.items.find((q) => q.id === b.dataset.id); if (!o) return;
-    flyView({ x: o.x - VIEW.w / 2, y: o.y - VIEW.h / 2, w: VIEW.w, h: VIEW.h }); });
-  // 끌기: 고정한 노드를 잡아 옮긴다(놓으면 그 자리로 다시 배치하고 빛살을 다시 긋는다). 끈 뒤의 클릭은 메뉴를 열지 않는다.
-  let ndrag = null, ndragMoved = false;
-  svg.addEventListener('pointerdown', (e) => { const g = e.target.closest('.node'); if (!g || !PINS.has(g.dataset.id) || !LZ) return; const o = LZ.items.find((q) => q.id === g.dataset.id); if (!o) return;
-    ndrag = { g, o, x0: e.clientX, y0: e.clientY, ox: o.x, oy: o.y, moved: false }; svg.setPointerCapture(e.pointerId); e.stopPropagation(); }, true);
-  svg.addEventListener('pointermove', (e) => { if (!ndrag) return; const dx = e.clientX - ndrag.x0, dy = e.clientY - ndrag.y0; if (!ndrag.moved && Math.hypot(dx, dy) < 4) return;
-    ndrag.moved = true; const k = VIEW.w / (svg.getBoundingClientRect().width || 1), nx = ndrag.ox + dx * k, ny = ndrag.oy + dy * k;
-    ndrag.o.x = nx; ndrag.o.y = ny; ndrag.g.style.transition = 'none'; ndrag.g.style.transform = `translate(${nx}px, ${ny}px)`; e.stopPropagation(); }, true);
-  svg.addEventListener('pointerup', () => { if (!ndrag) return; const d = ndrag; ndrag = null; if (!d.moved) return;
-    ndragMoved = true; PW.set(d.o.id, { x: d.o.x, y: d.o.y }); prevPos.set(d.o.id, { x: d.o.x, y: d.o.y }); savePins(); KEEPCAM = true; render(); }, true);
-  svg.addEventListener('click', (e) => { if (ndragMoved) { ndragMoved = false; e.stopImmediatePropagation(); } }, true);
-  onWin('resize', () => drawPins());
-  function togglePin(id) { if (PINS.has(id)) { PINS.delete(id); PW.delete(id); LASTPIN.delete(id); } else PINS.add(id);
+  function togglePin(id) { if (PINS.has(id)) { PINS.delete(id); LASTPIN.delete(id); } else PINS.add(id);
     savePins(); KEEPCAM = true; render(); }
   const linkedTo = (id) => { const s = new Set(); for (const e of adj.get(id) || []) s.add((e.a.id === id ? e.b : e.a).id);
     const n = byAny(id); if (n && n.k === 'topic') for (const m of nodes) if ((m.d || '') === n.path) s.add(m.id); return s; };
@@ -752,7 +695,88 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
   svg.addEventListener('pointerleave', () => { hoverNode = null; });
   // P 하나만(⌘/Ctrl+P 는 인쇄다). 입력 칸 · 숨은 면에서는 듣지 않는다
   onWin('keydown', (e) => { if (e.key.toLowerCase() !== 'p' || e.ctrlKey || e.metaKey || e.altKey || !hoverNode || e.target.closest?.('input,textarea,[contenteditable]') || !root.isConnected || root.closest('[hidden]')) return; togglePin(hoverNode); });
-  { const _r2 = render; render = function () { _r2(); drawDock(); markPins(); drawPins(); }; }
+  // ── 가운데 요약: 사이드바 맨 위에 지금 가운데의 종류 · 주제 · 날짜 · 유효 기간과 대체 · 관계 종류별 수 · 많이 이어진 이웃.
+  // 방향 있는 관계(선행 · 파생 · 상속 · 대체 · 되돌림)는 줄을 누르면 그 관계를 따라 사슬을 곧게 연다(갈래가 갈리면 그 자리에서 멈춘다)
+  const sum = $id('sum'), SC = () => C.sum;
+  const RELT = [['PREREQUISITE_OF', 'pre'], ['DERIVES_FROM', 'der'], ['INHERITS_FROM', 'inh'], ['SUPERSEDES', 'sup'], ['RETURNS_TO', 'ret']];
+  const relOf = (n) => { const out = new Map(), rel = [], att = { decision: 0, record: 0, episode: 0, doc: 0 };
+    for (const e of adj.get(n.id) || []) { const o = e.a === n ? e.b : e.a; if (!o || o === n) continue;
+      if (ATTACH.has(e.t)) { if (e.b === n && att[o.k] != null) att[o.k]++; else if (e.a === n) rel.push(o); continue; }
+      const r = RELT.find(([t]) => t === e.t); if (!r) { if (e.t === 'RELATED_TO' || e.t === 'CONNECTS') rel.push(o); continue; }
+      const k = `${r[1]}:${e.a === n ? 'out' : 'in'}`; if (!out.has(k)) out.set(k, []); if (!out.get(k).includes(o)) out.get(k).push(o); }
+    return { out, rel: [...new Set(rel)], att }; };
+  // 따라가기: 같은 종류 · 같은 방향의 이웃이 하나뿐인 동안 잇는다. 갈래(둘 이상) · 되돌아옴 · 12칸이면 멈춘다
+  function chainFrom(n, type, dir, first) { const out = [], seen = new Set([n.id]); let cur = first;
+    while (cur && !seen.has(cur.id) && out.length < 12) { out.push(cur); seen.add(cur.id);
+      const nx = (adj.get(cur.id) || []).filter((e) => e.t === type && (dir === 'out' ? e.a === cur : e.b === cur)).map((e) => (dir === 'out' ? e.b : e.a));
+      cur = nx.length === 1 ? nx[0] : null; }
+    return out; }
+  const SUMOPEN = new Set(); let NOPATH = null;
+  // 두 노드 사이 가장 짧은 길(관계의 방향은 보지 않는다). 주제는 이음에 없으므로 노드끼리만 걷는다. 10칸 넘게 걸리면 없는 것으로 본다
+  function shortest(a, b, max = 10) { const prev = new Map([[a.id, null]]), dist = new Map([[a.id, 0]]), q = [a];
+    while (q.length) { const x = q.shift(); if (x === b) break; if (dist.get(x.id) >= max) continue;
+      for (const e of adj.get(x.id) || []) { const y = e.a === x ? e.b : e.a; if (!y || prev.has(y.id)) continue; prev.set(y.id, x); dist.set(y.id, dist.get(x.id) + 1); q.push(y); } }
+    if (!prev.has(b.id)) return null; const out = []; for (let x = b; x; x = prev.get(x.id)) out.unshift(x); return out; }
+  // 엿보기 카드: 관계 종류별 수(나침반 선의 표) · 관련 · 붙은 것 · 많이 이어진 이웃 넷. 주제면 종류별 수와 하위 주제 수
+  function peekHTML(n) { if (!n) return ''; const S = SC(); let h = '<div class="peek">';
+    if (n.k === 'topic') { const c = {}; for (const m of nodes) if (m.d === n.path || (n.path && m.d.startsWith(n.path + '/'))) c[m.k] = (c[m.k] || 0) + 1;
+      h += `<div class="pr">${Object.entries(c).map(([k, v]) => `${esc(KIND[k] || k)} ${v}`).join(' · ')}${n.sub && n.sub.size ? ' · ' + esc(S.subtopics(n.sub.size)) : ''}</div>`; }
+    else { const R = relOf(n), G = { pre: '›', der: '∘›', inh: '|›', sup: '⇢', ret: '↩' }, parts = [];
+      for (const [, key] of RELT) { const k = (R.out.get(`${key}:in`) || []).length + (R.out.get(`${key}:out`) || []).length; if (k) parts.push(`${G[key]} ${k}`); }
+      if (R.rel.length) parts.push(S.related(R.rel.length)); const at = Object.values(R.att).reduce((x, y) => x + y, 0); if (at) parts.push(`${S.attached} ${at}`);
+      if (parts.length) h += `<div class="pr">${parts.map(esc).join(' · ')}</div>`;
+      const nb4 = [...new Set([...(adj.get(n.id) || [])].map((e) => (e.a === n ? e.b : e.a)).filter((o) => o && isMean(o)))].sort((a, b) => (b.g || 0) - (a.g || 0)).slice(0, 4);
+      for (const o of nb4) h += `<span class="pn">${esc(short(titleOf(o), 40))}</span>`; }
+    return h + '</div>'; }
+  const ico = (n) => `<svg viewBox="-7 -7 14 14">${n.k === 'topic' ? topicRing(5, colv(n), 1.8) : shape(n.k, 0, 0, 5, colv(n), !!n.vu)}</svg>`;
+  const nb = (o, extra = '') => `<button class="sn" data-go="${esc(o.id)}" title="${esc(o.t || o.path || o.id)}" ${extra}>${ico(o)}<span>${esc(short(titleOf(o), 34))}</span></button>`;
+  function drawSum() {
+    const n = path[path.length - 1]; if (!sum || !n) return; const S = SC(); let h = '';
+    h += `<div class="sh">${ico(n)}<b>${esc(short(titleOf(n), 60))}</b></div>`;
+    if (n.k === 'topic') {
+      const ns = nodes.filter((m) => m.d === n.path || (n.path && m.d.startsWith(n.path + '/')) || (!n.path)), c = {}; for (const m of ns) c[m.k] = (c[m.k] || 0) + 1;
+      const last = ns.map(when).filter(Boolean).sort().pop();
+      h += `<div class="sk">${esc(C.rel.topic)}${n.path ? ' · ' + esc(n.path) : ''}${last ? ' · ' + esc(S.latest(last)) : ''}</div>`;
+      h += `<div class="sr">${Object.entries(c).map(([k, v]) => `${esc(KIND[k] || k)} ${v}`).join(' · ') || esc(S.empty)}${n.sub && n.sub.size ? ` · ${esc(S.subtopics(n.sub.size))}` : ''}</div>`;
+      const top = ns.filter(isMean).sort((a, b) => (b.g || 0) - (a.g || 0)).slice(0, 5);
+      if (top.length) h += `<div class="sl">${esc(S.mostLinked)}</div>${top.map((o) => nb(o)).join('')}`;
+    } else {
+      const d = when(n);
+      h += `<div class="sk">${esc(KIND[n.k] || n.k)}${n.d ? ' · ' + esc(n.d) : ''}${d ? ' · ' + esc(d) : ''}</div>`;
+      const R = relOf(n), sup = R.out.get('sup:in') || [], old = R.out.get('sup:out') || [];
+      if (n.vf || n.vu) h += `<div class="sv${n.vu ? ' closed' : ''}">${esc(n.vu ? S.held(n.vf || '', String(n.vu).slice(0, 10)) : S.holds(n.vf))}</div>`;
+      if (sup.length) h += `<div class="sv closed">${esc(S.replacedBy)} ${sup.map((o) => nb(o)).join('')}</div>`;
+      for (const [type, key] of RELT) for (const dir of ['in', 'out']) { const l = R.out.get(`${key}:${dir}`); if (!l || !l.length || (type === 'SUPERSEDES' && dir === 'in')) continue;
+        const id = `${key}:${dir}`, open = SUMOPEN.has(id);
+        h += `<div class="sf"><button class="sfr" data-follow="${type}|${dir}" title="${esc(S.followTip)}"><i class="sg sg-${key}"></i><span>${esc(S.rel[key][dir])}</span><b>${l.length}</b><em>›</em></button>`;
+        if (l.length > 1) h += `<button class="sfx" data-sx="${id}" aria-expanded="${open}">${open ? '▾' : '▸'}</button>`;
+        h += `</div>`;
+        if (open || l.length === 1) h += `<div class="sfl">${l.slice(0, 12).map((o) => nb(o, `data-chain="${type}|${dir}"`)).join('')}</div>`; }
+      if (R.rel.length) h += `<div class="sl">${esc(S.related(R.rel.length))}</div>${R.rel.sort((a, b) => (b.g || 0) - (a.g || 0)).slice(0, 5).map((o) => nb(o)).join('')}`;
+      const at = Object.entries(R.att).filter(([, v]) => v); if (at.length) h += `<div class="sr">${esc(S.attached)} ${at.map(([k, v]) => `${esc(KIND[k] || k)} ${v}`).join(' · ')}</div>`;
+    }
+    const pinsTo = [...PINS].filter((id) => id !== n.id).map(byAny).filter(Boolean).slice(0, 3);
+    if (pinsTo.length) { h += `<div class="sl">${esc(S.pathTo)}</div>` + pinsTo.map((o) => `<button class="sn" data-path="${esc(o.id)}">${ico(o)}<span>${esc(short(titleOf(o), 34))}</span></button>`).join('');
+      if (NOPATH === n.id) h += `<div class="sr">${esc(S.noPath)}</div>`; }
+    if (ctx.onOpen) h += `<button class="btn btn-sm sdet" data-sopen="1">${esc(S.details)}</button>`;
+    sum.innerHTML = h; }
+  sum && sum.addEventListener('click', (e) => { const n = path[path.length - 1]; if (!n) return;
+    const x = e.target.closest('[data-sx]'); if (x) { SUMOPEN.has(x.dataset.sx) ? SUMOPEN.delete(x.dataset.sx) : SUMOPEN.add(x.dataset.sx); drawSum(); return; }
+    if (e.target.closest('[data-sopen]')) { ctx.onOpen?.(n.id); return; }
+    const pp = e.target.closest('[data-path]');
+    if (pp) { const o = byAny(pp.dataset.path); if (!o) return;
+      if (o.k === 'topic' || n.k === 'topic') { goTo(o.id); return; }   // 주제는 노드 이음에 없다: 주제 사슬로 간다
+      const r = shortest(n, o); if (!r) { NOPATH = n.id; drawSum(); return; }
+      NOPATH = null; CHAINCAM = new Set(r.map((q) => q.id)); setPath([...path, ...r.slice(1)]); return; }
+    const f = e.target.closest('[data-follow]'), g = e.target.closest('[data-go]');
+    if (f || (g && g.dataset.chain)) { const [type, dir] = (f ? f.dataset.follow : g.dataset.chain).split('|');
+      const firsts = (adj.get(n.id) || []).filter((q) => q.t === type && (dir === 'out' ? q.a === n : q.b === n)).map((q) => (dir === 'out' ? q.b : q.a));
+      const first = g ? byAny(g.dataset.go) : firsts.length === 1 ? firsts[0] : null;
+      if (!first) { const id = `${RELT.find(([t]) => t === type)[1]}:${dir}`; SUMOPEN.add(id); drawSum(); return; }   // 갈래가 여럿이면 먼저 고르게 편다
+      const ch = chainFrom(n, type, dir, first); CHAINCAM = new Set([n.id, ...ch.map((q) => q.id)]); setPath([...path, ...ch]); return; }
+    if (g) { const o = byAny(g.dataset.go); if (!o) return; const inLayer = LZ && LZ.items.some((q) => q.id === o.id && q.comp === n.id);
+      if (inLayer) setPath([...path, o]); else goTo(o.id); } });
+  { const _r2 = render; render = function () { _r2(); drawDock(); markPins(); drawSum(); }; }
   buildTopicColours();
   // 전체 배치(네 팔). 맨 위 주제의 상자를 가운데 두고, 그 하위 주제 가지를 아래·오른쪽·위·왼쪽 팔에 나눈다. 팔은 바람개비처럼
   // 맨 위 상자의 한 모서리에서 시계 방향으로 뻗어(위 팔은 오른쪽으로, 오른쪽 팔은 아래로 …) 서로의 자리에 들어가지 않는다.
@@ -868,7 +892,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
   else measIdle = (globalThis.requestIdleCallback || ((f) => setTimeout(f, 300)))(() => { if (ARMS_FIXED || !root.isConnected) return;
     settleArms(); if (path.length > 1) render(); });
   // 층의 실제 크기: 모든 층을 세 방향(아래 팔, 위 팔, 가로 팔)으로 세워 그려 보고, 층마다 허브에서 잰 범위를 남긴다.
-  // 기간·종류·갈래 거르기 없이 잰다(거른 뒤에 다시 켜도 상자가 모자라지 않게)
+  // 기간·종류 거르기 없이 잰다(거른 뒤에 다시 켜도 상자가 모자라지 않게)
   function measureCross() {
     const out = new Map(), rootId = topics.get(ROOT).id;
     for (const [o, t12] of [['v', -90], ['u', 90], ['h', 180]]) {
@@ -883,7 +907,6 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
 
   { const R = ctx.restore, rp = R ? R.path.map(byAny).filter(Boolean) : [];
     if (R && rp.length) {
-      for (const [k, v] of R.filt || []) if (byAny(k)) FILT.set(k, new Set(v));
       for (const [k, v] of R.more || []) MORE.set(k, v);
       for (const k of R.koff || []) KOFF.add(k);
       TSEL = R.tsel || null; QUERY = R.query || '';
@@ -911,8 +934,8 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
       ${row(`<circle cx="22" cy="8" r="5" fill="currentColor"/><path d="M15.6 4.2A6.4 6.4 0 0 0 15.6 11.8" fill="none" stroke="currentColor" stroke-width="2"/>`, esc(C.legendRows.otherTopic), "")}
       ${row(`<path d="M17.8 3.8A6 6 0 0 1 26.2 3.8M26.2 12.2A6 6 0 0 1 17.8 12.2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="22" cy="8" r="2" fill="currentColor"/>`, esc(KIND.bridge), "")}
       <div class="cmp-sws">${areas}</div>`; };
-  // ── 시간(시안의 시간 모달을 LNB 로): 위 = 날마다의 수(종류별로 쌓음, 끌어서 기간), 가운데 = 주제 × 기간 격자, 아래 = 고른 칸의 항목 ─────
-  let TSCOPE = 'all', TCELL = null, LASTGRID = new Map(), TWIN = null; const OPENROW = new Set();   // TWIN = 좁을 때 보이는 마지막 칸(없으면 끝)
+  // ── 시간(시안의 시간 모달을 LNB 로): 날마다의 수(종류별로 쌓음, 끌어서 기간)와 기간 버튼 ─────
+  let TSCOPE = 'all';
   const jewel = (i) => `#${topicJewels[themeMode()][i].toString(16).padStart(6, '0')}`;   // 토큰 값을 읽어 쓴다(글자로 박지 않는다)
   const TK = () => [['decision', KIND.decision, jewel(3)], ['record', KIND.record, jewel(1)], ['episode', KIND.episode, jewel(0)], ['concept', C.conceptAndDoc, jewel(2)]];
   const tKind = (n) => (n.k === 'decision' || n.k === 'record' || n.k === 'episode' ? n.k : 'concept');
@@ -927,78 +950,16 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
       for (const [k, , c] of K) { const h = sc(stack[i][k]); if (!h) continue; y -= h; bars += `<rect x="${(i * bw).toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(1, bw - .4).toFixed(1)}" height="${h.toFixed(1)}" style="fill:${c};opacity:${inR ? .9 : .22}"/>`; }
       if (i === 0) bars += `<text x="0" y="${H - 2}">${esc(C.before)}</text>`; else if (d.endsWith('-01') && i * bw > 22) bars += `<text x="${(i * bw + 1).toFixed(1)}" y="${H - 2}">${d.slice(5)}</text>`; });
     if (TSEL) bars += `<rect class="sel" x="${(i0 * bw).toFixed(1)}" y="1" width="${((i1 - i0 + 1) * bw).toFixed(1)}" height="${H - padB - 1}" rx="3"/>`;
-    // 격자: 줄 = 영역(눌러서 하위 주제), 칸 = 기간(3주 이하면 날, 넘으면 주)
     const rows = ns.filter((n) => (!TSEL || (when(n) >= TSEL[0] && when(n) <= TSEL[1])) && matchQ(n) && !KOFF.has(kindKey(n)));
-    const lo = TSEL && TSEL[0] !== '0000-01-01' ? TSEL[0] : allDays[1], hi2 = TSEL ? TSEL[1] : allDays[allDays.length - 1];
-    // 칸 하나에 14px. 칸 폭(LNB 폭에서 이름 칸·합계 칸을 뺀 것)에 들어가는 만큼 낱알을 굵게 하고, 그래도 넘치면 끝쪽(또는 고른 칸 쪽)만 보인다.
-    const avail = Math.max(60, (pop.clientWidth || 520) - 32 - 104 - 34), cap = Math.max(1, Math.floor(avail / 14));
-    const D0 = Date.parse(lo), D1 = Date.parse(hi2), spanDays = Math.round((D1 - D0) / 864e5) + 1;
-    const monday = (ms) => { const d = new Date(ms); const w = (d.getUTCDay() + 6) % 7; return ms - w * 864e5; };
-    const monthKey = (ms) => { const d = new Date(ms); return d.getUTCFullYear() * 12 + d.getUTCMonth(); };
-    const grain = spanDays <= cap ? 'day' : Math.ceil((D1 - monday(D0)) / (7 * 864e5)) + 1 <= cap ? 'week' : 'month';
-    const unit = (ms) => grain === 'day' ? Math.round((ms - D0) / 864e5) : grain === 'week' ? Math.round((monday(ms) - monday(D0)) / (7 * 864e5)) : monthKey(ms) - monthKey(D0);
-    const total = unit(D1) + 1, first = Math.max(0, Math.min(total - 1, (TWIN ?? total - 1) - cap + 1)), ncol = Math.min(cap, total);
-    const startOf = (c) => { const u = first + c; if (grain === 'day') return D0 + u * 864e5; if (grain === 'week') return monday(D0) + u * 7 * 864e5; const m = monthKey(D0) + u; return Date.UTC(Math.floor(m / 12), m % 12, 1); };
-    const colOf = (w) => { const ms = Date.parse(w); if (ms < D0 || ms > D1 + 864e5) return -1; const c = unit(ms) - first; return c >= 0 && c < ncol ? c : -1; };
-    const fmt = (ms) => { const d = new Date(ms).toISOString(); return grain === 'month' ? d.slice(0, 7) : d.slice(5, 10); };
-    const hidden = first > 0 || first + ncol < total;
-    const keyOf = (n) => { const s2 = n.d.split('/'), a = s2[RD] || `(${ROOT || C.rootTopic})`; return OPENROW.has(a) && s2[RD + 1] ? `${a}/${s2[RD + 1]}` : a; };
-    const grid = new Map(); for (const n of rows) { const c = colOf(when(n)); if (c < 0) continue; const k = keyOf(n); if (!grid.has(k)) grid.set(k, new Map()); const m = grid.get(k); if (!m.has(c)) m.set(c, []); m.get(c).push(n); }
-    LASTGRID = grid;
-    const keys = [...grid.keys()].sort((a, b) => a.split('/')[0].localeCompare(b.split('/')[0]) || (a.includes('/') - b.includes('/')) || a.localeCompare(b));
-    const maxN = Math.max(1, ...[...grid.values()].flatMap((m) => [...m.values()].map((l) => l.length))), every = Math.max(1, Math.ceil(ncol / Math.max(2, Math.floor(avail / 46))));
-    const head = Array.from({ length: ncol }, (_, i) => `<span>${i % every === 0 ? fmt(startOf(i)) : ''}</span>`).join('');
-    let gh = `<div class="gh" style="--n:${ncol}"><span></span>${head}<span></span></div>`;
-    for (const k of keys) { const m = grid.get(k), sub = k.includes('/'), tsum = [...m.values()].reduce((x, l) => x + l.length, 0), col = topicColour([ROOT, k].filter(Boolean).join('/'));
-      gh += `<div class="gr${sub ? ' sub' : ''}" style="--n:${ncol}"><button class="gk" data-row="${esc(k)}" title="${esc(k)}">${sub ? '' : (OPENROW.has(k) ? '▾ ' : '▸ ')}${esc(sub ? k.split('/')[1] : k)}</button>` +
-        Array.from({ length: ncol }, (_, i) => { const l = m.get(i); if (!l) return '<span></span>'; const a = .2 + .8 * Math.sqrt(l.length / maxN), on = TCELL && TCELL.k === k && TCELL.c === i;
-          return `<button class="gc${on ? ' on' : ''}" data-cell="${esc(k)}|${i}" title="${l.length}" style="background:color-mix(in srgb, ${col} ${Math.round(a * 100)}%, var(--c-card))"></button>`; }).join('') + `<span class="gt">${tsum}</span></div>`; }
-    const pick = TCELL && grid.get(TCELL.k)?.get(TCELL.c);
     const cnt = K.map(([k, name]) => `${name} ${rows.filter((n) => tKind(n) === k).length}`).join(' · '), undated = nodes.filter((n) => !when(n)).length;
     const lab = TSEL ? `${TSEL[0] === '0000-01-01' ? C.start : TSEL[0]} ~ ${TSEL[1]}` : `${allDays[1]} ~ ${allDays[allDays.length - 1]}`;
     return `      <div class="cmp-seg">${[['7', C.days(7)], ['30', C.days(30)], ['all', C.all]].map(([k, l]) => `<button class="btn btn-sm" data-cmp-r="${k}">${l}</button>`).join('')}</div>
       <p class="cmp-range">${lab}</p>
       <div class="cmp-tleg">${K.map(([k, name, c]) => `<span><i style="background:${c}"></i>${name} ${rows.filter((n) => tKind(n) === k).length}</span>`).join('')}${undated ? `<span title="${esc(C.undatedTip)}">${esc(C.undated(undated))}</span>` : ''}</div>
-      <svg class="cmp-bars" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" data-bars>${bars}</svg>
-      <div class="cmp-gnav"${hidden ? '' : ' hidden'}><span data-n="${ncol}" data-t="${total}"></span>${hidden ? `<button class="btn btn-sm" data-tw="-1" ${first <= 0 ? 'disabled' : ''}>◀</button><button class="btn btn-sm" data-tw="1" ${first + ncol >= total ? 'disabled' : ''}>▶</button>` : ''}</div>
-      <div class="cmp-tg">${gh}</div>
-      ${pick ? `<div class="cmp-tl-h">${esc(TCELL.k)} · ${fmt(startOf(TCELL.c))} · ${pick.length}</div><div class="cmp-tlist">${treeList(pick)}</div>` : ''}`;
+      <svg class="cmp-bars" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" data-bars>${bars}</svg>`;
   }
-  // 결과의 위계: 주제(경로 순, 깊이만큼 들여 씀) → 그 안의 개념·문서·결정(뜻의 층) → 거기 붙은 기록·사건·결정(한 칸 더 들여 씀).
-  // 붙을 곳이 목록에 없는 항목은 그 주제의 맨 아래에. 주제 묶음은 누르면 접고 편다(묶음이 많으면 처음엔 접힌다).
-  const CLOSEDGRP = new Set(); let grpTouched = false;
+  // 붙은 곳: 기록·사건·결정이 붙은 뜻의 노드(개념·문서). LNB 트리가 그 아래로 들여 쓴다
   const hostOf = (n) => { if (isMean(n)) return null; for (const e of adj.get(n.id) || []) if (ATTACH.has(e.t) && e.a === n && isMean(e.b)) return e.b; return null; };
-  const row = (n, lvl) => `<button class="trow" data-id="${esc(n.id)}" style="--lv:${lvl}"><svg viewBox="-7 -7 14 14">${shape(n.k, 0, 0, 5, colv(n), !!n.vu)}</svg><span>${esc(short(titleOf(n), 60))}</span><em>${when(n) ? when(n).slice(5) : ''}</em></button>`;
-  function treeList(items) {
-    if (!items.length) return '';
-    const byTopic = new Map(); for (const n of items) { const d = n.d; if (!byTopic.has(d)) byTopic.set(d, []); byTopic.get(d).push(n); }
-    const paths = [...byTopic.keys()].sort(), areaOf = (d) => d.split('/').slice(0, RD + 1).join('/');
-    // 처음에는 맨 위(영역)까지만 보이게 모두 접는다. 영역을 펴면 그 아래 주제들은 펼친 채로 나온다
-    if (!grpTouched) CLOSEDGRP.clear();
-    const newest = (a, b) => when(b).localeCompare(when(a)) || a.k.localeCompare(b.k);
-    const areaN = new Map(); for (const d of paths) areaN.set(areaOf(d), (areaN.get(areaOf(d)) || 0) + byTopic.get(d).length);
-    const body = (its, depth) => { let h = ''; const inList = new Set(its.map((n) => n.id)), kids = new Map(), loose = [];
-      for (const n of its) { if (isMean(n)) continue; const hst = hostOf(n); if (hst && inList.has(hst.id)) { if (!kids.has(hst.id)) kids.set(hst.id, []); kids.get(hst.id).push(n); } else loose.push(n); }
-      let shown = 0;
-      for (const m of its.filter(isMean).sort(newest)) { if (shown++ >= 40) break; h += row(m, depth); for (const c of (kids.get(m.id) || []).sort(newest).slice(0, 12)) h += row(c, depth + 1);
-        const more = (kids.get(m.id) || []).length - 12; if (more > 0) h += `<div class="tmore" style="--lv:${depth + 1}">+${more}</div>`; }
-      for (const n of loose.sort(newest).slice(0, 40)) h += row(n, depth);
-      if (loose.length > 40) h += `<div class="tmore" style="--lv:${depth}">+${loose.length - 40}</div>`; return h; };
-    let h = '', doneArea = new Set(), shownAnc = new Set();
-    for (const d of paths) {
-      const a = areaOf(d), segs = d.split('/');
-      if (!doneArea.has(a)) { doneArea.add(a); const open = !CLOSEDGRP.has(a);
-        h += `<button class="tgrp" data-grp="${esc(a)}" style="--lv:0;--c:${colv({ k: 'topic', path: a })}" aria-expanded="${open}">${open ? '▾' : '▸'} ${esc(a.split('/')[RD] || a || C.rootTopic)}<em>${areaN.get(a)}</em></button>`; }
-      if (CLOSEDGRP.has(a)) continue;
-      if (d === a) { h += body(byTopic.get(d), 1); continue; }
-      for (let i = RD + 2; i < segs.length; i++) { const anc = segs.slice(0, i).join('/'); if (shownAnc.has(anc) || byTopic.has(anc)) continue; shownAnc.add(anc);
-        h += `<div class="tgrp anc" style="--lv:${i - RD - 1}">${esc(segs[i - 1])}</div>`; }
-      const depth = segs.length - RD - 1, open = !CLOSEDGRP.has(d);
-      h += `<button class="tgrp" data-grp="${esc(d)}" style="--lv:${depth};--c:${colv({ k: 'topic', path: d })}" aria-expanded="${open}">${open ? '▾' : '▸'} ${esc(segs[segs.length - 1])}<em>${byTopic.get(d).length}</em></button>`;
-      if (open) h += body(byTopic.get(d), depth + 1);
-    }
-    return h;
-  }
   // ── 시간 · 범례 창: 머리의 버튼 바로 아래, 버튼 왼쪽 끝과 창 왼쪽 끝을 맞춘다. 밖을 누르거나 Esc 면 닫힌다 ─────────────
   let POP = '';
   const btnOf = (k) => tools.querySelector(`[data-pop="${k}"]`);
@@ -1013,7 +974,7 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
   });
   onWin('pointerdown', (e) => { if (POP && !pop.contains(e.target) && !tools.contains(e.target)) closePop(); }, true);
   onWin('keydown', (e) => { if (e.key === 'Escape' && POP) { e.stopImmediatePropagation(); closePop(); } }, true);
-  onWin('resize', () => { if (POP) { placePop(); TWIN = null; paintSide(); } });
+  onWin('resize', () => { if (POP) { placePop(); paintSide(); } });
   // ── LNB 트리의 줄: 거르개(검색 ∧ 기간 ∧ 종류)를 지난 노드를 주제별로. 뜻의 층(depth 0) 아래에 붙은 것(depth 1) ──────
   const passes = (n) => n.k !== 'topic' && matchQ(n) && !KOFF.has(kindKey(n)) && (!TSEL || (!!when(n) && when(n) >= TSEL[0] && when(n) <= TSEL[1]));
   function treeGroups() {
@@ -1035,34 +996,25 @@ const MORE = new Map();   // '허브|종류' → 목록에 더 보인 줄 수(�
   pop.addEventListener("click", (e) => {
     const kb = e.target.closest("[data-cmp-k]"); if (kb) { const k = kb.dataset.cmpK; KOFF.has(k) ? KOFF.delete(k) : KOFF.add(k);
 prevPos = new Map(); render(); treeChanged(); return; }
-    const rb = e.target.closest("[data-cmp-r]"); if (rb) { const k = rb.dataset.cmpR; TSEL = k === "all" ? null : [allDays[Math.max(1, allDays.length - +k)], allDays[allDays.length - 1]]; TCELL = null; TWIN = null; dimLens(); paintSide(); treeChanged(); return; }
-    const tw = e.target.closest("[data-tw]"); if (tw) { const sp = pop.querySelector('.cmp-gnav span'), n2 = +sp.dataset.n, tot = +sp.dataset.t;
-      TWIN = Math.max(n2 - 1, Math.min(tot - 1, (TWIN ?? tot - 1) + (+tw.dataset.tw) * n2)); TCELL = null; paintSide(); return; }
-    const gk = e.target.closest("[data-row]"); if (gk) { const k = gk.dataset.row; if (!k.includes('/')) { OPENROW.has(k) ? OPENROW.delete(k) : OPENROW.add(k); TCELL = null; paintSide(); } return; }
-    const gc = e.target.closest("[data-cell]"); if (gc) { const [k, c] = gc.dataset.cell.split('|'); TCELL = TCELL && TCELL.k === k && TCELL.c === +c ? null : { k, c: +c }; paintSide(); return; }
-    const gp = e.target.closest("[data-grp]"); if (gp) { grpTouched = true; const d = gp.dataset.grp; CLOSEDGRP.has(d) ? CLOSEDGRP.delete(d) : CLOSEDGRP.add(d); paintSide(); return; }
-    const row = e.target.closest(".trow"); if (row) { goTo(row.dataset.id); return; } });
-  pop.addEventListener("pointerover", (e) => { const cell = e.target.closest("[data-cell]"), row = e.target.closest(".trow");
-    if (cell) { const [k, c] = cell.dataset.cell.split('|'); highlight(new Set((LASTGRID.get(k)?.get(+c) || []).map((n) => n.id))); }
-    else if (row) highlight(new Set([row.dataset.id])); else highlight(null); });
-  pop.addEventListener("pointerleave", () => highlight(null));
+    const rb = e.target.closest("[data-cmp-r]"); if (rb) { const k = rb.dataset.cmpR; TSEL = k === "all" ? null : [allDays[Math.max(1, allDays.length - +k)], allDays[allDays.length - 1]]; dimLens(); paintSide(); treeChanged(); return; }
+  });
   let br = null;
   const barsEl = () => pop.querySelector("[data-bars]");
   const day = (e) => { const r = barsEl().getBoundingClientRect(); return Math.max(0, Math.min(allDays.length - 1, Math.floor((e.clientX - r.left) / (r.width / allDays.length)))); };
   const val = (i, end) => (i === 0 ? (end ? allDays[1] : "0000-01-01") : allDays[i]);
-  pop.addEventListener("pointerdown", (e) => { if (!e.target.closest("[data-bars]")) return; br = day(e); pop.setPointerCapture(e.pointerId); TSEL = [val(br), val(br, true)]; TCELL = null; dimLens(); });
+  pop.addEventListener("pointerdown", (e) => { if (!e.target.closest("[data-bars]")) return; br = day(e); pop.setPointerCapture(e.pointerId); TSEL = [val(br), val(br, true)]; dimLens(); });
   pop.addEventListener("pointermove", (e) => { if (br == null) return; const b2 = day(e); TSEL = [val(Math.min(br, b2)), val(Math.max(br, b2), true)]; dimLens(); });
-  pop.addEventListener("pointerup", () => { if (br == null) return; br = null; TWIN = null; paintSide(); treeChanged(); });
+  pop.addEventListener("pointerup", () => { if (br == null) return; br = null; paintSide(); treeChanged(); });
   { const _r3 = render; render = function () { _r3(); paintSide(); }; }
-  const destroy = () => { AC.abort(); (globalThis.cancelIdleCallback || clearTimeout)(measIdle); cancelAnimationFrame(flyRaf); cancelAnimationFrame(traf); cancelAnimationFrame(flipRaf); clearTimeout(flipTo); host.innerHTML = ""; side.remove(); tools.remove(); pop.remove(); ctx.onDestroy?.(); };
+  const destroy = () => { AC.abort(); (globalThis.cancelIdleCallback || clearTimeout)(measIdle); cancelAnimationFrame(flyRaf); cancelAnimationFrame(traf); cancelAnimationFrame(flipRaf); clearTimeout(flipTo); clearTimeout(peekT); host.innerHTML = ""; side.remove(); tools.remove(); pop.remove(); ctx.onDestroy?.(); };
   if (import.meta.env?.DEV) (window as any).__compass = { open: (ids) => setPath(ids.map(byAny)), lz: () => LZ, pin: togglePin, range: (r) => { TSEL = r; dimLens(); } };
   // 목록에서 고른 노드로: 지금 렌즈에 이미 사슬이 있으면 그 사슬로(맥락 유지), 없으면 주제 사슬을 따라 편다
   function goTo(id) { const n = byAny(id); if (!n) return; const o = LZ && LZ.items.find((q) => q.id === n.id && q.chain);
     WIDE = true; if (o) setPath(o.role === 'hub' ? o.chain : [...o.chain, n]); else setPath(chainTo(n)); }
   const centre = () => (path.length ? path[path.length - 1].id : '');
-  // 같은 범위를 다시 그릴 때(변경 감지 새로고침 · 쓰고 난 뒤) 보던 자리를 그대로 잇는다: 길 · 앞뒤 기록 · 고른 갈래 ·
+  // 같은 범위를 다시 그릴 때(변경 감지 새로고침 · 쓰고 난 뒤) 보던 자리를 그대로 잇는다: 길 · 앞뒤 기록 ·
   // 더 연 목록 · 끈 종류 · 기간 · 카메라 · 찾기. 새 데이터에 없는 노드는 버린다
-  const snapshot = () => ({ path: path.map((n) => n.id), hist, hi, mode: 'path', filt: [...FILT].map(([k, v]) => [k, [...v]]), more: [...MORE],
+  const snapshot = () => ({ path: path.map((n) => n.id), hist, hi, mode: 'path', filt: [], more: [...MORE],
     koff: [...KOFF], tsel: TSEL, view: VIEW, query: QUERY });
   // 밝기 테마가 바뀌면 주제 색 표(밝은 판 · 어두운 판)를 다시 짓고 다시 그린다
   const retheme = () => { buildTopicColours(); render(); };
