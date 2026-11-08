@@ -3,7 +3,7 @@
 
 7 엔진과 `api/query.py` 는 드라이버를 직접 열지 않고 `backend.open_store` 를 통한다
 (설계 §4-1 — 단일 지점). 스키마는 선행(테이블 DDL, `embedded_schema`); `provision`
-이 멱등 적용한다. Vinc 는 임베디드 전용(서버 Neo4j 는 weg-9000-memory 소관).
+이 멱등 적용한다. 백엔드는 지금 임베디드 하나다(외부 엔진 어댑터는 `backend.GraphStore` 뒤).
 """
 from __future__ import annotations
 
