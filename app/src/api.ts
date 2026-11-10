@@ -628,12 +628,31 @@ export type FolderCheck = {
   writable: boolean; synced: string | null; network: boolean; risks: string[];
   problem: string | null;
 };
+/** 데이터베이스 연결 확인(`store/neo4j_backend.py` `inspect_database`). `ok` 가 거짓이면 `problem` 이 이유다
+ *  (unreachable · auth_failed · database_not_found · driver_missing · error). `risks` 중
+ *  version_below_floor·read_only_user 는 막고, 나머지는 사람이 확인하면 받는다. */
+export type ConnectionCheck = {
+  ok: boolean; problem: string | null; detail: string | null;
+  reachable: boolean; auth_ok: boolean;
+  server_version: string | null; edition: string | null; version_supported: boolean | null;
+  write_permission: boolean | null; latency_ms: number | null;
+  vinc_schema_version: number | null; vinc_counts: { nodes: number; docs: number };
+  foreign_labels: { count: number; names: string[]; nodes: number };
+  writer_lease: { holder: string; active: boolean } | null;
+  risks: string[];
+};
+export type DatabaseConnect = { uri: string; database: string; user: string; password: string };
 export const storage = {
   config: (): Promise<StorageConfig> => localCall("/config"),
   inspect: (path: string): Promise<FolderCheck> => localCall("/config/inspect", { path }),
-  /** 400·409 는 던지지 않고 그대로 준다: 화면이 사유(`error`·`inspect`)를 그려야 한다. */
+  /** 비밀번호는 이 요청에만 실린다. 사이드카는 확인에만 쓰고 버린다. 주소가 틀리면 400 으로 던진다. */
+  inspectDatabase: (body: DatabaseConnect): Promise<ConnectionCheck> =>
+    localCall("/config/inspect-database", undefined, body),
+  /** 400·409 는 던지지 않고 그대로 준다: 화면이 사유(`error`·`inspect`·`check`)를 그려야 한다.
+   *  `location` 은 예전 키(mode·data_path)와 섞지 않는다. 데이터베이스면 `password` 로 다시 확인하고 적는다. */
   setConfig: async (body: { mode?: DataMode; mode_chosen?: boolean;
-                            data_path?: string | null; accept_risk?: boolean }): Promise<any> => {
+                            data_path?: string | null; accept_risk?: boolean;
+                            location?: StorageLocation; password?: string }): Promise<any> => {
     try { return await localCall("/config", undefined, body); }
     catch (e: any) {
       const m = /^(400|409) (.*)$/s.exec(messageOf(e, ""));

@@ -208,7 +208,7 @@
       },
       "post": {
         "operationId": "write_config",
-        "summary": "Change storage settings (mode, folder). Answers without a store.",
+        "summary": "Change storage settings (mode, folder, or a location including your own database). Answers without a store.",
         "x-internal": false,
         "x-served-by": "sidecar",
         "responses": {
@@ -222,6 +222,19 @@
       "get": {
         "operationId": "read_config_inspect",
         "summary": "Inspect a folder before choosing it. Writes nothing.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
+    "/config/inspect-database": {
+      "post": {
+        "operationId": "write_config_inspect_database",
+        "summary": "Check a Neo4j database before choosing it as the storage location. Leaves nothing behind.",
         "x-internal": false,
         "x-served-by": "sidecar",
         "responses": {
