@@ -26,7 +26,7 @@ def app(monkeypatch):
         with guard.exclusive():
             builds.append(kwargs)
             entered.set()
-            assert release.wait(5)
+            assert release.wait(B.REQUEST_WAIT_S + 10)
             return {"vector": True}
 
     backend = SimpleNamespace(ensure_search_indexes=build)
@@ -73,7 +73,8 @@ def test_reader_during_rebuild_gets_503_and_recovers(app):
     code, result = instance._read(lambda reader: ran.append(True) or {})
     assert code == 503 and result["error"] == "store_busy"
     assert result["retry_after_s"] == 1 and not result["executed"]
-    assert not ran and time.monotonic() - started < 1.5
+    # 읽기 대기 상한을 다 쓰고 거절한다 — 그 너머로 매달리지 않는다.
+    assert not ran and time.monotonic() - started < B.REQUEST_WAIT_S + .5
     release.set()
     assert instance._index_job._done.wait(2)
     assert instance._read(lambda reader: {"executed": True}) == (200, {"executed": True})

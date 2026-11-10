@@ -659,6 +659,16 @@ def _filter_clause(var: str, filters: dict | None, params: dict, *,
 # ponytail: 프로세스 전역 락 하나. Database 가 둘 이상 열려도 서로 막는다(테스트만 해당).
 EXCLUSIVE_WAIT_S = 30.0
 SHARED_WAIT_S = 60.0
+#: 읽기 요청이 요청 단위 공유(`_ReaderView.request_read_scope`)를 기다리는 상한. 넘으면
+#: `DdlGuardTimeout` → HTTP 503 `store_busy` 다. 두 쪽을 함께 지킨다:
+#:   - 짧은 유지보수는 기다려서 넘긴다. 새 읽기가 막히는 창은 배타 보유(임베딩 적용·스냅샷
+#:     체크포인트)에 그 배타가 앞선 요청이 빠지길 기다린 시간까지 더한 것이라 1초를 넘는다.
+#:     상한이 1초였을 때 그 창에 걸린 읽기가 그대로 503 이 됐다.
+#:   - 수십 초 가는 유지보수(HNSW 재빌드·lex 이관·기동 수리)에는 매달리지 않는다. 요청이
+#:     그 뒤에 묶이던 것을 끊으려고 이 상한을 뒀다. 클라이언트 기한(SDK·MCP 30초)보다
+#:     한참 짧아야 한다.
+#: 배타의 범위나 보유자는 이 값과 무관하다 — 바꾸는 것은 읽기가 기다리는 시간뿐이다.
+REQUEST_WAIT_S = 5.0
 
 
 class DdlGuardTimeout(TimeoutError):
@@ -877,7 +887,7 @@ class _ReaderView:
         self._scheduled_index = None
 
     def _enter_request_guard(self):
-        guard = request_timing.wait("ddl_shared_wait", DDL_GUARD.shared(timeout=1.0))
+        guard = request_timing.wait("ddl_shared_wait", DDL_GUARD.shared(timeout=REQUEST_WAIT_S))
         guard.__enter__()
         self._request_guard = guard
 
@@ -888,7 +898,8 @@ class _ReaderView:
 
     @contextmanager
     def request_read_scope(self):
-        """요청의 후속 읽기를 DDL에서 보호한다. 유지보수 대기는 1초 뒤 재시도한다."""
+        """요청의 후속 읽기를 DDL에서 보호한다. 유지보수는 `REQUEST_WAIT_S` 까지 기다리고,
+        그보다 길면 `DdlGuardTimeout`(서버가 503 `store_busy` 로 답한다)."""
         self._enter_request_guard()
         try:
             yield
