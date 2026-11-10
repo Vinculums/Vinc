@@ -172,6 +172,11 @@ class RawStore:
                 rows.append(dict(zip(cols, res.get_next())))
         return rows
 
+    def search_indexes(self):
+        # 어댑터의 `EmbeddedBackend.search_indexes` 와 같은 답(기본 키 색인은 뺀다).
+        return [(r["table_name"], r["index_name"])
+                for r in self.run("CALL show_indexes() RETURN *") if r["index_name"] != "_PK"]
+
     def close(self):
         self.conn.close()
         self.db.close()
