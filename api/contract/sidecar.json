@@ -231,6 +231,19 @@
         }
       }
     },
+    "/config/move": {
+      "post": {
+        "operationId": "submit_config_move",
+        "summary": "Move the graph to a folder or your own database (or the account graph to your database). Switches only when every row arrived.",
+        "x-internal": false,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
     "/config/inspect-database": {
       "post": {
         "operationId": "write_config_inspect_database",
