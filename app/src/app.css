@@ -518,7 +518,7 @@ body {
     width: calc(var(--ctl-h) + var(--space-2)); height: calc(var(--ctl-h) + var(--space-2));
   }
   /* 16px 아래 글씨의 입력은 iOS 가 누르는 순간 화면을 확대한다. 그래서 여기만 1rem 이다. */
-  .space-find-input { height: calc(var(--ctl-h) + var(--space-2) - 2px); font-size: 1rem; }
+  .space-find-input { height: calc(var(--ctl-h) + var(--space-2) - 2px); font-size: 1rem; }  /* fs-allow: 휴대폰 입력 칸은 16px 아래면 브라우저가 화면을 확대한다 */
 }
 
 /* 머리 — 스크롤 밖. 좌우 여백은 본문과 같고 위 여백만 본문의 것을 가져온다. */
