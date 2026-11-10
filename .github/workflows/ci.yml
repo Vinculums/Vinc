@@ -498,6 +498,11 @@ jobs:
       - name: Design surface gate (app)
         run: python -X utf8 scripts/design/gate_surface.py app/src
 
+      # 글씨 크기는 토큰(--fs-*)에서 온다. 직접 쓴 크기와 정의되지 않은 토큰은 떨어지고,
+      # 예외는 `fs-allow: <이유>` 주석이 있는 줄뿐이며 건수와 이유가 늘 출력된다.
+      - name: Type scale gate (app)
+        run: python -X utf8 scripts/design/gate_type_scale.py app/src
+
       # Figma 가 토큰을 따라오고 있는가(Figma 는 따라갈 뿐, decision:code-is-canon-figma-follows).
       # CI 에는 Figma 자격증명이 없으므로 라이브를 못 본다 — 커밋된 덤프
       # scripts/design/figma/figma-live.json 과 토큰 스냅샷을 대조한다. 그래서 이 게이트가 잡는 것은

@@ -259,7 +259,7 @@ async function renderSettings(
       <p class="hint">${esc(U.accountIntro)}</p>
       ${remote() ? `
       <label>${U.account}</label>
-      <div id="web-acct" class="hint" style="font-size:.85rem">…</div>
+      <div id="web-acct" class="hint" style="font-size:var(--fs-sm)">…</div>
       <label>${U.space}</label>
       <p class="hint">${U.spaceHint}</p>
       <div id="space-pick" class="space-pick"></div>
@@ -380,7 +380,7 @@ async function renderSettings(
           <p class="hint">${U.acctOffline}</p>
           <p><button class="btn" id="acct-connect">${U.acctConnect}</button></p>
           <p class="hint">${U.acctConnectHint}</p>
-          <div id="acct-result" class="hint" style="font-size:.78rem"></div>`;
+          <div id="acct-result" class="hint" style="font-size:var(--fs-sm)"></div>`;
         acctBox.querySelector("#acct-connect")!.addEventListener("click", () => void startConnect());
       }
     }
