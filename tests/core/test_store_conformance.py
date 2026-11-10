@@ -33,8 +33,23 @@ def _embedded():
     return store
 
 
+def _neo4j():
+    """`VINC_CONFORMANCE_NEO4J_URI`·`_USER`·`_PASSWORD` 가 있을 때만 돈다(CI 는 컨테이너를 띄운다).
+    ⚠ 그 데이터베이스의 **내용을 전부 지운다**. 테스트 전용 서버만 가리킬 것."""
+    import os
+    uri = os.environ.get("VINC_CONFORMANCE_NEO4J_URI")
+    if not uri:
+        pytest.skip("VINC_CONFORMANCE_NEO4J_URI 없음 — Neo4j 적합성은 건너뛴다")
+    from store.neo4j_backend import Neo4jBackend
+    store = Neo4jBackend(uri, user=os.environ.get("VINC_CONFORMANCE_NEO4J_USER", "neo4j"),
+                         password=os.environ["VINC_CONFORMANCE_NEO4J_PASSWORD"])
+    store.run("MATCH (n) CALL (n) { DETACH DELETE n } IN TRANSACTIONS OF 10000 ROWS")
+    store.provision(dim=4)
+    return store
+
+
 #: 이름 → 스토어 공장. 공장은 비어 있는 새 스토어를 프로비저닝해서 돌려준다.
-BACKENDS = {"embedded": _embedded}
+BACKENDS = {"embedded": _embedded, "neo4j": _neo4j}
 
 
 @pytest.fixture(params=sorted(BACKENDS))

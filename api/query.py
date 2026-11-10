@@ -1426,7 +1426,7 @@ def node_plan(node_id: str, *, owner: str) -> QueryPlan:
         # 근거: [[vinc.spec.dataplane §2.1]]
         branches = [
             f"MATCH (n:{label}) WHERE n.owner_id = $owner "
-            "AND (n.domain = $name OR starts_with(n.domain, $prefix)) "
+            "AND (n.domain = $name OR n.domain STARTS WITH $prefix) "
             "RETURN $name AS name"
             for label in ("Concept", "Record", "Episode", "Decision")
         ]

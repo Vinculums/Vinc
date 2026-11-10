@@ -99,7 +99,7 @@ def read(role: str | None = None, *, owner: str | None = None, store=None, cfg=N
         return {**base, "note": "no reachable store"}
     try:
         params = {"owner": owner, "prefix": pkns.key(owner, role_contract.ID_PREFIX)}
-        guard = "n.concept_id = $id" if rid else "starts_with(n.concept_id, $prefix)"
+        guard = "n.concept_id = $id" if rid else "n.concept_id STARTS WITH $prefix"
         tail = " ORDER BY n.concept_id"
         if rid:
             params["id"] = pkns.key(owner, rid)
