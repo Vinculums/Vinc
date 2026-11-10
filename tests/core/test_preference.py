@@ -26,12 +26,16 @@ class PinTests(unittest.TestCase):
 
 class TagTests(unittest.TestCase):
     def test_tag_is_set_union(self):
-        plan = pref.tag_plan("s1", ["billing", "kr"])
-        # union: 기존+신규 합집합(중복 제거). kuzu 리스트 컴프리헨션 미지원 →
-        # list_distinct(list_cat(...))로 정합(§6-2). 리스트 컴프리헨션 잔존 금지.
-        self.assertIn("list_distinct(list_cat(coalesce(e.tags, []), $tags))", plan.cypher)
+        # union: 기존 순서 + 신규만(중복 제거). 엔진 함수 없이 파이썬에서 만들어 값으로 싣는다.
+        plan = pref.tag_plan("s1", ["kr", "billing", "kr"], current=["refund", "kr"])
+        self.assertIn("e.tags = $tags", plan.cypher)
+        self.assertNotIn("list_", plan.cypher)
         self.assertNotIn("[t IN $tags", plan.cypher)
-        self.assertEqual(plan.params["tags"], ["billing", "kr"])
+        self.assertEqual(plan.params["tags"], ["refund", "kr", "billing"])
+
+    def test_tag_union_keeps_order_and_drops_repeats(self):
+        self.assertEqual(pref.tag_union(None, ["a", "b", "a"]), ["a", "b"])
+        self.assertEqual(pref.tag_union(["x", "x", "y"], ["y", "z"]), ["x", "y", "z"])
 
 
 class TouchTests(unittest.TestCase):
