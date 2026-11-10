@@ -600,15 +600,40 @@ jobs:
     # 러너와 임시 디렉터리는 `core` 와 같다(그 잡의 주석).
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # 저장소 적합성 스위트의 Neo4j 쪽(`tests/core/test_store_conformance.py`)을 여기서 돌린다.
+    # 잡을 따로 세우지 않은 이유는 분이다: 이 잡은 늘 돌고, 서비스 컨테이너는 앞 단계와 함께 뜬다.
+    # 비밀번호는 이 잡에서만 사는 일회용 컨테이너의 것이라 비밀이 아니다.
+    services:
+      neo4j:
+        image: neo4j:2026.01-community
+        env:
+          NEO4J_AUTH: neo4j/vinc-conformance-ci
+          NEO4J_dbms_usage__report_enabled: "false"
+          NEO4J_server_memory_heap_max__size: 1G
+        ports:
+          - 7687:7687
+        options: >-
+          --health-cmd "cypher-shell -u neo4j -p vinc-conformance-ci 'RETURN 1'"
+          --health-interval 5s --health-timeout 10s --health-retries 40
     env:
       VINC_PK_NAMESPACED: "on"
+      VINC_CONFORMANCE_NEO4J_URI: bolt://localhost:7687
+      VINC_CONFORMANCE_NEO4J_PASSWORD: vinc-conformance-ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install deps (ladybug pinned + argon2 + pytest + pypdf)
-        run: pip install ladybug==0.21.2 argon2-cffi pyyaml pytest pypdf
+      - name: Install deps (ladybug pinned + neo4j driver + argon2 + pytest + pypdf)
+        run: pip install ladybug==0.21.2 "neo4j>=6,<7" argon2-cffi pyyaml pytest pypdf
+      # Neo4j 쪽이 조용히 skip 되면 이 잡은 "두 엔진이 같다"가 아니라 "한 엔진만 봤다"가 된다.
+      - name: Store conformance on Neo4j (no silent skips)
+        run: |
+          set -euo pipefail
+          python -m pytest -q -p no:cacheprovider -rs tests/core/test_store_conformance.py -k neo4j | tee "$RUNNER_TEMP/neo4j-conformance.txt"
+          if grep -q "SKIPPED" "$RUNNER_TEMP/neo4j-conformance.txt"; then
+            echo "::error::Neo4j 적합성이 건너뛰어졌다 — 서비스 컨테이너나 드라이버를 볼 것"; exit 1
+          fi
       - name: Point to bundled G0 extensions (no network)
         run: echo "VINC_LBUG_EXT_DIR=$GITHUB_WORKSPACE/packaging/lbug_extensions" >> "$GITHUB_ENV"
       # `core` 와 같은 이유로 드라이버를 강제한다 — 임베디드 왕복이 조용히 skip 되면
