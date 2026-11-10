@@ -4083,12 +4083,7 @@ def _brief_pick_chunk(store, chunks: list[dict], *, query: str, query_embedding,
     순서대로 준 것이고 비어 있으면 안 된다."""
     ids = [str(c["cid"]) for c in chunks]
     if query_embedding is not None:
-        got = store.run(
-            "MATCH (p:Chunk) WHERE p.chunk_id IN $ids "
-            "MATCH (v:ChunkVec) WHERE v.chunk_id = p.chunk_id "
-            "RETURN p.chunk_id AS cid, min(1 - array_cosine_similarity(v.embedding, $emb)) AS d",
-            {"ids": ids, "emb": list(query_embedding)}) or []
-        dist = {str(r["cid"]): float(r["d"]) for r in got if r.get("d") is not None}
+        dist = store.chunk_vector_distances(ids, query_embedding)
         if dist:
             return (min((i for i, cid in enumerate(ids) if cid in dist),
                         key=lambda i: (dist[ids[i]], i)), "vector")

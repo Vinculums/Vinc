@@ -92,10 +92,11 @@ class _FakeStore:
         self.chunks, self.dist, self.title = chunks, dist or {}, title
         self.cyphers: list[str] = []
 
+    def chunk_vector_distances(self, ids, embedding):
+        return {c: d for c, d in self.dist.items() if c in ids}
+
     def run(self, cypher, params=None):
         self.cyphers.append(cypher)
-        if "ChunkVec" in cypher:
-            return [{"cid": c, "d": d} for c, d in self.dist.items()]
         if "_DocMeta" in cypher:
             return [{"t": self.title}]
         return [dict(c) for c in self.chunks]
