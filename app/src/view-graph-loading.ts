@@ -94,7 +94,7 @@ export function mountGraphPreview(el: HTMLElement, graph: GraphRead,
   }
   const status = document.createElement("div"); status.textContent = options.label;
   status.setAttribute("role", "status");
-  status.style.cssText = "position:absolute;bottom:12px;left:12px;font-size:12px;color:hsl(var(--muted-foreground));pointer-events:none";
+  status.style.cssText = "position:absolute;bottom:12px;left:12px;font-size:var(--fs-xs);color:hsl(var(--muted-foreground));pointer-events:none";
   el.append(svg, status);
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     if(!svg.isConnected) return;

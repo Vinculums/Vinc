@@ -119,7 +119,7 @@
         "space/6": 32,
         "space/8": 48,
         "fs/sm": 13,
-        "fs/base": 15,
+        "fs/base": 16,
         "fs/lg": 17,
         "fs/xl": 36,
         "fs/display": 56,
@@ -127,7 +127,10 @@
         "icon/base": 24,
         "layout/lnb-w": 232,
         "layout/gnb-h": 52,
-        "radius/xs": 6
+        "radius/xs": 6,
+        "fs/2xs": 10,
+        "fs/xs": 12,
+        "fs/title": 24
       }
     },
     "Motion": {

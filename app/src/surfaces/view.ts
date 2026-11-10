@@ -615,7 +615,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     clearLayoutNote();
     const note = document.createElement("div");
     note.setAttribute("role", "status"); note.dataset.layoutNote = "true"; note.textContent = text;
-    note.style.cssText = "position:absolute;bottom:12px;left:12px;max-width:min(560px,70%);font-size:12px;"
+    note.style.cssText = "position:absolute;bottom:12px;left:12px;max-width:min(560px,70%);font-size:var(--fs-xs);"
       + "color:hsl(var(--muted-foreground));pointer-events:none";
     canvas.append(note); layoutNote = note;
   }
