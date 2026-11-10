@@ -402,6 +402,125 @@ body {
 #shell[data-lnb="closed"] .lnb-foot { padding: var(--space-2, .5rem) 0 var(--pad-card); flex-direction: column; justify-content: center; }
 #shell[data-lnb="closed"] #rail-settings { flex: 0 0 auto; width: var(--ctl-h); }
 
+/* ── 공간 머리(`space-switcher.ts`) ───────────────────────────────────────
+   사이드바 맨 위, 홈 · Agent 줄 위의 한 줄: 지금 공간의 표식 · 이름 · 종류. 계정 그래프에서만 선다.
+   이름과 종류 줄은 같은 글씨 크기(`--fs-sm`)이고 층은 굵기와 색이 가른다. 이름은 한 줄로 두고
+   말줄임으로 준다. 접힌 띠에서는 표식만 남는다. */
+.space-head { flex: 0 0 auto; padding: var(--pad-card) var(--pad-card) 0; }
+.space-head + .lnb-top { padding-top: var(--space-1); }
+.space-switch {
+  display: flex; align-items: center; gap: var(--space-2); width: 100%; min-width: 0;
+  min-height: var(--ctl-h); padding: var(--space-1) var(--pad-row);
+  border: none; border-radius: var(--shell-ctl-r); background: none; cursor: pointer;
+  font: inherit; color: hsl(var(--foreground)); text-align: left;
+  transition: background-color var(--dur-hover) var(--ease-out);
+}
+.space-switch:hover, .space-switch[aria-expanded="true"] { background: hsl(var(--muted-foreground) / .12); }
+.space-switch:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.space-text { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; line-height: var(--lh-tight); }
+.space-name {
+  font-size: var(--fs-sm); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.space-sub {
+  font-size: var(--fs-sm); font-weight: 400; color: hsl(var(--muted-foreground));
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; word-break: keep-all;
+}
+.space-ro { display: inline-flex; align-items: center; gap: var(--space-1); vertical-align: bottom; }
+.space-ro .icon, .space-row-sub .icon { flex: 0 0 auto; }
+.space-caret {
+  flex: 0 0 auto; display: inline-flex; color: hsl(var(--muted-foreground));
+  transform: rotate(-90deg); transition: transform var(--dur-fast) var(--ease-out);
+}
+.space-switch[aria-expanded="true"] .space-caret { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .space-switch, .space-caret { transition: none; } }
+#shell[data-lnb="closed"] .space-head { display: flex; justify-content: center; padding: var(--pad-card) 0 0; }
+#shell[data-lnb="closed"] .space-switch { width: var(--ctl-h); height: var(--ctl-h); padding: 0; justify-content: center; }
+#shell[data-lnb="closed"] .space-text,
+#shell[data-lnb="closed"] .space-caret { display: none; }
+
+/* 공간 표식: 개인은 동그라미 안의 Vinc 고리, 팀은 네모 안의 첫 글자, 커뮤니티는 점선 동그라미
+   (내 것이 아니고 읽기만 한다). 색으로만 말하지 않는다: 모양이 종류를 가른다. */
+.space-mark {
+  flex: 0 0 auto; display: inline-grid; place-items: center; box-sizing: border-box;
+  font-size: var(--fs-sm); font-weight: 700; line-height: var(--lh-tight); text-transform: uppercase;
+  border-radius: var(--shell-ctl-r);
+}
+.space-mark-md { width: var(--row-h); height: var(--row-h); }
+.space-mark-sm { width: calc(var(--row-h) - var(--space-1)); height: calc(var(--row-h) - var(--space-1)); }
+.space-mark-personal { border-radius: var(--radius-pill); background: hsl(var(--foreground) / .08); color: hsl(var(--foreground)); }
+.space-mark-team { background: hsl(var(--point) / .18); color: hsl(var(--point-text)); }
+.space-mark-community {
+  border-radius: var(--radius-pill); background: none; color: hsl(var(--muted-foreground));
+  border: 1px dashed hsl(var(--muted-foreground) / .8);
+}
+
+/* 공간 메뉴: `.ctx-menu` 의 판(카드 면 · 테두리 · 그림자 · 등장)에 묶음을 짠다. 묶음 이름은 사이드바
+   절 이름(`.lnb-sec-label`)을 그대로 쓴다. 지금 공간 = 트리의 켜진 줄과 같은 알약 + 굵기 + 체크. */
+.ctx-menu.space-menu { min-width: 0; padding: var(--space-1); overflow: hidden; word-break: keep-all; }
+.space-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.space-group + .space-group, .space-group + .space-nomatch {
+  margin-top: var(--space-1); padding-top: var(--space-1); border-top: 1px solid hsl(var(--border));
+}
+.space-group-label { display: block; padding: var(--space-2) var(--pad-row) var(--space-1); }
+.ctx-item.space-row {
+  display: flex; align-items: center; gap: var(--space-2); width: 100%; min-width: 0;
+  min-height: var(--ctl-h); padding: var(--space-1) var(--pad-row);
+  border-radius: var(--shell-ctl-r);
+  transition: background-color var(--dur-hover) var(--ease-out);
+}
+.ctx-item.space-row:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+.ctx-item.space-row[aria-checked="true"] { background: hsl(var(--ring) / .14); font-weight: 600; }
+.ctx-item.space-row-off { color: hsl(var(--muted-foreground)); cursor: default; }
+.ctx-item.space-row-off:hover { background: none; }
+.space-row-off .space-mark { opacity: .55; }
+.space-row-text { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; line-height: var(--lh-tight); }
+.space-row-name { font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.space-row-sub {
+  display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0;
+  font-size: var(--fs-sm); font-weight: 400; color: hsl(var(--muted-foreground));
+}
+.space-row-end { flex: 0 0 auto; display: inline-flex; color: hsl(var(--point-text)); }
+.space-vh {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.space-note {
+  margin: var(--space-1) var(--pad-row) var(--space-2);
+  font-size: var(--fs-sm); line-height: var(--lh-normal); color: hsl(var(--muted-foreground));
+}
+.space-retry { margin: 0 var(--pad-row) var(--space-2); }
+.space-foot {
+  flex: 0 0 auto; margin: var(--space-1) 0 0; padding: var(--space-2) var(--pad-row) var(--space-1);
+  border-top: 1px solid hsl(var(--border));
+  font-size: var(--fs-sm); line-height: var(--lh-normal); color: hsl(var(--muted-foreground));
+  overflow-wrap: break-word;
+}
+.space-find {
+  flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-2);
+  margin: 0 0 var(--space-1); padding: 0 var(--pad-row);
+  border: 1px solid hsl(var(--input)); border-radius: var(--shell-ctl-r);
+  background: hsl(var(--background)); color: hsl(var(--muted-foreground));
+}
+.space-find:focus-within { border-color: hsl(var(--ring)); }
+.space-find-input {
+  flex: 1 1 auto; min-width: 0; height: calc(var(--ctl-h) - 2px); padding: 0;
+  border: 0; outline: none; background: none; color: hsl(var(--foreground));
+  font: inherit; font-size: var(--fs-sm);
+}
+.space-find-input::placeholder { color: hsl(var(--muted-foreground)); }
+/* 지우기 단추는 검색바(`#tb-q`)와 같이 무채색으로 둔다(브라우저 기본은 파랑이다). */
+.space-find-input::-webkit-search-cancel-button { filter: grayscale(1) opacity(.5); }
+/* 좁은 창: 손이 짚는 자리는 44px 이상이다(`--ctl-h` 36 + 8). */
+@media (max-width: 600px) {
+  .space-switch, .ctx-item.space-row { min-height: calc(var(--ctl-h) + var(--space-2)); }
+  #shell[data-lnb="closed"] .space-switch {
+    width: calc(var(--ctl-h) + var(--space-2)); height: calc(var(--ctl-h) + var(--space-2));
+  }
+  /* 16px 아래 글씨의 입력은 iOS 가 누르는 순간 화면을 확대한다. 그래서 여기만 1rem 이다. */
+  .space-find-input { height: calc(var(--ctl-h) + var(--space-2) - 2px); font-size: 1rem; }
+}
+
 /* 머리 — 스크롤 밖. 좌우 여백은 본문과 같고 위 여백만 본문의 것을 가져온다. */
 .lnb-head {
   flex: 0 0 auto;
@@ -2858,25 +2977,6 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 /* 경고는 문장이다. 색은 쓰지 않는다(화면의 포인트는 하나다), 굵기로만 선다. */
 .settings-body .st-warn { font-weight: 600; }
 
-/* ── 그래프 선택(설정 > 계정, `space-picker.ts`) ─────────────────────────────
-   위에 종류 탭(`.seg .chip` 그대로), 아래에 그 종류 안의 줄. 줄은 라디오처럼 하나만 켜지고
-   켜진 줄의 알약은 탭·트리와 같은 값이다(`--ring` 14%). 고를 수 없는 팀은 흐리게 두고 이유를 옆에 쓴다. */
-.settings-body .space-pick { display: flex; flex-direction: column; gap: var(--space-3, .75rem); margin-top: .5rem; }
-.settings-body .space-list { display: flex; flex-direction: column; gap: var(--space-1, .25rem); }
-.settings-body .space-row {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3, .75rem);
-  width: 100%; min-height: calc(var(--row-h) * 1.5); padding: 0 var(--pad-row);
-  border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
-  background: hsl(var(--card)); color: hsl(var(--foreground)); font: inherit; text-align: left; cursor: pointer;
-}
-.settings-body .space-row:hover:not(:disabled) { background: hsl(var(--muted-foreground) / .1); }
-.settings-body .space-row[aria-checked="true"] { background: hsl(var(--ring) / .14); font-weight: 600; }
-.settings-body .space-row:disabled { color: hsl(var(--muted-foreground)); cursor: default; }
-.settings-body .space-row-text { display: flex; flex-direction: column; min-width: 0; }
-.settings-body .space-row-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.settings-body .space-row-sub { font-size: .75rem; font-weight: 400; color: hsl(var(--muted-foreground)); }
-.settings-body .space-row-tag { flex: 0 0 auto; font-size: .75rem; font-weight: 400; color: hsl(var(--muted-foreground)); }
-.settings-body .space-note { margin: 0; font-size: .8rem; }
 .settings-body .st-acts { display: flex; gap: .5rem; margin-top: .75rem; }
 
 /* 강조 구절 — 제목·카드마다 **하나만**, 눈이 그 하나를 찾게 하는 자리에만.

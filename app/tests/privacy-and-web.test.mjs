@@ -112,3 +112,42 @@ test('the web is the hosted origin, not the shell or local dev', async () => {
   assert.deepEqual(decide({ protocol: 'http:', hostname: 'localhost' }), { IN_SHELL: false, WEB: false });
   assert.deepEqual(decide({ protocol: 'http:', hostname: '127.0.0.1' }), { IN_SHELL: false, WEB: false });
 });
+
+test('spaces are switched from the sidebar header, on the account graph only', async () => {
+  const main = await read('src/main.ts');
+  // 계정 그래프(웹 · 셸의 계정 모드)일 때만 머리를 세운다. 로컬 모드에는 고를 공간이 없다.
+  assert.match(main, /\n  if \(remote\(\)\) mountSpaceSwitcher\(\);\n/);
+  // 머리는 모드와 스페이스가 정해진 뒤에 선다(주소의 `?space=` 를 받은 뒤).
+  assert.ok(main.indexOf('mountSpaceSwitcher();') > main.indexOf('await adoptSpaceFromAddress()'));
+  const settings = await read('src/surfaces/settings.ts');
+  const account = slice(settings, 'function renderAccount', '\n  }\n');
+  assert.doesNotMatch(settings, /space-picker|mountSpacePicker|space-pick/);
+  // 계정 탭에는 그 자리를 알리는 한 줄과 주제 옮기기만 남는다.
+  assert.match(account, /<label>\$\{U\.space\}<\/label>\s*<p class="hint">\$\{esc\(U\.spaceHint\)\}<\/p>\s*\$\{!cfg\.team \? '<div id="topic-conversion"><\/div>' : ""\}/);
+  assert.match(account, /mountTopicConversion\(conversion\)/);
+  const switcher = await read('src/space-switcher.ts');
+  assert.match(switcher, /createSpacePicker\(deps\)/, 'the switching rules stay in createSpacePicker');
+});
+
+test('the space name is kept next to the space id and never names another space', async () => {
+  const block = slice(api, 'export const cfg = {', '\n};\n') + '\n};\n';
+  const make = await run(`const store = new Map();
+    const localStorage = { getItem: (k) => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
+    let REMOTE = true; const remote = () => REMOTE; const viewSessionCache = { clear() {} };
+    const BASE_KEY = "b", TOKEN_KEY = "t", OWNER_KEY = "o", LANG_KEY = "l", DEFAULT_BASE = "";
+    ${api.match(/const TEAM_KEY = [^\n]*\n/)[0]}${api.match(/const TEAM_NAME_KEY = [^\n]*\n/)[0]}
+    ${block.replace('export const cfg', 'const cfg')}
+    export default () => ({ cfg, store, local: () => { REMOTE = false; } });`);
+  const { cfg, local } = make();
+  cfg.team = 't-1'; cfg.teamName = 'Acme';
+  assert.equal(cfg.teamName, 'Acme');
+  cfg.team = 't-2';
+  assert.equal(cfg.teamName, '', 'another space does not inherit the name');
+  cfg.teamName = 'Field'; cfg.team = 't-2';
+  assert.equal(cfg.teamName, 'Field', 'setting the same space keeps its name');
+  cfg.team = '';
+  assert.equal(cfg.teamName, '', 'personal has no stored name');
+  cfg.team = 'community:c'; cfg.teamName = 'Physics';
+  local();
+  assert.equal(cfg.team, ''); assert.equal(cfg.teamName, '', 'local mode names no account space');
+});

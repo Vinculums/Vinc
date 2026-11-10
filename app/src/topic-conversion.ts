@@ -118,7 +118,7 @@ export function mountTopicConversion(el: HTMLElement): () => void {
       el.querySelector("#conversion-open")?.addEventListener("click", async () => {
         if (!flow.run?.team || flow.busy) return;
         await retainBeforeSwitch().catch(() => false);
-        cfg.team = flow.run.team; sessionStorage.removeItem(key); location.reload();
+        cfg.team = flow.run.team; cfg.teamName = flow.run.name; sessionStorage.removeItem(key); location.reload();
       });
       if (!flow.busy && !flow.error && (state === "committing" || state === "graph_committed")) {
         timer = setTimeout(async () => {

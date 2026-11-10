@@ -6,7 +6,7 @@ import { renderHome, leaveHome, homeEditorOpen } from "./surfaces/home";
 import { renderSearch } from "./surfaces/search";
 import { openSettings } from "./surfaces/settings";
 import { connectSidecar, WEB, ensureWebAuth, cfg, IN_SHELL, decideDataMode,
-         adoptSpaceFromAddress } from "./api";
+         adoptSpaceFromAddress, remote } from "./api";
 import { checkForUpdate } from "./update";
 import { mountLiveRefresh, setLiveRefresher } from "./live";
 import { wireFileAssociations } from "./openfiles";
@@ -14,6 +14,7 @@ import { installTooltip } from "./tooltip";
 import { loaderBlock } from "./vinc-loaders.js";
 import { mountTopbar, setViewHooks } from "./topbar";
 import { mountLnb, refreshLnb, setLnbNavigator, repaintLnb } from "./lnb";
+import { mountSpaceSwitcher } from "./space-switcher";
 import { showNotice } from "./components";
 import { blocksSurfaceShortcuts } from "./keys";
 import { disposeEditorsIn, docEditorOpen } from "./doc-editor";
@@ -406,6 +407,9 @@ document.documentElement.lang = cfg.lang;
   // **전**이어야 한다 — 뒤에 바꾸면 첫 화면이 옛 스페이스로 그려진 채 남는다.
   // 근거: [[decision:a-node-address-names-its-space]]
   const refusedSpace = await adoptSpaceFromAddress();
+  // 사이드바 머리의 공간 전환. 계정 그래프일 때만 선다(로컬 모드에는 고를 공간이 없다).
+  // 모드와 스페이스가 정해진 이 자리여야 머리가 처음부터 맞는 공간을 말한다.
+  if (remote()) mountSpaceSwitcher();
   // 사이드바도 사이드카·로그인·모드·스페이스가 정해진 뒤 처음 읽는다(VIN-360).
   // 그 전에는 로딩으로 기다린다. 실제 요청 실패는 기존 Retry 상태가 맡는다.
   void refreshLnb();
