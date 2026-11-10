@@ -127,7 +127,9 @@
         "icon/base": 24,
         "layout/lnb-w": 232,
         "layout/gnb-h": 52,
-        "radius/xs": 6
+        "radius/xs": 6,
+        "fs/2xs": 10,
+        "fs/xs": 12
       }
     },
     "Motion": {
