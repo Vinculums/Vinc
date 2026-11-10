@@ -13,11 +13,16 @@ import 한다. 질의는 호출부가 표준 openCypher·GQL 로 쓰므로(B2) �
   오류가 아니다(임베디드는 스키마가 먼저라 같은 질의가 조용하다).
 
 지원 하한은 Neo4j 2026.01 이다(`decision:byo-database-neo4j-floor-2026-01-2026-11-08`). 그보다 낮으면
-열기 전에 거절한다. 쓰기 임대(Vinc 쓰기 프로세스 하나)와 스냅샷은 다음 단위다.
+열기 전에 거절한다. 쓰기 임대는 아래 `LEASE_LABEL` 이 진다. 스냅샷은 다음 단위다.
 """
 from __future__ import annotations
 
+import os
 import re
+import socket
+import sys
+import threading
+import uuid
 from contextlib import contextmanager
 
 from . import pkns
@@ -38,6 +43,22 @@ _OVERSAMPLE = 5
 
 class Neo4jVersionError(RuntimeError):
     """연결한 서버가 지원 하한보다 낮다."""
+
+
+#: 쓰기 임대. 데이터베이스 하나에 Vinc 쓰기 프로세스는 하나다(계획 B4). 임대 노드 하나가
+#: 누가 쥐었는지와 만료 시각(ms)을 든다. 먼저 노드에 쓰기 잠금을 건 뒤(`_touch`) 판정하므로
+#: 두 프로세스가 동시에 집어도 하나만 이긴다(Neo4j 는 잠금을 쥔 뒤의 읽기가 최신 커밋을 본다).
+LEASE_LABEL = "_VincWriterLease"
+_LEASE_ACQUIRE = (
+    f"MERGE (l:{LEASE_LABEL} {{key: 'writer'}}) "
+    "SET l._touch = coalesce(l._touch, 0) + 1 "
+    "WITH l, timestamp() AS now "
+    "WITH l, now, (l.holder IS NULL OR l.holder = $h OR coalesce(l.expires, 0) < now) AS ok "
+    "SET l.holder = CASE WHEN ok THEN $h ELSE l.holder END, "
+    "    l.expires = CASE WHEN ok THEN now + $ttl ELSE l.expires END "
+    "RETURN ok, l.holder AS holder, l.expires AS expires")
+_LEASE_RELEASE = (f"MATCH (l:{LEASE_LABEL} {{key: 'writer'}}) WHERE l.holder = $h "
+                  "SET l.expires = 0")
 
 
 def _version_tuple(text: str) -> tuple[int, int]:
@@ -118,9 +139,19 @@ class Neo4jBackend:
     #: 청크 팔이 owner 필터를 적용한다(임베디드와 같은 계약).
     scoped_chunk_search = True
 
-    def __init__(self, uri: str, *, user: str, password: str, database: str = "neo4j"):
+    def __init__(self, uri: str, *, user: str, password: str, database: str = "neo4j",
+                 writer: bool = True, lease_ttl_s: float = 60.0, heartbeat: bool = True,
+                 holder: str | None = None):
+        """``writer=True`` 면 쓰기 임대를 집는다. 남이 쥐고 있으면 **읽기 전용**으로 열린다
+        (`read_only`·`read_only_reason`). 읽기 전용 세션의 쓰기는 Neo4j 서버가 거절한다
+        (`Neo.ClientError.Statement.AccessMode`) — 문장을 들여다보고 막는 것이 아니다."""
         from neo4j import GraphDatabase, NotificationMinimumSeverity
         self.uri, self.database = uri, database
+        self.holder = holder or f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
+        self._ttl_ms = int(lease_ttl_s * 1000)
+        self.read_only, self.read_only_reason = not writer, "" if writer else "opened read-only"
+        self._stop = threading.Event()
+        self._beat: threading.Thread | None = None
         self._driver = GraphDatabase.driver(
             uri, auth=(user, password),
             notifications_min_severity=NotificationMinimumSeverity.OFF)
@@ -135,11 +166,54 @@ class Neo4jBackend:
         except Exception:
             self._driver.close()
             raise
+        if writer:
+            self.try_acquire()
+            if not self.read_only and heartbeat:
+                self._beat = threading.Thread(target=self._heartbeat, name="vinc-neo4j-lease",
+                                              daemon=True)
+                self._beat.start()
+
+    # ── 쓰기 임대 ─────────────────────────────────────────────────────────
+    def _lease(self, query: str) -> dict | None:
+        # 임대 자체는 늘 쓰기 세션이다. `execute_write` 는 일시 오류(동시에 처음 노드를 만들 때의
+        # 교착 감지 같은 TransientError)를 드라이버가 다시 시도한다 — 그냥 `run` 이면 진 쪽이 오류로 끝난다.
+        def work(tx):
+            rec = tx.run(query, {"h": self.holder, "ttl": self._ttl_ms}).single()
+            return rec.data() if rec else None
+        with self._driver.session(database=self.database) as s:
+            return s.execute_write(work)
+
+    def try_acquire(self) -> bool:
+        """임대를 집거나 늘린다. 집으면 쓰기, 못 집으면 읽기 전용으로 바꾸고 False."""
+        row = self._lease(_LEASE_ACQUIRE) or {}
+        if row.get("ok"):
+            self.read_only, self.read_only_reason = False, ""
+            return True
+        self.read_only = True
+        self.read_only_reason = f"another Vinc process holds the writer lease ({row.get('holder')})"
+        return False
+
+    def _heartbeat(self) -> None:
+        while not self._stop.wait(max(1.0, self._ttl_ms / 3000)):
+            try:
+                if not self.try_acquire():
+                    print(f"[neo4j] {self.read_only_reason}; this process is read-only now",
+                          file=sys.stderr, flush=True)
+                    return
+            except Exception as exc:       # noqa: BLE001 — 끊김은 다음 박동이 다시 본다
+                print(f"[neo4j] lease renewal failed: {type(exc).__name__}: {exc}",
+                      file=sys.stderr, flush=True)
+
+    def writer_state(self) -> dict:
+        return {"writer": not self.read_only, "holder": self.holder,
+                "reason": self.read_only_reason}
 
     # ── 질의 ──────────────────────────────────────────────────────────────
     def run(self, query: str, params: dict | None = None, *, conn=None,
             raw: bool = False) -> list[dict]:
-        with self._driver.session(database=self.database) as s:
+        from neo4j import READ_ACCESS, WRITE_ACCESS
+        mode = READ_ACCESS if self.read_only else WRITE_ACCESS
+        with self._driver.session(database=self.database, default_access_mode=mode) as s:
             result = s.run(to_neo4j_cypher(query), params or {})
             return _rows(result, raw=raw)
 
@@ -157,6 +231,8 @@ class Neo4jBackend:
         for label, spec in {**node_table_specs(), **meta_table_specs()}.items():
             stmts.append(f"CREATE CONSTRAINT vinc_{label.lower()}_pk IF NOT EXISTS "
                          f"FOR (n:`{label}`) REQUIRE n.`{spec['pk']}` IS UNIQUE")
+        stmts.append(f"CREATE CONSTRAINT vinc_writer_lease_key IF NOT EXISTS "
+                     f"FOR (l:{LEASE_LABEL}) REQUIRE l.key IS UNIQUE")
         stmts.append(f"CREATE FULLTEXT INDEX {_FTS_INDEX} IF NOT EXISTS FOR (c:Chunk) ON EACH [c.lex] "
                      "OPTIONS {indexConfig: {`fulltext.analyzer`: 'whitespace'}}")
         for name, label in ((_VEC_INDEX, "ChunkVec"), (_NODE_VEC_INDEX, "NodeVec")):
@@ -266,6 +342,14 @@ class Neo4jBackend:
         raise NotImplementedError("a Neo4j location is backed up with Neo4j's own tools")
 
     def close(self) -> None:
+        self._stop.set()
+        if self._beat is not None:
+            self._beat.join(timeout=5)
+        if not self.read_only:
+            try:
+                self._lease(_LEASE_RELEASE)   # 다음 프로세스가 만료를 기다리지 않게
+            except Exception:                 # noqa: BLE001 — 닫기는 막지 않는다
+                pass
         self._driver.close()
 
 
