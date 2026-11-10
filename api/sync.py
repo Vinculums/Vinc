@@ -616,7 +616,7 @@ _EXTRA_EDGE_PAIRS: tuple[tuple[str, str, str, str], ...] = (
 )
 
 
-#: Record 참여 엣지는 위 표에 넣을 수 없다. `_extra_edges_plan` 은 `label(r)` 을
+#: Record 참여 엣지는 위 표에 넣을 수 없다. `_extra_edges_plan` 은 `type(r)` 을
 #: 뽑아 `_REL_TO_FRAGMENT` 로 되돌리는데, Record 엣지의 라벨은 언제나
 #: `ATTACHES_TO` 이고 **원래 관계 타입은 라벨이 아니라 `r.type` 에 실려 있다**
 #: (fragment `_merge_edge` 의 Record 분기). 그 표로 보내면 네 갈래가 전부
@@ -630,7 +630,7 @@ _RECORD_EDGE_PAIRS: tuple[tuple[str, str], ...] = (
 def _record_edges_plan(ids: list[str], *, owner: str, pair: tuple) -> "q.QueryPlan":
     """번들 안의 Record→(Concept|Decision) ATTACHES_TO 엣지.
 
-    `label(r)` 대신 **`r.type`** 을 fragment 타입으로 돌려준다 — 저장할 때 원 타입을
+    `type(r)` 대신 **`r.type`** 을 fragment 타입으로 돌려준다 — 저장할 때 원 타입을
     거기 보존했으므로 복원도 거기서 한다. 라벨을 명시(`[r:ATTACHES_TO]`)하는 이유는
     무타입으로 열면 `r.type` 열이 없는 rel 테이블까지 걸려 Binder 가 죽기 때문이다."""
     dl, dp = pair
@@ -714,7 +714,7 @@ def _extra_edges_plan(ids: list[str], *, owner: str, pair: tuple,
         f"MATCH (a:{sl})-[r:{'|'.join(rels)}]->(b:{dl}) "
         f"WHERE a.{sp} IN $ids AND b.{dp} IN $ids "
         "AND a.owner_id = $owner AND b.owner_id = $owner "
-        f"RETURN a.{sp} AS id, label(r) AS rel, b.{dp} AS target, "
+        f"RETURN a.{sp} AS id, type(r) AS rel, b.{dp} AS target, "
         # v14 — 엣지 출생도 나른다. 안 실으면 수신측에서 그 엣지는 신규라
         # **그 기기 시각으로 다시 태어난다** — 노드에서 방금 고친 것과 같은 병이다.
         "r.created AS edge_created"

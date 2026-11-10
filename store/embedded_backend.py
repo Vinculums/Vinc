@@ -1070,6 +1070,17 @@ class _ReaderView:
             self._writer("search.index", build, 0.0)
 
 
+#: 표준 openCypher 의 관계 타입 함수 `type(r)`. ladybug 에는 없고(0.21.2: "function TYPE
+#: does not exist") 같은 값을 `label(r)` 이 준다. 앞이 식별자·점·`$` 이면 함수가 아니다
+#: (`r.type`, `$type`). 질의는 표준으로 쓰고 이 엔진의 철자로는 여기서만 바꾼다.
+_STD_REL_TYPE = re.compile(r"(?<![\w.$])type\s*\(")
+
+
+def to_engine_cypher(cypher: str) -> str:
+    """표준 openCypher 를 ladybug 철자로. 모든 문장이 `_exec_to_dicts` 에서 이것을 지난다."""
+    return _STD_REL_TYPE.sub("label(", cypher) if "type" in cypher else cypher
+
+
 def _exec_to_dicts(conn, cypher: str, params: dict | None, *, raw: bool = False) -> list[dict]:
     """드라이버 QueryResult → dict 레코드 리스트(컬럼명 키). 다중 문장 세미콜론 분리.
 
@@ -1077,6 +1088,7 @@ def _exec_to_dicts(conn, cypher: str, params: dict | None, *, raw: bool = False)
     나온다. 소비자는 하나다: 재구축의 export(`store/migrate.py`). 읽기 경로가 벗긴 논리
     id 를 새 스토어에 그대로 쓰면 정확 id 조회가 전부 죽고 같은 논리 id 를 가진 소유자
     둘이 한 행으로 접힌다 — 2026-09-11 라이브에서 그렇게 됐다."""
+    cypher = to_engine_cypher(cypher)
     out: list[dict] = []
     # 모든 문장 실행이 여기를 지난다 — 그래서 DDL 가드의 공유 쪽은 여기 하나다.
     # 결과 소비까지 쥔다(행을 읽는 동안에도 스캔은 살아 있다). 가드 설명은 `_DdlGuard` 위.

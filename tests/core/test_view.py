@@ -631,7 +631,7 @@ class CouplingTests(unittest.TestCase):
 
     def test_coupling_merges_and_prefers_direct(self):
         fake = _FakeStore({
-            "label(r) AS rel": [
+            "type(r) AS rel": [
                 {"a_id": "c1", "a_title": "C1", "a_domain": "math",
                  "b_id": "p1", "b_title": "P1", "rel": "RELATED_TO"}],
             "br.bridge_id AS via": [

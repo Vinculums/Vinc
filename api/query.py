@@ -392,8 +392,8 @@ def graph_plan(*, owner: str, domain: str | None = None,
     if doms:
         where.append(domain_subtree_where(["c.domain"], doms, params))
     clause = "WHERE " + " AND ".join(where)
-    # 관계 타입은 `label(r)` — 임베디드에 `type()` 이 없다(Neo4j 도 label 을 받아
-    # 백엔드 중립). ⚠ evidence/confidence 투영은 공통 CC 읽기 계약 안에서만 된다 —
+    # 관계 타입은 표준 `type(r)` 로 쓴다 — 임베디드 어댑터가 `label(r)` 로 바꿔 보낸다
+    # (`store.embedded_backend.to_engine_cypher`). ⚠ evidence/confidence 투영은 공통 CC 읽기 계약 안에서만 된다 —
     # CONNECTS/ATTACHES_TO/TYPED 가 후보인 축에 붙이면 Binder 오류다.
     # ⚠ owner 는 **먼 끝점에도** 건다 — 시작점만 스코프하면 남의 증거 문장이
     # 클라이언트까지 간다: [[record:an-unlabelled-hop-binds-only-tables-that-share-the-projected-columns]].
@@ -412,7 +412,7 @@ def graph_plan(*, owner: str, domain: str | None = None,
         # 오류로 그래프 플랜 전체가 죽는다(2026-08-02 실측: 22 테스트 동시 실패).
         # 레이아웃 정렬의 `pinned` 키가 무동작인 것은 이 때문이고, D32 의 "pin 이
         # 허브 승격 1순위"는 개념 축에서 **아직 구현된 적이 없다**(별건).
-        "label(r) AS rel, r.evidence AS evidence, r.confidence AS confidence, "
+        "type(r) AS rel, r.evidence AS evidence, r.confidence AS confidence, "
         # v14 — 엣지 출생. 공유·동기화가 이 투영에서 값을 집어 나른다(안 나르면
         # 받는 쪽에서 그 엣지가 그 기기 시각으로 다시 태어난다). 화면은 아직 안 쓴다.
         "r.created AS edge_created, "
@@ -787,7 +787,7 @@ def concept_edge_ids_plan(ids: list[str], *, owner: str | None = None) -> QueryP
         params["owner"] = owner
     cypher = (f"MATCH (c:Concept)-[r]->(d:Concept) WHERE {where} "
               "RETURN c.concept_id AS source, d.concept_id AS target, "
-              "label(r) AS type, r.confidence AS confidence")
+              "type(r) AS type, r.confidence AS confidence")
     return QueryPlan("concept_edge_ids", cypher, params,
                      note="concept to concept edges inside the id set (ids only)")
 
@@ -956,7 +956,7 @@ def decision_seed_rows_plan(seed: str, *, owner: str | None = None,
         f"MATCH (s:Decision) WHERE {s_where} "
         f"MATCH {pattern}{o_where} "
         "RETURN " + src.format(p="", i="id") + dst.format(p="target_", i="target")
-        + "label(r) AS rel, r.evidence AS evidence, r.confidence AS confidence, "
+        + "type(r) AS rel, r.evidence AS evidence, r.confidence AS confidence, "
         + _track_cols(src_a) + ", " + _track_cols(dst_a, "target_")
     )
     return QueryPlan("graph_decision_seed", cypher, params,
@@ -986,7 +986,7 @@ def graph_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> Quer
         # 둘 다 받아 두면 축 전환에 재조회가 필요 없다. Concept 만 이 열을 가지므로
         # 다른 라벨의 플랜에 그대로 옮겨 붙이면 Binder 오류다(위 경고와 같은 규칙).
         "coalesce(c.content_time, '') AS content_ts, "
-        "label(r) AS rel, r.evidence AS evidence, r.confidence AS confidence, "
+        "type(r) AS rel, r.evidence AS evidence, r.confidence AS confidence, "
         # v14 — 엣지 출생. 공유·동기화가 이 투영에서 값을 집어 나른다(안 나르면
         # 받는 쪽에서 그 엣지가 그 기기 시각으로 다시 태어난다). 화면은 아직 안 쓴다.
         "r.created AS edge_created, "
@@ -1256,7 +1256,7 @@ def decision_relation_rows_plan(*, owner: str, domain: str | None = None,
             f"MATCH (a:{sl})-[r:{'|'.join(rels)}]->(b:{dl}) "
             f"WHERE {' AND '.join(where)} RETURN "
             + cols("a", sl, sp) + ", " + cols("b", dl, dp, "target_") + ", "
-            "label(r) AS rel, r.evidence AS evidence, r.confidence AS confidence"
+            "type(r) AS rel, r.evidence AS evidence, r.confidence AS confidence"
         )
     return QueryPlan("graph_decision_relations", " UNION ALL ".join(arms), params,
                      note="decision relations outside the existing attachment axes")
@@ -1292,7 +1292,7 @@ def entity_subgraph_ids_plan(seed: str, *, depth: int = 2,
 
 
 def entity_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> QueryPlan:
-    """Entity id 집합 행 + 나가는 TYPED 엣지. rel 은 label(r)="TYPED"(무의미한 캐리어
+    """Entity id 집합 행 + 나가는 TYPED 엣지. rel 은 type(r)="TYPED"(무의미한 캐리어
     이름)가 아니라 **r.type(사용자 저작 타입)** 을 투영 — 그것이 의미다. domain 은
     ''(Entity 무도메인 — entity-시드 L2 는 단일 중앙 클러스터로 레이아웃)."""
     params: dict = {"ids": pkns.keys(owner, ids)}
@@ -2418,8 +2418,8 @@ def graph_preview(*, owner, domains=None, layout="hub", cone=1.0, basis="recorde
     edges = execute(QueryPlan("graph_preview_edges",
         "MATCH (c:Concept)-[r]->(d:Concept) WHERE c.owner_id = $owner AND d.owner_id = $owner "
         "AND c.concept_id IN $ids AND d.concept_id IN $ids "
-        "RETURN c.concept_id AS id, d.concept_id AS target, label(r) AS rel "
-        "ORDER BY c.concept_id, d.concept_id, label(r) LIMIT 512",
+        "RETURN c.concept_id AS id, d.concept_id AS target, type(r) AS rel "
+        "ORDER BY c.concept_id, d.concept_id, type(r) LIMIT 512",
         {"owner": owner, "ids": ids}), cfg, store=store)
     if not edges.get("executed"):
         return {"executed": False}
@@ -2479,7 +2479,7 @@ def direct_coupling_plan(*, owner: str, a: str, b: str) -> QueryPlan:
         "WHERE x.owner_id = $owner AND y.owner_id = $owner "
         "AND ((x.domain = $a AND y.domain = $b) OR (x.domain = $b AND y.domain = $a)) "
         "RETURN x.concept_id AS a_id, x.title AS a_title, x.domain AS a_domain, "
-        "y.concept_id AS b_id, y.title AS b_title, label(r) AS rel"
+        "y.concept_id AS b_id, y.title AS b_title, type(r) AS rel"
     )
     return QueryPlan("coupling_direct", cypher, {"owner": owner, "a": a, "b": b},
                      note="concept-level direct cross-domain edges")
@@ -3366,7 +3366,7 @@ def _node_links(store, node: str, *, owner: str,
                     f"MATCH {pattern} "
                     f"WHERE c.{_spk} = $id AND c.owner_id = $owner AND o.owner_id = $owner "
                     f"RETURN o.{opk} AS id, o.title AS title, o.domain AS domain, "
-                    f"label(r) AS type, '{'out' if outgoing else 'in'}' AS dir, "
+                    f"type(r) AS type, '{'out' if outgoing else 'in'}' AS dir, "
                     "r.evidence AS ev, r.confidence AS conf")
         cc = " UNION ALL ".join(arms)
         rows = store.run(cc, {"id": pkns.key(owner, node), "owner": owner}) or []
@@ -5647,8 +5647,8 @@ def suggest_ties(*, owner: str, node: str, limit: int = 5, cfg=None, store=None)
 # 토큰을 아낀다(-69.9% 근거). 조회 전용 — 개념의 1-hop 관계망을 rel 타입별로 요약.
 
 def neighbors_plan(node: str, *, owner: str | None = None) -> QueryPlan:
-    """개념의 1-hop 이웃(무방향) — rel 타입·이웃 id/title/domain. `label(r)`(임베디드
-    타입 함수 §6-2 M4). owner 지정 시 양 끝 스코프.
+    """개념의 1-hop 이웃(무방향) — rel 타입·이웃 id/title/domain. `type(r)`(표준 함수,
+    임베디드 어댑터가 `label(r)` 로 바꾼다). owner 지정 시 양 끝 스코프.
 
     ⚠ 이 플랜은 **의미층끼리만** 본다(개념·결정). 부착 축(Record·Episode·Bridge)은
     :func:`node_attachments_plan` 이 따로 낸다 — 아래 그 함수의 주석 참조.
@@ -5673,7 +5673,7 @@ def neighbors_plan(node: str, *, owner: str | None = None) -> QueryPlan:
     # 같은 상대·같은 관계가 양쪽에 다 있으면 neighbors() 가 "both" 로 합친다.
     cypher = " UNION ALL ".join(
         f"MATCH {pat} WHERE {n_where}{m_where} "
-        f"RETURN label(r) AS rel, '{d}' AS dir, m.{m_pk} AS id, m.title AS title, "
+        f"RETURN type(r) AS rel, '{d}' AS dir, m.{m_pk} AS id, m.title AS title, "
         "m.domain AS domain, "
         + (f"coalesce(m.one_liner, '') AS one_liner"
            if m_label == "Concept" else "'' AS one_liner")
@@ -7516,10 +7516,10 @@ def _gate_related_decisions(store, ids: list[str], *, owner: str | None,
     if rels:
         arms.append(f"MATCH (s:Decision)-[e:{rels}]->(d:Decision) "
                     f"WHERE s.decision_id IN $ids{own} "
-                    + ret.format(spk="decision_id", rel="label(e)"))
+                    + ret.format(spk="decision_id", rel="type(e)"))
         arms.append(f"MATCH (d:Decision)-[e:{rels}]->(s:Decision) "
                     f"WHERE s.decision_id IN $ids{own} "
-                    + ret.format(spk="decision_id", rel="label(e)"))
+                    + ret.format(spk="decision_id", rel="type(e)"))
     params: dict = {"ids": pkns.keys(owner, ids)}
     if owner:
         params["owner"] = owner

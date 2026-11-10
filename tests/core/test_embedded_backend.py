@@ -180,7 +180,7 @@ class EmbeddedE2E(unittest.TestCase):
         self.assertGreater(r["rows"][0]["score"], r["rows"][1]["score"])
 
     def test_graph_query_uses_label_on_embedded(self):
-        """graph 마이닝 질의가 임베디드에서 동작(§6-2 M4: type(r)→label(r))."""
+        """graph 마이닝 질의가 임베디드에서 동작(표준 type(r) 을 어댑터가 label(r) 로 바꾼다)."""
         from store.config import load_config
         from store.backend import open_store
         from api import query as q
