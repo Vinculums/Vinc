@@ -261,7 +261,7 @@ jobs:
         # 재현되므로 제품의 Ladybug 가드는 유지한다. 확장 바이트는 아래 해시 목록으로 고정한다.
         shell: bash
         run: |
-          pip install ladybug==0.21.2 pyyaml pyinstaller pypdf
+          pip install ladybug==0.21.2 neo4j==6.4.1 pyyaml pyinstaller pypdf
       # ⚠ ladybug 의 `INSTALL` 을 쓰지 않는다. 0.18.0 의 내장 다운로더가 확장 서버
       # 인증서를 검증하지 못해 **CI 에서만** 죽는다(2026-08-01 실측):
       #   RuntimeException: Failed to download extension: vector

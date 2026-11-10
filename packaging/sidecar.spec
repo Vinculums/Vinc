@@ -45,6 +45,17 @@ DATAS += PDF_DATAS
 BINARIES += PDF_BINARIES
 DRIVER_HIDDEN = list(DRIVER_HIDDEN) + list(PDF_HIDDEN)
 
+# 사용자 데이터베이스(Neo4j) 드라이버. 순수 파이썬이고 `store/neo4j_backend.py` 가 함수 안에서만
+# import 하므로 pypdf 와 같이 통째 수집한다. release.yml 이 핀으로 깐다. 빌드 기계에 없으면 싣지 않고,
+# 그 빌드는 데이터베이스 위치를 "드라이버가 없다"는 사유로 열지 않는다(폴더 스토어는 무영향).
+try:
+    NEO_DATAS, NEO_BINARIES, NEO_HIDDEN = collect_all("neo4j")
+except Exception:
+    NEO_DATAS, NEO_BINARIES, NEO_HIDDEN = [], [], []
+DATAS += NEO_DATAS
+BINARIES += NEO_BINARIES
+DRIVER_HIDDEN = list(DRIVER_HIDDEN) + list(NEO_HIDDEN)
+
 _extroot = pathlib.Path.home() / ".lbdb" / "extension"
 for _ext in ("vector", "fts", "algo"):
     _m = sorted(_extroot.glob(f"*/*/{_ext}/lib{_ext}.lbug_extension"))
@@ -119,6 +130,8 @@ a = Analysis(
         # VIN-243 — 검색 코어를 api/query.py 에서 옮겼다. api.query 가 최상위로 끌어
         # 정적 분석이 잡지만, 빠지면 검색이 통째로 죽으므로 위와 같은 이유로 못 박는다.
         "store.querybase", "vinc_rag", "vinc_rag.retrieval",
+        # 저장 위치가 데이터베이스일 때만 `store.backend.open_store` 가 지연 import 한다.
+        "store.location", "store.neo4j_backend",
     ],
     # cryptography/OpenSSL 은 우리 의존이 아님(argon2 도 옵션 lazy) — 시스템
     # dist-packages 의 pyo3 훅 충돌을 피하려고 명시 제외한다. ⚠ 여기 "OpenSSL" 은

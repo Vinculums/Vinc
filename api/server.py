@@ -165,6 +165,7 @@ def _encode_call(url: str, texts: list[str], kind: str, timeout: float, *,
 
 from store.config import load_config
 from store import config as store_config
+from store.location import DatabaseLocation, LocationError, read_location
 from store import httpbody
 from store import request_timing
 from store.write_waits import WRITE_WAITS
@@ -232,9 +233,9 @@ def store_unavailable() -> dict:
     거절만 받고 이유는 다른 엔드포인트에 가서 물어야 한다. 한 벌로 묶는다."""
     out = {"error": "no reachable store", "note": "no reachable store"}
     try:
-        from store.embedded_backend import EmbeddedBackend
-        if EmbeddedBackend.last_open_error:
-            out["open_error"] = EmbeddedBackend.last_open_error
+        from store.backend import last_open_error
+        if last_open_error():
+            out["open_error"] = last_open_error()
     except Exception:   # noqa: BLE001 — 진단이 응답을 죽이지 않는다
         pass
     return out
@@ -2604,11 +2605,30 @@ class VincApp:
         pinned = self._data_pinned()
         want = store_config.resolve_data_dir(create=False)
         mode = conf.get("mode")
+        location, location_error = None, None
+        try:
+            location = read_location(conf)
+        except LocationError as exc:
+            location_error = str(exc)
+        opened_db = (getattr(self.cfg, "backend", "") == "neo4j"
+                     and dict(getattr(self.cfg, "database", None) or {}))
+        if pinned:
+            restart = False
+        elif isinstance(location, DatabaseLocation):
+            want_db = {"uri": location.uri, "database": location.database, "user": location.user}
+            restart = opened_db != want_db
+        elif opened_db:
+            restart = True                  # 데이터베이스를 열고 있는데 설정은 폴더·계정이다
+        else:
+            # 설정이 가리키는 파일과 지금 연 파일이 다르다 = 셸이 사이드카를 다시 띄워야 한다.
+            restart = bool(cur) and os.path.abspath(want) != os.path.abspath(cur)
         return {
             "executed": True,
             # 아직 안 정했으면 None 이다. 앱이 첫 기동에 정해 적는다(기존 설치의 데이터를
             # 보고). 여기서 "account" 로 채우면 앱은 "이미 정했다"로 읽고 그 판단을 건너뛴다.
-            "mode": mode if mode in ("account", "local") else None,
+            # 데이터베이스 위치도 "local" 로 알린다: 앱의 모드는 요청을 어디로 보낼지(계정 허브냐 이 기기의
+            # 사이드카냐)이고, 데이터베이스는 사이드카가 연다. 어디에 사는지는 `location` 이 말한다.
+            "mode": "local" if mode == "database" else mode if mode in ("account", "local") else None,
             # 사람이 고른 모드인가(VIN-131). 앱이 자동으로 정한 값과 가른다: 0.9.4·0.9.5 는
             # 이 기기에 데이터가 있으면 말없이 로컬로 정했고, 그 설치는 한 번 물어야 한다.
             # 제거 조건: 없음(키가 없으면 '고르지 않음'인 규칙은 새 설치도 쓴다). 위 0.9.4·0.9.5 문장만 그 판의 업그레이드를 더 받지 않을 때 뺀다.
@@ -2618,10 +2638,14 @@ class VincApp:
             "default_folder": str(home),
             "suggested_folder": localmode.suggested_folder(home),
             "pinned": pinned,
-            # 설정이 가리키는 파일과 지금 연 파일이 다르다 = 셸이 사이드카를 다시 띄워야 한다.
-            "restart_needed": bool(cur) and not pinned
-                              and os.path.abspath(want) != os.path.abspath(cur),
+            "restart_needed": restart,
             "store_open": self.store is not None,
+            # 저장 위치(`store.location`). 비밀번호는 어디에도 없다 — secret_ref 는 키링 항목의 이름이다.
+            # 설정이 틀렸으면 location 은 None 이고 location_error 가 사람용 문장이다.
+            "location": location.to_dict() if location is not None else None,
+            "location_error": location_error,
+            # 지금 연 스토어의 엔진(embedded·neo4j). 스토어가 없으면 None.
+            "engine": getattr(self.store, "driver_name", None) if self.store is not None else None,
         }
 
     def read_config(self, p):

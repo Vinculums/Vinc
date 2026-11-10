@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Store configuration — embedded (offline) store + embedding settings.
 
-기본은 임베디드다(설계 §1 — 외부 인프라·API 키 없이 오프라인). 외부 엔진 접속 설정은
-아직 없다. 해석 순서: 인자 > 환경변수 > 기본값.
+기본은 임베디드다(설계 §1 — 외부 인프라·API 키 없이 오프라인). 저장 위치가 사용자의 데이터베이스면
+`database_config` 가 Neo4j 어댑터용 설정을 만든다. 해석 순서: 인자 > 환경변수 > 기본값.
 """
 from __future__ import annotations
 
@@ -83,6 +83,12 @@ class StoreConfig:
     # 미덥지 않으면 자주 하는 것이 되레 해롭다 — 그래서 이 값은 **저장 계층을
     # 로컬로 옮기는 것과 한 벌**이고, 그것이 정본 처방이다.
     checkpoint_threshold_mb: int = 4     # MB. VINC_CHECKPOINT_THRESHOLD_MB (0=드라이버 기본)
+    # ── 사용자 데이터베이스(backend="neo4j") ──────────────────────────────────
+    # 저장 위치가 데이터베이스일 때만 찬다(`store.location.DatabaseLocation`). 비밀번호는 따로 들고
+    # `redacted()`·repr 에 나오지 않는다.
+    database: dict | None = None         # {"uri", "database", "user"}
+    database_secret: str | None = field(default=None, repr=False)
+    lease_holder: str | None = None      # 쓰기 임대 보유자 id(설치 단위, `installation_id`)
     extra: dict = field(default_factory=dict)
 
     @property
@@ -108,6 +114,7 @@ class StoreConfig:
 
     def redacted(self) -> dict:
         d = self.__dict__.copy()
+        d.pop("database_secret", None)
         d["embedding_dim"] = self.embedding_dim
         return d
 
@@ -149,9 +156,49 @@ def vinc_home() -> pathlib.Path:
 
 
 #: 데스크톱 저장 설정(VIN-130). 앱이 쓰고, 사이드카와 로컬 MCP 가 읽는다.
-#: `{"mode": "account"|"local", "mode_chosen": bool, "data_path": "<폴더>"}`. 폴더를 고르면 **DB 만** 그리로
+#: `{"mode": "account"|"local"|"database", "mode_chosen": bool, "data_path": "<폴더>",
+#:   "database": {engine, uri, database, user, secret_ref}}` — 읽는 법은 `store.location.read_location`. 폴더를 고르면 **DB 만** 그리로
 #: 간다(`<폴더>/db`). 세션 파일·확장·MCP 상태·packs 는 `~/.vinc` 에 남는다.
 LOCAL_CONFIG = "config.json"
+
+
+#: 이 설치의 고정 id. 쓰기 임대 보유자 id 의 앞부분이라, 재기동한 사이드카가 자기 설치의 죽은
+#: 프로세스가 남긴 임대를 바로 되찾는다(`store.neo4j_backend`).
+INSTALLATION_FILE = "installation_id"
+
+
+def installation_id(home: pathlib.Path | None = None) -> str:
+    """`~/.vinc/installation_id`(32자 hex). 없으면 만든다. 못 쓰는 홈이면 이 프로세스 한정 id."""
+    import uuid
+    root = home or vinc_home()
+    path = root / INSTALLATION_FILE
+    try:
+        text = path.read_text(encoding="ascii").strip()
+        if len(text) == 32 and all(c in "0123456789abcdef" for c in text):
+            return text
+    except OSError:
+        pass
+    new = uuid.uuid4().hex
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(f".{os.getpid()}.tmp")
+        tmp.write_text(new, encoding="ascii")
+        try:
+            # 둘이 동시에 처음 만들면 먼저 자리 잡은 쪽이 이긴다(link 는 덮지 않는다).
+            os.link(tmp, path)
+        except FileExistsError:
+            won = path.read_text(encoding="ascii").strip()
+            if len(won) == 32 and all(c in "0123456789abcdef" for c in won):
+                tmp.unlink(missing_ok=True)
+                return won
+            os.replace(tmp, path)     # 깨진 파일만 갈아 끼운다
+        except OSError:
+            os.replace(tmp, path)     # 하드링크를 못 거는 파일시스템
+        else:
+            tmp.unlink(missing_ok=True)
+    except OSError:
+        pass
+    return new
 
 
 def read_local_config(home: pathlib.Path | None = None) -> dict:
@@ -225,3 +272,43 @@ def resolve_data_dir(cli_value: str | None = None, *, create: bool = True) -> st
                 pass
         return chosen
     return str(root / "db")
+
+
+def database_config(location, *, secret: str | None, home: pathlib.Path | None = None,
+                    overrides: dict | None = None) -> StoreConfig:
+    """데이터베이스 위치(`store.location.DatabaseLocation`)를 여는 설정. 폴더는 쓰지 않는다."""
+    cfg = load_config({**(overrides or {}), "backend": location.engine})
+    cfg.data_dir = None
+    cfg.database = {"uri": location.uri, "database": location.database, "user": location.user}
+    cfg.database_secret = secret
+    cfg.lease_holder = None
+    try:
+        from .neo4j_backend import installation_holder
+        cfg.lease_holder = installation_holder(installation_id(home))
+    except Exception:   # noqa: BLE001 — 보유자 id 가 없으면 어댑터가 프로세스 한정 id 를 쓴다
+        pass
+    return cfg
+
+
+def app_store_config(cli_value: str | None = None, *, secret: str | None = None,
+                     home: pathlib.Path | None = None) -> StoreConfig:
+    """앱 진입점(`vinc serve`)이 열 스토어의 설정.
+
+    ``--data``·``MEMORY_DATA_DIR`` 로 폴더를 박았으면 그 폴더다(설정의 저장 위치는 안 먹는다).
+    아니면 설정의 저장 위치를 읽는다: 데이터베이스면 Neo4j 어댑터 설정, 그 밖에는 `resolve_data_dir`
+    의 폴더. 설정이 틀렸으면 아무것도 열지 않게 `extra["open_blocked"]` 에 사유를 싣는다 —
+    기본 폴더로 물러서면 빈 그래프가 "데이터가 사라졌다"로 읽힌다."""
+    from .location import DatabaseLocation, LocationError, read_location
+    if cli_value or os.environ.get("MEMORY_DATA_DIR"):
+        return load_config({"data_dir": resolve_data_dir(cli_value)})
+    try:
+        loc = read_location(read_local_config(home))
+    except LocationError as exc:
+        cfg = load_config({"data_dir": None})
+        cfg.extra["open_blocked"] = f"storage settings: {exc}"
+        return cfg
+    if isinstance(loc, DatabaseLocation):
+        if home is None:
+            resolve_data_dir()          # 데이터 홈의 하위 구조(packs·inbox·backups)는 늘 만든다
+        return database_config(loc, secret=secret, home=home)
+    return load_config({"data_dir": resolve_data_dir(cli_value)})

@@ -974,15 +974,18 @@ def _main(argv: list[str] | None = None) -> int:
         inherited_token = os.environ.pop("VINC_SIDECAR_TOKEN", None)
         session_token = args.token or inherited_token or None
         from . import server
-        from store.config import load_config, resolve_data_dir
+        from store.config import app_store_config
+        from store.location import take_secret
         from store import persistence
-        # D43 — 설치형 기본 데이터 홈: --data > MEMORY_DATA_DIR > ~/.vinc
-        data_dir = resolve_data_dir(args.data)
+        # 저장 위치: --data > MEMORY_DATA_DIR > 설정의 위치(폴더 또는 데이터베이스) >
+        # ~/.vinc. 데이터베이스 비밀번호는 셸이 환경으로 넘긴 것을 읽자마자 지운다(자식에게 안 간다).
+        cfg = app_store_config(args.data, secret=take_secret())
+        data_dir = cfg.data_dir or ""
         # 영속 스냅샷에서 복원(VINC_STORE_SNAPSHOT 설정 시에만). 스토어를 열기
         # **전에** 해야 한다 — 연 뒤에 파일을 갈아치우면 드라이버가 자기 밑의
         # 파일이 바뀐 것을 모른다. 미설정이면 'off' 로 즉시 빠진다. VINC_DURABLE_ACK 면
-        # 스냅샷과 커밋 세대 중 새것을 고른다(persistence.restore_newest).
-        _restore = persistence.restore_newest(data_dir)
+        # 스냅샷과 커밋 세대 중 새것을 고른다(persistence.restore_newest). 폴더 스토어만 해당한다.
+        _restore = persistence.restore_newest(data_dir) if data_dir else "off"
         if _restore not in ("off", "present"):
             print(f"vinc: store restore — {_restore}", file=sys.stderr, flush=True)
         # ⚠ **복원 실패는 fail-closed 다.** 여기서 멈추면 사람이 보고 고치지만, 진행하면
@@ -1001,7 +1004,7 @@ def _main(argv: list[str] | None = None) -> int:
                 packs = str(vinc_home() / "packs")
             elif data_dir.endswith(os.sep.join((".vinc", "db"))):
                 packs = os.path.join(os.path.dirname(data_dir), "packs")
-        server.serve(load_config({"data_dir": data_dir}),
+        server.serve(cfg,
                      host=args.host, port=args.port, parent_pid=args.parent_pid,
                      token=session_token, packs_dir=packs, profile_path=args.profile,
                      data_pinned=pinned)
