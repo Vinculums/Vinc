@@ -1090,9 +1090,31 @@ class _ReaderView:
 _STD_REL_TYPE = re.compile(r"(?<![\w.$])type\s*\(")
 
 
+#: GQL 의 가변 길이 순회. 질의는 수량 관계 `-[]-{1,d}` 와 경로 선택자 `SHORTEST 1` ·
+#: `ALL SHORTEST` 로 쓰고(Neo4j 2026.01 이 받는 표준형), ladybug 에는 `[* TRAIL 1..d]` ·
+#: `[* SHORTEST 1..d]` · `[* ALL SHORTEST 1..d]` 로 보낸다. 선택자 없는 수량 관계가 TRAIL 인
+#: 것은 GQL 의 기본 일치 방식(관계를 다시 쓰지 않는다)과 같아서다. ladybug 의 맨 `*` 는
+#: WALK 라 사이클에서 경로가 폭증한다.
+#: ⚠ 선택자 하나에 수량 관계 하나, 끝점은 괄호 하나(중첩 괄호 없음)인 꼴만 바꾼다.
+_GQL_REL = r"\[(\w*(?::[\w|]+)?)\](->|-)\{\s*(\d+)\s*,\s*(\d+)\s*\}"
+_GQL_SELECTED = re.compile(r"\b(ALL SHORTEST|SHORTEST 1)\s+(\([^()]*\)\s*<?-)" + _GQL_REL)
+_GQL_QUANTIFIED = re.compile(r"(<?-)" + _GQL_REL)
+_SELECTOR = {"ALL SHORTEST": "ALL SHORTEST", "SHORTEST 1": "SHORTEST"}
+
+
+def _engine_traversal(cypher: str) -> str:
+    cypher = _GQL_SELECTED.sub(
+        lambda m: f"{m[2]}[{m[3]}* {_SELECTOR[m[1]]} {m[5]}..{m[6]}]{m[4]}", cypher)
+    return _GQL_QUANTIFIED.sub(lambda m: f"{m[1]}[{m[2]}* TRAIL {m[4]}..{m[5]}]{m[3]}", cypher)
+
+
 def to_engine_cypher(cypher: str) -> str:
-    """표준 openCypher 를 ladybug 철자로. 모든 문장이 `_exec_to_dicts` 에서 이것을 지난다."""
-    return _STD_REL_TYPE.sub("label(", cypher) if "type" in cypher else cypher
+    """표준 openCypher·GQL 을 ladybug 철자로. 모든 문장이 `_exec_to_dicts` 에서 이것을 지난다."""
+    if "type" in cypher:
+        cypher = _STD_REL_TYPE.sub("label(", cypher)
+    if "]-{" in cypher or "]->{" in cypher:
+        cypher = _engine_traversal(cypher)
+    return cypher
 
 
 def _exec_to_dicts(conn, cypher: str, params: dict | None, *, raw: bool = False) -> list[dict]:
