@@ -566,6 +566,19 @@
         }
       }
     },
+    "/diagnostics/writes": {
+      "get": {
+        "operationId": "read_write_waits",
+        "summary": "How long writes waited for the single writer and what they waited behind, per job kind. In memory since process start, no request material.",
+        "x-internal": true,
+        "x-served-by": "sidecar",
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
     "/doc": {
       "get": {
         "operationId": "read_doc",

@@ -33,6 +33,7 @@ from contextlib import contextmanager, nullcontext
 from . import pkns, request_timing
 from .envflag import truthy
 from .open_diagnostics import emit_open_failure
+from .write_waits import WRITE_WAITS
 from .config import StoreConfig
 from .embedded_schema import (DOMAIN_HIERARCHY_VERSION,
                               EPISODE_TIME_BACKFILL_VERSION, LEX_INDEX_KEY,
@@ -745,6 +746,7 @@ class _DdlGuard:
                         f"{EXCLUSIVE_WAIT_S if timeout is None else timeout}s "
                         f"({self._readers} statements still reading)")
                 self._owner, self._depth = me, 1
+        since = time.monotonic() if held is not None else None
         try:
             yield
         finally:
@@ -754,6 +756,8 @@ class _DdlGuard:
                     self._owner = None
                     self._retake(held or 0)
                     self._cond.notify_all()
+            if since is not None:   # 바깥쪽 한 번만 센다(재진입은 같은 보유다)
+                WRITE_WAITS.ddl_held((time.monotonic() - since) * 1000.0)
 
 
 #: 프로세스에 하나. 테스트가 직접 쓴다.

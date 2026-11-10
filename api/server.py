@@ -167,6 +167,7 @@ from store.config import load_config
 from store import config as store_config
 from store import httpbody
 from store import request_timing
+from store.write_waits import WRITE_WAITS
 from store import search_temporal
 from store.backend import open_store
 from store.envflag import truthy
@@ -706,6 +707,7 @@ class VincApp:
                 return 409, {"executed": False, "error": str(exc)}
             raise
         except DdlGuardTimeout:
+            WRITE_WAITS.store_busy("read")
             return 503, {"executed": False, "error": "store_busy",
                          "note": "Index or schema maintenance is in progress. Retry shortly.",
                          "retry_after_s": 1}
@@ -1834,6 +1836,11 @@ class VincApp:
         """변경 표식(VIN-129). 스토어를 안 읽는다: 폴링이 단일 writer 에 짐을 얹지 않게
         하려고 쓰기 관문에서 센 값을 메모리에서 준다. 그래서 스토어가 죽어도 답한다."""
         return 200, {"executed": True, "marker": self.changes.read(p.get("owner"))}
+
+    def read_write_waits(self, p):
+        """쓰기 워커 앞의 대기 집계(`store.write_waits`). 스토어를 안 읽고 소유자 재료가 없다.
+        앱은 부르지 않는다(계약 x-internal). 허브는 이 값을 한 시간에 한 번 로그로도 낸다."""
+        return 200, {"executed": True, **WRITE_WAITS.snapshot()}
 
     def note_write(self, path: str, owner, code: int, obj) -> None:
         """POST 한 건이 끝났다. 성공한 쓰기면 그 소유자의 표식을 올린다.
@@ -3103,6 +3110,7 @@ class _Handler(BaseHTTPRequestHandler):
             "/nav-tree": app.read_nav_tree,   # 좌측 문서 트리(D69)
             # 변경 표식(VIN-129) — 열린 화면이 몇 초마다 묻는다. 스토어를 안 읽는다.
             "/changes": app.read_changes,
+            "/diagnostics/writes": app.read_write_waits,   # 쓰기 대기 집계(내부, 스토어 없이 답한다)
             "/doc/highlights": app.read_doc_highlights,   # Reader 밑줄(D45-V2 2단계)
             "/doc/context": app.read_doc_context,   # 리더 머리(개념 칩·목차·청크 오프셋)
             "/node": app.read_node,
@@ -3288,6 +3296,9 @@ def serve(cfg=None, *, host: str = "127.0.0.1", port: int = 0, parent_pid: int |
     app = VincApp.open(cfg, auth=SessionAuth(token), packs_dir=packs_dir,
                        profile_path=profile_path, guard_wal=parent_pid is not None)
     app.data_pinned = data_pinned
+    # 오래 도는 사이드카만 쓰기 대기 집계를 로그로 낸다(허브는 재시작으로 메모리가 비므로
+    # 로그가 이력이다). CLI 의 짧은 큐는 내지 않는다 — 그 stderr·stdout 은 출력 계약이다.
+    WRITE_WAITS.enable_log()
     httpd = make_server(app, host, port)
     bound_host, bound_port = httpd.server_address[:2]
     shown = f"<supplied:{len(app.auth.token)}ch>" if token else app.auth.token
