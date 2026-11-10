@@ -179,7 +179,7 @@ body {
   background-attachment: fixed;
   color: hsl(var(--foreground));
   font-family: var(--font-ui, system-ui), system-ui, sans-serif;
-  font-size: 1rem;  /* fs-allow: 본문 뿌리 크기 16px. 토큰의 --fs-base 는 15px 라 따로 정한다 */
+  font-size: var(--fs-base);
   line-height: var(--lh, 1.5);
 }
 
@@ -1516,7 +1516,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 }
 .si-mark { display: block; width: 48px; height: 48px; margin: 0 auto 1.2rem; }
 .si-title {
-  margin: 0; font-size: 1.5rem; font-weight: 700; letter-spacing: -.01em;  /* fs-allow: 페이지 제목 24px. 고정 크기 제목 토큰이 없다(--fs-xl 은 폭 따라 커진다) */
+  margin: 0; font-size: var(--fs-title); font-weight: 700; letter-spacing: -.01em;
   word-break: keep-all;
 }
 .si-lead {
@@ -2582,7 +2582,7 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
   padding: 2rem 2rem 1.5rem;
 }
 .settings-main > h2 {
-  margin: 0 0 .35rem; font-size: 1.5rem; font-weight: 600; line-height: 1.25;  /* fs-allow: 페이지 제목 24px. 고정 크기 제목 토큰이 없다(--fs-xl 은 폭 따라 커진다) */
+  margin: 0 0 .35rem; font-size: var(--fs-title); font-weight: 600; line-height: 1.25;
 }
 .settings-main > h2 + .hint { margin-top: 0; margin-bottom: 1.25rem; }
 .settings-row {
@@ -2827,7 +2827,7 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
   backdrop-filter: var(--glass-blur);
   box-shadow: 0 8px 24px hsl(var(--foreground) / .18), var(--glass-edge);
   color: hsl(var(--foreground));
-  font-size: 1rem;  /* fs-allow: 본문 뿌리 크기 16px. 토큰의 --fs-base 는 15px 라 따로 정한다 */
+  font-size: var(--fs-base);
   animation: update-rise .18s ease-out;
 }
 .update-toast .update-msg { flex: 1 1 auto; }
@@ -3179,7 +3179,7 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-4, 1rem); flex-wrap: wrap;
   min-height: calc(var(--ctl-h) + var(--space-2, .5rem));
 }
-.home-head h1 { margin: 0; font-size: 1.5rem; }  /* fs-allow: 페이지 제목 24px. 고정 크기 제목 토큰이 없다(--fs-xl 은 폭 따라 커진다) */
+.home-head h1 { margin: 0; font-size: var(--fs-title); }
 .home-count { font-size: var(--fs-base); font-weight: 400; color: hsl(var(--muted-foreground)); margin-left: var(--space-2, .5rem); }
 .home-acts { display: flex; gap: var(--space-2, .5rem); flex-wrap: wrap; }
 .home-acts .btn, .ha-acts .btn { display: inline-flex; align-items: center; gap: var(--space-2, .5rem); }
