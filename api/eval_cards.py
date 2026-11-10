@@ -55,7 +55,7 @@ def list_cards(store, *, owner: str, role: str | None, limit: int = DEFAULT_LIMI
             "eval_cards",
             "MATCH (r:Record)-[:ATTACHES_TO]->(c:Concept) WHERE r.owner_id = $owner "
             "AND c.owner_id = $owner AND c.concept_id = $role "
-            "AND starts_with(r.record_id, $prefix) "
+            "AND r.record_id STARTS WITH $prefix "
             "RETURN r.record_id AS id, r.title AS title, r.props AS props, "
             "r.valid_from AS valid_from, r.valid_until AS valid_until",
             {"owner": owner, "role": pkns.key(owner, rid),

@@ -208,7 +208,7 @@ def put_edge_tombstone(store, src: str, rel: str, dst: str, owner: str,
 def _edge_tombstones_delta_plan(*, owner: str, since: int) -> q.QueryPlan:
     """owner 의 엣지 툼스톤 중 sync_seq > since — 동기화 rel(CC 4종+ABOUT)만."""
     rels = sorted(q.SYNC_EDGE_RELS)
-    where = ["t.owner_id = $owner", f"(t.rel IN {json.dumps(rels)} OR starts_with(t.rel, 'ATTACHES_TO:'))"]
+    where = ["t.owner_id = $owner", f"(t.rel IN {json.dumps(rels)} OR t.rel STARTS WITH 'ATTACHES_TO:')"]
     params: dict = {"owner": owner}
     if since > 0:
         where.append("t.sync_seq > $since")

@@ -90,7 +90,7 @@ def claim_status(store, owner: str, claim: str) -> dict:
 def _episodes(store, owner: str) -> list[dict]:
     return events._run(q.QueryPlan(
         "runs_list", "MATCH (e:Episode) WHERE e.owner_id = $owner AND "
-        "starts_with(e.episode_id, $prefix) RETURN e.episode_id AS id, e.title AS title, "
+        "e.episode_id STARTS WITH $prefix RETURN e.episode_id AS id, e.title AS title, "
         "e.date AS date, e.props AS props",
         {"owner": owner, "prefix": pkns.key(owner, events.RUN_PREFIX)}), store)
 

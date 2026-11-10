@@ -162,7 +162,7 @@ def scoped_counts_cypher() -> str:
     """분류 열에서 직접 소속과 하위 전체를 센다. 모든 팔에 소유 범위를 건다."""
     return _union_all([
         f"MATCH (n:{label}) WHERE n.owner_id = $owner "
-        "AND (n.domain = $domain OR starts_with(n.domain, $prefix)) "
+        "AND (n.domain = $domain OR n.domain STARTS WITH $prefix) "
         "RETURN n.domain AS domain, count(n) AS total"
         for label in DOMAIN_LABELS])
 

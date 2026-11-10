@@ -168,7 +168,7 @@ def _page_end(sources: list[list[dict]], top: int, limit: int) -> tuple[int, boo
 def _roles(store, owner: str) -> dict[str, dict]:
     rows = _run(q.QueryPlan(
         "events_roles", "MATCH (n:Concept) WHERE n.owner_id = $owner AND "
-        "starts_with(n.concept_id, $prefix) RETURN n.concept_id AS id, n.domain AS domain, "
+        "n.concept_id STARTS WITH $prefix RETURN n.concept_id AS id, n.domain AS domain, "
         "n.props AS props", {"owner": owner, "prefix": pkns.key(owner, role_contract.ID_PREFIX)}),
         store)
     out = {}
@@ -188,7 +188,7 @@ def _attached(store, owner: str, label: str, pk: str, rels: str, ids: list[str])
     rows = _run(q.QueryPlan(
         f"events_attached_{label}",
         f"MATCH (a:{label})-[r:{rels}]->(b:Concept) WHERE a.{pk} IN $ids "
-        "AND a.owner_id = $owner AND b.owner_id = $owner AND starts_with(b.concept_id, $prefix) "
+        "AND a.owner_id = $owner AND b.owner_id = $owner AND b.concept_id STARTS WITH $prefix "
         f"RETURN a.{pk} AS id, b.concept_id AS role",
         {"ids": pkns.keys(owner, ids), "owner": owner,
          "prefix": pkns.key(owner, role_contract.ID_PREFIX)}), store)
@@ -212,7 +212,7 @@ def _superseded_by(store, owner: str, label: str, pk: str, ids: list[str]) -> di
 def _runs(store, owner: str) -> list[tuple[str, dict]]:
     rows = _run(q.QueryPlan(
         "events_runs", "MATCH (e:Episode) WHERE e.owner_id = $owner AND "
-        "starts_with(e.episode_id, $prefix) RETURN e.episode_id AS id, e.props AS props",
+        "e.episode_id STARTS WITH $prefix RETURN e.episode_id AS id, e.props AS props",
         {"owner": owner, "prefix": pkns.key(owner, RUN_PREFIX)}), store)
     return [(pkns.strip(r["id"]), _props(r.get("props"))) for r in rows]
 
@@ -248,7 +248,7 @@ def _scan(store, *, owner, since, limit, role, kinds) -> dict:
         # 실행 기록 Episode 만 본다: 다른 Episode 가 페이지를 먹지 않게 접두를 질의에 건다.
         runs = _changed(store, "Episode", "x.episode_id AS id, x.title AS title, x.props AS props, "
                         "x.updated_at AS ts", owner, since[0], limit,
-                        " AND starts_with(x.episode_id, $run_prefix)",
+                        " AND x.episode_id STARTS WITH $run_prefix",
                         {"run_prefix": pkns.key(owner, RUN_PREFIX)})
     if {"role.lesson_added", "run.citation_superseded"} & set(kinds):
         recs = _changed(store, "Record", "x.record_id AS id, x.title AS title, x.props AS props, "

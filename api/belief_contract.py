@@ -126,7 +126,7 @@ def _key(node):
 def load(store, owner, *, attached=False):
     """소유자 안의 예약 Record만 읽는다. 복원 경로의 불완전한 행은 확률로 읽지 않는다."""
     rows = store.run("MATCH (n:Record) WHERE n.owner_id = $owner "
-                     "AND starts_with(n.record_id, $prefix) "
+                     "AND n.record_id STARTS WITH $prefix "
                      "RETURN n.record_id AS id, n.props AS props, n.valid_from AS valid_from, "
                      "n.valid_until AS valid_until, n.created AS created",
                      {"owner": owner, "prefix": pkns.key(owner, "record:belief-")})

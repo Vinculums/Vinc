@@ -50,6 +50,7 @@ SCOPES = ("api", "store", "engines", "vinc_mcp", "vinc_rag", "vinc_store", "scri
 ADAPTERS = frozenset({
     "store/embedded_backend.py",
     "store/embedded_schema.py",
+    "store/neo4j_backend.py",
 })
 
 #: 그래프 스토어가 아닌 SQLite 를 쓰는 파일. `PRAGMA table_info`·`ALTER TABLE` 이
@@ -83,8 +84,9 @@ FAMILIES: dict[str, re.Pattern] = {
     "engine_ops": re.compile(r"\bCHECKPOINT\b|\bLOAD\s+EXTENSION\b|\bINSTALL\s+\w+"
                              r"|\b(?:EXPORT|IMPORT)\s+DATABASE\b"
                              r"|\benable_cached_prepared_statement\b"),
+    # `starts_with(a, b)` 는 함수형 철자다. 두 엔진 다 연산자 `a STARTS WITH b` 를 받는다.
     "functions": re.compile(r"\b(?:label|list_contains|list_distinct|list_cat|list_concat"
-                            r"|json_path|to_json|list_extract|string_split)\s*\("),
+                            r"|json_path|to_json|list_extract|string_split|starts_with)\s*\("),
 }
 
 
