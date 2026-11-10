@@ -1,16 +1,13 @@
-import { accountMode, api, buildId, cfg, communitiesApi, forgetMemberKey, isCommunitySpace, messageOf, remote, teamsApi, WEB, shellInvoke } from "../api";
+import { accountMode, api, buildId, cfg, forgetMemberKey, messageOf, remote, WEB, shellInvoke } from "../api";
 import { accountKey, accountWho, connectAccount, forgetAccount, hasAccount, keyIsOnDisk,
          mcpKeyPresent,
          setAccountKey } from "../account-connect";
 import { COPY } from "../copy";
 import { esc, openSheet, type SheetHandle } from "../components";
-import { retainBeforeSwitch } from "../view-retained";
 import { loadPrefs, savePrefs, RAIL_MIN, RAIL_MAX } from "../view-prefs";
 import { disposeEditorsIn } from "../doc-editor";
 import { mountStorage } from "../storage-mode";
 import { mountTopicConversion } from "../topic-conversion";
-import { mountSpacePicker } from "../space-picker";
-import { ensureTeamCredential } from "../team-key";
 import { mountPushSettings } from "../web-push-ui";
 
 /** Settings — 왼쪽 분류 레일 + 본문(2026-09-22).
@@ -261,8 +258,7 @@ async function renderSettings(
       <label>${U.account}</label>
       <div id="web-acct" class="hint" style="font-size:var(--fs-sm)">…</div>
       <label>${U.space}</label>
-      <p class="hint">${U.spaceHint}</p>
-      <div id="space-pick" class="space-pick"></div>
+      <p class="hint">${esc(U.spaceHint)}</p>
       ${!cfg.team ? '<div id="topic-conversion"></div>' : ""}
       ${WEB ? `<label>${COPY.push.title}</label><div id="push-box"></div>` : ""}` : ""}
       ${!remote() ? `
@@ -314,13 +310,8 @@ async function renderSettings(
           })
           .catch(() => { if (box) box.textContent = ""; });
       }
-      // 스페이스 전환 — 개인 그래프와 팀 그래프는 별개 네임스페이스다. 여기서 고른
-      // 것이 View·Search·Records 전부에 걸리므로, 표면 하나가 아니라 계정 설정에 둔다.
-      // 활성화 대기·중지 팀은 상태만 보이고 선택하지 못한다.
-      // 종류(개인 · 팀 · 커뮤니티)를 탭으로 보고, 그 안의 하나를 줄로 고른다(`space-picker.ts`).
-      const pick = body.querySelector<HTMLElement>("#space-pick");
-      if (pick) mountSpacePicker(pick, { cfg, teamsApi, communitiesApi, isCommunitySpace, retainBeforeSwitch,
-        ensureTeam: ensureTeamCredential, reload: () => location.reload(), copy: U, esc });
+      // 공간 전환은 사이드바 머리에 있다(`space-switcher.ts`). 여기는 그 자리를 한 줄로 알리고,
+      // 개인 공간이면 주제를 새 팀 공간으로 옮기는 칸을 둔다.
       return;
     }
     if (WEB) return;

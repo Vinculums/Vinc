@@ -12,6 +12,9 @@ const LANG_KEY = "vinc.lang";
 // 현재 스페이스. 빈 문자열 = 개인. 팀이면 팀 publicId 를 담는다(계정이 이 값을
 // team:<uuid> graph_owner 로 바꿔 허브에 서명해 보낸다 — 클라는 owner 를 모른다).
 const TEAM_KEY = "vinc.team";
+// 그 스페이스의 표시 이름. 목록을 못 받아도 사이드바 머리가 지금 공간을 이름으로 말하게
+// 고를 때 함께 남긴다. id 와 짝으로 담아서, 다른 경로로 `cfg.team` 이 바뀌면 이름은 따라오지 않는다.
+const TEAM_NAME_KEY = "vinc.team.name";
 
 // Tauri 셸 webview 의 origin 은 tauri://localhost(mac·linux) 또는
 // http://tauri.localhost(windows) — 사이드카가 아니다. 셸(main.rs)은 사이드카를
@@ -92,8 +95,24 @@ export const cfg = {
   get team(): string { return remote() ? localStorage.getItem(TEAM_KEY) || "" : ""; },
   set team(v: string) {
     viewSessionCache.clear();
+    if ((localStorage.getItem(TEAM_KEY) || "") !== v) localStorage.removeItem(TEAM_NAME_KEY);
     if (v) localStorage.setItem(TEAM_KEY, v);
     else localStorage.removeItem(TEAM_KEY);
+  },
+  /** 지금 스페이스(`team`)의 표시 이름. 남긴 이름이 다른 스페이스의 것이면 빈 문자열이다.
+   *  개인은 이름을 남기지 않는다(화면이 "개인"이라고 부른다). */
+  get teamName(): string {
+    const team = this.team;
+    if (!team) return "";
+    try {
+      const saved = JSON.parse(localStorage.getItem(TEAM_NAME_KEY) || "null") as { id?: unknown; name?: unknown } | null;
+      return saved && saved.id === team && typeof saved.name === "string" ? saved.name : "";
+    } catch { return ""; }
+  },
+  set teamName(v: string) {
+    const team = this.team;
+    if (team && v) localStorage.setItem(TEAM_NAME_KEY, JSON.stringify({ id: team, name: v }));
+    else localStorage.removeItem(TEAM_NAME_KEY);
   },
 };
 
@@ -1353,12 +1372,12 @@ export async function adoptSpaceFromAddress(): Promise<"" | "member" | "local"> 
     else if (raw === "local") refused = "local";
     else if (isCommunitySpace(raw)) {
       const hit = (await communitiesApi.list()).find((x) => x.id.toLowerCase() === raw);
-      if (hit) cfg.team = hit.id;
+      if (hit) { cfg.team = hit.id; cfg.teamName = hit.name; }
       else refused = "member";
     } else {
       const rows = await teamsApi.list();
       const hit = rows.find((t) => t.status === "active" && t.id.toLowerCase() === raw);
-      if (hit) cfg.team = hit.id;
+      if (hit) { cfg.team = hit.id; cfg.teamName = hit.name; }
       else refused = "member";
     }
   }
