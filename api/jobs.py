@@ -25,6 +25,8 @@ from contextvars import copy_context
 from dataclasses import dataclass, field
 from typing import Callable
 
+from store.write_waits import WRITE_WAITS, current_kind
+
 # 잡 상태 리터럴(설계 §11 P2 — POST /jobs 202 → GET /jobs/{id} 폴링).
 QUEUED = "queued"
 RUNNING = "running"
@@ -92,8 +94,10 @@ class JobQueue:
     둘 뿐이고 ``Queue.get`` 은 항목이 들어오면 즉시 깬다."""
 
     def __init__(self, *, on_idle=None, on_before_done=None, on_before_run=None,
-                 tick_s: float | None = None) -> None:
+                 tick_s: float | None = None, waits=None) -> None:
         self._on_idle = on_idle
+        # 누가 누구 뒤에서 얼마나 기다렸나(`store.write_waits`). 수만 센다.
+        self._waits = waits if waits is not None else WRITE_WAITS
         # A required durability hook runs on the sole writer before a successful
         # response or DONE can be observed. Unlike on_idle, its error is fatal to
         # this job; the caller must treat a post-mutation failure as indeterminate.
@@ -142,16 +146,19 @@ class JobQueue:
             return f"job-{self._counter}"
 
     # ── 제출 ──────────────────────────────────────────────────────────────
-    def submit(self, kind: str, fn: Callable[[], dict]) -> Job:
+    def submit(self, kind: str, fn: Callable[[], dict], *, _sync: bool = False) -> Job:
         """잡을 큐에 넣고 즉시 Job(status=queued) 반환(비동기, 202 매핑)."""
         job = Job(self._next_id(), kind)
         with self._lock:
             self._jobs[job.id] = job
         context = copy_context()
         def guarded():
+            current_kind.set(kind)   # 이 잡 안에서 잡힌 DDL 배타를 이 종류로 센다(복사한 컨텍스트라 새지 않는다)
             if self._on_before_run is not None:
                 self._on_before_run(job)
             return fn()
+        # 큐에 넣기 **전에** 센다 — 워커가 먼저 집어 가면 시작이 대기보다 앞선다.
+        self._waits.enqueued(job.id, kind, sync=_sync)
         self._q.put((job, lambda: context.run(guarded)))
         self._ensure_worker()   # 앞선 잡이 워커를 무너뜨렸어도 이 잡은 돈다
         return job
@@ -164,8 +171,9 @@ class JobQueue:
 
         ``timeout=None`` 이면 무한 대기다 — **기본값이 아니다**(DEFAULT_SYNC_TIMEOUT).
         무한 대기는 한 번 막히면 화면이 영원히 "처리 중"에 굳는 실패 양식이었다."""
-        job = self.submit(kind, fn)
+        job = self.submit(kind, fn, _sync=True)
         if not job._done.wait(timeout=timeout):
+            self._waits.timed_out(kind)
             # 잡은 여전히 큐/실행 중일 수 있다 — 그 사실을 숨기지 않는다.
             raise JobError(
                 f"job {job.id}({kind}) 가 {timeout}s 안에 끝나지 않았습니다. "
@@ -205,6 +213,7 @@ class JobQueue:
                 break
             job, fn = item
             job.status = RUNNING
+            self._waits.started(job.id)
             try:
                 result = fn()
                 normalized = result if isinstance(result, dict) else {"result": result}
@@ -225,6 +234,7 @@ class JobQueue:
                 job.error = f"{type(exc).__name__}: {exc}"
                 job.status = ERROR
             finally:
+                self._waits.finished(job.id, ok=job.status == DONE)
                 job._done.set()
                 self._q.task_done()
             self._idle_tick(wrote=job.kind not in READ_ONLY_KINDS)
@@ -235,10 +245,12 @@ class JobQueue:
         ``wrote`` 는 이 틱이 잡 완료 뒤인지(True) 빈 큐 타이머인지(False)를 가른다.
         이 큐가 곧 쓰기 경로라 호출부에는 그것 말고 "쓰기가 있었는가"를 알 재료가
         없다 — 그래서 판단을 여기서 넘긴다."""
-        if self._on_idle is None:
-            return
         try:
-            self._on_idle(wrote=wrote)
+            if self._on_idle is not None:
+                # 후처리도 워커를 붙잡는다 — 그동안 기다린 쓰기에 이 시간을 단다.
+                with self._waits.blocking():
+                    self._on_idle(wrote=wrote)
+            self._waits.maybe_log()
         except Exception as exc:                      # noqa: BLE001
             print(f"[jobs] on_idle 실패(계속 진행): {type(exc).__name__}: {exc}",
                   file=sys.stderr, flush=True)
@@ -262,3 +274,7 @@ class JobQueue:
         w = self._worker
         if w is not None:
             w.join(timeout=5.0)
+        try:
+            self._waits.maybe_log(force=True)   # 재시작으로 비기 전의 마지막 집계
+        except Exception:                       # noqa: BLE001 — 종료를 막지 않는다
+            pass
