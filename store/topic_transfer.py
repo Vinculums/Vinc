@@ -72,18 +72,17 @@ def verify_store_shape(store, *, vocabulary_owner: str | None = None) -> None:
                 or owner_theme_id(vocabulary_owner) in vocabulary["themes"]:
             raise TransferRefused("owner_vocabulary_sidecar_not_supported")
     specs = {**node_table_specs(), **meta_table_specs()}
-    tables = store.run("CALL show_tables() RETURN *", raw=True)
-    have = {r["name"] for r in tables}
+    have = store.table_names()
     expected = set(specs) | {r["label"] for r in rel_table_specs()}
     if have != expected:
         raise TransferRefused("unsupported_schema_tables")
     for label, spec in specs.items():
-        cols = {r["name"] for r in store.run(f"CALL table_info('{label}') RETURN *", raw=True)}
+        cols = {name for name, _ in store.table_columns(label) or []}
         if cols != set(spec["cols"]):
             raise TransferRefused("unsupported_schema_columns:" + label)
     for spec in rel_table_specs():
         label = spec["label"]
-        cols = {r["name"] for r in store.run(f"CALL table_info('{label}') RETURN *", raw=True)}
+        cols = {name for name, _ in store.table_columns(label) or []}
         if cols != set(spec["props"]):
             raise TransferRefused("unsupported_schema_columns:" + label)
 
@@ -777,7 +776,7 @@ def _apply_rehearsal(store, plan: Plan, *, run_id: str, stamp: str, fail_at=None
     _require_synthetic(store)
     if not run_id or len(run_id) > 120:
         raise TransferRefused("invalid_run_id")
-    if any(r["index_name"] != "_PK" for r in store.run("CALL show_indexes() RETURN *", raw=True)):
+    if store.search_indexes():
         raise TransferRefused("indexed_store_not_supported_in_rehearsal")
     key = "topic-transfer:run:" + run_id
     args = _canonical([plan.source, plan.target, plan.topic, plan.before_hash])

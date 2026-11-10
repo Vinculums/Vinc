@@ -47,14 +47,12 @@ def _narrow_to_existing(store, table: str, wanted: list[str], probe: str) -> lis
     `probe` 는 "이 테이블이 있는가"를 묻는 질의다 — 있는데 열이 모자란 경우와
     아예 없는 경우를 가르는 것이 이 함수의 유일한 일이다.
     """
-    try:
-        info = store.run(f"CALL table_info('{table}') RETURN *")
-    except Exception:
-        info = None
+    columns = getattr(store, "table_columns", None)
+    info = columns(table) if columns is not None else None
     if info:
-        have = {str(r.get("name", "")) for r in info}
+        have = {name for name, _ in info}
         return [c for c in wanted if c in have]
-    # table_info 를 못 쓰는 드라이버일 수도 있다 — 그때는 존재 여부만 따로 묻는다.
+    # 열 목록을 못 주는 스토어일 수도 있다 — 그때는 존재 여부만 따로 묻는다.
     try:
         store.run(probe)
     except Exception:
@@ -326,13 +324,10 @@ def vector_dim(store, table: str = "ChunkVec") -> int | None:
 
     메타에 적힌 모델 이름으로 추정하지 않고 열을 직접 읽는다 — 이 값이 곧 "첫 쓰기가
     캐스팅 예외를 내는가"를 정하는 사실이고, 메타는 비어 있거나 낡을 수 있다."""
-    try:
-        rows = store.run(f"CALL table_info('{table}') RETURN *") or []
-    except Exception:
-        return None
-    for r in rows:
-        if str(r.get("name", "")) == "embedding":
-            m = re.search(r"(\d+)", str(r.get("type", "")))
+    columns = getattr(store, "table_columns", None)
+    for name, typ in (columns(table) if columns is not None else None) or []:
+        if name == "embedding":
+            m = re.search(r"(\d+)", typ)
             return int(m.group(1)) if m else None
     return None
 
