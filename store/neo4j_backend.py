@@ -53,12 +53,28 @@ _LEASE_ACQUIRE = (
     f"MERGE (l:{LEASE_LABEL} {{key: 'writer'}}) "
     "SET l._touch = coalesce(l._touch, 0) + 1 "
     "WITH l, timestamp() AS now "
-    "WITH l, now, (l.holder IS NULL OR l.holder = $h OR coalesce(l.expires, 0) < now) AS ok "
+    "WITH l, now, (l.holder IS NULL OR l.holder = $h OR coalesce(l.expires, 0) < now "
+    "              OR coalesce(l.holder = $prev, false)) AS ok "
     "SET l.holder = CASE WHEN ok THEN $h ELSE l.holder END, "
     "    l.expires = CASE WHEN ok THEN now + $ttl ELSE l.expires END "
     "RETURN ok, l.holder AS holder, l.expires AS expires")
+#: 설치 단위 보유자 id 모양: `<설치 id>@<호스트>:<pid>`. 같은 설치·같은 호스트의 죽은 pid 가 쥔 임대는
+#: 만료를 기다리지 않고 되찾는다(`try_acquire`). 다른 설치나 다른 호스트의 임대는 만료까지 기다린다.
+_HOLDER = re.compile(r"^(?P<inst>[0-9a-f]{32})@(?P<host>[^:]+):(?P<pid>\d+)$")
+
+
+def installation_holder(installation: str, *, host: str | None = None, pid: int | None = None) -> str:
+    return f"{installation}@{host or socket.gethostname()}:{pid or os.getpid()}"
+
+
 _LEASE_RELEASE = (f"MATCH (l:{LEASE_LABEL} {{key: 'writer'}}) WHERE l.holder = $h "
                   "SET l.expires = 0")
+
+
+def _safe_error(exc: Exception) -> str:
+    """드라이버 오류의 사람용 한 줄. 드라이버는 비밀번호를 메시지에 싣지 않지만, 혹시 실어도 잘라 낸다."""
+    text = " ".join(str(getattr(exc, "message", None) or exc).split())
+    return re.sub(r"(?i)(password|credentials?)\s*[=:]\s*\S+", r"\1=<hidden>", text)[:300]
 
 
 def _version_tuple(text: str) -> tuple[int, int]:
@@ -138,6 +154,36 @@ class Neo4jBackend:
     driver_name = "neo4j"
     #: 청크 팔이 owner 필터를 적용한다(임베디드와 같은 계약).
     scoped_chunk_search = True
+    #: 마지막으로 못 연 사유(사람에게 보여도 되는 문장, 비밀번호 없음). `/health` 의 open_error 로 나간다.
+    last_open_error: str = ""
+
+    @classmethod
+    def open(cls, cfg) -> "Neo4jBackend | None":
+        """설정(`store.config.database_config`)으로 연다. 못 열면 None 이고 사유는 `last_open_error`.
+
+        드라이버가 없거나, 닿지 않거나, 비밀번호가 틀렸거나, 하한보다 낮은 판이면 여기서 멈춘다.
+        폴더 스토어로 물러서지 않는다(빈 그래프가 데이터 유실로 읽힌다)."""
+        db = cfg.database or {}
+        try:
+            import neo4j  # noqa: F401 — 드라이버가 없으면 사유를 말하고 멈춘다
+        except ImportError:
+            cls.last_open_error = "the neo4j driver is not installed in this build"
+            return None
+        if not cfg.database_secret:
+            cls.last_open_error = ("no password for the database: the app passes it from the "
+                                   "keyring when it starts the sidecar")
+            return None
+        try:
+            store = cls(db["uri"], user=db["user"], password=cfg.database_secret,
+                        database=db["database"], holder=cfg.lease_holder)
+        except Exception as exc:   # noqa: BLE001 — 사유를 한 줄로 남긴다
+            cls.last_open_error = f"{type(exc).__name__}: {_safe_error(exc)}"
+            print(f"[neo4j] store open failed: {cls.last_open_error}", file=sys.stderr, flush=True)
+            return None
+        cls.last_open_error = ""
+        if store.read_only:
+            print(f"[neo4j] opened read-only: {store.read_only_reason}", file=sys.stderr, flush=True)
+        return store
 
     def __init__(self, uri: str, *, user: str, password: str, database: str = "neo4j",
                  writer: bool = True, lease_ttl_s: float = 60.0, heartbeat: bool = True,
@@ -174,11 +220,11 @@ class Neo4jBackend:
                 self._beat.start()
 
     # ── 쓰기 임대 ─────────────────────────────────────────────────────────
-    def _lease(self, query: str) -> dict | None:
+    def _lease(self, query: str, prev: str | None = None) -> dict | None:
         # 임대 자체는 늘 쓰기 세션이다. `execute_write` 는 일시 오류(동시에 처음 노드를 만들 때의
         # 교착 감지 같은 TransientError)를 드라이버가 다시 시도한다 — 그냥 `run` 이면 진 쪽이 오류로 끝난다.
         def work(tx):
-            rec = tx.run(query, {"h": self.holder, "ttl": self._ttl_ms}).single()
+            rec = tx.run(query, {"h": self.holder, "ttl": self._ttl_ms, "prev": prev}).single()
             return rec.data() if rec else None
         with self._driver.session(database=self.database) as s:
             return s.execute_write(work)
@@ -186,12 +232,27 @@ class Neo4jBackend:
     def try_acquire(self) -> bool:
         """임대를 집거나 늘린다. 집으면 쓰기, 못 집으면 읽기 전용으로 바꾸고 False."""
         row = self._lease(_LEASE_ACQUIRE) or {}
+        stale = self._own_dead_holder(row.get("holder"))
+        if not row.get("ok") and stale:
+            # 같은 설치의 죽은 프로세스가 남긴 임대다. 읽은 보유자가 그대로일 때만 바꾼다(그 사이 남이
+            # 집었으면 조건이 거짓이라 아무것도 안 바뀐다).
+            row = self._lease(_LEASE_ACQUIRE, prev=stale) or {}
         if row.get("ok"):
             self.read_only, self.read_only_reason = False, ""
             return True
         self.read_only = True
         self.read_only_reason = f"another Vinc process holds the writer lease ({row.get('holder')})"
         return False
+
+    def _own_dead_holder(self, holder) -> str | None:
+        """임대를 쥔 것이 이 설치·이 호스트의 **죽은** 프로세스면 그 보유자 id, 아니면 None."""
+        mine, theirs = _HOLDER.match(self.holder), _HOLDER.match(holder or "")
+        if not mine or not theirs or holder == self.holder:
+            return None
+        if (theirs["inst"], theirs["host"]) != (mine["inst"], mine["host"]):
+            return None
+        from .procutil import pid_alive
+        return None if pid_alive(int(theirs["pid"])) else holder
 
     def _heartbeat(self) -> None:
         while not self._stop.wait(max(1.0, self._ttl_ms / 3000)):

@@ -49,9 +49,39 @@ def open_store(cfg: StoreConfig | None = None) -> GraphStore | None:
     """cfg.backend 에 따라 스토어를 연다. 드라이버 미설치 등 도달 불가 시 None
     (호출부는 executed=False 로 강등). **스토어를 여는 유일한 지점**(설계 §4-1)."""
     cfg = cfg or load_config()
+    global _blocked
+    _clear_open_errors()
+    _blocked = str((cfg.extra or {}).get("open_blocked") or "")
+    if _blocked:
+        # 설정 자체가 틀려 열 대상이 없다(저장 위치 검사 실패). 다른 스토어로 물러서지 않는다.
+        return None
     backend = (cfg.backend or "embedded").lower()
     if backend == "embedded":
         from .embedded_backend import EmbeddedBackend
         return EmbeddedBackend.open(cfg)
+    if backend == "neo4j":
+        from .neo4j_backend import Neo4jBackend
+        return Neo4jBackend.open(cfg)
     raise ValueError(
-        f"unknown/unsupported store backend: {cfg.backend!r} (supported: embedded)")
+        f"unknown/unsupported store backend: {cfg.backend!r} (supported: embedded, neo4j)")
+
+
+#: 설정이 막아 열지 않은 사유(`open_blocked`). 마지막 `open_store` 호출의 것이다.
+_blocked = ""
+
+
+def _clear_open_errors() -> None:
+    """새로 열 때 지난 시도의 사유를 지운다. 다른 엔진의 옛 사유가 이번 실패의 사유로 읽히면 안 된다."""
+    global _blocked
+    _blocked = ""
+    from .embedded_backend import EmbeddedBackend
+    from .neo4j_backend import Neo4jBackend
+    EmbeddedBackend.last_open_error = ""
+    Neo4jBackend.last_open_error = ""
+
+
+def last_open_error() -> str:
+    """마지막으로 스토어를 못 연 사유(어느 엔진이든). 없으면 빈 문자열."""
+    from .embedded_backend import EmbeddedBackend
+    from .neo4j_backend import Neo4jBackend
+    return _blocked or Neo4jBackend.last_open_error or EmbeddedBackend.last_open_error

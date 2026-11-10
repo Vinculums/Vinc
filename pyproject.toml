@@ -12,7 +12,7 @@ license = { text = "FSL-1.1-ALv2" }
 authors = [{ name = "weg-9000" }]
 dependencies = []
 
-# 데스크톱 동결 전용 — PyPI 미배포. Vinc 는 임베디드 전용(서버 Neo4j 미탑재).
+# 데스크톱 동결 전용 — PyPI 미배포. 기본은 임베디드이고, 사용자의 Neo4j 는 `database` extra 로 연다.
 [project.optional-dependencies]
 # 임베디드 그래프 스토어 — PyPI `ladybug` = LadybugDB. 세 출하 플랫폼은 0.21.2로 고정한다.
 # 이 핀과 release.yml 의 LBUG_VER·확장 해시 목록은 같은 판이어야 한다(test_ladybug_vendor).
@@ -30,6 +30,9 @@ server   = ["argon2-cffi"]    # argon2id 자격 해시(로컬 로그인 F4)
 # ci.yml·Dockerfile.hub·packaging/sidecar.spec(collect_all) 을 함께 봐야 한다 —
 # 한 곳만 빠지면 "빌드는 초록, 런타임은 사망"(v0.5.1 회귀)이 그대로 재현된다.
 pdf      = ["pypdf"]          # PDF → 텍스트(순수 파이썬, 오프라인·키 0)
+# 사용자가 운영하는 Neo4j 를 저장 위치로(store/neo4j_backend.py, Apache-2.0). 이것도 extra 다 — 없으면
+# 데이터베이스 위치만 "드라이버가 없다"는 사유로 열리지 않는다. 핀은 release.yml 과 같은 판이다.
+database = ["neo4j==6.4.1"]
 
 [tool.setuptools]
 py-modules = []

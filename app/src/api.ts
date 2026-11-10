@@ -606,11 +606,22 @@ export async function decideDataMode(): Promise<DataMode | "ask"> {
 // ── 저장 위치와 모드 전환(VIN-130) ──────────────────────────────────────────
 // 전부 **이 기기의 사이드카**로 간다(`localCall`). 계정 모드에서 부르는 것들이라 `call` 로
 // 보내면 계정으로 간다.
+/** 그래프가 사는 곳(`store/location.py` 와 같은 합 타입). 데이터베이스 위치에는 비밀번호 칸이 없다:
+ *  `secret_ref` 는 OS 키링 항목의 이름이고, 셸이 사이드카를 띄울 때 그 값을 환경으로만 넘긴다. */
+export type StorageLocation =
+  | { kind: "account" }
+  | { kind: "folder"; path: string | null }
+  | { kind: "database"; engine: "neo4j"; uri: string; database: string; user: string;
+      secret_ref: string };
 export type StorageConfig = {
   executed: boolean; mode: DataMode | null; mode_chosen: boolean;
   data_path: string | null; data_file: string | null;
   default_folder: string; suggested_folder: string; pinned: boolean;
   restart_needed: boolean; store_open: boolean;
+  /** 고르지 않았으면 null. 설정이 틀렸으면 null 이고 `location_error` 가 사람용 문장이다. */
+  location: StorageLocation | null; location_error: string | null;
+  /** 지금 연 스토어의 엔진. 스토어가 없으면 null. */
+  engine: string | null;
 };
 export type FolderCheck = {
   path: string; ok: boolean; exists: boolean; has_store: boolean; store_bytes: number;

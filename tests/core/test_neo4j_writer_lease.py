@@ -113,3 +113,37 @@ def test_동시에_집어도_하나만_쓴다():
     finally:
         for b in opened:
             b.close()
+
+
+def test_같은_설치의_죽은_프로세스가_남긴_임대는_바로_되찾는다():
+    """재기동한 사이드카가 만료(기본 60초)를 기다리지 않는다. 다른 설치의 임대는 그대로 기다린다."""
+    import subprocess
+    from store.neo4j_backend import installation_holder
+    inst = "0123456789abcdef0123456789abcdef"
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait()
+    a = _open(heartbeat=False, holder=installation_holder(inst, pid=dead.pid), lease_ttl_s=600)
+    try:
+        assert a.writer_state()["writer"] is True
+        other = _open(heartbeat=False, holder=installation_holder("f" * 32), lease_ttl_s=600)
+        assert other.read_only, "다른 설치는 만료까지 기다린다"
+        other.close()
+        b = _open(heartbeat=False, holder=installation_holder(inst), lease_ttl_s=600)
+        try:
+            assert b.writer_state()["writer"] is True
+        finally:
+            b.close()
+    finally:
+        a._driver.close()          # 죽은 쪽은 임대를 놓지 않는다
+
+
+def test_살아_있는_같은_설치의_임대는_빼앗지_않는다():
+    from store.neo4j_backend import installation_holder
+    inst = "0123456789abcdef0123456789abcdef"
+    a = _open(heartbeat=False, holder=installation_holder(inst, pid=os.getppid()), lease_ttl_s=600)
+    b = _open(heartbeat=False, holder=installation_holder(inst), lease_ttl_s=600)
+    try:
+        assert a.writer_state()["writer"] is True and b.read_only
+    finally:
+        b.close()
+        a.close()

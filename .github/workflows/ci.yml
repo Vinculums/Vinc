@@ -600,7 +600,8 @@ jobs:
     # 러너와 임시 디렉터리는 `core` 와 같다(그 잡의 주석).
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    # 저장소 적합성 스위트의 Neo4j 쪽(`tests/core/test_store_conformance.py`)을 여기서 돌린다.
+    # 저장소 적합성 스위트의 Neo4j 쪽(`tests/core/test_store_conformance.py`)과 쓰기 임대·저장 위치로
+    # 열기(`test_neo4j_*`)를 여기서 돌린다.
     # 잡을 따로 세우지 않은 이유는 분이다: 이 잡은 늘 돌고, 서비스 컨테이너는 앞 단계와 함께 뜬다.
     # 비밀번호는 이 잡에서만 사는 일회용 컨테이너의 것이라 비밀이 아니다.
     services:
@@ -625,12 +626,14 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install deps (ladybug pinned + neo4j driver + argon2 + pytest + pypdf)
-        run: pip install ladybug==0.21.2 "neo4j>=6,<7" argon2-cffi pyyaml pytest pypdf
+        run: pip install ladybug==0.21.2 neo4j==6.4.1 argon2-cffi pyyaml pytest pypdf
       # Neo4j 쪽이 조용히 skip 되면 이 잡은 "두 엔진이 같다"가 아니라 "한 엔진만 봤다"가 된다.
       - name: Store conformance on Neo4j (no silent skips)
         run: |
           set -euo pipefail
-          python -m pytest -q -p no:cacheprovider -rs tests/core/test_store_conformance.py -k neo4j | tee "$RUNNER_TEMP/neo4j-conformance.txt"
+          python -m pytest -q -p no:cacheprovider -rs tests/core/test_store_conformance.py \
+            tests/core/test_neo4j_writer_lease.py tests/core/test_neo4j_location_open.py \
+            -k neo4j | tee "$RUNNER_TEMP/neo4j-conformance.txt"
           if grep -q "SKIPPED" "$RUNNER_TEMP/neo4j-conformance.txt"; then
             echo "::error::Neo4j 적합성이 건너뛰어졌다 — 서비스 컨테이너나 드라이버를 볼 것"; exit 1
           fi
