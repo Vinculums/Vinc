@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from . import revstamp
 from store import pkns
+from store.config import load_config
+from . import query as _query
 from .query import QueryPlan, execute
 
 
@@ -54,17 +56,29 @@ def pin_plan(episode_id: str, *, pinned: bool = True, stamp: dict | None = None,
     return QueryPlan("pin", cypher, params, note="preference signal: pin")
 
 
-def tag_plan(episode_id: str, tags: list[str], *, stamp: dict | None = None,
-             owner: str | None = None) -> QueryPlan:
+def tag_union(current: list[str] | None, tags: list[str]) -> list[str]:
+    """기존 태그 순서를 지키고 새 것만 뒤에 붙인 합집합(중복 제거)."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for t in list(current or []) + list(tags):
+        if t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
+
+
+def tag_plan(episode_id: str, tags: list[str], *, current: list[str] | None = None,
+             stamp: dict | None = None, owner: str | None = None) -> QueryPlan:
     """Add owner tags to an Episode (set-union; never duplicates, never removes).
 
-    임베디드(Kùzu 계보) 정합(§6-2): 리스트 컴프리헨션(`[t IN $x WHERE …]`)은 kuzu
-    파서가 거부하므로 `list_distinct(list_cat(...))` 로 합집합을 만든다 — 기존 태그
-    순서 유지 + 신규만 추가(중복 제거). 실측 확인."""
-    params: dict = {"id": pkns.key(owner, episode_id), "tags": list(tags)}
+    합집합은 파이썬에서 만든다(`tag_union`). 엔진마다 철자가 달라서다: ladybug 는 리스트
+    컴프리헨션을 거부하고 `list_distinct(list_cat(...))` 만 있고, Neo4j 에는 그 둘이 없다.
+    ⚠ ``current`` 는 **지금 저장된 태그**여야 한다 — 비우면 기존 태그를 덮어쓴다. 그래서
+    실행은 `tag()` 를 거친다: 같은 쓰기 잡 안에서 현재 값을 읽고 쓰므로(단일 writer)
+    사이에 끼어드는 쓰기가 없다."""
+    params: dict = {"id": pkns.key(owner, episode_id), "tags": tag_union(current, tags)}
     scope = _ep_scope(owner, params)
-    sets = ["e.tags = list_distinct(list_cat(coalesce(e.tags, []), $tags))"] + \
-        _stamp_sets(stamp, params)
+    sets = ["e.tags = $tags"] + _stamp_sets(stamp, params)
     cypher = (
         f"MATCH (e:Episode) WHERE e.episode_id = $id{scope} SET {', '.join(sets)} "
         "RETURN e.episode_id AS id, e.tags AS tags"
@@ -123,11 +137,22 @@ def pin(episode_id: str, *, pinned: bool = True, owner: str | None = None,
 
 def tag(episode_id: str, tags: list[str], *, owner: str | None = None,
         cfg=None, store=None) -> dict:
-    # 이미 전부 달린 태그면 합집합이 no-op → 무스탬프.
-    cur = _current(store, episode_id, "tags", owner)
-    changed = bool(cur) and not set(tags) <= set(cur.get("val") or [])
-    stamp = revstamp.make_stamp(store, cur) if changed else None
-    return execute(tag_plan(episode_id, tags, stamp=stamp, owner=owner), cfg, store=store)
+    # 합집합을 파이썬에서 만들므로 현재 태그를 반드시 읽는다. 스토어를 안 받았으면(CLI)
+    # 여기서 열고 닫는다 — 안 읽고 쓰면 기존 태그가 사라진다.
+    owns = store is None
+    if owns:
+        store = _query.open_store(cfg or load_config())   # execute 와 같은 여는 자리(테스트 대역도 여기)
+    try:
+        cur = _current(store, episode_id, "tags", owner)
+        # 이미 전부 달린 태그면 합집합이 no-op → 무스탬프.
+        changed = bool(cur) and not set(tags) <= set(cur.get("val") or [])
+        stamp = revstamp.make_stamp(store, cur) if changed else None
+        plan = tag_plan(episode_id, tags, current=(cur or {}).get("val") or [],
+                        stamp=stamp, owner=owner)
+        return execute(plan, cfg, store=store)
+    finally:
+        if owns and store is not None:
+            store.close()
 
 
 def touch(episode_id: str, *, now: str | None = None, owner: str | None = None,
