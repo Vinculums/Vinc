@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """Store configuration — embedded (offline) store + embedding settings.
 
-Vinc 는 임베디드 전용(설계 §1 — 외부 인프라·API 키 없이 오프라인). Neo4j 서버
-설정(uri/user/password)은 서버 경로 레포(`weg-9000-memory`)의 관심사이며 여기에는
-없다. 해석 순서: 인자 > 환경변수 > 기본값.
+기본은 임베디드다(설계 §1 — 외부 인프라·API 키 없이 오프라인). 외부 엔진 접속 설정은
+아직 없다. 해석 순서: 인자 > 환경변수 > 기본값.
 """
 from __future__ import annotations
 
@@ -52,7 +51,6 @@ EMBEDDING_MODEL_ALIASES = ("local-en", "local-en-large", "anthropic", "local")
 class StoreConfig:
     # backend selects the GraphStore implementation (store/backend.py):
     #   "embedded" — 인프로세스 LadybugDB(Kùzu 계보) — Vinc 기본·유일 배포 백엔드.
-    # (서버 Neo4j 백엔드는 weg-9000-memory 레포 소관 — Vinc 미탑재.)
     backend: str = "embedded"
     data_dir: str | None = None          # 임베디드 스토어 데이터 디렉토리(§3-2)
     embedding_model: str = DEFAULT_EMBEDDING_MODEL

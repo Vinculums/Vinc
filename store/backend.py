@@ -5,10 +5,10 @@
 `api/query.py` 가 각자 드라이버를 열었다. 추상화 후에는 **스토어를 여는 곳이 이
 파일 1곳**뿐이다.
 
-Vinc 는 **임베디드 전용**(설계 §1 — 오프라인·외부 인프라 없음). 구현체는
-`store/embedded_backend.py`(LadybugDB/Kùzu 계보) 하나다. `GraphStore` 추상화는
-계보 포크(LadybugDB/RyuGraph/Kùzu) 간 교체를 어댑터 1파일로 상한 짓는 보험으로
-유지된다(§2-2 R1). 서버 Neo4j 백엔드는 `weg-9000-memory` 레포 소관 — Vinc 미탑재.
+기본 백엔드는 **임베디드**다(설계 §1 — 오프라인·외부 인프라 없음). 구현체는 지금
+`store/embedded_backend.py`(LadybugDB/Kùzu 계보) 하나다. 사용자가 운영하는 외부 엔진
+(Neo4j)의 어댑터도 이 `GraphStore` 뒤에 붙는다. 그래서 엔진 방언은 어댑터 파일에만
+둔다 — `scripts/gate_engine_dialect.py` 가 어댑터 밖에서 늘지 못하게 막는다.
 
 원자성 계약(§4-2): `GraphStore` 는 다중 `run()`/`session.run()` 에 걸친 트랜잭션을
 **보장하지 않는다.** 복구 수단은 MERGE 멱등성 기반 재실행이다.
@@ -54,5 +54,4 @@ def open_store(cfg: StoreConfig | None = None) -> GraphStore | None:
         from .embedded_backend import EmbeddedBackend
         return EmbeddedBackend.open(cfg)
     raise ValueError(
-        f"unknown/unsupported store backend: {cfg.backend!r} "
-        "(Vinc 는 임베디드 전용 — 서버 Neo4j 는 weg-9000-memory 레포 소관)")
+        f"unknown/unsupported store backend: {cfg.backend!r} (supported: embedded)")

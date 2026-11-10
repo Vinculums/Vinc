@@ -4,7 +4,7 @@
 ``api/query.py`` stays read-only (/recall /search /decide). The owner signals it
 ranks on — pin, tags, access frequency — are produced here. Each builder is a
 pure ``QueryPlan``; ``execute`` (reused from query) runs it when a DB is
-reachable and otherwise returns the plan, so these stay testable without Neo4j.
+reachable and otherwise returns the plan, so these stay testable without a store.
 
     python -m api.cli pin   --episode <id> [--off]
     python -m api.cli tag   --episode <id> --tags a,b

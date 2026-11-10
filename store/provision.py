@@ -8,8 +8,6 @@
     python -m store.provision --dry-run
     python -m store.provision --apply
 
-(서버 Neo4j 스키마·backfill·tenant drop 은 서버 경로 레포 `weg-9000-memory`
-소관 — Vinc 미탑재.)
 """
 from __future__ import annotations
 

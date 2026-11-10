@@ -74,11 +74,11 @@ def _load_dotenv() -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="recall 세션 로그 → Neo4j :Episode 적재 + Archival 이관",
+        description="recall 세션 로그 → 스토어 :Episode 적재 + Archival 이관",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 예시:
-  # 전체 recall 세션을 Neo4j에 적재 (dry-run)
+  # 전체 recall 세션을 스토어에 적재 (dry-run)
   python recall_ingest.py --dry-run
 
   # 실제 적재
