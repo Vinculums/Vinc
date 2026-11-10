@@ -14,6 +14,9 @@ exit 0=통과 · 1=위반.
      **문자열 리터럴** 안에 있는 엔진 전용 구문을 계열별로 센다. 주석·독스트링은 보지
      않는다 — 질의로 엔진에 가는 것은 문자열뿐이다. f-string 의 고정 조각도 센다.
   ✅ 어댑터 파일(`ADAPTERS`)은 방언이 사는 자리라 세지 않는다.
+  ✅ 임베디드 엔진 전용 운영 도구(`EMBEDDED_TOOLS`)도 세지 않는다. LadybugDB 파일 자체를
+     고치고·재고·다시 짓는 스크립트라 외부 엔진에는 해당이 없다(그쪽은 그 엔진의 도구를
+     쓴다). 제품 경로(`api` `store` `vinc_mcp` …)의 파일은 여기에 넣지 않는다.
   ✅ (파일, 계열) 별 수가 `scripts/engine-dialect-allowlist.json` 보다 **많으면 실패**다.
      새 질의는 저장소 계층(GraphStore)의 연산을 쓰고, 방언은 어댑터에 둔다.
   ✅ 수가 **줄었는데 허용 목록이 그대로면 실패**다. `--update` 로 줄인 수를 같은 커밋에
@@ -51,6 +54,19 @@ ADAPTERS = frozenset({
 
 #: 그래프 스토어가 아닌 SQLite 를 쓰는 파일. `PRAGMA table_info`·`ALTER TABLE` 이
 #: 같은 글자라 걸리지만 엔진 방언이 아니다.
+#: LadybugDB 파일에만 쓰는 운영·측정 도구. 엔진 방언을 쓰는 것이 그 일이라 어댑터와 같이 센다.
+#: ⚠ 제품이 부르는 경로는 넣지 않는다 — 그건 어댑터 연산 뒤로 옮긴다.
+EMBEDDED_TOOLS = frozenset({
+    "scripts/qa/engine_compatibility_probe.py",   # 엔진 판 호환 검사
+    "scripts/qa/topic_conversion_profile.py",     # 토픽 변환 비용 프로파일(사본)
+    "scripts/r1c_ko_column.py",                   # 한국어 전문 열 실험(사본)
+    "scripts/rebuild_store_native.py",            # EXPORT/IMPORT DATABASE 재구축
+    "scripts/rehearse_rebuild.py",                # 재구축 리허설
+    "scripts/repair_hub_store.py",                # 허브 스토어 사본 수리
+    "scripts/restore_rehearsal_check.py",         # 스냅샷 사본 복원 판정
+    "scripts/store_size_probe.py",                # 스토어 크기 측정
+})
+
 NOT_GRAPH = frozenset({
     "vinc_mcp/store.py",
 })
@@ -103,7 +119,8 @@ def scan_source(source: str, filename: str = "<src>") -> list[tuple[str, int, st
 def tracked_files() -> list[str]:
     out = git(["ls-files", "--", *SCOPES], cwd=ROOT)
     return sorted(p for p in out.splitlines()
-                  if p.endswith(".py") and p not in ADAPTERS and p not in NOT_GRAPH)
+                  if p.endswith(".py") and p not in ADAPTERS and p not in NOT_GRAPH
+                  and p not in EMBEDDED_TOOLS)
 
 
 def scan_repo() -> dict[str, dict[str, list[tuple[int, str]]]]:

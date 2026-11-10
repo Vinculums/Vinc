@@ -1,41 +1,5 @@
 {
   "_comment": "scripts/gate_engine_dialect.py 의 허용 목록. 손으로 늘리지 않는다. 줄일 때는 --update 로 다시 쓴다.",
-  "total": 27,
-  "files": {
-    "scripts/qa/engine_compatibility_probe.py": {
-      "engine_ops": 1
-    },
-    "scripts/qa/topic_conversion_profile.py": {
-      "fts": 1
-    },
-    "scripts/r1c_ko_column.py": {
-      "fts": 1,
-      "schema": 1,
-      "vector": 1
-    },
-    "scripts/rebuild_store_native.py": {
-      "catalog": 5,
-      "engine_ops": 3,
-      "schema": 2
-    },
-    "scripts/rehearse_rebuild.py": {
-      "schema": 2
-    },
-    "scripts/repair_hub_store.py": {
-      "engine_ops": 1,
-      "vector": 1
-    },
-    "scripts/restore_rehearsal_check.py": {
-      "catalog": 1
-    },
-    "scripts/store_size_probe.py": {
-      "catalog": 1
-    },
-    "store/migrate.py": {
-      "catalog": 2
-    },
-    "store/topic_transfer.py": {
-      "catalog": 4
-    }
-  }
+  "total": 0,
+  "files": {}
 }

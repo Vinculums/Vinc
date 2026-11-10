@@ -177,6 +177,18 @@ class RawStore:
         return [(r["table_name"], r["index_name"])
                 for r in self.run("CALL show_indexes() RETURN *") if r["index_name"] != "_PK"]
 
+    def table_names(self):
+        # 어댑터의 `EmbeddedBackend.table_names` 와 같은 답.
+        return {r["name"] for r in self.run("CALL show_tables() RETURN *")}
+
+    def table_columns(self, table):
+        # 어댑터의 `EmbeddedBackend.table_columns` 와 같은 답(표가 없으면 None).
+        try:
+            rows = self.run(f"CALL table_info('{table}') RETURN *")
+        except Exception:
+            return None
+        return [(r["name"], r["type"]) for r in rows]
+
     def close(self):
         self.conn.close()
         self.db.close()

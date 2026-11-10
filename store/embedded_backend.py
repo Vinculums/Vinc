@@ -2360,6 +2360,19 @@ class EmbeddedBackend:
         rows = self.run("CALL show_indexes() RETURN *", raw=True)
         return [(r["table_name"], r["index_name"]) for r in rows if r["index_name"] != "_PK"]
 
+    def table_names(self) -> set[str]:
+        """스토어에 있는 노드·관계 표 이름(카탈로그). 스키마가 기대와 같은지 보는 쪽이 쓴다."""
+        return {str(r["name"]) for r in self.run("CALL show_tables() RETURN *", raw=True)}
+
+    def table_columns(self, table: str) -> list[tuple[str, str]] | None:
+        """표의 (열 이름, 타입) 목록. 표가 없거나 카탈로그를 못 읽으면 None.
+        ``table`` 은 코드가 정한 표 이름이다(스키마 명세의 라벨) — 사용자 입력을 넣지 않는다."""
+        try:
+            rows = self.run(f"CALL table_info('{table}') RETURN *", raw=True)
+        except Exception:
+            return None
+        return [(str(r.get("name", "")), str(r.get("type", ""))) for r in rows]
+
     @_exclusive_ddl
     def create_node_vector_index(self) -> str:
         """노드 미러의 HNSW 생성(멱등). 채우기가 끝난 **뒤에** 부른다.

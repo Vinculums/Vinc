@@ -79,6 +79,9 @@ class RepoTests(unittest.TestCase):
 
     def test_어댑터는_세지_않는다(self):
         self.assertTrue(G.ADAPTERS.isdisjoint(G.load_allowlist()))
+        self.assertTrue(G.EMBEDDED_TOOLS.isdisjoint(G.load_allowlist()))
+        # 임베디드 전용 도구는 scripts 아래에만 있다(제품 경로를 빼는 구멍이 되지 않게).
+        self.assertTrue(all(p.startswith("scripts/") for p in G.EMBEDDED_TOOLS))
 
 
 if __name__ == "__main__":
