@@ -12,13 +12,13 @@ const end = api.indexOf('\n}\n', start) + 2;
 const functionSource = api.slice(start, end)
   .replace('tries: number', 'tries').replace(': Promise<boolean>', '').replace(' as any', '');
 
-async function withServer(handler, verify) {
+async function withServer(handler, verify, overrides = {}) {
   const server = createServer(handler);
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const context = { cfg: { base: `http://127.0.0.1:${server.address().port}` },
     fetch, URL, AbortSignal, performance, setTimeout, sidecarDiag: '', migrations: 0, startIndexWatch() { context.migrations++; },
     // api.ts 의 `sleep` 과 같은 것. 함수 하나만 떼어 돌리므로 모듈 수준 헬퍼는 여기서 건넨다.
-    sleep: ms => new Promise(resolve => setTimeout(resolve, ms)) };
+    sleep: ms => new Promise(resolve => setTimeout(resolve, ms)), ...overrides };
   try { await verify(runInNewContext(`(${functionSource})`, context), context); }
   finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 }
@@ -36,6 +36,19 @@ for (const bodyStarted of [false, true]) {
     });
   });
 }
+
+// 본문 읽기가 마감 신호로 끊겼으면 시계가 뭐라 하든 준비가 아니다. 타이머는 시계가 마감을
+// 넘었다고 말하기 1ms 쯤 전에 깰 수 있다(CI 에서 이 경우가 true 를 냈다). 그 순간을 시계를
+// 늦춰서 만든다: 처음 세 번(마감 계산, 반복 조건, 신호 길이)은 실제 시각, 그 뒤로는 100ms 늦게 읽힌다.
+test('a body cut off by the deadline is not ready even when the clock lags the timer', async () => {
+  let calls = 0;
+  const lagging = { now: () => performance.now() - (++calls > 3 ? 100 : 0) };
+  await withServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' }); res.write('{');
+  }, async wait => {
+    assert.equal(await wait(1), false);
+  }, { performance: lagging });
+});
 
 test('startup 503 can recover within the deadline and preserve health diagnostics', async () => {
   let calls = 0;

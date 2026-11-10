@@ -199,15 +199,16 @@ async function waitForSidecar(tries: number): Promise<boolean> {
   const deadline = performance.now() + tries * 250;
   while (performance.now() < deadline) {
     try {
-      const res = await fetch(new URL("/health?live=1", cfg.base), {
-        signal: AbortSignal.timeout(Math.max(1, Math.ceil(deadline - performance.now()))),
-      });
+      const signal = AbortSignal.timeout(Math.max(1, Math.ceil(deadline - performance.now())));
+      const res = await fetch(new URL("/health?live=1", cfg.base), { signal });
       if (res.ok) {
         // 사이드카가 떴어도 스토어가 성치 않으면(구버전 잔존 스토어의 프로비저닝
         // 실패 등) status=degraded 로 온다 — "ok" 로 뭉개면 뒤따르는 전 조회가
         // 원인 불명으로 깨진다. 사유를 진단에 그대로 싣는다.
         const h = await res.json().catch(() => ({} as any));
-        if (performance.now() >= deadline) return false;
+        // 본문이 마감 신호로 끊겼으면 준비가 아니다. 시계만 보면 안 된다: 타이머는 시계가
+        // 마감을 넘었다고 말하기 조금 전에 깰 수 있어서, 읽지도 못한 응답을 준비로 쳤다.
+        if (signal.aborted || performance.now() >= deadline) return false;
         sidecarDiag += h?.status === "degraded"
           ? ` · health DEGRADED[${h.provision_error || h.error || "?"}]`
           : " · health ok";
