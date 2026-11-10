@@ -660,12 +660,12 @@ def _filter_clause(var: str, filters: dict | None, params: dict, *,
 EXCLUSIVE_WAIT_S = 30.0
 SHARED_WAIT_S = 60.0
 #: 읽기 요청이 요청 단위 공유(`_ReaderView.request_read_scope`)를 기다리는 상한. 넘으면
-#: `DdlGuardTimeout` → HTTP 503 `store_busy` 다. 두 쪽을 함께 지킨다(VIN-945):
+#: `DdlGuardTimeout` → HTTP 503 `store_busy` 다. 두 쪽을 함께 지킨다:
 #:   - 짧은 유지보수는 기다려서 넘긴다. 새 읽기가 막히는 창은 배타 보유(임베딩 적용·스냅샷
 #:     체크포인트)에 그 배타가 앞선 요청이 빠지길 기다린 시간까지 더한 것이라 1초를 넘는다.
 #:     상한이 1초였을 때 그 창에 걸린 읽기가 그대로 503 이 됐다.
 #:   - 수십 초 가는 유지보수(HNSW 재빌드·lex 이관·기동 수리)에는 매달리지 않는다. 요청이
-#:     그 뒤에 묶이던 것을 끊으려고 이 상한을 뒀다(#670). 클라이언트 기한(SDK·MCP 30초)보다
+#:     그 뒤에 묶이던 것을 끊으려고 이 상한을 뒀다. 클라이언트 기한(SDK·MCP 30초)보다
 #:     한참 짧아야 한다.
 #: 배타의 범위나 보유자는 이 값과 무관하다 — 바꾸는 것은 읽기가 기다리는 시간뿐이다.
 REQUEST_WAIT_S = 5.0
