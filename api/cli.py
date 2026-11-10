@@ -276,6 +276,8 @@ def _main(argv: list[str] | None = None) -> int:
     im.add_argument("--pack", required=True, help="pack file (JSON) to import")
     im.add_argument("--owner", required=True, help="recipient owner scope to stamp")
 
+    from . import cli_storage
+    cli_storage.add_parser(sub)
     sv = sub.add_parser("serve", help='run the loopback sidecar HTTP server')
     sv.add_argument("--host", default="127.0.0.1", help='bind host (loopback only)')
     sv.add_argument("--port", type=int, default=0, help="bind port (0 = ephemeral)")
@@ -661,7 +663,7 @@ def _main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     command = args.cmd
     for name in ("doccmd", "gmcmd", "mcpcmd", "nodecmd", "edgecmd", "mergecmd", "refscmd", "rolecmd",
-                 "gatecmd", "shimcmd"):
+                 "gatecmd", "shimcmd", "storagecmd"):
         if getattr(args, name, None):
             command += " " + getattr(args, name)
     cli_output.configure(args.console_format, command)
@@ -969,6 +971,9 @@ def _main(argv: list[str] | None = None) -> int:
             return PROBE_RAISED
         store.close()
         return 0
+    if args.cmd == "storage":
+        from . import cli_storage
+        return cli_storage.run(args, _emit)
     if args.cmd == "serve":
         # 자식 프로세스가 물려받기 전에 비밀값을 환경에서 꺼낸다. 수동 인자가 우선한다.
         inherited_token = os.environ.pop("VINC_SIDECAR_TOKEN", None)
@@ -979,7 +984,12 @@ def _main(argv: list[str] | None = None) -> int:
         from store import persistence
         # 저장 위치: --data > MEMORY_DATA_DIR > 설정의 위치(폴더 또는 데이터베이스) >
         # ~/.vinc. 데이터베이스 비밀번호는 셸이 환경으로 넘긴 것을 읽자마자 지운다(자식에게 안 간다).
-        cfg = app_store_config(args.data, secret=take_secret())
+        secret = take_secret()
+        if secret is None and not args.data:
+            # 셸 없이 띄운 사이드카(CLI·자가 호스팅): 환경 변수가 없으면 `vinc storage connect` 가 넣은 키링을 본다.
+            from .cli_storage import current_secret
+            secret = current_secret()
+        cfg = app_store_config(args.data, secret=secret)
         data_dir = cfg.data_dir or ""
         # 영속 스냅샷에서 복원(VINC_STORE_SNAPSHOT 설정 시에만). 스토어를 열기
         # **전에** 해야 한다 — 연 뒤에 파일을 갈아치우면 드라이버가 자기 밑의
