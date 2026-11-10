@@ -1,4 +1,4 @@
-/** 저장 위치(VIN-130) — 설정 › 계정의 한 덩어리. 셸과 로컬 dev 전용.
+/** 저장 위치(VIN-130) — 설정 › 저장 위치 탭. 셸과 로컬 dev 전용.
  *
  *  데스크톱은 기본으로 계정 그래프를 본다. 로컬 모드는 **사람이 켜는 설정**이고, 켜면
  *  그래프가 고른 폴더에 있고 계정에는 사본이 없다(로그인은 그대로 필요하다). 계속 도는
@@ -23,9 +23,29 @@ import { esc } from "./components";
 /** 옮기기의 진행 상한. 큰 그래프를 계정 왕복으로 나르므로 보통 잡(5분)보다 길다. */
 const MOVE_TIMEOUT_MS = 30 * 60_000;
 
-/** 설정 › 계정에 저장 위치 덩어리를 그린다. 설정을 못 읽으면(옛 엔진) 줄 하나만 남긴다. */
-export function mountStorage(box: HTMLElement): void {
+/** 설정 › 저장 위치 탭의 본문을 그린다. 설정을 못 읽으면(옛 엔진) 줄 하나만 남긴다.
+ *  `openAccount` 는 옮기기에 로그인이 필요할 때 계정 탭으로 보내는 길이다. */
+export function mountStorage(box: HTMLElement, opts: { openAccount?: () => void } = {}): void {
+  openAccount = opts.openAccount ?? null;
   void draw(box);
+}
+
+/** 지금 그린 저장 위치 탭이 계정 탭으로 보내는 길. 설정 시트는 한 번에 하나만 열린다. */
+let openAccount: (() => void) | null = null;
+
+/** 옮기기에 계정 키가 없다: 그렇다고 말하고, 갈 수 있으면 계정 탭으로 가는 버튼을 준다. */
+function needKey(result: HTMLElement): void {
+  const U = COPY.ui.settingsUi;
+  result.textContent = U.moveNeedKey;
+  const go = openAccount;
+  if (!go) return;
+  const btn = document.createElement("button");
+  btn.className = "btn";
+  btn.type = "button";
+  btn.style.marginLeft = ".5rem";
+  btn.textContent = U.moveNeedKeyGo;
+  btn.addEventListener("click", go);
+  result.append(btn);
 }
 
 async function draw(box: HTMLElement): Promise<void> {
@@ -37,7 +57,6 @@ async function draw(box: HTMLElement): Promise<void> {
     ? U.storageLocal(esc(folderOf(conf)))
     : U.storageAccount;
   box.innerHTML = `
-    <label>${U.storage}</label>
     <p class="rail-sync"><span class="sync-dot"></span><span>${where}</span></p>
     ${conf ? `
     <div class="settings-row">
@@ -59,8 +78,7 @@ async function draw(box: HTMLElement): Promise<void> {
     </div>` : ""}
     ${conf.pinned ? `<p class="hint">${esc(U.pinned)}</p>` : ""}
     <div class="st-panel" id="st-panel" hidden></div>
-    <p class="hint" id="st-result" role="status"></p>` : ""}
-    <hr class="settings-sep" />`;
+    <p class="hint" id="st-result" role="status"></p>` : ""}`;
   if (!conf) return;
   const panel = box.querySelector<HTMLElement>("#st-panel")!;
   const result = box.querySelector<HTMLElement>("#st-result")!;
@@ -221,7 +239,7 @@ async function changeFolder(path: string, acceptRisk: boolean, result: HTMLEleme
 async function turnOn(path: string, acceptRisk: boolean, copy: boolean, result: HTMLElement) {
   const U = COPY.ui.settingsUi;
   const key = copy ? await accountKey().catch(() => "") : "";
-  if (copy && !key) { result.textContent = U.moveNeedKey; return; }
+  if (copy && !key) { needKey(result); return; }
   let copied: string | null = null;
   try {
     if (!(await useFolder(path, acceptRisk, result))) return;
@@ -290,7 +308,7 @@ function askTurnOff(panel: HTMLElement, result: HTMLElement): void {
   });
   go.addEventListener("click", async () => {
     const key = await accountKey().catch(() => "");
-    if (!key) { result.textContent = U.moveNeedKey; return; }
+    if (!key) { needKey(result); return; }
     go.disabled = true;
     result.textContent = U.movingUp;
     try {
