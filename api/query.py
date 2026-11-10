@@ -231,8 +231,10 @@ def decide_plan(topic: str, *, depth: int = 2, owner: str | None = None) -> Quer
       concept_id/bridge_id/… 만 존재) 항상 오류이자 사문(死文)이므로 제거하고, 실제
       시작 노드(Concept·Bridge)의 식별자·title 로 매칭한다.
     - **M3**: 네이티브 가변길이 `*1..d` 는 기본 WALK 라 엣지 재사용 사이클을 허용해
-      경로 수가 폭증한다(3노드 사이클서 *1..8 시 510경로 실측). `TRAIL`(엣지 무재사용,
-      키워드는 범위 **앞**)로 가드 → 동일 셋업 6경로."""
+      경로 수가 폭증한다(3노드 사이클서 *1..8 시 510경로 실측). 그래서 엣지를 다시 쓰지
+      않는 순회여야 한다 → 동일 셋업 6경로. 질의는 GQL 수량 관계 `-[]-{1,d}`(기본이 엣지
+      무재사용)로 쓰고 임베디드 어댑터가 ladybug 의 `* TRAIL` 로 보낸다
+      (`store.embedded_backend.to_engine_cypher`)."""
     depth = max(1, min(int(depth), 4))
     # PK 네임스페이싱 — `$topic` 은 **id 열과 title 열에 동시에** 쓰인다. 하나로
     # 합성하면 제목 매치가 죽는다(제목은 논리 텍스트다). 그래서 id 열용 물리 키를
@@ -241,7 +243,7 @@ def decide_plan(topic: str, *, depth: int = 2, owner: str | None = None) -> Quer
     cypher = (
         "MATCH (n) WHERE n.concept_id = $tkey OR n.bridge_id = $tkey "
         "OR n.title = $topic "
-        f"MATCH path = (n)-[* TRAIL 1..{depth}]-(m) "
+        f"MATCH path = (n)-[]-{{1,{depth}}}(m) "
         "RETURN n, relationships(path) AS rels, m "
         "LIMIT 100"
     )
@@ -868,14 +870,16 @@ def subgraph_ids_plan(seed: str, *, depth: int = 2, owner: str | None = None,
     # 논리로 되돌린다). 근거: [[vinc.plan.node-pk-namespacing]] §7
     params: dict = {"seed": pkns.key(owner, seed)}
     seed_pk = _SEMANTIC_PK[seed_label]
-    n_where, m_where = f"n.{seed_pk} = $seed", ""
+    # 시드는 도달 집합에 넣지 않는다. ladybug SHORTEST 는 시드를 원래 안 내지만 GQL 의
+    # `SHORTEST 1` 은 하한 1 이면 시드로 돌아오는 사이클을 고를 수 있어서 술어로 뺀다.
+    n_where, m_where = f"n.{seed_pk} = $seed", "m.concept_id <> $seed"
     if owner:
         n_where += " AND n.owner_id = $owner"
-        m_where = " WHERE m.owner_id = $owner"
+        m_where += " AND m.owner_id = $owner"
         params["owner"] = owner
     cypher = (
         f"MATCH (n:{seed_label}) WHERE {n_where} "
-        f"MATCH (n)-[* SHORTEST 1..{depth}]-(m:Concept){m_where} "
+        f"MATCH SHORTEST 1 (n)-[]-{{1,{depth}}}(m:Concept) WHERE {m_where} "
         "RETURN DISTINCT m.concept_id AS id"
     )
     return QueryPlan("subgraph_ids", cypher, params,
@@ -899,15 +903,17 @@ def subgraph_hops_plan(seed: str, *, depth: int = 2, owner: str | None = None,
     depth = max(1, min(int(depth), 4))
     params: dict = {"seed": pkns.key(owner, seed)}
     seed_pk = _SEMANTIC_PK[seed_label]
-    n_where, m_where = f"n.{seed_pk} = $seed", ""
+    # 시드는 도달 집합에 넣지 않는다. ladybug SHORTEST 는 시드를 원래 안 내지만 GQL 의
+    # `SHORTEST 1` 은 하한 1 이면 시드로 돌아오는 사이클을 고를 수 있어서 술어로 뺀다.
+    n_where, m_where = f"n.{seed_pk} = $seed", "m.concept_id <> $seed"
     if owner:
         n_where += " AND n.owner_id = $owner"
-        m_where = " WHERE m.owner_id = $owner"
+        m_where += " AND m.owner_id = $owner"
         params["owner"] = owner
     cypher = (
         f"MATCH (n:{seed_label}) WHERE {n_where} "
-        f"MATCH (n)-[r* SHORTEST 1..{depth}]-(m:Concept){m_where} "
-        "RETURN m.concept_id AS id, min(length(r)) AS hops"
+        f"MATCH p = SHORTEST 1 (n)-[]-{{1,{depth}}}(m:Concept) WHERE {m_where} "
+        "RETURN m.concept_id AS id, min(length(p)) AS hops"
     )
     return QueryPlan("subgraph_hops", cypher, params,
                      note=f"seed+depth reach set with hop counts (depth={depth})")
@@ -1273,7 +1279,8 @@ _GRAPH_READ_PLANS = _GRAPH_AXIS_PLANS + (decision_relation_rows_plan,)
 
 def entity_subgraph_ids_plan(seed: str, *, depth: int = 2,
                              owner: str | None = None) -> QueryPlan:
-    """entity-시드 순회 — subgraph_ids_plan 과 동형(TRAIL 가드, depth 1..4 클램프).
+    """entity-시드 순회 — depth 1..4 클램프, 엣지 무재사용 순회(어댑터가 ladybug `* TRAIL` 로 보낸다).
+    시드로 돌아오는 사이클이 있으면 시드도 낸다(TRAIL 의미 그대로).
     Entity 는 신규 테이블(레거시 '' 없음)이라 엄격 owner."""
     depth = max(1, min(int(depth), 4))
     params: dict = {"seed": pkns.key(owner, seed)}
@@ -1284,7 +1291,7 @@ def entity_subgraph_ids_plan(seed: str, *, depth: int = 2,
         params["owner"] = owner
     cypher = (
         f"MATCH (n:Entity) WHERE {n_where} "
-        f"MATCH (n)-[* TRAIL 1..{depth}]-(m:Entity){m_where} "
+        f"MATCH (n)-[]-{{1,{depth}}}(m:Entity){m_where} "
         "RETURN DISTINCT m.entity_id AS id"
     )
     return QueryPlan("entity_subgraph_ids", cypher, params,
@@ -6118,8 +6125,10 @@ def node_edges(node: str | None = None, *, nodes: list[str] | None = None,
 
 def shortest_path_plan(a_id: str, b_id: str, *, max_depth: int = 6,
                        owner: str | None = None) -> QueryPlan:
-    """두 개념 간 최단 경로(들). `* ALL SHORTEST 1..d`(엔드포인트 owner 스코프 —
-    교차소유자 엣지 부재라 중간 홉 스코프 불요). nodes(p) 시퀀스 + 길이 반환."""
+    """두 개념 간 최단 경로(들). GQL `ALL SHORTEST`(ladybug `* ALL SHORTEST 1..d`). 엔드포인트
+    owner 스코프 — 교차소유자 엣지 부재라 중간 홉 스코프 불요. nodes(p) 시퀀스 + 길이 반환.
+    ⚠ 두 끝점은 앞의 MATCH 에서 묶는다. Neo4j 는 선택자 뒤의 WHERE 를 경로를 고른 **뒤에**
+    거르므로, 끝점 술어를 거기 두면 모든 개념 쌍의 최단 경로를 먼저 찾는다."""
     depth = max(1, min(int(max_depth), 8))
     params: dict = {"a": pkns.key(owner, a_id), "b": pkns.key(owner, b_id)}
     a_where, b_where = "a.concept_id = $a", "b.concept_id = $b"
@@ -6128,8 +6137,9 @@ def shortest_path_plan(a_id: str, b_id: str, *, max_depth: int = 6,
         b_where += " AND b.owner_id = $owner"
         params["owner"] = owner
     cypher = (
-        f"MATCH p = (a:Concept)-[* ALL SHORTEST 1..{depth}]-(b:Concept) "
-        f"WHERE {a_where} AND {b_where} "
+        f"MATCH (a:Concept) WHERE {a_where} "
+        f"MATCH (b:Concept) WHERE {b_where} "
+        f"MATCH p = ALL SHORTEST (a)-[]-{{1,{depth}}}(b) "
         "RETURN nodes(p) AS ns, length(p) AS len ORDER BY len LIMIT 25"
     )
     return QueryPlan("shortest_path", cypher, params,
@@ -6253,14 +6263,14 @@ def path_candidates_plan(seed: str, *, depth: int = 6,
     이 집합이 다익스트라의 완전한 탐색 공간이다."""
     depth = max(1, min(int(depth), 8))
     params: dict = {"seed": pkns.key(owner, seed)}
-    n_where, m_where = "n.concept_id = $seed", ""
+    n_where, m_where = "n.concept_id = $seed", "m.concept_id <> $seed"   # 시드 제외: subgraph_ids_plan 과 같다
     if owner:
         n_where += " AND n.owner_id = $owner"
-        m_where = " WHERE m.owner_id = $owner"
+        m_where += " AND m.owner_id = $owner"
         params["owner"] = owner
     cypher = (
         f"MATCH (n:Concept) WHERE {n_where} "
-        f"MATCH (n)-[* SHORTEST 1..{depth}]-(m:Concept){m_where} "
+        f"MATCH SHORTEST 1 (n)-[]-{{1,{depth}}}(m:Concept) WHERE {m_where} "
         "RETURN DISTINCT m.concept_id AS id"
     )
     return QueryPlan("path_candidates", cypher, params,

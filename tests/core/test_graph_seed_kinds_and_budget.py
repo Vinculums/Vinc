@@ -83,11 +83,12 @@ class GraphSeedKindsAndBudget(unittest.TestCase):
         self.assertTrue(g2["found"])
 
     def test_the_shared_plan_is_byte_identical_for_concept_seeds(self):
-        """공유 팩·동기화·decide 가 부르는 모양(seed_label 없음)은 종전 문자열 그대로."""
+        """공유 팩·동기화·decide 가 부르는 모양(seed_label 없음)의 문자열을 고정한다."""
         plan = q.subgraph_ids_plan("concept:a", depth=2, owner=OWNER)
         self.assertEqual(plan.cypher,
                          "MATCH (n:Concept) WHERE n.concept_id = $seed AND n.owner_id = $owner "
-                         "MATCH (n)-[* SHORTEST 1..2]-(m:Concept) WHERE m.owner_id = $owner "
+                         "MATCH SHORTEST 1 (n)-[]-{1,2}(m:Concept) "
+                         "WHERE m.concept_id <> $seed AND m.owner_id = $owner "
                          "RETURN DISTINCT m.concept_id AS id")
 
     # ── 노드 예산 ────────────────────────────────────────────────────────────

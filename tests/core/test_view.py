@@ -34,16 +34,20 @@ class SubgraphPlanTests(unittest.TestCase):
     def test_seed_traversal_uses_shortest_reach_semantics(self):
         # G1(2026-08-03): 이 플랜은 *도달 집합*을 원한다 — 경로 열거(TRAIL)가 아니라
         # SHORTEST 로 같은 집합을 더 싸게 낸다(실측 2.5~3x). WALK 형식은 남지 않아야
-        # 한다 — 기본 WALK 는 사이클서 경로가 폭증한다(M3 §6-2 가 막던 것).
+        # 한다 — 기본 WALK 는 사이클서 경로가 폭증한다(M3 §6-2 가 막던 것). 질의는 GQL
+        # 선택자로 쓰고 어댑터가 ladybug 의 `* SHORTEST` 로 보낸다.
+        from store.embedded_backend import to_engine_cypher
         plan = q.subgraph_ids_plan("concept:fourier", depth=2)
-        self.assertIn("SHORTEST 1..2", plan.cypher)
-        self.assertNotIn("TRAIL", plan.cypher)
+        self.assertIn("SHORTEST 1 (n)-[]-{1,2}", plan.cypher)
         self.assertNotIn("*1..", plan.cypher)
+        engine = to_engine_cypher(plan.cypher)
+        self.assertIn("* SHORTEST 1..2", engine)
+        self.assertNotIn("TRAIL", engine)
         self.assertEqual(plan.params, {"seed": "concept:fourier"})
 
     def test_depth_clamped_1_to_4(self):
-        self.assertIn("1..1", q.subgraph_ids_plan("x", depth=0).cypher)
-        self.assertIn("1..4", q.subgraph_ids_plan("x", depth=9).cypher)
+        self.assertIn("{1,1}", q.subgraph_ids_plan("x", depth=0).cypher)
+        self.assertIn("{1,4}", q.subgraph_ids_plan("x", depth=9).cypher)
 
     def test_graph_without_db_returns_plan_only(self):
         res = q.graph(owner="user:t", seed="concept:x", store=None)
