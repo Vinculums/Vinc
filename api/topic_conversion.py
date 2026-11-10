@@ -353,10 +353,7 @@ def _index_inventory(store):
     known = {("Chunk", store._FTS_INDEX), ("ChunkVec", store._VEC_INDEX),
              ("NodeVec", store._NODE_VEC_INDEX)}
     inventory = []
-    for row in store.run("CALL show_indexes() RETURN *", raw=True):
-        if row["index_name"] == "_PK":
-            continue
-        pair = (row["table_name"], row["index_name"])
+    for pair in store.search_indexes():
         if pair not in known:
             raise TransferRefused("unsupported_search_index")
         if pair[0] not in inventory:
@@ -440,8 +437,7 @@ def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None,
         if "NodeVec" in index_inventory:
             store.drop_node_vector_index()
         if "Chunk" in index_inventory:
-            store._load_ext("fts")
-            store._drop_index(f"CALL DROP_FTS_INDEX('Chunk','{store._FTS_INDEX}')", "conversion FTS")
+            store.drop_fts_index("conversion FTS")
         store.run("BEGIN TRANSACTION", raw=True)
         try:
             _write_difference(store, before, after, fail_at=fail_at, vocabulary_owner=source,

@@ -945,6 +945,9 @@ class _ReaderView:
     def vector_search(self, embedding, top_k, filters=None) -> list[dict]:
         return self._b.vector_search(embedding, top_k, filters, conn=self._conn)
 
+    def chunk_vector_distances(self, chunk_ids, embedding) -> dict[str, float]:
+        return self._b.chunk_vector_distances(chunk_ids, embedding, conn=self._conn)
+
     def node_vector_search(self, embedding, top_k, *, owner=None,
                            use_index: bool = False) -> list[dict]:
         """노드 미러(NodeVec) 의미 검색 — **이 뷰가 노출해야 조회 경로에서 산다.**
@@ -2157,6 +2160,17 @@ class EmbeddedBackend:
         self._conn.execute("CHECKPOINT")
 
     @request_timing.timed("vector")
+    def chunk_vector_distances(self, chunk_ids: list[str], embedding, *,
+                               conn=None) -> dict[str, float]:
+        """청크마다 그 조각 벡터(ChunkVec) 가운데 질의에 가장 가까운 것의 코사인 거리
+        (1 - 코사인 유사도). 색인이 아니라 정확 계산이다. 벡터가 없는 청크는 빠진다."""
+        rows = self.run(
+            "MATCH (p:Chunk) WHERE p.chunk_id IN $ids "
+            "MATCH (v:ChunkVec) WHERE v.chunk_id = p.chunk_id "
+            "RETURN p.chunk_id AS cid, min(1 - array_cosine_similarity(v.embedding, $emb)) AS d",
+            {"ids": list(chunk_ids), "emb": list(embedding)}, conn=conn) or []
+        return {str(r["cid"]): float(r["d"]) for r in rows if r.get("d") is not None}
+
     def vector_search(self, embedding, top_k, filters=None, *, conn=None) -> list[dict]:
         """벡터 검색 — **자식(ChunkVec)에서 찾아 부모(Chunk)로 되돌린다**(v8).
 
@@ -2297,6 +2311,17 @@ class EmbeddedBackend:
         self._load_ext("vector")
         self._drop_index(f"CALL DROP_VECTOR_INDEX('NodeVec','{self._NODE_VEC_INDEX}')",
                          "NodeVec 벡터 색인")
+
+    def drop_fts_index(self, what: str = "Chunk FTS 색인") -> None:
+        """`Chunk` 의 전문(FTS) 색인만 제거(멱등). 가드는 잡지 않는다 — 토픽 변환처럼
+        이미 `DDL_GUARD.exclusive()` 안에서 부르는 쪽이 쥔다(가드는 재진입하지 않는다)."""
+        self._load_ext("fts")
+        self._drop_index(f"CALL DROP_FTS_INDEX('Chunk','{self._FTS_INDEX}')", what)
+
+    def search_indexes(self) -> list[tuple[str, str]]:
+        """걸려 있는 검색 색인 (표, 색인 이름) 목록. 기본 키 색인(`_PK`)은 뺀다."""
+        rows = self.run("CALL show_indexes() RETURN *", raw=True)
+        return [(r["table_name"], r["index_name"]) for r in rows if r["index_name"] != "_PK"]
 
     @_exclusive_ddl
     def create_node_vector_index(self) -> str:

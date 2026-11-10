@@ -58,14 +58,15 @@ class SectionSpan(unittest.TestCase):
 
 
 class _FakeStore:
-    """`_brief_section` 이 부르는 두 질의만 답한다."""
+    """`_brief_section` 이 부르는 청크 목록 질의와 청크 벡터 거리에만 답한다."""
 
     def __init__(self, chunks, dist):
         self.chunks, self.dist = chunks, dist
 
+    def chunk_vector_distances(self, ids, embedding):
+        return {c: d for c, d in self.dist.items() if c in ids}
+
     def run(self, cypher, params=None):
-        if "ChunkVec" in cypher:
-            return [{"cid": c, "d": d} for c, d in self.dist.items()]
         return [dict(c) for c in self.chunks]
 
 

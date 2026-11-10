@@ -440,8 +440,7 @@ class Batches:
         if "NodeVec" in inventory:
             self.store.drop_node_vector_index()
         if "Chunk" in inventory:
-            self.store._load_ext("fts")
-            self.store._drop_index(f"CALL DROP_FTS_INDEX('Chunk','{self.store._FTS_INDEX}')", "conversion FTS")
+            self.store.drop_fts_index("conversion FTS")
 
     def verify(self):
         """Compare every final row and the complete directed relationship multiset."""

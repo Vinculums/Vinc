@@ -1,20 +1,12 @@
 {
   "_comment": "scripts/gate_engine_dialect.py 의 허용 목록. 손으로 늘리지 않는다. 줄일 때는 --update 로 다시 쓴다.",
-  "total": 39,
+  "total": 35,
   "files": {
     "api/preference.py": {
       "functions": 2
     },
     "api/query.py": {
-      "traversal": 6,
-      "vector": 1
-    },
-    "api/topic_conversion.py": {
-      "catalog": 1,
-      "fts": 1
-    },
-    "api/topic_conversion_batches.py": {
-      "fts": 1
+      "traversal": 6
     },
     "scripts/qa/engine_compatibility_probe.py": {
       "engine_ops": 1
