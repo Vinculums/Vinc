@@ -76,6 +76,18 @@ assert.equal(reloads, 2); assert.equal(conf.data_path, folder);
 await draw("account");
 assert.match(box.textContent, /your account/i);
 assert.match(box.querySelector("#st-toggle").textContent, /turn on/i);
+// 계정 키 없이 옮기려 하면 그렇다고 말하고, 저장 위치 탭에서 계정 탭으로 가는 버튼을 준다.
+let opened = 0;
+box.innerHTML = ""; dataMode.set("local"); mountStorage(box, { openAccount: () => opened++ });
+await until(() => box.querySelector("#st-toggle"));
+box.querySelector("#st-toggle").click();
+await until(() => box.querySelector("#st-go"));
+box.querySelector("#st-go").click();
+await until(() => box.querySelector("#st-result button"));
+assert.match(box.querySelector("#st-result").textContent, /sign in first/i);
+assert.equal(dataMode.get(), "local");
+box.querySelector("#st-result button").click();
+assert.equal(opened, 1);
 dom.window.close();
 console.log("PASS: Turn on and Switch without moving reload automatically only after successful persistence; mode controls and folder preservation.");
 process.exit(0);

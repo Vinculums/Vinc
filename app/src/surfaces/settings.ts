@@ -19,7 +19,7 @@ import { mountPushSettings } from "../web-push-ui";
  *  웹 Vinc 는 셸 전용 분류(AI 연결 · 고급)와 계정연결·동기화 섹션을 숨긴다. */
 
 type SettingsCat =
-  | "general" | "reading" | "account" | "ai"
+  | "general" | "reading" | "account" | "storage" | "ai"
   | "data" | "graphmd" | "advanced" | "about";
 export type DataTab = "import" | "share";
 
@@ -71,6 +71,7 @@ async function renderSettings(
     { id: "general", label: U.navGeneral },
     { id: "reading", label: U.navReading },
     { id: "account", label: U.navAccount },
+    { id: "storage", label: U.navStorage, desktop: true },
     { id: "ai", label: U.navAi, desktop: true },
     { id: "data", label: U.navData },
     { id: "graphmd", label: U.navGraphmd },
@@ -118,6 +119,7 @@ async function renderSettings(
     if (active === "general") renderGeneral(body);
     else if (active === "reading") renderReading(body);
     else if (active === "account") renderAccount(body);
+    else if (active === "storage") renderStorage(body);
     else if (active === "ai") renderConnections(body);
     else if (active === "data") renderData(body);
     else if (active === "graphmd") renderGraphmd(body);
@@ -255,10 +257,6 @@ async function renderSettings(
     body.innerHTML = `
       <h2>${esc(U.navAccount)}</h2>
       <p class="hint">${esc(U.accountIntro)}</p>
-      ${!WEB ? `
-      <!-- 저장 위치와 로컬 모드(VIN-130, storage-mode.ts). 셸이면 두 모드 모두 여기서
-           어디에 있는지 말하고 바꾼다. 웹 Vinc 의 데이터는 늘 계정에 있다. -->
-      <div id="st-box"></div>` : ""}
       ${remote() ? `
       <label>${U.account}</label>
       <div id="web-acct" class="hint" style="font-size:.85rem">…</div>
@@ -269,9 +267,17 @@ async function renderSettings(
       ${WEB ? `<label>${COPY.push.title}</label><div id="push-box"></div>` : ""}` : ""}
       ${!remote() ? `
       <label>${U.account}</label>
-      <div id="acct-box"></div>` : ""}`;
-    const stBox = body.querySelector<HTMLElement>("#st-box");
-    if (stBox) mountStorage(stBox);
+      <div id="acct-box"></div>` : ""}
+      ${!WEB ? `
+      <hr class="settings-sep" />
+      <div class="settings-row">
+        <div class="settings-row-copy">
+          <strong>${esc(U.storage)}</strong>
+          <p class="hint">${esc(accountMode() ? U.storageAccount : U.storageDevice)}</p>
+        </div>
+        <button class="btn" type="button" id="acct-storage-go">${esc(U.storageOpen)}</button>
+      </div>` : ""}`;
+    body.querySelector("#acct-storage-go")?.addEventListener("click", () => go("storage"));
     if (remote()) {
       const conversion = body.querySelector<HTMLElement>("#topic-conversion");
       if (conversion) cleanup = mountTopicConversion(conversion);
@@ -388,6 +394,17 @@ async function renderSettings(
     }
     drawAcct();
 
+  }
+
+  // ── Storage 탭 (셸 전용) ─────────────────────────────────────────────────
+  // 이 기기가 그래프를 두는 곳과 옮기기(`storage-mode.ts`). 웹 Vinc 의 데이터는 늘 계정에 있어
+  // 이 탭이 없다. 옮기기에 로그인이 필요하면 계정 탭으로 보낸다.
+  function renderStorage(body: HTMLElement) {
+    body.innerHTML = `
+      <h2>${esc(U.navStorage)}</h2>
+      <p class="hint">${esc(U.storageIntro)}</p>
+      <div id="st-box"></div>`;
+    mountStorage(body.querySelector<HTMLElement>("#st-box")!, { openAccount: () => go("account") });
   }
 
   // ── Connections 탭 (MCP, 셸 전용) ─────────────────────────────────────────

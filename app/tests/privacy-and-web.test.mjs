@@ -86,12 +86,12 @@ test('outbound addresses are the graph and the site pages only', async () => {
   assert.match(api, /const url = new URL\(WEB \? "\/api\/graph" \+ path : path, cfg\.base\);/);
 });
 
-test('the web build has no AI connections or Advanced in Settings', async () => {
+test('the web build has no Storage, AI connections or Advanced in Settings', async () => {
   const settings = await read('src/surfaces/settings.ts');
   const cats = slice(settings, 'const ALL_CATS', '\n  let active');
   const ids = await run(`export default (WEB) => { const U = new Proxy({}, { get: (o, k) => k }); ${cats} return CATS.map((c) => c.id); };`);
   assert.deepEqual(ids(true), ['general', 'reading', 'account', 'data', 'graphmd', 'about']);
-  assert.deepEqual(ids(false), ['general', 'reading', 'account', 'ai', 'data', 'graphmd', 'advanced', 'about']);
+  assert.deepEqual(ids(false), ['general', 'reading', 'account', 'storage', 'ai', 'data', 'graphmd', 'advanced', 'about']);
 });
 
 test('Share offers Community on the web only', async () => {

@@ -142,9 +142,12 @@ class SettingsTest(unittest.TestCase):
             self.assertNotIn(gone, SETTINGS)
             self.assertNotIn(gone, API)
 
-    def test_셸이면_저장_덩어리를_건다(self):
-        self.assertIn('${!WEB ? `', SETTINGS)
-        self.assertIn("mountStorage(stBox)", SETTINGS)
+    def test_셸이면_저장_위치_탭에_저장_덩어리를_건다(self):
+        # 저장 위치는 계정 탭이 아니라 데스크톱 전용 탭이다. 계정 탭에는 그 탭으로 가는 줄만 남는다.
+        self.assertIn('{ id: "storage", label: U.navStorage, desktop: true }', SETTINGS)
+        self.assertIn('mountStorage(body.querySelector<HTMLElement>("#st-box")!, '
+                      '{ openAccount: () => go("account") })', SETTINGS)
+        self.assertIn('go("storage")', SETTINGS)
 
 
 if __name__ == "__main__":
