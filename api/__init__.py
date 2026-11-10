@@ -7,7 +7,7 @@ Three entry points sit on top of the ingestion engines:
     decide  : decision support — graph traversal over policy/concept relations
 
 Each entry point builds a deterministic *query plan* (testable without a
-database) and, when a Neo4j driver is available, executes it.
+database) and, when the store is reachable, executes it.
 """
 from __future__ import annotations
 
