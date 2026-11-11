@@ -125,6 +125,19 @@ _HISTORICAL_PROP = {"type": "boolean", "default": False, "description": (
         "Include nodes whose claim is no longer current (valid_until in the past). By default they "
         "are hidden and counted in `validity_filtered`."
     ))}
+#: MCP 결과만 줄이는 `lean_result` 를 끄는 스위치. 핸들러는 이 인자를 읽지 않는다 — REST v1·CLI 는
+#: 늘 전체 꼴이라 끌 것이 없다.
+_RAW_PROP = {"type": "boolean", "description": (
+    "true returns the full result; by default ranking diagnostics, empty fields and temporal "
+    "blocks with nothing set are left out."),
+    "x-reference": (
+    (
+        "Over MCP the result is trimmed by default: ranking diagnostics are left out (`score` on "
+        "rows and `rrf_score` on node hits stay), a `temporal` block with no validity interval, "
+        "content time, supersession or conflict shrinks to `{updated_at}`, brief drops flat copies "
+        "of its temporal fields, and neighbors drop empty fields. A missing field means it was "
+        "empty or default. raw:true returns the result unchanged. REST v1 always returns it unchanged."
+    ))}
 
 # F1 개방층: type enum 을 제거했다 — 서버가 라우팅 SSoT 이며 이제 *모든* 타입을
 # 영속한다(6종 전용 테이블 / 그 외 Entity·TYPED 캐리어). 스키마 수준 거부는
@@ -1214,7 +1227,7 @@ TOOLS: list[dict] = [
             "detail": {"type": "string", "enum": ["summary", "full"],
                        "default": "summary"},
             "historical": _HISTORICAL_PROP,
-            "as_of": _AS_OF_SEARCH_PROP,
+            "as_of": _AS_OF_SEARCH_PROP, "raw": _RAW_PROP,
             "owner": {"type": "string"},
         }, "required": ["query"]},
         "run": _t_search,
@@ -1339,7 +1352,7 @@ TOOLS: list[dict] = [
                              "description": "How many canonical document excerpts to "
                                             "attach to a resolved node."},
             "historical": _HISTORICAL_PROP,
-            "as_of": _AS_OF_SEARCH_PROP,
+            "as_of": _AS_OF_SEARCH_PROP, "raw": _RAW_PROP,
             "owner": {"type": "string"},
         }, "required": ["query"]},
         "run": _t_brief,
@@ -1494,7 +1507,7 @@ TOOLS: list[dict] = [
                                                       "or a topic address (e.g. domain:vinc)."},
             "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500,
                       "description": "Max neighbors returned. If cut, `neighbors_truncated` is true."},
-            "owner": {"type": "string"},
+            "raw": _RAW_PROP, "owner": {"type": "string"},
         }, "required": ["node"]}, "run": _t_neighbors,
     },
     {
@@ -2617,6 +2630,91 @@ SHRINKERS = {"vinc_search": _shrink_search_result,
              # 지키고 이웃의 props 부터 던다 — 시드 하나를 읽으러 온 독자가 있다.
              # 허브는 고리까지 줄여 싣는다(거부는 시드 자신이 넘칠 때뿐).
              "vinc_graph": _shrink_graph_result}
+
+
+# ── MCP 읽기 결과 다이어트 ───────────────────────────────────────────────────
+# rpc 의 tools/call 결과에만 건다. 핸들러 출력은 그대로라 REST v1·SDK·`vinc call`·평가 하네스의
+# cli·v1 경로는 꼴이 바뀌지 않는다. `raw:true` 면 아무것도 빼지 않는다.
+#: 기본으로 빼는 순위 진단 칸. 키 ""는 결과 최상위, 나머지는 그 목록의 행이다.
+#: ⚠ rows 의 `score` 와 node_hits 의 `rrf_score` 는 빼지 않는다: OpenClaw 플러그인이 MCP 로 읽고
+#: minScore 로 거른다(integrations/openclaw/src/memory.ts). `page`·`total_count`·최상위 `arms` 는
+#: 축소기와 다음 커서가 읽는다(`_shrink_search_result`). `node_window`·`node_semantic` 은 도구 계약이 말한다.
+LEAN_DROP: dict[str, dict[str, tuple[str, ...]]] = {
+    "vinc_search": {
+        "": ("node_rescore", "validity_best_dropped", "validity_best_dropped_distance"),
+        "rows": ("rrf_score", "arms"),
+        "node_hits": ("matched_in", "hit_tokens", "title_tokens", "token_total", "arms",
+                      "distance", "prod_rank", "colbert", "sem_lead", "sem_decisive"),
+    },
+    "vinc_brief": {
+        "": ("resolution",),
+        "candidates": ("matched_in", "hit_tokens", "title_tokens"),
+    },
+}
+#: 아무것도 모를 때 `store.search_temporal.metadata` 가 채우는 값. created_at·updated_at 은 늘 차 있어
+#: 기본인지 볼 때 세지 않는다. 모르는 키가 하나라도 있으면 기본 블록이 아니다(그대로 둔다).
+_TEMPORAL_DEFAULT = {"content_time": None, "valid_from": None, "valid_until": None,
+                     "superseded_by": None, "validity": "unknown", "interval_known": False,
+                     "interval_invalid": False, "holds_in_scope": None, "supersession": [],
+                     "supersedes": [], "claim_status": "unscoped", "conflicts": []}
+#: `stamp` 이 행에 평평하게 한 벌 더 쓰는 칸(`store.search_temporal.FLAT` 과 같다).
+_TEMPORAL_FLAT = ("created_at", "updated_at", "content_time", "valid_from", "valid_until",
+                  "superseded_by", "validity")
+
+
+def _default_temporal(t: dict) -> bool:
+    return (set(t) <= set(_TEMPORAL_DEFAULT) | {"created_at", "updated_at"}
+            and all(k in t and t[k] == v for k, v in _TEMPORAL_DEFAULT.items()))
+
+
+def _lean_temporal(row: dict, *, flat: bool) -> None:
+    t = row.get("temporal")
+    if not isinstance(t, dict):
+        return
+    if flat:
+        # brief 의 평평한 사본 중 블록과 같은 값만 뺀다(빈 문자열은 null 과 같다). `node.validity` 는
+        # 도구 계약이 읽으라고 말하는 칸이라 남긴다.
+        for k in _TEMPORAL_FLAT:
+            if k in row and k in t and (row[k] or None) == (t[k] or None):
+                if not (k == "validity" and "claim_validity" in row):
+                    row.pop(k)
+    if _default_temporal(t):
+        # 다른 데 updated_at 이 남지 않으면 블록을 그 하나로 줄인다.
+        row["temporal"] = {"updated_at": t["updated_at"]} if t.get("updated_at") else {}
+        if not row["temporal"]:
+            row.pop("temporal")
+
+
+def _walk_dicts(node: Any, fn: Callable[[dict], None]) -> None:
+    if isinstance(node, dict):
+        fn(node)
+        for v in node.values():
+            _walk_dicts(v, fn)
+    elif isinstance(node, list):
+        for v in node:
+            _walk_dicts(v, fn)
+
+
+def lean_result(name: str, args: dict, out: Any) -> Any:
+    """MCP 로 내보낼 읽기 결과를 줄인 사본. 대상이 아니거나 `raw` 면 받은 것을 그대로 돌려준다."""
+    if (name not in LEAN_DROP and name != "vinc_neighbors") or not isinstance(out, dict) \
+            or (isinstance(args, dict) and args.get("raw") is True):
+        return out
+    import copy
+    out = copy.deepcopy(out)        # 핸들러 결과를 캐시가 쥐고 있어도 건드리지 않는다
+    if name == "vinc_neighbors":
+        for row in [out] + [r for r in out.get("neighbors") or [] if isinstance(r, dict)]:
+            for k in [k for k, v in row.items() if v is None or v == ""]:
+                row.pop(k)
+        return out
+    for where, keys in LEAN_DROP[name].items():
+        rows = [out] if where == "" else [r for r in out.get(where) or [] if isinstance(r, dict)]
+        for row in rows:
+            for k in keys:
+                row.pop(k, None)
+    flat = name == "vinc_brief"
+    _walk_dicts(out, lambda d: _lean_temporal(d, flat=flat))
+    return out
 
 
 # ── 인자 검증(D5) ────────────────────────────────────────────────────────────
