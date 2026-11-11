@@ -28,6 +28,34 @@ if [ "${VINC_ROLE:-}" = "encode" ]; then
 fi
 
 DATA_DIR="${VINC_DATA_DIR:-/data/db}"
+
+# ── 셀프호스트 기본값 (VINC_SELF_HOSTED=on) ─────────────────────────────────────
+# 공개 이미지를 볼륨 하나와 플래그 하나로 띄울 수 있게 한다. 사이드카 토큰과 MCP 토큰을 안 주면
+# 처음 뜰 때 볼륨(`<볼륨>/selfhost/`, 0600)에 만들어 두고 다음부터 그것을 쓴다. 값은 로그에 싣지
+# 않고 파일 위치만 말한다. 로그인 비밀번호·세션·사람 표도 같은 곳에 산다(`VINC_SELFHOST_STATE`).
+# 호스티드 허브는 이 블록을 지나지 않는다(플래그가 없다).
+case "$(printf '%s' "${VINC_SELF_HOSTED:-}" | tr '[:upper:]' '[:lower:]')" in
+  on|1|true|yes)
+    SELFHOST_DIR="${VINC_SELFHOST_STATE:-${DATA_DIR%/*}/selfhost}"
+    ( umask 077; mkdir -p "$SELFHOST_DIR" )
+    selfhost_secret() {   # $1 = 파일 이름. 없으면 만들고, 내용을 출력한다.
+      if [ ! -s "$SELFHOST_DIR/$1" ]; then
+        ( umask 077; python -c 'import secrets; print(secrets.token_urlsafe(32))' \
+            > "$SELFHOST_DIR/.$1.tmp" && mv "$SELFHOST_DIR/.$1.tmp" "$SELFHOST_DIR/$1" )
+        echo "[entrypoint] self-hosted: made $SELFHOST_DIR/$1" >&2
+      fi
+      cat "$SELFHOST_DIR/$1"
+    }
+    if [ -z "${VINC_SIDECAR_TOKEN:-}" ]; then
+      VINC_SIDECAR_TOKEN="$(selfhost_secret sidecar-token)"
+    fi
+    if [ -z "${VINC_MCP_TOKEN:-}" ]; then
+      VINC_MCP_TOKEN="$(selfhost_secret mcp-token)"
+      echo "[entrypoint] self-hosted: the MCP access token is in $SELFHOST_DIR/mcp-token" >&2
+    fi
+    export VINC_SIDECAR_TOKEN VINC_MCP_TOKEN VINC_SELFHOST_STATE="$SELFHOST_DIR"
+    ;;
+esac
 : "${VINC_SIDECAR_TOKEN:?VINC_SIDECAR_TOKEN 필수 — 사이드카/MCP 내부 인증}"
 
 # **영속 볼륨 루트** — 아래에서 DATA_DIR 이 로컬 작업본으로 바뀔 수 있으므로 여기서

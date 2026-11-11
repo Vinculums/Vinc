@@ -1,0 +1,63 @@
+# 셀프호스트 Vinc 허브 예시. 문서 페이지(vincs.io self-host)가 이 파일을 인용한다.
+#
+#   docker compose up -d                       # 허브만, http://localhost:8790 (이 기계에서만)
+#   docker compose --profile tls up -d         # Caddy 가 HTTPS 를 끝낸다(VINC_DOMAIN 필요)
+#   docker compose --profile neo4j up -d       # 그래프를 같은 compose 의 Neo4j 에 둔다
+#
+# 처음 한 번: 비밀번호 해시를 만들어 .env 에 넣는다.
+#   docker run --rm -i ghcr.io/vinculums/vinc-hub:latest python -m api.cli selfhost hash-password
+# MCP 접속 토큰은 첫 기동 때 볼륨에 생긴다:
+#   docker compose exec hub cat /data/selfhost/mcp-token
+#
+# 이미지는 linux/amd64 뿐이다(엔진 확장이 amd64 빌드만 있다).
+name: vinc
+
+services:
+  hub:
+    image: ghcr.io/vinculums/vinc-hub:latest
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      VINC_SELF_HOSTED: "on"
+      VINC_LOCAL_PASSWORD_HASH: ${VINC_LOCAL_PASSWORD_HASH:?run selfhost hash-password and put the value in .env}
+      # 바깥 주소. tls 프로필이면 https://<도메인>, 아니면 비워 둔다.
+      VINC_PUBLIC_URL: ${VINC_PUBLIC_URL:-}
+      # TLS 를 앞단(Caddy)이 끝낼 때만 켠다. 켜면 X-Forwarded-Proto 를 믿는다.
+      VINC_TRUST_PROXY: ${VINC_TRUST_PROXY:-off}
+      # neo4j 프로필: 아래 둘을 .env 에 넣으면 그래프가 그 데이터베이스에 산다.
+      VINC_DATABASE_URI: ${VINC_DATABASE_URI:-}
+      VINC_DATABASE_SECRET: ${VINC_DATABASE_SECRET:-}
+      VINC_DATABASE_ACCEPT_PLAINTEXT: ${VINC_DATABASE_ACCEPT_PLAINTEXT:-off}
+    volumes:
+      - vinc-data:/data
+    ports:
+      # 이 기계에서만 연다. 다른 기계에서 쓰려면 tls 프로필로 Caddy 뒤에 둔다
+      # (평문 HTTP 로그인은 localhost 에서만 받는다).
+      - "127.0.0.1:8790:8790"
+
+  caddy:
+    profiles: ["tls"]
+    image: caddy:2
+    restart: unless-stopped
+    command: caddy reverse-proxy --from ${VINC_DOMAIN:?set VINC_DOMAIN for the tls profile} --to hub:8790
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+
+  neo4j:
+    profiles: ["neo4j"]
+    image: neo4j:2026.01-community
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/${VINC_DATABASE_SECRET:?set VINC_DATABASE_SECRET for the neo4j profile}
+    volumes:
+      - neo4j-data:/data
+    # 허브에서는 VINC_DATABASE_URI=bolt://neo4j:7687 로 닿는다. 같은 compose 네트워크 안이라
+    # 평문 bolt 를 받으려면 VINC_DATABASE_ACCEPT_PLAINTEXT=on 이 필요하다(호스트가 localhost 가 아니다).
+
+volumes:
+  vinc-data:
+  caddy-data:
+  neo4j-data:

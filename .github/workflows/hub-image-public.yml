@@ -1,0 +1,219 @@
+# 공개 허브 이미지 — 셀프호스트용 `ghcr.io/vinculums/vinc-hub`.
+#
+# 계획 vinc.plan.self-hosted-hub-web-2026-11-11 S4. 호스티드 허브(hub-deploy.yml)와
+# **같은 Dockerfile.hub** 를 짓지만 이 워크플로는 그쪽 레지스트리·배포에 닿지 않는다.
+#
+# 언제 무엇을 하는가:
+#   pull_request(이미지에 들어가는 파일)  → 짓고, 띄워서 연기 검사만. 아무것도 밀지 않는다.
+#   workflow_dispatch(publish: false)     → 위와 같다.
+#   workflow_dispatch(publish: true)      → 지어서 검사하고 ghcr 로 민다(<version>, latest).
+#   push tag v*                           → 릴리스 판과 latest 로 민다.
+#
+# 이미지는 linux/amd64 뿐이다. 엔진 확장(packaging/lbug_extensions)이 amd64 빌드만 있어서다.
+# 임베딩 모델(dragonkue/BGE-m3-ko, Apache-2.0 · 바탕 BAAI/bge-m3, MIT)은 이미지에 굽는다.
+# 두 라이선스 모두 재배포를 허락하고, 고지는 packaging/selfhost/THIRD_PARTY_NOTICES.txt 로 싣는다.
+#
+# 굽기 스텝은 hub-deploy.yml 의 같은 스텝을 옮긴 것이다(그쪽이 정본). 캐시 키가 같아서 main 에서
+# 구운 모델을 그대로 받는다. 굽는 법을 바꿀 때는 두 곳을 같이 바꾼다.
+name: hub-image-public
+
+on:
+  pull_request:
+    paths:
+      - Dockerfile.hub
+      - .dockerignore
+      - packaging/docker-entrypoint.sh
+      - packaging/bake_embed_model.py
+      - packaging/selfhost/**
+      - .github/workflows/hub-image-public.yml
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "push the image to ghcr.io/vinculums/vinc-hub"
+        type: boolean
+        default: false
+      version:
+        description: "image tag besides latest (default: the short commit)"
+        type: string
+        default: ""
+
+concurrency:
+  group: hub-image-public-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/vinculums/vinc-hub
+      PUBLISH: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 굽기 키 (모델 · 폭 · 굽는 스크립트)
+        id: bake-key
+        run: |
+          set -euo pipefail
+          export $(grep -E '^ENV VINC_EMBED_(MODEL|MODEL_PATH|DIM)=' Dockerfile.hub | sed 's/^ENV //')
+          key="$(printf '%s|%s|%s' "$VINC_EMBED_MODEL" "$VINC_EMBED_DIM" \
+                   "$(sha256sum packaging/bake_embed_model.py | cut -d' ' -f1)" \
+                 | sha256sum | cut -c1-32)"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "dir=$HOME/.cache/vinc-bake/$key" >> "$GITHUB_OUTPUT"
+
+      - name: 구운 모델을 캐시에서 불러온다
+        id: bake-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.bake-key.outputs.dir }}
+          key: vinc-bake-${{ steps.bake-key.outputs.key }}
+
+      - name: 모델을 굽는다 (캐시가 비었을 때만)
+        env:
+          BAKE_CACHE_DIR: ${{ steps.bake-key.outputs.dir }}
+        run: |
+          set -euo pipefail
+          export $(grep -E '^ENV VINC_EMBED_(MODEL|MODEL_PATH|DIM)=' Dockerfile.hub | sed 's/^ENV //')
+          name="$(basename "$VINC_EMBED_MODEL_PATH")"
+          cache="$BAKE_CACHE_DIR"
+          ort_pin=$(grep -m1 -oE 'onnxruntime==[0-9][0-9.]*' Dockerfile.hub || true)
+          [ -n "$ort_pin" ] || { echo "::error::Dockerfile.hub 에서 onnxruntime 판을 못 찾았다"; exit 1; }
+          mkdir -p models
+          if [ -s "$cache/$name" ] && [ -s "$cache/tokenizer.json" ]; then
+            echo "캐시 적중: $cache"
+            cp "$cache/$name" "$cache/tokenizer.json" models/
+            python -m pip install --quiet --disable-pip-version-check \
+              "$ort_pin" tokenizers numpy huggingface_hub
+          else
+            echo "캐시 없음 → 굽는다: $VINC_EMBED_MODEL → $name (폭 $VINC_EMBED_DIM)"
+            sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+            sudo swapoff -a
+            sudo rm -f /mnt/swapfile /swapfile
+            sudo fallocate -l 10G /swapfile
+            sudo chmod 600 /swapfile
+            sudo mkswap /swapfile > /dev/null
+            sudo swapon /swapfile
+            python -m pip install --quiet --disable-pip-version-check \
+              torch==2.12.0 --index-url https://download.pytorch.org/whl/cpu
+            python -m pip install --quiet --disable-pip-version-check \
+              transformers==5.10.2 onnx onnxscript huggingface_hub "$ort_pin" numpy
+          fi
+          VINC_EMBED_MODEL_PATH="models/$name" python packaging/bake_embed_model.py
+          if [ ! -s "$cache/$name" ]; then
+            mkdir -p "$cache"
+            cp "models/$name" "$cache/.$name.tmp" && mv "$cache/.$name.tmp" "$cache/$name"
+            cp models/tokenizer.json "$cache/.tokenizer.tmp" && mv "$cache/.tokenizer.tmp" "$cache/tokenizer.json"
+          fi
+          artifact_hash=$(sha256sum "models/$name" models/tokenizer.json | sha256sum | cut -d' ' -f1)
+          echo "VINC_ENCODER_BUILD=$GITHUB_SHA-$artifact_hash" >> "$GITHUB_ENV"
+
+      - name: 구운 모델을 캐시에 남긴다
+        if: steps.bake-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.bake-key.outputs.dir }}
+          key: vinc-bake-${{ steps.bake-key.outputs.key }}
+
+      - name: ColBERT 투영을 받는다
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet --disable-pip-version-check huggingface_hub
+          export $(grep -E '^ENV VINC_COLBERT_LINEAR=' Dockerfile.hub | sed 's/^ENV //')
+          python - "models/$(basename "$VINC_COLBERT_LINEAR")" <<'PY'
+          import hashlib, shutil, sys
+          sys.path.insert(0, ".")
+          import huggingface_hub as hf
+          from vinc_rag.colbert import LINEAR_REVISION, LINEAR_SHA256
+          src = hf.hf_hub_download("BAAI/bge-m3", "colbert_linear.pt", revision=LINEAR_REVISION)
+          got = hashlib.sha256(open(src, "rb").read()).hexdigest()
+          if got != LINEAR_SHA256:
+              sys.exit(f"colbert_linear sha256 {got} != {LINEAR_SHA256}")
+          shutil.copy(src, sys.argv[1])
+          PY
+
+      - name: 태그를 정한다
+        id: tags
+        # 입력값은 env 로만 넘긴다(식 안에 그대로 쓰면 셸에 주입된다).
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          elif [ -n "${INPUT_VERSION:-}" ]; then
+            version="$INPUT_VERSION"
+          else
+            version="$(git rev-parse --short=12 HEAD)"
+          fi
+          case "$version" in *[!A-Za-z0-9._-]*|"") echo "::error::태그로 못 쓰는 판: $version"; exit 1;; esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: 이미지를 짓는다 (linux/amd64)
+        run: |
+          set -euo pipefail
+          docker build --platform linux/amd64 \
+            --build-arg "VINC_ENCODER_BUILD=$VINC_ENCODER_BUILD" \
+            --build-arg "VINC_BUILD_SHA=$GITHUB_SHA" \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.version=${{ steps.tags.outputs.version }}" \
+            --label "org.opencontainers.image.description=Vinc hub for self-hosting (VINC_SELF_HOSTED=on)" \
+            -t "$IMAGE:${{ steps.tags.outputs.version }}" -t "$IMAGE:latest" \
+            -f Dockerfile.hub .
+          docker image inspect "$IMAGE:latest" --format 'size={{.Size}}'
+
+      # 문서가 말하는 최소 환경만 주고 띄운다: 셀프호스트 플래그, 비밀번호 해시, 볼륨.
+      # 사이드카 토큰과 MCP 토큰은 주지 않는다 — 엔트리포인트가 볼륨에 만들어 둔다.
+      - name: 연기 검사 (최소 환경으로 띄워 로그인 · 앱 · MCP)
+        run: |
+          set -euo pipefail
+          docker volume create vinc-smoke > /dev/null
+          hash=$(printf 'smoke-password\n' | docker run --rm -i --entrypoint python "$IMAGE:latest" \
+                   -m api.cli selfhost hash-password)
+          docker run -d --name vinc-smoke -p 127.0.0.1:8790:8790 -v vinc-smoke:/data \
+            -e VINC_SELF_HOSTED=on -e "VINC_LOCAL_PASSWORD_HASH=$hash" "$IMAGE:latest" > /dev/null
+          ok=
+          for i in $(seq 1 180); do
+            # 붙잡기 모드에서는 /health 가 곧바로 200 "starting" 을 준다. 준비는 "ok" 다.
+            if curl -fsS http://127.0.0.1:8790/health 2>/dev/null | grep -q '"status": "ok"'; then ok=1; break; fi
+            sleep 2
+          done
+          [ -n "$ok" ] || { docker logs vinc-smoke | tail -80; echo "::error::/health 가 6분 안에 답하지 않았다"; exit 1; }
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8790/login)
+          [ "$code" = 200 ] || { echo "::error::/login $code"; exit 1; }
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+                   -H 'Origin: http://127.0.0.1:8790' -c /tmp/jar \
+                   -d '{"password":"smoke-password"}' http://127.0.0.1:8790/login)
+          [ "$code" = 200 ] || { echo "::error::sign-in $code"; exit 1; }
+          curl -fsS -b /tmp/jar http://127.0.0.1:8790/api/me | grep -q '"self_hosted": true'
+          curl -fsS http://127.0.0.1:8790/app/ | grep -qi '<!doctype html'
+          token=$(docker exec vinc-smoke cat /data/selfhost/mcp-token)
+          curl -fsS -X POST http://127.0.0.1:8790/mcp -H "Authorization: Bearer $token" \
+            -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+            -H 'MCP-Protocol-Version: 2025-06-18' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | grep -q '"vinc_search"'
+          echo "smoke ok"
+          docker stats --no-stream --format 'mem={{.MemUsage}}' vinc-smoke
+          docker rm -f vinc-smoke > /dev/null
+
+      - name: ghcr 로 민다
+        if: env.PUBLISH == 'true'
+        run: |
+          set -euo pipefail
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker push "$IMAGE:${{ steps.tags.outputs.version }}"
+          docker push "$IMAGE:latest"
+          echo "pushed $IMAGE:${{ steps.tags.outputs.version }} and :latest"

@@ -133,6 +133,8 @@ ENV MALLOC_ARENA_MAX=2
 # 안 구워진 이미지를 내보내는 것보다 낫다. 로컬에서 지으려면 먼저 굽는다:
 #   python packaging/bake_embed_model.py     (VINC_EMBED_MODEL_PATH 를 models/ 로)
 COPY models/ /srv/vinc/models/
+# 모델 라이선스 고지(Apache-2.0 · MIT). 공개 이미지가 모델을 재배포하므로 함께 싣는다.
+COPY packaging/selfhost/THIRD_PARTY_NOTICES.txt /srv/vinc/models/THIRD_PARTY_NOTICES.txt
 COPY packaging/bake_embed_model.py /tmp/bake_embed_model.py
 RUN python /tmp/bake_embed_model.py \
  && rm -f /tmp/bake_embed_model.py
