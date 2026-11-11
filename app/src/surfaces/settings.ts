@@ -1,4 +1,5 @@
-import { accountMode, api, buildId, cfg, forgetMemberKey, messageOf, remote, WEB, shellInvoke } from "../api";
+import { accountMode, api, buildId, cfg, forgetMemberKey, messageOf, remote, selfHostedSignOut, WEB, shellInvoke } from "../api";
+import { mcpUrl, selfHosted } from "../self-hosted";
 import { accountKey, accountWho, connectAccount, forgetAccount, hasAccount, keyIsOnDisk,
          mcpKeyPresent,
          setAccountKey } from "../account-connect";
@@ -251,6 +252,17 @@ async function renderSettings(
     // ⚠ 이 블록의 카피는 예전에 여기 EN/KO 사전으로 인라인돼 있었다. 사유는
     // "셸 편집 충돌 회피"였는데 그 충돌은 이미 없고, 덱 밖 카피는 언어 프록시도
     // 게이트도 타지 않는다(tests/design/test_copy_parity.py 가 이제 막는다).
+    // 셀프호스트 허브: 계정·공간·팀으로 옮기기·알림이 없다. 이 허브의 로그인과 로그아웃만 둔다.
+    if (selfHosted()) {
+      body.innerHTML = `
+        <h2>${esc(U.navAccount)}</h2>
+        <p class="hint">${esc(U.selfHostedIntro)}</p>
+        <label>${U.account}</label>
+        <div class="hint" style="font-size:var(--fs-sm)">${esc(U.selfHostedSignedIn)}
+          <p><button class="btn" id="sh-signout" type="button">${esc(U.acctSignOut)}</button></p></div>`;
+      body.querySelector("#sh-signout")!.addEventListener("click", () => { void selfHostedSignOut(); });
+      return;
+    }
     body.innerHTML = `
       <h2>${esc(U.navAccount)}</h2>
       <p class="hint">${esc(U.accountIntro)}</p>
@@ -404,7 +416,8 @@ async function renderSettings(
   const MCP_HOSTS = ["desktop", "code", "cursor", "codex"] as const;
   // 원격 MCP 엔드포인트(허브). `vinc_mcp/http_server.py` 의 `/mcp` 와 짝이고, 같은
   // 호스트가 OAuth 디스커버리(`/.well-known/*`)도 낸다 — 커넥터는 이 주소 하나만 받는다.
-  const REMOTE_MCP_URL = "https://mcp.vincs.io/mcp";
+  // 셀프호스트 허브에서는 그 허브 자신의 주소다(`self-hosted.ts`).
+  const REMOTE_MCP_URL = mcpUrl();
   // 이 기기에서 연결에 성공한 호스트만 기억한다(해제하면 지운다). 호스트 설정 파일을 읽지 않으므로
   // 다른 길로 등록한 것은 모른다. 기억한 호스트는 상태와 해제만, 나머지는 연결만 보인다.
   const MCP_KEY = "vinc.mcp.connected";

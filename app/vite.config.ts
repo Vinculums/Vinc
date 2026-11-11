@@ -69,6 +69,12 @@ function webShell(): Plugin {
     configResolved(config) { base = config.base; },
     transformIndexHtml(html) {
       if (base !== WEB_BASE) return html;
+      // 셀프호스트 허브의 번들(VITE_SELF_HOSTED=1)에는 사이트 머리(gnb.js)가 없다: 스킨과 테마만 맞춘다.
+      if (process.env.VITE_SELF_HOSTED === "1") {
+        return html
+          .replace("<html lang=\"en\">", "<html lang=\"en\" data-skin=\"web\">")
+          .replace("</head>", `<script>${PREPAINT}</script>\n  </head>`);
+      }
       return html
         .replace("<html lang=\"en\">", "<html lang=\"en\" data-skin=\"web\">")
         .replace("</head>", `<script>${PREPAINT}</script>`

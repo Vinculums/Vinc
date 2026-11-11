@@ -15,6 +15,7 @@ import { loaderBlock } from "./vinc-loaders.js";
 import { mountTopbar, setViewHooks } from "./topbar";
 import { mountLnb, refreshLnb, setLnbNavigator, repaintLnb } from "./lnb";
 import { mountSpaceSwitcher } from "./space-switcher";
+import { SELF_HOSTED_BUILD, selfHosted } from "./self-hosted";
 import { showNotice } from "./components";
 import { blocksSurfaceShortcuts } from "./keys";
 import { disposeEditorsIn, docEditorOpen } from "./doc-editor";
@@ -317,7 +318,8 @@ if (!WEB && IN_SHELL) {
 // ── 웹 스킨: 공홈 GNB를 공유 단일 소스(/assets/gnb.js)로 런타임 주입. 데스크탑 셸은 미주입. ──
 // 같은 오리진(vincs.io)이라 사이트의 gnb.js 를 그대로 로드 → 홈·서브페이지와 100% 동일한 GNB.
 // (로컬 dev ?skin=web 은 vite가 이 파일을 서빙하지 않아 GNB 미표시 — 배포 환경 전용.)
-if (document.documentElement.dataset.skin === "web") {
+// 셀프호스트 허브에는 사이트가 없다(`self-hosted.ts`): 번들 상수로 첫 페인트 전에 가른다.
+if (document.documentElement.dataset.skin === "web" && !SELF_HOSTED_BUILD) {
   (window as unknown as { VINC_GNB: unknown }).VINC_GNB = {
     ctx: "app", active: "app", signedIn: true, lang: cfg.lang,
   };
@@ -409,7 +411,8 @@ document.documentElement.lang = cfg.lang;
   const refusedSpace = await adoptSpaceFromAddress();
   // 사이드바 머리의 공간 전환. 계정 그래프일 때만 선다(로컬 모드에는 고를 공간이 없다).
   // 모드와 스페이스가 정해진 이 자리여야 머리가 처음부터 맞는 공간을 말한다.
-  if (remote()) mountSpaceSwitcher();
+  // 셀프호스트 허브는 개인 그래프 하나뿐이라 고를 공간이 없다.
+  if (remote() && !selfHosted()) mountSpaceSwitcher();
   // 사이드바도 사이드카·로그인·모드·스페이스가 정해진 뒤 처음 읽는다(VIN-360).
   // 그 전에는 로딩으로 기다린다. 실제 요청 실패는 기존 Retry 상태가 맡는다.
   void refreshLnb();
@@ -418,7 +421,8 @@ document.documentElement.lang = cfg.lang;
   mountLiveRefresh();
   route();
   // 웹에서만: 매니페스트와 서비스 워커(웹 푸시). 알림 권한은 설정의 버튼을 누를 때만 묻는다.
-  registerWebPush();
+  // 셀프호스트 허브에는 알림을 보낼 계정이 없다.
+  if (!selfHosted()) registerWebPush();
   // 승인함 메뉴의 숫자. 계정 그래프일 때만 묻는다. 그 뒤로는 변경 표식이 바뀔 때 다시 읽는다(live.ts).
   void import("./surfaces/approvals").then((m) => m.refreshApprovalsBadge());
   if (refusedSpace) {
