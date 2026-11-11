@@ -8,7 +8,7 @@ const source = async (entry) => {
     bundle: true, platform: "node", format: "esm", write: false, loader: { ".json": "json" } });
   return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
 };
-const { tintPlan } = await source("../src/view-tint.ts");
+const { tintPlan, markColour } = await source("../src/view-tint.ts");
 const { isHistorical } = await source("../src/node-validity.ts");
 const { topicJewels } = await source("../src/theme.ts");
 const hex = (n) => `#${n.toString(16).padStart(6, "0")}`;
@@ -17,8 +17,9 @@ test("each area wears one jewel and its topics wear small turns of it", () => {
   const domains = ["vinc/design/a", "vinc/design/b", "vinc/design/c", "vinc/ai/x", "vinc/ai/y"];
   const plan = tintPlan(domains, "dark");
   assert.deepEqual([...plan.areas.keys()], ["ai", "design"]);
-  assert.equal(plan.areas.get("ai"), hex(topicJewels.dark[0]));
-  assert.equal(plan.areas.get("design"), hex(topicJewels.dark[1]));
+  // The area wears its jewel brought to the mark floor (topic-tint-contrast.test.mjs pins the floor and the hue).
+  assert.equal(plan.areas.get("ai"), markColour(hex(topicJewels.dark[0]), "dark"));
+  assert.equal(plan.areas.get("design"), markColour(hex(topicJewels.dark[1]), "dark"));
   // The first topic of an area is the area jewel itself; the next ones differ but stay close.
   assert.equal(plan.topics.get("vinc/design/a"), plan.areas.get("design"));
   assert.notEqual(plan.topics.get("vinc/design/b"), plan.topics.get("vinc/design/a"));
