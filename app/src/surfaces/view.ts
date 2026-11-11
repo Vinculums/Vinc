@@ -20,7 +20,7 @@ import { hydrateRich } from "../rich-blocks";
 
 import { RAIL_MIN, RAIL_MAX, loadPrefs, savePrefs, dayOf, localStamp,
          type ViewPrefs } from "../view-prefs";
-import { setViewHooks, refreshTopbar, setSearchFilter, setTopbarLeadTools } from "../topbar";
+import { setViewHooks, refreshTopbar, setSearchFilter, setTopbarTools } from "../topbar";
 import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbScopeClearer, setLnbGraphSource, repaintLnbGraph, setLnbGraphActive,
          refreshLnb, isAgentRoleId, stripRolePrefix } from "../lnb";
 import { PROP_KINDS, propsEditable, rowsFrom, propsFrom, convertText, sameProps, propsPatchOf,
@@ -684,7 +684,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       // 그래프 보기는 나침반 하나다. 받은 전량을 그대로 넘기고, 가운데·펼침·기간·종류·고정은 나침반이 다룬다.
       // 그 손잡이들(길·찾기·기간·종류·고정·읽는 법)은 LNB 의 칸으로 선다(렌즈 패널은 쓰지 않는다).
       const chain = domains.length === 1 ? domains[0].split("/").map((_, i, a) => `topic:${a.slice(0, i + 1).join("/")}`) : undefined;
-      // LNB = 문서 트리와 같은 그림의 노드 트리(lnb.ts). 시간 · 범례 = 머리의 "그래프" 글자 오른쪽 버튼이 여는 창.
+      // LNB = 문서 트리와 같은 그림의 노드 트리(lnb.ts). 시간 · 범례 = 머리 뒤 묶음(문서 | 그래프 왼쪽) 단추가 여는 창.
       let ready = false;
       const restore = compassKeep; compassKeep = null;
       compass = mountCompass(canvas, compassDataFrom(nodes, curEdges), { startPath: chain, restore,
@@ -692,10 +692,10 @@ export async function renderView(el: HTMLElement, resume = false) {
         onTree: (o) => repaintLnbGraph(o),
         onOpen: (id) => openFromCompass(id),
         onChange: () => { if (ready && compass) setLnbGraphActive(compass.centre()); },
-        onDestroy: () => { setLnbGraphSource(null); setTopbarLeadTools(null); } });
+        onDestroy: () => { setLnbGraphSource(null); setTopbarTools(null); } });
       const cmp = compass;
       setLnbGraphSource({ groups: () => cmp.tree(), open: (id) => cmp.open(id), mark: (k) => cmp.mark(k), colour: (d) => cmp.colour(d), dock: cmp.side });
-      setTopbarLeadTools(cmp.tools);
+      setTopbarTools(cmp.tools);
       ready = true;
       setLnbGraphActive(cmp.centre());
       setSearchFilter((q) => compass?.filter(q));

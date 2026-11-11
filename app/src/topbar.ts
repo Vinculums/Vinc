@@ -12,10 +12,11 @@ import { mountDocOptions } from "./doc-options";
 
 /** 뷰 머리 (DEC D56·D57) — 내용 카드의 윗줄. 떠 있지 않다.
  *
- *  앞(`#tb-lead`)은 지금 자리다: 문서 면은 경로를 표면이 채우고(`setTopbarLead`), 그래프는
- *  범위를 여기서 칠한다. 뒤는 검색, 문서 | 그래프 전환, 맨 끝에 보기 설정과 범례. 검색은 평소
- *  칸 하나로 접혀 있고 누르거나 ⌘/Ctrl K 를 치면 왼쪽으로 길게 펴진다. 맨 끝 버튼은 면마다
- *  내용이 다르다: 그래프는 View 의 렌즈(`#tb-lens`), 문서 면은 읽기 설정(doc-options.ts).
+ *  맨 앞(`#tb-space`)은 계정 그래프의 공간 전환이다(space-switcher.ts 가 채운다). 앞(`#tb-lead`)은
+ *  지금 자리다: 문서 면은 경로를 표면이 채우고(`setTopbarLead`), 그래프는 범위를 여기서 칠한다.
+ *  뒤는 검색, 그래프의 시간 · 범례(`#tb-graph-tools`, `setTopbarTools`), 문서 | 그래프 전환, 맨 끝에
+ *  문서 면의 읽기 설정(doc-options.ts). 검색은 평소 칸 하나로 접혀 있고 누르거나 ⌘/Ctrl K 를 치면
+ *  왼쪽으로 길게 펴진다.
  *  근거: [[decision:the-graph-is-one-2d-compass-lens-2026-11-06]]
  *  근거: [[decision:documents-and-graph-share-one-lnb-tree-2026-11-06]]
  *  여기 살지 않는 것: 로고(타이틀바가 든다 — 웹에선 공홈 GNB),
@@ -78,12 +79,9 @@ export function viewHooks(): ViewHooks | null {
 /** 지도 손잡이 표시 상태를 현재 훅 기준으로 다시 칠한다(관점을 바꾼 뒤 호출).
  *  Tools 는 훅과 무관하게 늘 눌린다 — 문서를 쓰고 가져오는 일은 지도가 없어도 된다. */
 export function refreshTopbar() {
-  // 지도 손잡이는 View 소유다 — 훅이 없으면 슬롯을 비운다. 남겨 두면 검색·팩
-  // 화면에서 눌리는데 아무 지도도 안 바뀌는 칩이 된다.
-  if (!hooks) {
-    const l = lensSlot();
-    if (l) l.innerHTML = "";
-  }
+  // 지도 손잡이는 View 소유다 — 훅이 없으면 시간 · 범례 자리를 비운다. 남겨 두면 다른
+  // 화면에서 눌리는데 아무 지도도 안 바뀌는 단추가 된다.
+  if (!hooks) setTopbarTools(null);
 }
 
 /** 표면이 거는 검색 거르개. 걸려 있으면 검색 칸에 치는 글자가 드롭다운 대신 이리로 간다(그래프의 나침반).
@@ -95,8 +93,6 @@ export function setSearchFilter(fn: ((q: string) => void) | null) {
   if (fn && q?.value.trim()) fn(q.value.trim());
 }
 
-/** 렌즈 버튼 자리 — 머리 맨 끝. 그래프에서만 View 가 채운다. */
-export function lensSlot(): HTMLElement | null { return $("tb-lens"); }
 
 /** 검색바 모드(D73). 바의 `data-mode` 가 화면·동작의 단일 원천이다.
  *    find = 기존 동작(드롭다운 결과 → 착지)
@@ -151,22 +147,24 @@ export function setTopbarLead(html: string | null): HTMLElement | null {
   return lead;
 }
 
-/** 그래프의 앞자리 — 지금 범위(LNB 가 고른 주제). 고른 것이 없으면 "그래프" 한 낱말.
- *  그 글자 바로 오른쪽에 표면이 넘긴 도구(나침반의 시간 · 범례 버튼)가 선다: 요소를 옮겨 붙이므로 배선이 남는다. */
-let graphScope = "";
-let leadTools: HTMLElement | null = null;
-export function setTopbarLeadTools(el: HTMLElement | null) {
-  if (leadTools && leadTools !== el) leadTools.remove();
-  leadTools = el;
-  paintGraphLead();
+/** 그래프의 뒤 묶음 단추(나침반의 시간 · 범례). 전환 바로 왼쪽 자리(`#tb-graph-tools`)에 요소를 옮겨
+ *  붙이므로 배선이 남는다. null 이면 비운다(나침반이 떠날 때 · View 의 훅이 풀릴 때). */
+let graphTools: HTMLElement | null = null;
+export function setTopbarTools(el: HTMLElement | null) {
+  if (graphTools && graphTools !== el) graphTools.remove();
+  graphTools = el;
+  const slot = $("tb-graph-tools");
+  if (slot && el && el.parentElement !== slot) slot.append(el);
 }
+
+/** 그래프의 앞자리 — 지금 범위(LNB 가 고른 주제). 고른 것이 없으면 "그래프" 한 낱말. */
+let graphScope = "";
 function paintGraphLead() {
   if (!onGraph()) return;
   const segs = graphScope.split("/").filter(Boolean);
-  const lead = setTopbarLead(`<span class="tb-lead-name">${esc(COPY.ui.topbar.graph)}</span>${
+  setTopbarLead(`<span class="tb-lead-name">${esc(COPY.ui.topbar.graph)}</span>${
     segs.length ? `<span class="tb-lead-sep" aria-hidden="true">·</span><span class="tb-lead-scope">${
       esc(segs.join(" / "))}</span>` : ""}`);
-  if (lead && leadTools) lead.append(leadTools);
 }
 
 export function mountTopbar() {

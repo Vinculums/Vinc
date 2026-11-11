@@ -108,14 +108,15 @@
               <div id="tb-chat" hidden></div>
             </div>
           </div>
+          <!-- 그래프의 시간 · 범례 단추. 나침반이 채우고 떠날 때 비운다(topbar.ts `setTopbarTools`).
+               전환 바로 왼쪽이라 전환은 어느 면에서나 같은 자리에 선다. -->
+          <div id="tb-graph-tools"></div>
           <!-- 문서 | 그래프. 상태의 정본은 주소다(topbar.ts `paintSwitch`). -->
           <div class="tb-switch" id="tb-switch" role="group">
             <button class="tb-seg" id="tb-to-docs" type="button" aria-pressed="false"></button>
             <button class="tb-seg" id="tb-to-graph" type="button" aria-pressed="false"></button>
           </div>
-          <!-- 맨 끝 — 보기 설정과 범례. 그래프는 View 가 렌즈 버튼을 채우고(#tb-lens),
-               문서 면은 읽기 설정 버튼이 선다(doc-options.ts). 둘 중 하나만 보인다. -->
-          <div id="tb-lens"></div>
+          <!-- 맨 끝 — 문서 면의 읽기 설정 버튼(doc-options.ts). 그래프에서는 숨는다. -->
           <div id="tb-docopts"></div>
           </div>
         </div>
