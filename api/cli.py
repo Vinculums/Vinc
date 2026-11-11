@@ -278,10 +278,8 @@ def _main(argv: list[str] | None = None) -> int:
 
     from . import cli_storage
     cli_storage.add_parser(sub)
-    sh = sub.add_parser("selfhost", help="self-hosted hub: make the local sign-in password hash")
-    shs = sh.add_subparsers(dest="selfhostcmd", required=True)
-    shs.add_parser("hash-password", help="read a password (hidden prompt, or stdin) and print "
-                                         "the value for VINC_LOCAL_PASSWORD_HASH")
+    from . import cli_selfhost
+    cli_selfhost.add_parser(sub)
     sv = sub.add_parser("serve", help='run the loopback sidecar HTTP server')
     sv.add_argument("--host", default="127.0.0.1", help='bind host (loopback only)')
     sv.add_argument("--port", type=int, default=0, help="bind port (0 = ephemeral)")
@@ -979,23 +977,8 @@ def _main(argv: list[str] | None = None) -> int:
         from . import cli_storage
         return cli_storage.run(args, _emit)
     if args.cmd == "selfhost":
-        # 해시만 출력한다(`VINC_LOCAL_PASSWORD_HASH=$(vinc selfhost hash-password)`). 비밀번호는
-        # 화면에 안 보이게 묻거나 표준 입력 첫 줄에서 읽고, 어디에도 남기지 않는다.
-        import getpass
-        from vinc_mcp.selfhost_web import hash_password
-        if sys.stdin.isatty():
-            first = getpass.getpass("Password: ")
-            if getpass.getpass("Again: ") != first:
-                print("the two passwords differ", file=sys.stderr)
-                return 1
-        else:
-            first = sys.stdin.readline().rstrip("\r\n")
-        try:
-            print(hash_password(first))
-        except ValueError as exc:
-            print(str(exc), file=sys.stderr)
-            return 1
-        return 0
+        from . import cli_selfhost
+        return cli_selfhost.run(args)
     if args.cmd == "serve":
         # 자식 프로세스가 물려받기 전에 비밀값을 환경에서 꺼낸다. 수동 인자가 우선한다.
         inherited_token = os.environ.pop("VINC_SIDECAR_TOKEN", None)
