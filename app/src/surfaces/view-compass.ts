@@ -952,11 +952,14 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
     if (TSEL) bars += `<rect class="sel" x="${(i0 * bw).toFixed(1)}" y="1" width="${((i1 - i0 + 1) * bw).toFixed(1)}" height="${H - padB - 1}" rx="3"/>`;
     const rows = ns.filter((n) => (!TSEL || (when(n) >= TSEL[0] && when(n) <= TSEL[1])) && matchQ(n) && !KOFF.has(kindKey(n)));
     const cnt = K.map(([k, name]) => `${name} ${rows.filter((n) => tKind(n) === k).length}`).join(' · '), undated = nodes.filter((n) => !when(n)).length;
-    const lab = TSEL ? `${TSEL[0] === '0000-01-01' ? C.start : TSEL[0]} ~ ${TSEL[1]}` : `${allDays[1]} ~ ${allDays[allDays.length - 1]}`;
-    return `      <div class="cmp-seg">${[['7', C.days(7)], ['30', C.days(30)], ['all', C.all]].map(([k, l]) => `<button class="btn btn-sm" data-cmp-r="${k}">${l}</button>`).join('')}</div>
+    // 날짜가 있는 노드가 하나도 없으면 칸은 '이전' 하나뿐이다: 범위(allDays[1] ~ …)도 기간 단추도 말할 것이 없다.
+    // 그때는 그렇다고 적고 기간 단추와 막대(끌어 고르기)를 내놓지 않는다. 'undefined ~ 이전'을 다시 만들지 말 것
+    const noDays = allDays.length < 2;
+    const lab = noDays ? esc(C.noDates) : TSEL ? `${TSEL[0] === '0000-01-01' ? C.start : TSEL[0]} ~ ${TSEL[1]}` : `${allDays[1]} ~ ${allDays[allDays.length - 1]}`;
+    return `      <div class="cmp-seg">${[['7', C.days(7)], ['30', C.days(30)], ['all', C.all]].map(([k, l]) => `<button class="btn btn-sm" data-cmp-r="${k}"${noDays && k !== 'all' ? ' disabled' : ''}>${l}</button>`).join('')}</div>
       <p class="cmp-range">${lab}</p>
       <div class="cmp-tleg">${K.map(([k, name, c]) => `<span><i style="background:${c}"></i>${name} ${rows.filter((n) => tKind(n) === k).length}</span>`).join('')}${undated ? `<span title="${esc(C.undatedTip)}">${esc(C.undated(undated))}</span>` : ''}</div>
-      <svg class="cmp-bars" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" data-bars>${bars}</svg>`;
+      ${noDays ? '' : `<svg class="cmp-bars" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" data-bars>${bars}</svg>`}`;
   }
   // 붙은 곳: 기록·사건·결정이 붙은 뜻의 노드(개념·문서). LNB 트리가 그 아래로 들여 쓴다
   const hostOf = (n) => { if (isMean(n)) return null; for (const e of adj.get(n.id) || []) if (ATTACH.has(e.t) && e.a === n && isMean(e.b)) return e.b; return null; };

@@ -542,6 +542,8 @@ const EN = {
       conceptAndDoc: "Concept · document",
       undated: (n: number) => `No date ${n}`,
       undatedTip: "Nodes that only have an update time",
+      // 시간 창: 날짜(작성·유효 시작·사건 시각)가 있는 노드가 하나도 없을 때 범위 자리에 선다.
+      noDates: "Nothing here has a date yet, so there is no range to pick.",
     },
     agentMap: {
       title: "Agents",
@@ -2188,6 +2190,7 @@ const KO: Deck = {
       conceptAndDoc: "개념·문서",
       undated: (n: number) => `날짜 없음 ${n}`,
       undatedTip: "고친 때만 있는 노드",
+      noDates: "아직 날짜가 있는 항목이 없어서 고를 기간이 없어요",
     },
     agentMap: {
       title: "Agent",
