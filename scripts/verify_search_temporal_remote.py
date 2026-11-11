@@ -39,7 +39,8 @@ def read(path, key, timeout):
 def read_mcp(options, key, timeout):
     request = urllib.request.Request("https://mcp.vincs.io/mcp", data=json.dumps({
         "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
-            "name": "vinc_search", "arguments": {"query": "vinc", "limit": 1, **options}}}).encode(),
+            # MCP 는 기본으로 비어 있는 시간 블록을 줄인다. 여기서는 전체 계약을 보므로 raw 로 읽는다.
+            "name": "vinc_search", "arguments": {"query": "vinc", "limit": 1, "raw": True, **options}}}).encode(),
         headers={"Authorization": "Bearer " + key, "Content-Type": "application/json",
                  "Accept": "application/json", "Cache-Control": "no-store"})
     envelope = _json_read(request, timeout)

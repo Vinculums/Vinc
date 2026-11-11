@@ -277,7 +277,7 @@ class Dispatcher:
                 carried = run_tasks.carry(outcome.result, params, args)
                 if carried is not None:
                     return carried
-            return _result_text(roles.serialize_result(outcome.result), name, args)
+            return _result_text(_mcp_text(name, args, outcome.result), name, args)
         if method in _SKILL_METHODS and modern_version is not None:
             # 스킬은 역할 계약을 읽는다. 프롬프트와 같은 규칙(커뮤니티 거절·쿼터)을 탄다.
             if community.is_space(forced_owner):
@@ -427,6 +427,15 @@ def _tool_result(text: str, name: str, *, is_error: bool) -> dict:
     return out
 
 
+def _mcp_text(name: str, args: dict, result) -> str:
+    """tools/call 결과의 본문. 읽기 셋(`tools.LEAN_DROP`·vinc_neighbors)은 줄여서 빈칸 없는 JSON 으로
+    싣는다. 핸들러 결과는 건드리지 않으므로 REST v1·CLI 의 꼴은 그대로다. `raw:true` 면 예전 그대로다."""
+    lean = tools.lean_result(name, args, result)
+    if lean is result:
+        return roles.serialize_result(result)
+    return json.dumps(lean, ensure_ascii=False, separators=(",", ":"))
+
+
 def _result_text(text: str, name: str, args: dict) -> dict:
     """tools/call 결과 봉투. 상한 초과면 **행동 가능한 오류**로 강등한다.
 
@@ -443,7 +452,7 @@ def _result_text(text: str, name: str, args: dict) -> dict:
         except Exception:
             slim = None
         if slim is not None:
-            slim_text = roles.serialize_result(slim)
+            slim_text = _mcp_text(name, args, slim)
             if len(slim_text) <= MAX_RESULT_CHARS:
                 return _tool_result(slim_text, name, is_error=False)
     hint = _NARROW_HINT.get(name, "request a narrower slice")

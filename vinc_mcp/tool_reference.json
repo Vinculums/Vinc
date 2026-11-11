@@ -138,6 +138,13 @@
      "reference": "Read the graph as it held during a period: YYYY, YYYY-MM or YYYY-MM-DD, or 'query' to use the one date written in the question (none, or two different dates, gives today's view with time_scope.applied:false). Hidden claims are counted in `validity_filtered`. Omit for today's view."
     },
     {
+     "name": "raw",
+     "type": "boolean",
+     "required": false,
+     "description": "true returns the full result; by default ranking diagnostics, empty fields and temporal blocks with nothing set are left out.",
+     "reference": "Over MCP the result is trimmed by default: ranking diagnostics are left out (`score` on rows and `rrf_score` on node hits stay), a `temporal` block with no validity interval, content time, supersession or conflict shrinks to `{updated_at}`, brief drops flat copies of its temporal fields, and neighbors drop empty fields. A missing field means it was empty or default. raw:true returns the result unchanged. REST v1 always returns it unchanged."
+    },
+    {
      "name": "space",
      "type": "string",
      "required": false,
@@ -370,6 +377,13 @@
      "required": false,
      "description": "Read the graph as it held during a period: YYYY, YYYY-MM or YYYY-MM-DD, or 'query' to use the date written in the question. Omit for today.",
      "reference": "Read the graph as it held during a period: YYYY, YYYY-MM or YYYY-MM-DD, or 'query' to use the one date written in the question (none, or two different dates, gives today's view with time_scope.applied:false). Hidden claims are counted in `validity_filtered`. Omit for today's view."
+    },
+    {
+     "name": "raw",
+     "type": "boolean",
+     "required": false,
+     "description": "true returns the full result; by default ranking diagnostics, empty fields and temporal blocks with nothing set are left out.",
+     "reference": "Over MCP the result is trimmed by default: ranking diagnostics are left out (`score` on rows and `rrf_score` on node hits stay), a `temporal` block with no validity interval, content time, supersession or conflict shrinks to `{updated_at}`, brief drops flat copies of its temporal fields, and neighbors drop empty fields. A missing field means it was empty or default. raw:true returns the result unchanged. REST v1 always returns it unchanged."
     },
     {
      "name": "space",
@@ -628,6 +642,13 @@
      "type": "integer",
      "required": false,
      "description": "Max neighbors returned. If cut, `neighbors_truncated` is true."
+    },
+    {
+     "name": "raw",
+     "type": "boolean",
+     "required": false,
+     "description": "true returns the full result; by default ranking diagnostics, empty fields and temporal blocks with nothing set are left out.",
+     "reference": "Over MCP the result is trimmed by default: ranking diagnostics are left out (`score` on rows and `rrf_score` on node hits stay), a `temporal` block with no validity interval, content time, supersession or conflict shrinks to `{updated_at}`, brief drops flat copies of its temporal fields, and neighbors drop empty fields. A missing field means it was empty or default. raw:true returns the result unchanged. REST v1 always returns it unchanged."
     },
     {
      "name": "space",
