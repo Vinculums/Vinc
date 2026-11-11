@@ -44,7 +44,11 @@ class RoutingTest(unittest.TestCase):
         self.assertIn('"/config"', API[API.index("const SIDECAR_ONLY"):][:200])
 
     def test_옮기기의_진행은_사이드카_잡에서_읽는다(self):
-        self.assertEqual(STORE.count("status: storage.job"), 2)
+        # 받기·올리기·데이터베이스로·폴더로 옮기기: 잡을 기다리는 곳마다 사이드카 잡을 읽는다.
+        polls = re.findall(r"pollJob\((.*?)\);", STORE, re.S)
+        self.assertGreaterEqual(len(polls), 4)
+        for args in polls:
+            self.assertIn("status: storage.job", args)
 
     def test_브라우저_dev_프록시가_설정을_넘긴다(self):
         self.assertIn('"|config|shutdown"', VITE)
