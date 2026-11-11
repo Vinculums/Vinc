@@ -37,7 +37,7 @@ class Scores(unittest.TestCase):
         self.assertTrue(s["old_above_new"])
         gone = K.pick_scores(["record:old"], "record:new", ["record:old"])
         self.assertIsNone(gone["rank_new"])
-        self.assertTrue(gone["old_above_new"], "정답이 없고 옛 주장만 있으면 옛 것이 앞선 것이다")
+        self.assertTrue(gone["old_above_new"], "정답이 없고 대체된 노드만 있으면 그것이 앞선 것이다")
 
     def test_brief_pick_separates_a_wrong_resolution_from_a_list(self):
         old = K.brief_pick({"status": "resolved", "node": {"id": "d:old"}}, "d:new", ["d:old"])

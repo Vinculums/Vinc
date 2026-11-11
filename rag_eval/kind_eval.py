@@ -6,7 +6,7 @@
 
 1. 현재 유효 고르기(current pick). 서로 대체(SUPERSEDES)한 주장 여럿 중 지금 유효한 것을
    정답으로 둔 질문에서, search 의 node_hits 와 brief 가 정답을 몇 번째에 두는가.
-   대체된 쪽(옛 주장)이 정답보다 앞에 서는가도 함께 센다. 모드 셋(기본·current·historical)을 잰다.
+   대체된 노드가 정답보다 앞에 서는가도 함께 센다. 모드 셋(기본·current·historical)을 잰다.
 2. 종류별 목록(kind lists). "X 에 관한 결정"·"Y 를 다룬 사건" 같은 요청에서 상위 k 의
    정밀도와 재현율. 비교하는 팔:
      - `text`    종류를 질문 글자에만 적는다(필터 없음, 오늘 호출자가 할 수 있는 것).
@@ -27,7 +27,7 @@ SUPERSEDES 를 따라 스토어에서 찾는다.
     python -X utf8 -m rag_eval.kind_eval --data <store copy> --owner <owner> \\
         --onnx <encoder.onnx> [--tasks <tasks.json>] [--model BAAI/bge-m3] --out <dir>
 
-모델 호출·답 생성·판정은 하지 않는다. 검색 지표만 낸다.
+모델 호출·답 생성·채점 모델은 쓰지 않는다. 검색 지표만 낸다.
 """
 from __future__ import annotations
 
@@ -70,7 +70,7 @@ def _strip(store_mod, v):
 
 
 def retired_ids(store, owner: str) -> set[str]:
-    """SUPERSEDES 의 옛 끝(대체된 노드) 전부."""
+    """SUPERSEDES 가 가리키는 대체된 노드 전부."""
     from store import pkns
     out: set[str] = set()
     for label in ("Record", "Decision", "Concept"):
@@ -118,7 +118,7 @@ def build_list_set(store, owner: str, *, min_gold: int = 3, max_gold: int = 10,
 
 
 def superseded_chain(store, owner: str, node_id: str, cap: int = 20) -> list[str]:
-    """`node_id` 에서 SUPERSEDES(new→old)를 따라 닿는 옛 노드들. 같은 종류끼리만 잇는다."""
+    """`node_id` 에서 SUPERSEDES(new→old)를 따라 닿는 대체된 노드들. 같은 종류끼리만 잇는다."""
     from store import pkns
     kind = kind_of(node_id)
     if kind not in LABELS:
