@@ -13,6 +13,7 @@ mod pack_file;
 mod secret;
 mod session_file;
 mod sidecar_log;
+mod storage_secret;
 
 use tauri::{Emitter, Manager, RunEvent};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
@@ -500,6 +501,12 @@ fn spawn_sidecar(app: &tauri::AppHandle, port: u16, token: &str) -> Result<u32, 
         // 기본은 defer(서비스 중에 안 옮김)이고, 데스크톱만 이 값으로 기동 뒤에 옮긴다. 그동안
         // /health 가 migrating 을 실어 앱이 안내를 띄운다.
         .env("VINC_LEX_BACKFILL", "background");
+    // 저장 위치가 사용자 데이터베이스면 그 비밀번호를 키링에서 꺼내 자식 환경으로만 넘긴다
+    // (`storage_secret.rs`). 명령행에는 싣지 않는다.
+    let sidecar = match app.path().home_dir().ok().and_then(|h| storage_secret::database_secret(&h)) {
+        Some(secret) => sidecar.env(storage_secret::SECRET_ENV, secret),
+        None => sidecar,
+    };
     let (mut events, child) = sidecar.spawn().map_err(|e| {
         // spawn 자체가 실패하면 CommandEvent 조차 안 온다 → 여기서 안 남기면 증거 0.
         log::error!(target: "sidecar", "spawn failed: {e}");
