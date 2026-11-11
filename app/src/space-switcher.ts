@@ -67,15 +67,20 @@ export function mountSpaceSwitcher(deps: SpaceDeps = appDeps()): void {
     fit();
   }
 
-  /** 좁은 머리의 마지막 수단. 이름이 잘려 `READABLE_EM` 보다 좁아지면 구분선과 앞자리를 비키게 한다
-   *  (`#tb-space[data-tight]`, app.css). 매번 비킨 표시를 먼저 지우고 잰다: 비킨 상태에서 재면 이름이
-   *  넓어 보여 다시 펴고 접기를 오간다. 커뮤니티의 자물쇠와 "읽기 전용"은 어느 쪽이든 남는다. */
+  /** 좁은 머리의 마지막 수단 둘. 잘린 이름이 `READABLE_EM` 보다 좁으면 먼저 구분선과 앞자리가 비키고
+   *  (`#tb-space[data-tight]`), 그래도 좁으면 커뮤니티의 "읽기 전용" 글자가 비켜 자물쇠만 남는다
+   *  (`[data-ro-short]`; 단추의 이름표와 메뉴 줄은 글자를 그대로 말한다). 매번 표시를 전부 지우고 처음부터
+   *  잰다: 비킨 상태에서 재면 이름이 넓어 보여 펴고 접기를 오간다. 자리가 다시 나면 글자부터 돌아온다. */
   function fit(): void {
     head.removeAttribute("data-tight");
+    head.removeAttribute("data-ro-short");
     const n = button.querySelector<HTMLElement>(".space-name");
     if (!n) return;
     const em = parseFloat(getComputedStyle(n).fontSize) || 13;
-    if (n.scrollWidth > n.clientWidth + 1 && n.clientWidth < READABLE_EM * em) head.setAttribute("data-tight", "");
+    const unreadable = () => n.scrollWidth > n.clientWidth + 1 && n.clientWidth < READABLE_EM * em;
+    if (!unreadable()) return;
+    head.setAttribute("data-tight", "");
+    if (unreadable() && button.querySelector(".space-ro-text")) head.setAttribute("data-ro-short", "");
   }
   // 머리 폭이 바뀌거나(창 · 사이드바) 뒤 묶음이 바뀌면(그래프의 시간 · 범례) 다시 잰다.
   if (typeof ResizeObserver !== "undefined") {

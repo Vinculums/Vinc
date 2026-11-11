@@ -431,6 +431,8 @@ body {
 #tb-space[data-tight] { max-width: none; }
 #tb-space[data-tight] .tb-space-sep, #tb-space[data-tight] + .tb-lead { display: none; }
 #tb-space[data-tight] ~ .tb-trail { margin-left: auto; }
+/* 그다음 수단: 앞자리가 비켜도 이름이 읽히지 않으면 커뮤니티의 "읽기 전용" 글자가 비키고 자물쇠만 남는다(같은 `fit`). */
+#tb-space[data-ro-short] .space-ro-text { display: none; }
 .space-switch {
   /* 폭은 칸(`#tb-space`)이 정한다: 칸이 flex 라 단추는 `min-width: 0` 으로 줄고 이름이 말줄임이 된다.
      ⚠ `max-width: 100%` 를 주지 말 것 — 음수 왼쪽 여백만큼 칸이 단추보다 좁게 잡혀 이름이 늘 8px 잘린다. */
