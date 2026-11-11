@@ -251,8 +251,6 @@ APP_STATES = {
     **_app_states_from_manifest(),
     # 계정 연결(기기 흐름)은 계정과 브라우저 승인이 있어야 그 상태에 닿는다 — 선언된 결손.
     "account-connect.ts": {"not-connected": None, "waiting": None, "connected": None, "expired": None, "failed": None},
-    # 렌더러는 재현 스터디가 아니라 캡처 보드가 답한다(재현 보드는 90 · Archive 에 있다).
-    "surfaces/view3d.ts": {"dark": "App · View · 3d / dark", "light": "App · View · light / light"},
 }
 
 # ── 앱 컴포넌트 (변형×코드 표식) ──────────────────────────────────────────────
@@ -284,8 +282,6 @@ APP_COMPONENTS: dict[str, dict[str, str | None]] = {
                           "State=Empty": '"empty"'},
     "App / MenuItem":    {"Tone=Default": "menu-item", "Tone=Hover": "menu-item:hover",
                           "Tone=Danger": "danger"},
-    "App / GraphNode":   {"Tier=Focus": '"focus"', "Tier=Near": '"near"',
-                          "Tier=Mid": '"mid"', "Tier=Far": '"far"'},
     # App / PackCard 는 대응하는 코드가 없어 여기 두지 않는다(보드는 90 · Archive). 표식을 주석에서만
     # 찾으면 게이트가 거짓으로 초록이 된다.
     "App / UpdateToast": {"State=Available": "t.available", "State=Downloading": "t.downloading",
