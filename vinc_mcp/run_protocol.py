@@ -116,6 +116,26 @@ def expired(pending: dict, now: datetime.datetime | None = None) -> bool:
     return until is not None and (now or _now()) >= until
 
 
+#: 요청이 만료돼 끝난 실행의 사유. 읽기가 보이는 것과 다음 제출·답이 저장하는 것이 같은 문장이다.
+EXPIRED_REASON = "the request expired before a person answered"
+
+
+def as_read(props: dict, now: datetime.datetime | None = None) -> dict:
+    """읽는 쪽이 보는 실행 상태. 요청이 만료된 대기는 저장된 행이 아직 waiting 이어도 막힌 채
+    끝난 것으로 읽는다(`_expire` 가 저장할 모양과 같다). 쓰지 않는다: 저장된 행은 다음 제출·답이
+    `_expire` 로 닫는다. 시각은 만료 시각이라 읽을 때마다 달라지지 않는다. 그 밖의 실행은 그대로."""
+    if not isinstance(props, dict) or props.get("state") != "waiting":
+        return props
+    pending = props.get("pending") if isinstance(props.get("pending"), dict) else {}
+    if not expired(pending, now):
+        return props
+    at = expires_at(pending)
+    out = {k: v for k, v in props.items() if k != "pending"}
+    out.update(outcome="blocked", state="done", ended_at=at, end_reason=EXPIRED_REASON,
+               expired_at=at)
+    return out
+
+
 def decision_kind(pending: dict, policy: dict | None = None) -> str:
     """대기의 종류. 종류 필드가 없는 기록은 역할의 person_only 와 견주고, 모르면 person_only 다."""
     kind = pending.get("kind")
@@ -162,7 +182,9 @@ def _resolve(run) -> str | None:
 
 
 def _load(bridge, owner: str, eid: str) -> dict | None:
-    got = bridge.request("GET", "/runs", params={"owner": owner, "run": eid, "limit": 1})
+    # 저장된 행 그대로 읽는다(stored). 만료를 읽기에서 계산하면 제출·답이 `_expire` 를 못 지난다.
+    got = bridge.request("GET", "/runs", params={"owner": owner, "run": eid, "limit": 1,
+                                                 "stored": "1"})
     if not got.get("executed"):
         return {"_error": got}
     for item in got.get("runs") or []:
@@ -298,7 +320,7 @@ def start(args: dict, bridge, owner: str) -> dict:
     if existing:
         if existing.get("role") != got["id"]:
             return _failure("run_id_in_use", "Invalid: this run_id belongs to another role.")
-        return _view(existing, eid, got["props"], resumed=True)
+        return _view(as_read(existing), eid, got["props"], resumed=True)
     props = {"run_id": run_id, "role": got["id"], "outcome": OPEN_OUTCOME, "state": "working",
              "step": 0, "task": task, "started_at": _stamp(_now()), "role_rev": got.get("rev"),
              "role_hash": got.get("hash"), "used": {}, "approved": []}
@@ -505,7 +527,7 @@ def submit(args: dict, bridge, owner: str) -> dict:
 def _expire(bridge, owner: str, eid: str, props: dict) -> dict:
     """만료된 요청을 닫는다: 실행은 막힌 채 끝나고 그 사실을 돌려준다."""
     props["expired_at"] = _stamp(_now())
-    _end(props, "blocked", "the request expired before a person answered")
+    _end(props, "blocked", EXPIRED_REASON)
     failed = _saved(bridge, owner, eid, props)
     return failed or _failure(
         "request_expired", "Refused: the request expired before anyone answered, so the run "

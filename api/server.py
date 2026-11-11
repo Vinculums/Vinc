@@ -811,7 +811,8 @@ class VincApp:
             return 400, {"kind": "runs", "executed": False, "error": str(exc)}
         return self._read(lambda r: runs.list_runs(r, owner=_req(p, "owner"), cited=cited,
                                                    role=p.get("role"), run=p.get("run") or None,
-                                                   flagged=flagged, limit=limit))
+                                                   flagged=flagged, limit=limit,
+                                                   stored=p.get("stored") in ("1", "true", True)))
 
     def read_waiting_runs(self, p):
         """사람의 답을 기다리는 실행 목록(조회 전용). 계약: `api/runs.py` `waiting_runs`."""

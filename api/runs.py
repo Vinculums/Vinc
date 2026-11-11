@@ -105,11 +105,17 @@ def parse_flagged(value) -> bool:
 
 
 def list_runs(store, *, owner: str, cited: str | None = None, role: str | None = None,
-              run: str | None = None, flagged: bool = False, limit: int = DEFAULT_LIMIT) -> dict:
+              run: str | None = None, flagged: bool = False, limit: int = DEFAULT_LIMIT,
+              stored: bool = False, now=None) -> dict:
     """실행 기록 목록, 최근 것부터. `cited` 는 그 주장을 인용한 실행만 남긴다.
 
     `run`(episode id 또는 호스트의 run id)을 주면 그 실행 하나를 `props` 통째로 돌려준다.
-    열려 있는 실행의 상태(`state`·`pending`·`step`)를 프로토콜이 읽는 문이다."""
+    열려 있는 실행의 상태(`state`·`pending`·`step`)를 프로토콜이 읽는 문이다.
+
+    요청이 만료된 대기는 막힌 채 끝난 것으로 읽는다(`run_protocol.as_read`). 계산만 하고 쓰지
+    않는다. `stored` 는 저장된 행 그대로다: 프로토콜의 제출·답만 쓰고, 그래야 `_expire` 가 행을 닫는다."""
+    from vinc_mcp import run_protocol as rp
+
     base = {"kind": "runs", "executed": False}
     if not owner:
         return {**base, "error": "owner is required"}
@@ -123,6 +129,14 @@ def list_runs(store, *, owner: str, cited: str | None = None, role: str | None =
     runs = []
     for row in rows:
         props = events._props(row.get("props"))
+        title = events._title(row.get("title"))
+        if not stored:
+            read = rp.as_read(props, now)
+            if read is not props:
+                # 저장된 제목은 아직 waiting 이다. 읽는 쪽에는 끝난 실행의 제목을 보인다.
+                if read.get("role") and read.get("run_id"):
+                    title = rp._title(read)
+                props = read
         run_role = events.role_id(props.get("role")) or ""
         if want_role and run_role != want_role:
             continue
@@ -138,7 +152,8 @@ def list_runs(store, *, owner: str, cited: str | None = None, role: str | None =
             continue
         item = {"id": pkns.strip(row["id"]), "run_id": str(props.get("run_id") or ""),
                 "role": run_role, "outcome": str(props.get("outcome") or ""),
-                "title": events._title(row.get("title")), "date": str(row.get("date") or ""),
+                "end_reason": str(props.get("end_reason") or ""),
+                "title": title, "date": str(row.get("date") or ""),
                 "host": str(props.get("host") or ""), "cited_ids": ids, "capability_flags": flags}
         if run:
             item["props"] = props

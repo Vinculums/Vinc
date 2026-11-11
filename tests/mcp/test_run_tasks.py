@@ -246,3 +246,23 @@ def test_a_person_only_wait_is_not_elicited_and_an_mrtr_answer_is_refused():
                                                       "content": {"answer": "approve"}}})
     assert payload(retry)["error"] == "person_answer_required"
     assert bridge.runs[run]["state"] == "waiting" and "answer" not in bridge.runs[run]
+
+
+def test_tasks_get_reads_an_expired_request_as_an_ended_run_without_writing(monkeypatch):
+    # VIN-987: 만료된 요청의 작업은 끝난 실행으로 보인다. 읽기라서 저장된 행은 그대로다.
+    import datetime
+
+    from vinc_mcp import run_protocol
+    bridge = _Bridge()
+    disp = rpc.Dispatcher(bridge)
+    run, reply = waiting_run(disp, TASKS, "t-exp")
+    tid = reply["result"]["taskId"]
+    until = datetime.datetime.strptime(bridge.runs[run]["pending"]["expires_at"],
+                                       "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc)
+    monkeypatch.setattr(run_protocol, "_now", lambda: until + datetime.timedelta(seconds=1))
+    got = rpc_call(disp, "tasks/get", {"taskId": tid}, TASKS)["result"]
+    assert got["status"] == "completed" and "done" in got["statusMessage"]
+    assert bridge.runs[run]["state"] == "waiting"
+    # 답은 지금처럼 저장된 행을 읽어 `_expire` 로 닫는다.
+    out = payload(tool(disp, "vinc_run_submit", {"run": run, "answer": "approve"}, TASKS))
+    assert out["error"] == "request_expired" and bridge.runs[run]["outcome"] == "blocked"
