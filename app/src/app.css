@@ -416,8 +416,9 @@ body {
    채워지고, 비어 있으면(로컬 모드) 자리를 차지하지 않아 앞자리가 지금 자리 그대로다.
    이름의 첫 글자가 머리의 시작선(`.tb-col` 의 왼쪽 여백)에 선다: 단추 안쪽 여백만큼 바깥으로 뺀다.
    이름 뒤에 세로 구분선, 그다음이 앞자리(경로 · "그래프 · 범위")다.
-   좁은 머리: 이름은 머리 폭의 45% 까지만 쓰고 말줄임으로 준다(뒤 묶음은 줄지 않는다). 480 아래에서는
-   앞자리가 먼저 비켜서고 이름이 그 자리를 쓴다(아래 `@container topbar`). */
+   좁은 머리: 이름은 머리 폭의 45% 까지만 쓰고 말줄임으로 준다(뒤 묶음은 줄지 않는다). 앞자리는 남는 폭을
+   쓰고, 이름이 읽히지 않을 만큼 줄 때에만 비킨다(아래 `[data-tight]` · `[data-ro-short]`, 판단은
+   space-switcher.ts `fit` 이 실제 폭을 재서 한다). */
 #tb-space {
   flex: 0 1 auto; min-width: 0; max-width: min(18rem, 45cqi);
   display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-sm);
@@ -849,7 +850,8 @@ body {
    다시 안 그린 것이다(`applyTheme` → `repaintLnb`). */
 .lnb-dot {
   flex: 0 0 auto; width: 5px; height: 5px; border-radius: 999px;
-  border: 1px solid var(--tint, hsl(var(--caption-foreground)));
+  /* 주제 색이 없는 줄(뿌리 · 주제 없음)의 대체값은 muted 다: 판 위의 캡션은 4.5:1 에 못 미친다. */
+  border: 1px solid var(--tint, hsl(var(--muted-foreground)));
 }
 .lnb-doc[style*="--ink:0"] .lnb-dot {
   background: var(--tint, hsl(var(--muted-foreground)));
@@ -3916,7 +3918,7 @@ details.pe-group[open] > summary::before { transform: rotate(90deg); }
 .lnb-pdot.lnb-pmark { width: 8px; height: 8px; margin: 0 1px; }   /* 정책 묶음 줄: Agent 줄의 원(10px)과 같은 무게 */
 .lnb-adot { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; background: var(--tint, hsl(var(--muted-foreground))); }   /* Agent(Maker · Checker) */
 /* 사이드바의 주제 표식: 그래프 · 범례와 같은 점선 고리(view-tint.ts topicRingIcon)를 주제 색으로 */
-.lnb-gring { flex: 0 0 auto; display: inline-flex; width: 11px; height: 11px; margin-right: 2px; color: var(--tint, hsl(var(--caption-foreground))); }
+.lnb-gring { flex: 0 0 auto; display: inline-flex; width: 11px; height: 11px; margin-right: 2px; color: var(--tint, hsl(var(--muted-foreground))); }   /* 주제 색이 없는 줄도 판 위에서 4.5:1 */
 .lnb-gring svg { display: block; }
 .cmp-side .btn.on { border-color: var(--c-point); color: var(--c-point); }
 .cmp-side .cmp-tleg { display: flex; gap: 10px; flex-wrap: wrap; font-size: var(--fs-xs); color: var(--c-soft); } .cmp-side .cmp-tleg i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
