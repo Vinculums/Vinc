@@ -165,6 +165,29 @@ class SignInTests(_Hub):
         self.assertEqual((code, out["error"]), (429, "too_many_attempts"))
         self.assertGreater(int(hdr["Retry-After"]), 0)
 
+    def test_비밀번호_검사_자리가_없으면_429(self):
+        """scrypt 는 한 번에 32 MiB 다. 자리가 다 찼으면 검사하지 않고 429 로 돌려보낸다."""
+        held = [W._KDF.acquire(timeout=1) for _ in range(W.KDF_SLOTS)]
+        self.assertTrue(all(held))
+        try:
+            with mock.patch.object(W, "KDF_WAIT_S", 0.05):
+                code, out, hdr = self.login()
+        finally:
+            for _ in held:
+                W._KDF.release()
+        self.assertEqual((code, out["error"]), (429, "too_many_attempts"))
+        self.assertEqual(hdr["Retry-After"], "1")
+        self.assertEqual(self.login()[0], 200)          # 자리가 나면 다시 된다
+
+    def test_시도는_검사_전에_센다(self):
+        """같은 주소의 묶음은 검사가 끝나기 전에도 상한에 걸린다. 맞는 시도는 되돌린다."""
+        st = W._State.of(self.httpd.app)
+        for _ in range(W.FAIL_PER_ADDR - 1):
+            st.failures.fail("127.0.0.1")
+        self.assertEqual(self.login()[0], 200)          # 맞는 시도는 되돌려서 자리가 그대로다
+        self.assertEqual(self.login("nope")[0], 401)
+        self.assertEqual(self.login()[0], 429)
+
     def test_다른_Origin_의_로그인은_403(self):
         code, out, _ = self.req("POST", "/login", body={"password": "correct horse"},
                                 headers={"Origin": "http://evil.example"})
@@ -266,6 +289,22 @@ class GraphTests(_Hub):
         self.assertEqual(code, 200)
         _, path, _, sent = self.bridge.calls[-1]
         self.assertEqual((path, sent["owner"]), ("/ingest/fragment", PINNED))
+
+    def test_ASCII_밖의_CSRF_와_Origin_은_403(self):
+        """`hmac.compare_digest` 는 ASCII 밖의 str 에서 예외를 낸다. 500 이 아니라 거절이어야 한다."""
+        cookie, csrf = self.signed_in()
+        code, out, _ = self.req("POST", "/api/graph/pin", body={},
+                                headers={"Cookie": cookie, "X-CSRF-Token": "\u00e9" + csrf,
+                                         **self.origin()})
+        self.assertEqual((code, out["error"]), (403, "csrf"))
+        code, out, _ = self.req("POST", "/api/graph/pin", body={},
+                                headers={"Cookie": cookie, "X-CSRF-Token": csrf,
+                                         "Origin": "http://\u00e9vil.example"})
+        self.assertEqual((code, out["error"]), (403, "origin_mismatch"))
+        code, out, _ = self.req("POST", "/login", body={"password": "x"},
+                                headers={"Origin": "http://\u00e9"})
+        self.assertEqual((code, out["error"]), (403, "origin_mismatch"))
+        self.assertEqual(self.bridge.calls, [])
 
     def test_표_밖의_op_와_팀은_거절한다(self):
         cookie, csrf = self.signed_in()
