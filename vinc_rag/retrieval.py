@@ -214,7 +214,7 @@ CHUNK_RRF_K = 20
 
 def _query_fingerprint(query: str, owner: str | None, filters: dict | None,
                        detail: str, as_of: str | None = None, *, mode=None,
-                       historical=False, known_at=None) -> str:
+                       historical=False, known_at=None, kinds=None) -> str:
     basis = [query, owner or "", sorted((filters or {}).items()), detail]
     # 시점이 다른 요청의 커서로 이어 읽으면 두 시점의 결과가 한 목록에 섞인다. 기본값
     # (as_of 없음)에서는 지문이 예전과 같게 둔다 — 이미 나간 커서가 무효가 되지 않게.
@@ -228,6 +228,8 @@ def _query_fingerprint(query: str, owner: str | None, filters: dict | None,
         basis.append("historical:true")
     if known_at:
         basis.append("known_at:" + known_at.strip())
+    if kinds:
+        basis.append("kinds:" + ",".join(kinds))
     basis = json.dumps(basis, ensure_ascii=False)
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()[:12]
 
@@ -656,6 +658,22 @@ _ID_PREFIX_TOKENS = frozenset(("concept", "episode", "record", "bridge", "entity
 NODE_SCAN_CAP = 2000
 
 
+#: `kinds` 로 거를 수 있는 노드 종류 — 노드 팔이 찾는 네 표뿐이다.
+SEARCH_KINDS = ("concept", "record", "decision", "episode")
+
+
+def parse_kinds(kinds) -> tuple[str, ...] | None:
+    """`kinds`(목록 또는 쉼표 문자열)를 :data:`SEARCH_KINDS` 순서의 튜플로. 비면 None(거르지 않음).
+    모르는 종류는 ValueError — 조용히 빼면 빈 목록이 "없다"로 읽힌다."""
+    if isinstance(kinds, str):
+        kinds = kinds.split(",")
+    got = {str(k).strip().lower() for k in (kinds or ()) if str(k).strip()}
+    bad = sorted(got - set(SEARCH_KINDS))
+    if bad:
+        raise ValueError(f"unknown kind {', '.join(bad)}; use {', '.join(SEARCH_KINDS)}")
+    return tuple(k for k in SEARCH_KINDS if k in got) or None
+
+
 #: props JSON 에서 키 자리(`"키":`)를 지우는 정규식. 질의 토큰은 props 의 **값**에만 맞춘다.
 #: 키에 맞으면 "note"·"scope" 같은 낱말 하나가 그 키를 가진 모든 노드를 후보로 올린다.
 #: 후보 질의(엔진 `regexp_replace`)와 점수(:func:`_props_values_text`)가 같은 식을 쓴다.
@@ -757,7 +775,8 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
                           owner: str | None = None, historical: bool = False,
                           stats: dict | None = None,
                           scope: tuple[str, str] | None = None,
-                          doc_intervals: bool = False) -> list[dict]:
+                          doc_intervals: bool = False,
+                          kinds: tuple[str, ...] | None = None) -> list[dict]:
     """Concept·Record·Decision·Episode 의 어휘 폴백 검색(T3b C1 **핵심**) — FTS·벡터 결과와
     **무관하게 항상** 수행한다. Concept/Record 는 Chunk 인덱스에 안 들어가(제목·요약을
     가진 노드가 여태 검색 자체가 불가) Chunk 0개 스토어에선 검색이 통째로 비었다 —
@@ -787,7 +806,8 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
 
     OR 후보를 기존 어휘 순위로 좁힌 뒤 :data:`NODE_SCAN_CAP` 상한을 적용한다.
     잘린 후보가 있으면 통계에 남기며 저장소 반환 순서에 따라 강한 후보를 버리지 않는다.
-    빈 쿼리·토큰 없음은 모든 노드를 삼키므로 스킵([])."""
+    빈 쿼리·토큰 없음은 모든 노드를 삼키므로 스킵([]).
+    ``kinds`` 가 있으면 그 종류의 표만 훑는다(자르기 전에 거른다)."""
     toks = normalize_query_tokens(query)
     if not toks:
         return []
@@ -858,24 +878,26 @@ def _node_fallback_search(store, query: str, *, limit: int = 20,
     # [[record:adding-episode-to-the-title-arm-is-a-pure-gain-2026-09-09]] ·
     # [[record:the-episode-summary-is-too-wide-a-search-surface-2026-09-09]]
     e_fields = ("e.title", "e.episode_id")
-    cypher = (
-        f"MATCH (c:Concept) WHERE {_any(c_fields)}{own_c} "
-        "RETURN c.concept_id AS id, c.title AS title, 'concept' AS kind, "
-        f"c.domain AS domain, c.one_liner AS one_liner, c.props AS props_raw, "
-        f"{_VALIDITY_EMPTY} "
-        "UNION ALL "
-        f"MATCH (r:Record) WHERE {_any(r_fields)}{own_r} "
-        "RETURN r.record_id AS id, r.title AS title, 'record' AS kind, "
-        f"r.domain AS domain, '' AS one_liner, r.props AS props_raw, {_validity_cols('r')} "
-        "UNION ALL "
-        f"MATCH (d:Decision) WHERE {_any(d_fields)}{own_d} "
-        "RETURN d.decision_id AS id, d.title AS title, 'decision' AS kind, "
-        f"d.domain AS domain, '' AS one_liner, d.props AS props_raw, {_VALIDITY_EMPTY} "
-        "UNION ALL "
-        f"MATCH (e:Episode) WHERE {_any(e_fields)}{own_e} "
-        "RETURN e.episode_id AS id, e.title AS title, 'episode' AS kind, "
-        f"e.domain AS domain, '' AS one_liner, '' AS props_raw, {_VALIDITY_EMPTY}"
-    )
+    branches = {
+        "concept": (
+            f"MATCH (c:Concept) WHERE {_any(c_fields)}{own_c} "
+            "RETURN c.concept_id AS id, c.title AS title, 'concept' AS kind, "
+            f"c.domain AS domain, c.one_liner AS one_liner, c.props AS props_raw, "
+            f"{_VALIDITY_EMPTY} "),
+        "record": (
+            f"MATCH (r:Record) WHERE {_any(r_fields)}{own_r} "
+            "RETURN r.record_id AS id, r.title AS title, 'record' AS kind, "
+            f"r.domain AS domain, '' AS one_liner, r.props AS props_raw, {_validity_cols('r')} "),
+        "decision": (
+            f"MATCH (d:Decision) WHERE {_any(d_fields)}{own_d} "
+            "RETURN d.decision_id AS id, d.title AS title, 'decision' AS kind, "
+            f"d.domain AS domain, '' AS one_liner, d.props AS props_raw, {_VALIDITY_EMPTY} "),
+        "episode": (
+            f"MATCH (e:Episode) WHERE {_any(e_fields)}{own_e} "
+            "RETURN e.episode_id AS id, e.title AS title, 'episode' AS kind, "
+            f"e.domain AS domain, '' AS one_liner, '' AS props_raw, {_VALIDITY_EMPTY}"),
+    }
+    cypher = "UNION ALL ".join(q for k, q in branches.items() if not kinds or k in kinds)
     rows = store.run(cypher, params)
     # 문서 미러는 구간 열이 없다. 걸러야 할 때만 그 문서의 구간을 읽는다.
     mirror_iv = (_mirror_validity(store, [r.get("id") for r in rows], owner=owner)
@@ -1264,6 +1286,7 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
            relevance_profile: dict | None = None,
            relevance_corpus_revision: str | None = None,
            node_k: int | None = None,
+           kinds=None,
            cfg=None, store=None) -> dict:
     """하이브리드 검색 **재설계**(T3b) — BM25(FTS)+(선택)벡터 RRF(§4-2) 위에 3개
     실사용 사고 대응을 얹는다:
@@ -1323,9 +1346,16 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
             "total_count": 0, "has_more": False, "next_cursor": None}
     if profile_error:
         base["relevance_policy"] = {"state": "invalid_profile", "error": profile_error}
+    # `kinds` 는 노드 팔 셋을 자르기 **전에** 거른다. 청크 행(rows)은 거르지 않는다.
+    try:
+        kinds = parse_kinds(kinds)
+    except ValueError as exc:
+        base["note"] = base["error"] = f"invalid_kinds: {exc}"
+        return base
+    _kw = {"kinds": kinds} if kinds else {}
     # 커서 검증은 스토어를 열기 전에 — 무효 커서에 조회 비용을 쓰지 않는다.
     qh = _query_fingerprint(query, owner, filters, detail, as_of, mode=mode,
-                            historical=historical, known_at=known_at)
+                            historical=historical, known_at=known_at, kinds=kinds)
     # 시점 인자도 스토어를 열기 전에 검사한다. 틀린 값이 조용히 오늘로 떨어지면 부르는
     # 쪽은 과거를 읽은 줄 안다.
     try:
@@ -1394,7 +1424,7 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
                 title_hits = _node_fallback_search(store, query, limit=NODE_SCAN_CAP if _wide else _nk, owner=owner,
                                                    historical=True if mode == "current" else historical, stats=_vstats,
                                                    scope=None if mode == "current" else _scope,
-                                                   doc_intervals=True)
+                                                   doc_intervals=True, **_kw)
                 if mode == "current":
                     temporal.finish_nodes(store, title_hits, owner=owner, scope=_scope, current=True, known_at=known_at, stats=_vstats)
                     if _vstats.get("current_hidden"):
@@ -1430,6 +1460,8 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
                                "lexical_candidates": _vstats.get("candidate_count"),
                                "lexical_candidates_capped": bool(_vstats.get("candidate_count_capped")),
                                "candidate_limit": NODE_SCAN_CAP}
+        if kinds:
+            base["node_window"]["kinds"] = list(kinds)
         scoped_ok = True
         if owner:
             chunk_filters["owner_id"] = owner
@@ -1646,7 +1678,7 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
                 # 라벨은 **제목**이다. 미러의 `text` 는 찾는 표면이라 한줄설명이 붙어
                 # 있고(1365 중 225 행), 그것을 title 자리에 넣으면 그대로 화면에 나간다.
                 _raw = [] if _mismatch else store.node_vector_search(
-                    query_embedding, SEARCH_POOL_CAP if _wide else _nk, owner=owner) or []
+                    query_embedding, SEARCH_POOL_CAP if _wide else _nk, owner=owner, **_kw) or []
                 validator = getattr(store, "validate_node_vector_hits", None)
                 if callable(validator) and not _mismatch:
                     _raw, state = validator(_raw, owner=owner)
@@ -1779,7 +1811,9 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
         try:
             chunk_ids = [r.get("id") for r in base.get("rows", []) if r.get("id")
                          and r.get("relevance", {}).get("level") != "weak"]
-            if known_at and mode != "current":
+            if kinds and "concept" not in kinds:
+                graph_hits = []      # 그래프 팔은 개념만 낸다
+            elif known_at and mode != "current":
                 graph_hits = _known_at_nodes(
                     store, _graph_arm_search(store, chunk_ids, owner=owner, limit=NODE_SCAN_CAP),
                     owner=owner, until=_until, stats=_vstats)[:_nk]

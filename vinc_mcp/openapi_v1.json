@@ -702,6 +702,19 @@
                       "historical"
                     ],
                     "description": "Optional temporal mode. Omit or 'general' for the usual filters and ranking. 'current' hides future and expired claims, keeps unknown dates, and reports comparable claim conflicts and evidenced supersession; it cannot be combined with historical:true or as_of. 'historical' includes past claims, and as_of still selects overlapping intervals. Dates are metadata and never embedded. known_at is a creation cutoff, not a restore of earlier revisions."
+                  },
+                  "kinds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "concept",
+                        "record",
+                        "decision",
+                        "episode"
+                      ]
+                    },
+                    "description": "Limit nodes to these kinds before ranking; document rows are not filtered."
                   }
                 },
                 "required": [
@@ -790,6 +803,19 @@
                       "historical"
                     ],
                     "description": "Temporal mode, with the same conflicts and filters as vinc_search. 'current' abstains when current claim evidence conflicts or is unknown."
+                  },
+                  "kinds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "concept",
+                        "record",
+                        "decision",
+                        "episode"
+                      ]
+                    },
+                    "description": "Limit nodes to these kinds before ranking; document rows are not filtered."
                   }
                 },
                 "required": [

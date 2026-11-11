@@ -125,6 +125,10 @@ _HISTORICAL_PROP = {"type": "boolean", "default": False, "description": (
         "Include nodes whose claim is no longer current (valid_until in the past). By default they "
         "are hidden and counted in `validity_filtered`."
     ))}
+#: vinc_search·vinc_brief 의 `kinds`. 노드 팔이 자르기 전에 거른다(`vinc_rag.retrieval.SEARCH_KINDS`).
+_KINDS_PROP = {"type": "array", "items": {"type": "string",
+                                          "enum": ["concept", "record", "decision", "episode"]},
+               "description": "Limit nodes to these kinds before ranking; document rows are not filtered."}
 #: MCP 결과만 줄이는 `lean_result` 를 끄는 스위치. 핸들러는 이 인자를 읽지 않는다 — REST v1·CLI 는
 #: 늘 전체 꼴이라 끌 것이 없다.
 _RAW_PROP = {"type": "boolean", "description": (
@@ -367,8 +371,13 @@ def _t_search(args, bridge):
         "cursor": args.get("cursor"), "detail": args.get("detail"),
         "historical": "true" if args.get("historical") else None,
         "as_of": args.get("as_of"), "known_at": args.get("known_at"),
-        "mode": args.get("mode"),
+        "mode": args.get("mode"), "kinds": _kinds_param(args),
         "owner": _owner(args, bridge)}))
+
+
+def _kinds_param(args: dict) -> str | None:
+    kinds = args.get("kinds")
+    return ",".join(kinds) if isinstance(kinds, list) and kinds else None
 
 
 def _time_params(args: dict) -> dict:
@@ -825,7 +834,8 @@ def _t_brief(args, bridge):
         "owner": _owner(args, bridge), "query": args["query"],
         "max_excerpts": args.get("max_excerpts", 3),
         "historical": "true" if args.get("historical") else None,
-        "as_of": args.get("as_of"), "known_at": args.get("known_at"), "mode": args.get("mode")})
+        "as_of": args.get("as_of"), "known_at": args.get("known_at"), "mode": args.get("mode"),
+        "kinds": _kinds_param(args)})
     from .roles import is_role_id
     if is_role_id(args["query"].strip()) and out.get("executed"):
         role = _t_role({**args, "role": args["query"].strip()}, bridge)
@@ -1227,7 +1237,7 @@ TOOLS: list[dict] = [
             "detail": {"type": "string", "enum": ["summary", "full"],
                        "default": "summary"},
             "historical": _HISTORICAL_PROP,
-            "as_of": _AS_OF_SEARCH_PROP, "raw": _RAW_PROP,
+            "as_of": _AS_OF_SEARCH_PROP, "raw": _RAW_PROP, "kinds": _KINDS_PROP,
             "owner": {"type": "string"},
         }, "required": ["query"]},
         "run": _t_search,
@@ -1352,7 +1362,7 @@ TOOLS: list[dict] = [
                              "description": "How many canonical document excerpts to "
                                             "attach to a resolved node."},
             "historical": _HISTORICAL_PROP,
-            "as_of": _AS_OF_SEARCH_PROP, "raw": _RAW_PROP,
+            "as_of": _AS_OF_SEARCH_PROP, "raw": _RAW_PROP, "kinds": _KINDS_PROP,
             "owner": {"type": "string"},
         }, "required": ["query"]},
         "run": _t_brief,
@@ -2888,6 +2898,13 @@ def validate_args(name: str, args: dict | None) -> None:
                     name, key, value=v, minimum=lo, maximum=hi,
                     text=(f"Invalid argument: {key}={v} is outside {lo}..{hi} for {name}. "
                           f"Nothing was run. Retry with {key} between {lo} and {hi}{more}."))
+        elif typ == "array" and (spec.get("items") or {}).get("enum") and (
+                not isinstance(v, list) or any(x not in spec["items"]["enum"] for x in v)):
+            allowed = ", ".join(spec["items"]["enum"])
+            raise InvalidArgument(
+                name, key, reason=f"must be a list of: {allowed}",
+                text=(f"Invalid argument: {key} must be a list of: {allowed}. "
+                      f"Nothing was run."))
         elif typ == "string" and spec.get("enum") and v not in spec["enum"]:
             allowed = ", ".join(spec["enum"])
             raise InvalidArgument(

@@ -1390,12 +1390,14 @@ class VincApp:
             cursor=p.get("cursor") or None, detail=p.get("detail") or "summary",
             historical=truthy(p.get("historical")), as_of=p.get("as_of") or None,
             mode=p.get("mode") or None, known_at=p.get("known_at") or None,
-            owner=p.get("owner") or None, store=r)))
+            owner=p.get("owner") or None, store=r,
+            **({"kinds": p["kinds"]} if p.get("kinds") else {}))))
         # GM-14: 무효/실효 커서는 **명시적 클라이언트 오류**다 — 조용히 첫 페이지로
         # 폴백하면 호출자가 같은 페이지를 무한히 읽는다. 본문은 그대로 돌려준다
         # (Bridge 가 HTTPError 본문을 verbatim 통과시켜 MCP 도 같은 사유를 본다).
         if isinstance(res, dict) and str(res.get("error") or "").startswith(
-                ("invalid_cursor", "stale_cursor", "invalid_as_of", "invalid_time_scope", "invalid_temporal_mode")):
+                ("invalid_cursor", "stale_cursor", "invalid_as_of", "invalid_time_scope", "invalid_temporal_mode",
+                 "invalid_kinds")):
             code = 400
         # **조용한 강등 금지.** 어느 팔이 돌았는지는 `q.search` 가 `arms` 로 남긴다
         # (CLI 와 같은 값이어야 §11 게이트① 동등성이 성립한다). 여기서는 **시도했는데
@@ -1788,9 +1790,10 @@ class VincApp:
             query_model=(_ENCODER_RESPONSE_MODEL.get() if qvec is not None else None),
             max_excerpts=_int(p.get("max_excerpts"), 3),
             historical=truthy(p.get("historical")), as_of=p.get("as_of") or None,
-            mode=p.get("mode") or None, known_at=p.get("known_at") or None, store=r)))
+            mode=p.get("mode") or None, known_at=p.get("known_at") or None, store=r,
+            **({"kinds": p["kinds"]} if p.get("kinds") else {}))))
         if isinstance(res, dict) and str(res.get("error") or "").startswith(
-                ("invalid_as_of", "invalid_time_scope", "invalid_temporal_mode")):
+                ("invalid_as_of", "invalid_time_scope", "invalid_temporal_mode", "invalid_kinds")):
             code = 400
         # **시도했는데 실패한 경우에만** 사유를 덧붙인다(`/search` 와 같은 규칙 —
         # 시도조차 안 한 경우에 빈 필드를 붙이면 게이트① 동등성이 깨진다).

@@ -12,8 +12,8 @@
      - `text`    종류를 질문 글자에만 적는다(필터 없음, 오늘 호출자가 할 수 있는 것).
      - `client`  넓게(limit 100) 받아 호출부가 id 접두로 거른 뒤 k 개.
      - `oracle`  종류로 먼저 거르고 그다음 순위를 매긴다(세 노드 팔 전부, 자르기 전).
-   `oracle` 은 `kinds` 필터가 없는 동안 하네스가 흉내 낸 것이다. 필터가 생기면 그 결과가
-   이 흉내와 행마다 같아야 한다.
+     - `kinds`   search 의 `kinds` 인자(제품 경로). `oracle` 과 행마다 같아야 한다.
+   `oracle` 은 `kinds` 필터가 없던 동안 하네스가 흉내 낸 것이다.
 
 **정답은 그래프 자신의 간선에서 온다.** 목록 정답은 Decision/Episode 의 ABOUT, Record 의
 ATTACHES_TO 가 가리키는 개념이다. 간선이 빠진 관련 노드는 정답에 없으므로 정밀도는 낮게
@@ -402,6 +402,9 @@ def run_lists(t, rows: list[dict], *, ks=KS) -> list[dict]:
                 with kind_prefilter(t.store, kind):
                     res = t.q.search(q, top_k=k, owner=t.owner, store=t.store, query_embedding=vec)
                 rec[f"oracle_{tag}_k{k}"] = {"ids": _ids(res), **list_scores(_ids(res), row["gold"], k, kind)}
+                res = t.q.search(q, top_k=k, owner=t.owner, store=t.store, query_embedding=vec,
+                                 kinds=[kind])
+                rec[f"kinds_{tag}_k{k}"] = {"ids": _ids(res), **list_scores(_ids(res), row["gold"], k, kind)}
             if tag == "kw":
                 res = t.q.search(q, top_k=CLIENT_LIMIT, owner=t.owner, store=t.store,
                                  query_embedding=vec)
@@ -420,6 +423,10 @@ def run_lists(t, rows: list[dict], *, ks=KS) -> list[dict]:
                                      query_embedding=vec, mode="current")
                 rec[f"oracle_kw_current_k{k}"] = {"ids": _ids(res),
                                                   **list_scores(_ids(res), row["gold_current"], k, kind)}
+                res = t.q.search(q, top_k=k, owner=t.owner, store=t.store, query_embedding=vec,
+                                 mode="current", kinds=[kind])
+                rec[f"kinds_kw_current_k{k}"] = {"ids": _ids(res),
+                                                 **list_scores(_ids(res), row["gold_current"], k, kind)}
         out.append(rec)
     return out
 
@@ -509,8 +516,9 @@ def summarize_lists(rows: list[dict], *, ks=KS) -> dict:
         g: dict = {"n": len(grows), "gold_size_mean": mean(len(r["gold"]) for r in grows)}
         for k in ks:
             arms = [a for a in (f"text_kw_k{k}", f"client_kw_k{k}", f"oracle_kw_k{k}",
-                                f"text_bare_k{k}", f"oracle_bare_k{k}",
-                                f"text_kw_current_k{k}", f"oracle_kw_current_k{k}")
+                                f"kinds_kw_k{k}", f"text_bare_k{k}", f"oracle_bare_k{k}",
+                                f"kinds_bare_k{k}", f"text_kw_current_k{k}",
+                                f"oracle_kw_current_k{k}", f"kinds_kw_current_k{k}")
                     if all(a in r for r in grows)]
             for a in arms:
                 ps = [r[a]["p"] for r in grows]
@@ -520,10 +528,17 @@ def summarize_lists(rows: list[dict], *, ks=KS) -> dict:
                         "purity": mean(r[a].get("purity", 0) for r in grows)}
             for lo, hi in ((f"text_kw_k{k}", f"oracle_kw_k{k}"), (f"client_kw_k{k}", f"oracle_kw_k{k}"),
                            (f"text_kw_k{k}", f"client_kw_k{k}"), (f"oracle_kw_k{k}", f"oracle_bare_k{k}"),
-                           (f"text_kw_current_k{k}", f"oracle_kw_current_k{k}")):
+                           (f"text_kw_current_k{k}", f"oracle_kw_current_k{k}"),
+                           (f"text_kw_k{k}", f"kinds_kw_k{k}")):
                 if lo in g and hi in g:
                     g[f"gap_r:{hi}-{lo}"] = paired([r[lo]["r"] for r in grows], [r[hi]["r"] for r in grows])
                     g[f"gap_p:{hi}-{lo}"] = paired([r[lo]["p"] for r in grows], [r[hi]["p"] for r in grows])
+            # 제품 인자와 오라클의 상위 k id 목록이 다른 행 수(0 이어야 한다).
+            for tag in ("kw", "bare", "kw_current"):
+                a, b = f"kinds_{tag}_k{k}", f"oracle_{tag}_k{k}"
+                if all(a in r and b in r for r in grows):
+                    g[f"kinds_vs_oracle_differ:{tag}_k{k}"] = sum(
+                        1 for r in grows if r[a]["ids"] != r[b]["ids"])
         out[gname] = g
     return out
 
