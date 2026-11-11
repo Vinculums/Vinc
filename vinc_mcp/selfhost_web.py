@@ -41,6 +41,12 @@ from store.envflag import truthy
 
 from . import selfhost
 
+def _same(a: str, b: str) -> bool:
+    """요청에서 온 문자열의 상수 시간 비교. `hmac.compare_digest` 는 ASCII 밖의 str 에서
+    TypeError 를 내므로(헤더는 latin-1 로 풀려 무엇이든 될 수 있다) 바이트로 바꿔 비교한다."""
+    return hmac.compare_digest(a.encode("utf-8", "surrogatepass"), b.encode("utf-8", "surrogatepass"))
+
+
 # ── 비밀번호 ────────────────────────────────────────────────────────────────
 
 #: scrypt 비용. 메모리 128·N·r = 32 MiB, 이 노트북 기준 한 번에 0.1초 안팎이다.
@@ -108,6 +114,11 @@ def password_hash() -> str | None:
 #: 주소마다 분당 5번, 허브 전체로 분당 20번 틀리면 그 창이 지날 때까지 로그인을 막는다.
 FAIL_PER_ADDR, FAIL_TOTAL, FAIL_WINDOW_S = 5, 20, 60.0
 
+#: 동시에 도는 비밀번호 검사 수. scrypt 한 번이 32 MiB 라, 연결 64개가 한꺼번에 틀린 비밀번호를
+#: 보내도 메모리가 이 수 × 32 MiB 를 넘지 않는다. 자리를 이만큼 못 얻으면 429 로 답한다.
+KDF_SLOTS, KDF_WAIT_S = 2, 2.0
+_KDF = threading.BoundedSemaphore(KDF_SLOTS)
+
 
 class FailureLimit:
     def __init__(self, per_key: int = FAIL_PER_ADDR, total: int = FAIL_TOTAL,
@@ -134,6 +145,17 @@ class FailureLimit:
             if len(self._all) >= self.total:
                 waits.append(self.window_s - (now - self._all[0]))
             return max(waits) if waits else 0.0
+
+    def refund(self, key: str) -> None:
+        """미리 센 시도 하나를 되돌린다(맞는 비밀번호였을 때)."""
+        with self._lock:
+            q = self._by_key.get(key)
+            if q:
+                t = q.pop()
+                try:
+                    self._all.remove(t)
+                except ValueError:
+                    pass
 
     def fail(self, key: str, now: float | None = None) -> None:
         now = time.monotonic() if now is None else now
@@ -275,7 +297,7 @@ def _origin_ok(handler, kind: str) -> bool:
     origin = handler.headers.get("Origin")
     want = f"{'https' if kind == 'https' else 'http'}://{_host(handler)}"
     if origin:
-        return hmac.compare_digest(origin.strip().lower().rstrip("/"), want)
+        return _same(origin.strip().lower().rstrip("/"), want)
     return (handler.headers.get("Sec-Fetch-Site") or "").lower() == "same-origin"
 
 
@@ -402,8 +424,7 @@ def handle(handler, method: str) -> bool:
         if not _origin_ok(handler, kind):
             _json(handler, 403, {"error": "origin_mismatch"})
             return True
-        if not (header and hmac.compare_digest(header, cookie)
-                and hmac.compare_digest(header, rec.get("csrf") or "")):
+        if not (header and _same(header, cookie) and _same(header, rec.get("csrf") or "")):
             _json(handler, 403, {"error": "csrf"})
             return True
     if url.path == "/logout":
@@ -453,8 +474,17 @@ def _login(handler, method: str, st: _State, kind: str | None) -> None:
     if encoded is None:
         return _json(handler, 503, {"error": "no_password_set",
                                     "note": f"Set {HASH_ENV} (vinc selfhost hash-password)."})
-    if not password or not verify_password(password, encoded):
-        st.failures.fail(addr)
+    # 검사 **전에** 시도를 센다: 한 주소가 동시에 보낸 묶음도 상한에 걸린다. 맞으면 되돌린다.
+    st.failures.fail(addr)
+    if not _KDF.acquire(timeout=KDF_WAIT_S):
+        return _json(handler, 429, {"error": "too_many_attempts"}, headers={"Retry-After": "1"})
+    try:
+        ok = bool(password) and verify_password(password, encoded)
+    finally:
+        _KDF.release()
+    if ok:
+        st.failures.refund(addr)
+    else:
         if wants_json:
             return _json(handler, 401, {"error": "wrong_password"})
         return _send(handler, 303, b"", "text/plain", headers={"Location": "/login?error=1"})
