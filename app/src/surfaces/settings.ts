@@ -29,7 +29,7 @@ type SettingsCat =
  *  별칭이 아직 이 이름으로 연다. `data` 는 탭 인자로 가져오기·공유를 고른다.
  *  제거 조건: 위 호출부가 전부 새 분류 id(apps · import · share)로 옮겨진 뒤. */
 type LegacyCat = "ai" | "data";
-export type DataTab = "import" | "share";
+type DataTab = "import" | "share";
 
 function resolveCat(cat: SettingsCat | LegacyCat, tab?: DataTab): SettingsCat {
   if (cat === "data") return tab ?? "import";
@@ -91,7 +91,7 @@ type Row = {
   attrs?: string;
 };
 
-export function settingsRow(r: Row): string {
+function settingsRow(r: Row): string {
   const id = r.titleId ? ` id="${r.titleId}"` : "";
   const title = r.title === undefined ? ""
     : r.labelFor ? `<label class="set-row-title" for="${r.labelFor}"${id}>${esc(r.title)}</label>`
@@ -107,7 +107,7 @@ export function settingsRow(r: Row): string {
 /** 카드. 머리(`heading`)는 줄 여럿을 한 이름으로 묶을 때만 단다. `foot` 은 카드 아래의 짧은
  *  안내(마크업, 호출부가 이스케이프)다. `bare` 는 자기 틀을 가진 모듈(드롭존 · 저장 위치)을 담을
  *  때 카드의 틀을 걷는다 — 틀 안에 틀이 서지 않게. */
-export function settingsCard(rows: string[], opts: { heading?: string; foot?: string; bare?: boolean } = {}): string {
+function settingsCard(rows: string[], opts: { heading?: string; foot?: string; bare?: boolean } = {}): string {
   return `<section class="set-card-wrap">${opts.heading ? `<h3 class="set-card-head">${esc(opts.heading)}</h3>` : ""}
     <div class="set-card${opts.bare ? " set-card--bare" : ""}">${rows.join("")}</div>${opts.foot ?? ""}</section>`;
 }
