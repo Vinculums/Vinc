@@ -142,8 +142,8 @@ _RAW_PROP = {"type": "boolean", "description": (
         "null, supersession, supersedes and conflicts when not empty, interval_invalid when true, "
         "claim_status when the claim was assessed (none means unscoped, or unassessed on vinc_node), "
         "updated_at when the block has no other date, and validity only when the dates do not give "
-        "it: no validity means current when valid_from or valid_until is set and unknown otherwise, "
-        "so historical and future stay. created_at, interval_known and claim_assessment_scope are "
+        "it: no validity means unknown when interval_invalid is true or neither valid_from nor "
+        "valid_until is set, and current otherwise, so historical and future stay. created_at, interval_known and claim_assessment_scope are "
         "left out. Search also leaves out validity_note, page, total_count_capped when false, and "
         "node_window with node_semantic when the node arm completed with nothing stale, missing or "
         "capped. Brief leaves out its flat copies of temporal fields (node.validity stays), "
@@ -151,8 +151,9 @@ _RAW_PROP = {"type": "boolean", "description": (
         "false fields of relation items, and links.executed, offset and truncated at their defaults. "
         "vinc_node leaves out sync_seq, owner_id, tenant_id, empty fields and temporal values the "
         "node already holds; props are always whole. Neighbors leave out empty fields, rev, and on a "
-        "domain listing the domain each row repeats. A trimmed search, brief or node result carries "
-        "`omitted` with this rule in one sentence. raw:true (or \"true\") returns the result "
+        "domain listing the domain each row repeats. A trimmed search or brief result carries "
+        "`omitted` with the validity rule in one sentence, and a trimmed vinc_node result a shorter "
+        "`omitted` (it keeps validity whenever it is known). raw:true (or \"true\") returns the result "
         "unchanged. REST v1 and the CLI always return the full result."
     ))}
 
@@ -2708,10 +2709,12 @@ LEAN_DROP: dict[str, dict[str, tuple[str, ...]]] = {
     },
 }
 #: 줄인 결과에 붙는 한 줄. 도구 목록을 예전에 받아 둔 호스트는 새 설명을 못 읽으므로 빠진 칸의
-#: 뜻을 결과가 직접 말한다. 문장의 규칙은 `temporal_expand` 와 같아야 한다(테스트가 대조한다).
-OMITTED_NOTE = ("Empty, false and default fields are left out; a temporal block lists only what is "
-                "set (no validity: current if valid_from or valid_until is set, else unknown). "
-                "raw:true returns all.")
+#: 뜻을 결과가 직접 말한다. 문장의 validity 규칙은 `temporal_expand` 와 같아야 한다(테스트가 대조한다).
+OMITTED_NOTE = ("Empty and default keys are omitted; no validity: unknown if interval_invalid or no "
+                "valid_from/valid_until, else current. raw:true returns all.")
+#: vinc_node 의 한 줄. 노드는 알려진 validity 를 늘 남기므로 규칙을 싣지 않는다. 빠지는 것은 빈·기본값
+#: 칸, 내부 좌표(sync_seq·owner_id·tenant_id), 노드 칸과 겹치는 시간 값이다.
+OMITTED_NODE_NOTE = "Unset, internal, repeated keys omitted; raw:true gives all."
 #: `stamp` 이 행에 평평하게 한 벌 더 쓰는 칸(`store.search_temporal.FLAT` 과 같다).
 _TEMPORAL_FLAT = ("created_at", "updated_at", "content_time", "valid_from", "valid_until",
                   "superseded_by", "validity")
@@ -2904,10 +2907,10 @@ def lean_project(name: str, args: dict, out: Any) -> Any:
 
 def lean_finish(name: str, projected: dict, original: Any) -> dict:
     """`lean_project` (그리고 축소기) 뒤의 마지막 단계: 축소기만 읽는 `page` 를 빼고, 무엇이든
-    빠졌으면 `omitted` 한 줄을 붙인다(search·brief·node)."""
+    빠졌으면 `omitted` 한 줄을 붙인다(search·brief·node, neighbors 는 없다)."""
     projected.pop("page", None)
     if name != "vinc_neighbors" and projected != original:
-        projected["omitted"] = OMITTED_NOTE
+        projected["omitted"] = OMITTED_NODE_NOTE if name == "vinc_node" else OMITTED_NOTE
     return projected
 
 

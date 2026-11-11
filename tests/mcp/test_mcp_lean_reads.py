@@ -331,7 +331,7 @@ def test_node_keeps_props_whole_and_leaves_out_empty_and_duplicated_fields():
                     "valid_from": "2026-01-05", "updated_at": "2026-02-01T00:00:00Z",
                     "rev": 4, "kind": "record", "temporal": {"validity": "current"}}
     assert node["props"] == {"statement": "R holds.", "note": "", "empty": None}
-    assert out["omitted"] == tools.OMITTED_NOTE
+    assert out["omitted"] == tools.OMITTED_NODE_NOTE
     # 블록이 다 빠져도 노드의 날짜와 규칙이 블록을 되돌린다.
     t = {k: node[k] for k in ("valid_from", "valid_until", "content_time") if node.get(k)}
     back = tools.temporal_expand({**t, **node.get("temporal", {})}, claim_status="unassessed")
@@ -372,6 +372,29 @@ def test_props_are_never_walked():
     brief = _resolved_brief()
     brief["node"]["props"] = {"temporal": _block()}
     assert tools.lean_result("vinc_brief", {}, brief)["node"]["props"] == {"temporal": _block()}
+
+
+def test_the_note_states_the_validity_rule_the_slim_block_relies_on():
+    """`omitted` 의 validity 문장을 그대로 따라 읽으면 모든 구간 꼴에서 저장 쪽 validity 가 나온다."""
+    from store import search_temporal
+    clause = "no validity: unknown if interval_invalid or no valid_from/valid_until, else current."
+    assert clause in tools.OMITTED_NOTE and "raw:true" in tools.OMITTED_NOTE
+
+    def read_as_the_note_says(t):
+        if "validity" in t:
+            return t["validity"]
+        if t.get("interval_invalid") or not (t.get("valid_from") or t.get("valid_until")):
+            return "unknown"
+        return "current"
+    for row in ({}, {"valid_from": "2026-01-01"}, {"valid_until": "2026-12-31"},
+                {"valid_from": "2025-01-01", "valid_until": "2026-01-01"}, {"valid_from": "2027-01-01"},
+                {"valid_from": "2026-13-45"}, {"valid_from": "2026-05-01", "valid_until": "2026-04-01"},
+                {"content_time": "1905"}):
+        for scope in (None, ("2026-01-01", "2026-12-31")):
+            meta = search_temporal.metadata(row, now="2026-06-15T00:00:00Z", scope=scope)
+            assert read_as_the_note_says(tools._slim_temporal(meta)) == meta["validity"], row
+    # vinc_node 는 알려진 validity 를 남기므로 짧은 문장이다.
+    assert "raw:true" in tools.OMITTED_NODE_NOTE and len(tools.OMITTED_NODE_NOTE) <= 70
 
 
 def test_an_untrimmed_result_carries_no_omitted_note():
@@ -569,14 +592,13 @@ BEFORE = {"search": 27078, "choose": 4737}
 
 @pytest.mark.parametrize("label,name,result,ceiling", [
     ("search", "vinc_search", _realistic_search(), 0.80),
-    ("choose", "vinc_brief", _realistic_choose(), 0.75),
+    ("choose", "vinc_brief", _realistic_choose(), 0.77),
 ])
 def test_the_default_text_is_smaller_by_the_package_target(label, name, result, ceiling):
     text = rpc._mcp_text(name, {}, result)
-    # `omitted` 한 줄은 목표 밖으로 센다(낡은 도구 목록을 쥔 호스트에게 규칙을 알리는 값이다).
-    note = len(json.dumps({"omitted": tools.OMITTED_NOTE}, separators=(",", ":")).encode()) - 1
+    # `omitted` 한 줄까지 센다.
     assert '"omitted":' in text
-    assert len(text.encode()) - note <= ceiling * BEFORE[label], (len(text.encode()), BEFORE[label])
+    assert len(text.encode()) <= ceiling * BEFORE[label], (len(text.encode()), BEFORE[label])
 
 
 # ── 축소기: 줄인 뒤에도 페이지가 이어진다 ──────────────────────────────────────
