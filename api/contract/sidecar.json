@@ -54,6 +54,24 @@
         }
       }
     },
+    "/logout": {
+      "post": {
+        "operationId": "selfhost_logout",
+        "summary": "Sign out of a self-hosted hub (same origin, session cookie and CSRF header). Served by the hub's account-shaped surface, never by the sidecar; the hosted web signs out on the account site.",
+        "x-internal": false,
+        "x-served-by": "account",
+        "security": [
+          {
+            "accountSession": []
+          }
+        ],
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
     "/api/me": {
       "get": {
         "operationId": "account_me",
