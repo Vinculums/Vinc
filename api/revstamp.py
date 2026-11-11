@@ -19,6 +19,8 @@ from __future__ import annotations
 import datetime
 import time
 
+from store import write_batch
+
 from .syncmerge import _norm
 
 # 라벨별 **추적필드**(동기화되는 콘텐츠). owner_id(스코프)·created·source_file,
@@ -71,12 +73,25 @@ def session_runner(session) -> _SessionRunner:
 
 
 def _meta_get(store, key: str, default: str = "0") -> str:
+    # 쓰기 묶음(`store.write_batch`) 안이면 키마다 한 번만 읽고 그 뒤로는 메모리 값을 쓴다. 쓰기는 묶음이
+    # 커밋 직전에 한 번 한다(`store.write_batch.flush_meta`). 묶음이 되돌려지면 값도 같이 버려진다.
+    batch = write_batch.current(store)
+    if batch is not None and key in batch.meta:
+        v = batch.meta[key]
+        return default if v in (None, "") else v
     rows = store.run("MATCH (m:_SyncMeta) WHERE m.key = $k RETURN m.value AS v", {"k": key})
     v = rows[0].get("v") if rows else None
+    if batch is not None:
+        batch.meta[key] = "" if v is None else str(v)
     return default if v in (None, "") else str(v)
 
 
 def _meta_set(store, key: str, value) -> None:
+    batch = write_batch.current(store)
+    if batch is not None:
+        batch.meta[key] = str(value)
+        batch.dirty.add(key)
+        return
     store.run("MERGE (m:_SyncMeta {key: $k}) SET m.value = $v", {"k": key, "v": str(value)})
 
 
@@ -118,6 +133,15 @@ def next_seq(store, owner: str) -> int:
     cur = int(_meta_get(store, key, "0")) + 1
     _meta_set(store, key, cur)
     return cur
+
+
+def give_back_seq(store, owner: str, seq: int) -> None:
+    """쓰기 묶음 안에서 막 받은 sync_seq 를 쓰지 않았을 때 돌려준다. 그 뒤로 다른 번호가 나가지
+    않았을 때만 되돌린다(번호가 겹치지 않게). 묶음 밖에서는 아무것도 하지 않는다."""
+    batch = write_batch.current(store)
+    key = f"seq:{owner or 'user:local'}"
+    if batch is not None and batch.meta.get(key) == str(seq):
+        batch.meta[key] = str(seq - 1)
 
 
 def make_stamp(store, current: dict) -> dict:

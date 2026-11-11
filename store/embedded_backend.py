@@ -31,6 +31,7 @@ import weakref
 from contextlib import contextmanager, nullcontext
 
 from . import pkns, request_timing
+from .write_batch import Batch, BatchSlot, flush
 from .envflag import truthy
 from .open_diagnostics import emit_open_failure
 from .write_waits import WRITE_WAITS
@@ -837,17 +838,33 @@ class _Result:
         return list(self._records)
 
 
+def _batched_exec(batch: Batch, conn, query: str, params, raw: bool = False) -> list[dict]:
+    """묶음 안의 한 문장. 실패하면 엔진이 트랜잭션을 되돌리므로 묶음을 깨진 것으로 적고 다시 던진다.
+    깨진 뒤의 문장은 엔진에 보내지 않는다(보내면 트랜잭션 밖에서 하나씩 커밋된다)."""
+    batch.check()
+    batch.statements += 1
+    try:
+        return _exec_to_dicts(conn, query, params, raw=raw)
+    except Exception as exc:
+        batch.fail(exc)
+        raise
+
+
 class _Session:
     """neo4j Session 동형 — `.run(cypher, **kwargs)` → `_Result`."""
 
-    def __init__(self, conn, guard=None):
+    def __init__(self, conn, guard=None, batch=None):
         self._conn = conn
         self._guard = guard      # 잔해 표 쓰기 거절(`EmbeddedBackend._refuse_remnant_write`)
+        self._batch = batch      # 이 스레드의 쓰기 묶음을 주는 함수(`EmbeddedBackend.current_batch`)
 
     def run(self, cypher: str, **params):
         if self._guard is not None:
             self._guard(cypher)
-        return _Result(_exec_to_dicts(self._conn, cypher, params or None))
+        b = self._batch() if self._batch is not None else None
+        if b is None:
+            return _Result(_exec_to_dicts(self._conn, cypher, params or None))
+        return _Result(_batched_exec(b, self._conn, cypher, params or None))
 
     def close(self):
         pass
@@ -1181,6 +1198,9 @@ class EmbeddedBackend:
     def __init__(self, db, conn, driver_name: str, cfg: StoreConfig):
         self._db = db
         self._conn = conn
+        #: 스레드마다 열린 쓰기 묶음(:meth:`write_batch`). 묶음은 writer 커넥션의 트랜잭션 하나다.
+        self._batches = BatchSlot()
+        self._manual_tx = threading.local()
         self.driver_name = driver_name
         self._cfg = cfg
         self._topic_conversion_guard = os.environ.get("VINC_TOPIC_CONVERSION") == "1"
@@ -1310,16 +1330,62 @@ class EmbeddedBackend:
 
     @contextmanager
     def session(self):
-        session = _Session(self._conn, guard=self._refuse_remnant_write)
+        session = _Session(self._conn, guard=self._refuse_remnant_write, batch=self.current_batch)
         try:
             yield session
         finally:
             session.close()
 
+    def current_batch(self) -> Batch | None:
+        return self._batches.get()
+
+    def in_manual_transaction(self) -> bool:
+        """이 스레드에서 호출부가 `store.run("BEGIN TRANSACTION")` 으로 연 트랜잭션이 열려 있나."""
+        return bool(getattr(self._manual_tx, "open", False))
+
+    @contextmanager
+    def write_batch(self):
+        """writer 커넥션에서 트랜잭션 하나를 연다. 정상으로 끝나면 시계·카운터를 한 번 쓰고 커밋하고,
+        예외가 나거나 안의 문장이 실패했으면(``batch.broken``) 되돌린다. 깨진 묶음은 예외 없이 끝나므로
+        호출부가 ``broken`` 을 보고 한 문장씩 다시 쓴다. 이미 열린 묶음 안이면 그것을 그대로 준다.
+        근거: [[vinc.manual.core]] §3(쓰기는 잡 큐 하나로 직렬화된다)"""
+        outer = self._batches.get()
+        if outer is not None:
+            yield outer
+            return
+        batch = Batch()
+        self._conn.execute("BEGIN TRANSACTION")
+        self._batches.set(batch)
+        committed = False
+        try:
+            yield batch
+            if batch.broken is None:
+                flush(self, batch, lambda q, p: self.run(q, p))
+                self._conn.execute("COMMIT")
+                committed = True
+        finally:
+            self._batches.set(None)
+            if not committed:
+                try:
+                    self._conn.execute("ROLLBACK")
+                except Exception:   # noqa: BLE001 — 실패한 문장이 이미 되돌렸으면 '활성 트랜잭션 없음'이다
+                    pass
+
     def run(self, query: str, params: dict | None = None, *, conn=None,
             raw: bool = False) -> list[dict]:
         # ``raw``: 물리 키 그대로(PK 분해 훅 생략). 재구축 export 전용 — `_exec_to_dicts` 주석.
         self._refuse_remnant_write(query)
+        batch = self._batches.get() if conn is None or conn is self._conn else None
+        if batch is None and (conn is None or conn is self._conn):
+            # 호출부가 직접 연 트랜잭션(`api.operation_receipts`)을 기억한다. 그 안에서는 묶음을 열지
+            # 않는다: 엔진은 트랜잭션을 겹쳐 열지 못하고, 바깥 트랜잭션이 이미 한 번에 커밋한다.
+            head = query.lstrip()[:20].upper()
+            if head.startswith("BEGIN TRANSACTION"):
+                self._manual_tx.open = True
+            elif head.startswith(("COMMIT", "ROLLBACK")):
+                self._manual_tx.open = False
+        if batch is not None:
+            return _batched_exec(batch, self._conn, query, params or None, raw=raw)
         return _exec_to_dicts(conn or self._conn, query, params or None, raw=raw)
 
     #: 행을 바꾸는 절. 잔해 표를 이름으로 부르는 문장에 이것이 있으면 거절한다.
