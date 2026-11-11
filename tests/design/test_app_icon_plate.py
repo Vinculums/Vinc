@@ -3,8 +3,7 @@
 
 투명 검정 링은 어두운 작업표시줄·Dock 에서 사라진다. 그래서 OS 가 그리는 앱 아이콘만
 판을 쓰고, 파비콘·메일·MCP 커넥터 아이콘은 투명 링 그대로다.
-근거: [[decision:the-desktop-app-icon-keeps-a-black-plate-2026-09-26]] ·
-[[decision:vinc-mark-d2-shaded-for-large-uses-flat-system-for-small-2026-11-11]]
+근거: [[decision:the-desktop-app-icon-keeps-a-black-plate-2026-09-26]] · [[vinc.design.logo]]
 
 생성기(`scripts/design/build_logo.mjs`)와 그것이 뽑은 **실제 PNG** 를 함께 본다.
 CI 는 `npm run logo:check` 를 돌리지 않으므로, 옛 생성기로 아이콘을 다시 뽑아 커밋하면

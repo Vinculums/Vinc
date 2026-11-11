@@ -12,10 +12,10 @@ const assets = join(hub, 'assets/logo');
 const check = process.argv.includes('--check');
 let drift = 0;
 // 정본에 컬러를 다시 넣으면 래스터와 배포본까지 번지기 전에 중단한다.
-// 기하는 광학 크기 세 벌이다(2026-11-11, 정8면체 정면도): display(64px 이상) · text(25-63px, 기본 마크) ·
+// 기하는 광학 크기 세 벌이다(정8면체 정면도): display(64px 이상) · text(25-63px, 기본 마크) ·
 // micro(24px 이하, 파비콘). 각 벌의 기준은 그 벌의 mono 파일이고, 이 폴더의 SVG 는 이름으로 벌이 정해진다.
 // 음영판(D2, 그라데이션)은 하위 폴더 shaded/ 에 있어 이 검사 밖이다: 큰 자리(앱 아이콘 판, 히어로)에만 쓴다.
-// 근거: [[decision:vinc-mark-d2-shaded-for-large-uses-flat-system-for-small-2026-11-11]]
+// 근거: [[vinc.design.logo]]
 const geometryOf = file => readFileSync(join(assets, file), 'utf8').match(/ d="([^"]+)"/)[1];
 const families = { text: geometryOf('vinc-ring-mono.svg'), micro: geometryOf('vinc-ring-mono-micro.svg'),
   display: geometryOf('vinc-ring-mono-display.svg') };
@@ -66,11 +66,10 @@ const square = (svg, box) => svg.replace('viewBox="42 38 436 604"', `viewBox="${
 const tight = square(black, '-42 38 604 604');
 // 파비콘 래스터(.ico 16·32·48, 48px PNG)는 micro 벌이다: 파비콘 SVG 에서 다크 전환 스타일만 뺀다.
 const tightMicro = favicon.replace(/<style>[\s\S]*?<\/style>/, '');
-// 예외는 OS 가 그리는 데스크탑 앱 아이콘 하나다: 검정 둥근 사각 판 + 음영 링(D2, 2026-11-11).
+// 예외는 OS 가 그리는 데스크탑 앱 아이콘 하나다: 검정 둥근 사각 판 + 음영 링(D2).
 // 투명 검정 링은 어두운 작업표시줄·Dock 에서 사라진다. 판 기하(180 정사각, 모서리 40,
 // 마크 높이 65%)는 판을 걷기 전의 것과 같다. 근거:
-// [[decision:the-desktop-app-icon-keeps-a-black-plate-2026-09-26]] ·
-// [[decision:vinc-mark-d2-shaded-for-large-uses-flat-system-for-small-2026-11-11]]
+// [[decision:the-desktop-app-icon-keeps-a-black-plate-2026-09-26]] · [[vinc.design.logo]]
 const shaded = readFileSync(join(assets, 'shaded/vinc-ring-d2-on-black.svg'), 'utf8');
 const ring = shaded.match(/<svg[^>]*>([\s\S]*)<\/svg>/)[1];
 const plated = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180">'
@@ -104,7 +103,7 @@ try {
   const native = join(repo, 'app/src-tauri/icons');
   for (const name of readdirSync(native)) {
     if (!/\.(png|ico|icns)$/.test(name)) continue;
-    // Linux 패키지용 크기(48·64·256, af703c2e)는 Tauri 생성기가 만들지 않는다: 같은 판 SVG 를 resvg 로 그린다.
+    // Linux 패키지용 크기(48·64·256)는 Tauri 생성기가 만들지 않는다: 같은 판 SVG 를 resvg 로 그린다.
     const made = join(temporary, name), size = name.match(/^(\d+)x\1(@2x)?\.png$/);
     const bytes = existsSync(made) ? readFileSync(made)
       : size ? png(plated, Number(size[1]) * (size[2] ? 2 : 1)) : (() => { throw new Error(`No generator for ${name}`); })();
