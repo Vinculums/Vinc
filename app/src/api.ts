@@ -66,9 +66,11 @@ export function remote(): boolean {
   return WEB || accountMode();
 }
 
-/** __Host-csrf(JS-readable) 쿠키 값 — 웹모드 쓰기의 CSRF 더블서브밋 헤더용. */
+/** CSRF(JS-readable) 쿠키 값 — 웹모드 쓰기의 CSRF 더블서브밋 헤더용. HTTPS 에서는 `__Host-csrf`,
+ *  셀프호스트 허브를 평문 localhost 로 열면 `vinc-csrf` 다(브라우저가 평문에서 `__Host-` 를 안 받는다). */
+const CSRF_COOKIE = /(?:^|;\s*)(?:__Host-csrf|vinc-csrf)=([^;]+)/;
 function csrfToken(): string {
-  const m = document.cookie.match(/(?:^|;\s*)__Host-csrf=([^;]+)/);
+  const m = document.cookie.match(CSRF_COOKIE);
   return m ? decodeURIComponent(m[1]!) : "";
 }
 
@@ -1461,7 +1463,7 @@ export async function ensureWebAuth(): Promise<boolean> {
   // 빠른 경로(왕복 0): 세션이 서면 __Host-csrf(JS-readable)가 함께 세팅된다. 그 쿠키가
   // 아예 없으면 로그인한 적 없음 → 서버 확인 없이 즉시 /login (never-logged-in = 흔한
   // 경우, 완전 즉시 리다이렉트). 쿠키가 있으면 만료됐을 수 있어 /api/me 로 검증한다.
-  if (!/(?:^|;\s*)__Host-csrf=/.test(document.cookie)) {
+  if (!CSRF_COOKIE.test(document.cookie)) {
     viewSessionCache.purge();       // 로그아웃된 브라우저에 보관본을 남기지 않는다
     location.assign("/login");
     return false;

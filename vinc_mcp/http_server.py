@@ -1104,6 +1104,21 @@ class MCPHTTPApp:
             owner = graph_owner
         else:
             owner = f"user:{sub}"
+        return self.proxy_op(op, args, owner, actor=f"user:{sub}",
+                             person_session=payload.get("auth") == "session",
+                             plan=payload.get("plan"))
+
+    def proxy_op(self, op: str, args: dict | None, owner: str, *, actor: str,
+                 person_session: bool = False, plan: str | None = None) -> dict:
+        """화이트리스트 op 하나를 정해진 owner 로 사이드카에 보낸다. 인증은 부른 쪽이 끝냈다.
+
+        두 평면이 이 함수를 같이 쓴다: 계정 서명 평면(`graph_owner_request`)과 셀프호스트의
+        같은 출처 평면(`selfhost_web`). owner·actor·사람 세션 여부·등급은 부른 쪽이 정하고,
+        인자에 실려 온 owner·theme_id·debug·자격은 여기서 벗긴다."""
+        route = _PROXY_OPS.get(op)
+        if route is None:
+            raise ValueError(f"unsupported proxy op: {op!r}")
+        method, path = route
         args = dict(args or {})
         args.pop("owner", None)   # 클라/바디 owner 는 절대 신뢰하지 않는다
         # 어휘(theme)는 **전역**이라 남의 theme_id 를 실어 보내면 그 사람 어휘에 내
@@ -1122,11 +1137,11 @@ class MCPHTTPApp:
             # 받으므로 서명만으로는 사람인지 모른다. 계정은 쿠키 세션으로 온 요청에만
             # `auth: "session"` 을 싣고, 그것이 없으면 여기서 거절한다(fail-closed).
             from . import run_protocol
-            if payload.get("auth") != "session":
+            if not person_session:
                 return {"kind": "run.answer", "executed": False, "error": "person_session_required",
                         "note": ("Refused: only a person's signed-in session can answer a run. "
                                  "A key or an agent connection cannot. Nothing changed.")}
-            return run_protocol.person_answer(args, self.bridge, owner, actor=f"user:{sub}")
+            return run_protocol.person_answer(args, self.bridge, owner, actor=actor)
         if op in ("ingest-fragment", "ingest-pack"):
             # 이 평면은 멤버 키도 지난다. 실행 기록의 대기·승인·답은 `run-answer` 로만 바꾼다.
             pack = args.get("pack") if isinstance(args.get("pack"), dict) else {}
@@ -1151,8 +1166,8 @@ class MCPHTTPApp:
         # 주제 상한(AP-1 §3.4). **plan 클레임이 없으면 상한을 걸지 않는다** — 클레임을
         # 안 보내는 구 계정 + 이 허브 조합에서 부재를 free 로 읽으면 유료 사용자까지
         # 상한에 걸린다. 배포 순서가 돈 낸 기능을 뺏는 꼴이라, 모를 때는 열어둔다.
-        if op in _CAPPED_PROXY_OPS and payload.get("plan") is not None:
-            ent = self.entitlements_for(payload.get("plan"))
+        if op in _CAPPED_PROXY_OPS and plan is not None:
+            ent = self.entitlements_for(plan)
             if ent:
                 body["_entitlements"] = ent
         # POST: owner 를 바디 최상위에 강제 — fragment.owner·write_* 전부 최상위 owner 를 읽음.
@@ -1389,6 +1404,10 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802
         if self._held():
             return
+        # 셀프호스트의 같은 출처 평면(/login·/api/*). 꺼져 있으면 아무것도 안 하고 지나간다.
+        from . import selfhost_web
+        if selfhost_web.handle(self, "GET"):
+            return
         from . import rest_api
         if rest_api.handle(self, "GET"):
             return
@@ -1549,6 +1568,10 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):  # noqa: N802
         if self._held():
+            return
+        # 셀프호스트의 같은 출처 평면(/login·/api/*). 꺼져 있으면 아무것도 안 하고 지나간다.
+        from . import selfhost_web
+        if selfhost_web.handle(self, "POST"):
             return
         from . import rest_api
         if rest_api.handle(self, "POST"):
