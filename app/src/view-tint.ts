@@ -1,5 +1,6 @@
 import { palette, topicJewels, type ThemeMode } from "./theme";
 import { areaKeys } from "./area-key";
+import { FLOOR_AREAS, FLOOR_KEY, FLOOR_TABLE } from "./view-tint-floor";
 
 /** 주제 색 — **영역이 보석 하나를 입고, 그 안의 주제는 그 보석을 몇 도씩 돌린 색**을 입는다.
  *  보석 값은 공홈 조형과 같은 토큰이다(루비·사파이어·에메랄드·호박·자수정). **늘 켜져 있다.**
@@ -15,9 +16,9 @@ import { areaKeys } from "./area-key";
  *  좌측 트리)이 이 함수 하나를 읽는다.
  *
  *  **값은 토큰이다**(`topicJewels` in design-tokens.json). 앱 코드는 색을 새로 짓지 않고, 토큰
- *  보석을 돌리고(`rotateHue`) 마크 바닥에 맞춰 명도만 옮긴다(`markColour`). 그래서 모든 색이
- *  사이드바 줄의 어느 면(판 · 서랍 카드, 쉼 · 고름 칠) 위에서도 4.5:1 이고, 그래프 · 범례 · 홈
- *  목록 · Agent 보드도 같은 값을 받는다. */
+ *  보석을 돌린(`rotateHue`) 뒤 색상각은 그대로 두고 명도 · 채도만 마크 바닥 안으로 옮긴다(`planColour`:
+ *  바닥 표, 표 밖이면 `markColour`). 그래서 모든 색이 사이드바 줄의 어느 면(판 · 서랍 카드, 쉼 · 고름 칠)
+ *  위에서도 4.5:1 이고, 그래프 · 범례 · 홈 목록 · Agent 보드도 같은 값을 받는다. */
 
 /** 보석 i 번째. 다섯을 넘기면 같은 벌을 **색상각 20° 씩 돌려** 다시 쓴다(+20, −20, +40 …).
  *  두 보석 사이를 섞지 않는 이유: 에메랄드와 호박의 중간은 탁한 올리브다 — 섞은 색은
@@ -46,17 +47,35 @@ function rotateHue(n: number, deg: number): string {
   return `#${q(r1)}${q(g1)}${q(b1)}`;
 }
 
-/** 주제 → 보석색. 주제가 없는 노드는 표에 없고, 호출측은 그때 잉크를 그대로 쓴다.
- *
- *  마운트당 한 번 만들어 노드마다 조회한다(노드마다 계산하면 같은 답을 n 번 낸다).
- *  정렬은 사전식 — 같은 집합이면 언제 그려도 같은 그림이다(D17 결정론과 같은 규율). */
-export function tintMap(domains: (string | undefined)[], mode: ThemeMode): Map<string, string> {
-  return tintPlan(domains, mode).topics;
-}
 
 /** 영역 안 k 번째 주제의 돌림(도). 0 은 영역 보석 그대로고, 일곱 칸마다 되돌아온다 — 더 넓히면
  *  이웃 영역(20° 돌린 다음 벌)과 겹친다. */
 const TOPIC_TURN = [0, 4, -4, 8, -8, 12, -12];
+
+/** a 번째 영역의 k 번째 주제가 **바닥 전에** 입는 색: 보석을 영역 차례만큼, 다시 주제 차례만큼 돌린 것. */
+function rawPlanColour(a: number, k: number, mode: ThemeMode): string {
+  const base = jewelAt(topicJewels[mode], a), turn = TOPIC_TURN[k % TOPIC_TURN.length];
+  return turn ? rotateHue(parseInt(base.slice(1), 16), turn) : base;
+}
+const planCache = new Map<string, string>();
+/** a 번째 영역의 k 번째 주제가 입는 마크 색. 계획은 고정된 차례로 색을 주므로 이 값은 (a, k, 모드)만의 함수다 —
+ *  주제가 늘어도 다른 주제의 색은 계획이 원래 바꾸던 만큼만 바뀐다.
+ *  영역 24 개 안의 색은 바닥 표(`view-tint-floor.ts`)의 명도 · 채도 몫으로 놓는다. 표는 계획의 색 전부를 함께 보고
+ *  지은 것이라 바닥이 색 사이의 명도 차를 지우지 않는다(하나씩 바닥에 붙이면 색상각이 가까운 둘이 같은 명도로
+ *  모여 한 색이 된다). 표 밖(영역 25 개째부터)이거나 토큰이 표를 지을 때와 다르면 하나씩 바닥에 붙인다. */
+export function planColour(a: number, k: number, mode: ThemeMode): string {
+  const key = `${mode}${a}:${k % TOPIC_TURN.length}`, hit = planCache.get(key);
+  if (hit) return hit;
+  const raw = rawPlanColour(a, k, mode), at = (a * TOPIC_TURN.length + (k % TOPIC_TURN.length)) * 2, row = FLOOR_TABLE[mode];
+  let out = "";
+  if (a < FLOOR_AREAS && FLOOR_KEY === floorInputKey() && at < row.length) {
+    const c = markAt(raw, row[at], row[at + 1]);
+    if (passes(c, mode)) out = c;
+  }
+  out ||= markColour(raw, mode);
+  planCache.set(key, out);
+  return out;
+}
 
 /** 색 한 벌의 전부 — 주제 색, 영역 색, 주제의 영역. 3D 의 영역 부피와 영역 사이 선이 주제 색과
  *  **같은 영역 판정**을 읽어야 해서 따로 내놓는다(판정이 두 벌이면 부피와 색이 갈린다). */
@@ -64,20 +83,18 @@ export function tintPlan(domains: (string | undefined)[], mode: ThemeMode): {
   topics: Map<string, string>; areas: Map<string, string>; areaOf: Map<string, string>;
 } {
   const uniq = [...new Set(domains.map((d) => (d || "").trim()).filter(Boolean))].sort();
-  const list = topicJewels[mode];
   const keys = areaKeys(uniq);
   const areaList = [...new Set(keys)].sort();
-  const areas = new Map(areaList.map((a, i) => [a, jewelAt(list, i)]));
+  const rank = new Map(areaList.map((a, i) => [a, i]));
+  const areas = new Map(areaList.map((a, i) => [a, planColour(i, 0, mode)]));
   const seen = new Map<string, number>();
   const topics = new Map<string, string>(), areaOf = new Map<string, string>();
   uniq.forEach((d, i) => {
     const a = keys[i], k = seen.get(a) ?? 0;
     seen.set(a, k + 1);
-    const base = areas.get(a)!, turn = TOPIC_TURN[k % TOPIC_TURN.length];
-    topics.set(d, markColour(turn ? rotateHue(parseInt(base.slice(1), 16), turn) : base, mode));
+    topics.set(d, planColour(rank.get(a)!, k, mode));
     areaOf.set(d, a);
   });
-  for (const [a, c] of areas) areas.set(a, markColour(c, mode));
   return { topics, areas, areaOf };
 }
 
@@ -152,7 +169,7 @@ const markCache = new Map<string, string>();
  *  라이트는 내리고 다크는 올린다. 묽게(채도를 빼서 바탕 쪽으로) 하지 않는다 — 회색이 아니라 같은
  *  보석의 짙은 · 밝은 톤이 되어야 그래프 · 범례와 한 색으로 읽힌다. 채도는 sRGB 범위가 허락하는
  *  만큼만 깎는다(짙은 노랑은 범위가 좁아 갈색 쪽으로 간다). */
-export function markColour(hexColour: string, mode: ThemeMode): string {
+function markColour(hexColour: string, mode: ThemeMode): string {
   const key = `${mode}${hexColour}`, hit = markCache.get(key);
   if (hit) return hit;
   const need = MARK_FLOOR + MARK_MARGIN, src = rgbOf(parseInt(hexColour.slice(1), 16));
@@ -167,6 +184,24 @@ export function markColour(hexColour: string, mode: ThemeMode): string {
   markCache.set(key, out);
   return out;
 }
+
+/** 원래 색의 색상각을 지킨 채 OKLab 명도 L, 채도 몫 `chroma`(원래 채도에 곱한다)로 놓은 색(8비트 HEX). */
+function markAt(hexColour: string, L: number, chroma: number): string {
+  const [, a, b] = toLab(rgbOf(parseInt(hexColour.slice(1), 16)));
+  return toHex(atL(L, Math.hypot(a, b) * chroma, Math.atan2(b, a)));
+}
+const passes = (hexColour: string, mode: ThemeMode) => worstRatio(rgbOf(parseInt(hexColour.slice(1), 16)), mode) >= MARK_FLOOR + MARK_MARGIN;
+/** 바닥 표가 기대는 입력(보석 · 줄 면 토큰 · 줄 칠 알파 · 바닥 · 돌림)의 지문. 토큰이 바뀌면 값이 달라져 표를 쓰지 않는다. */
+function floorInputKey(): number {
+  const nums = [...topicJewels.light, ...topicJewels.dark, ...(["light", "dark"] as const).flatMap((m) => {
+    const p = palette[m]; return [p.background, p.surface, p.card, p.text, p.ring];
+  }), ROW_HOVER, ROW_PICK, MARK_FLOOR, MARK_MARGIN, ...TOPIC_TURN];
+  let h = 2166136261;
+  for (const ch of nums.join(",")) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  return h;
+}
+/** 바닥 표를 짓고 재는 도구(`dev/topic-tint-floor.mjs`, `tests/topic-tint-contrast.test.mjs`)만 쓴다. 화면 코드는 부르지 않는다. */
+export const floorKit = { rawPlanColour, markAt, passes, floorInputKey, areas: FLOOR_AREAS, turns: TOPIC_TURN.length };
 
 /** 주제 표식: 속이 빈 점선 고리. 주제는 노드가 아니라 노드를 담는 것이라 꽉 찬 원(개념)과 다르게 그린다.
  *  그래프 · 범례 · 고정 칩 · 사이드바가 모두 이 함수 하나로 그린다(한 가족으로 보이게).

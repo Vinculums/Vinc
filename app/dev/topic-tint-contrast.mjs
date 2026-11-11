@@ -3,6 +3,8 @@
  *     cd app && node dev/topic-tint-contrast.mjs                 # 이 트리
  *     cd app && node dev/topic-tint-contrast.mjs --src <app/src>  # 다른 트리(전후 비교)
  *     ... --full                                                  # 색마다 한 줄씩(긴 표)
+ *     ... --raw <app/src>                                         # 바닥 전 색을 그 트리의 계획에서 읽는다
+ *                                                                   (기본: 이 트리의 floorKit, 없으면 --src 의 계획 그대로)
  *
  *  색: 영역 24개 × 영역 안 주제 돌림 7칸(0, ±4, ±8, ±12°)을 실제 `tintPlan` 으로 만든다. 돌림은 7칸마다
  *  되풀이되므로 영역이 24개 이하인 어느 집합이든 이 안의 색만 쓴다. Agent 줄의 색은 `agent-map.ts`
@@ -14,18 +16,20 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { rgbOfHex, hexOfRgb, hslToRgb, over, mixSrgb, ratio, dOk, de2000, simulate, CVD_KINDS, oklch } from "./colour-math.mjs";
+import { rgbOfHex, hexOfRgb, hslToRgb, over, mixSrgb, ratio, dOk, de2000, simulate, CVD_KINDS, oklch, lab, de2000Lab } from "./colour-math.mjs";
 
 const args = process.argv.slice(2);
 const opt = (k) => { const i = args.indexOf(k); return i < 0 ? null : args[i + 1]; };
 const SRC = resolve(opt("--src") || resolve(dirname(fileURLToPath(import.meta.url)), "../src"));
 const FULL = args.includes("--full");
 
-const bundle = async (entry) => {
-  const r = await build({ entryPoints: [resolve(SRC, entry)], bundle: true, platform: "node", format: "esm", write: false, logLevel: "silent" });
+const bundle = async (entry, src = SRC) => {
+  const r = await build({ entryPoints: [resolve(src, entry)], bundle: true, platform: "node", format: "esm", write: false, logLevel: "silent" });
   return import(`data:text/javascript;base64,${Buffer.from(r.outputFiles[0].text).toString("base64")}`);
 };
 const tint = await bundle("view-tint.ts");
+const RAWSRC = opt("--raw");
+const rawTint = RAWSRC ? await bundle("view-tint.ts", resolve(RAWSRC)) : null;
 const { topicJewels } = await bundle("theme.ts");
 const read = (f) => readFileSync(resolve(SRC, f), "utf8");
 const must = (m, what) => { if (!m) throw new Error(`못 찾았다: ${what}`); return m; };
@@ -150,6 +154,41 @@ for (const mode of ["light", "dark"]) {
     console.log(`| ${mode} | ${vis} | ${fmt(m.d)} | rank ${m.i} ${ranks[m.i].hex} / rank ${m.j} ${ranks[m.j].hex} | ${mo.toFixed(4)} | ${fmt(mt)} |`);
   }
 }
+// ── 바닥이 쌍 사이 거리를 지우지 않는가: 계획의 색 전부, 모드 x 시각 ──────────────────────────────
+/** 바닥 전 색(같은 차례). floorKit 이 있으면 그것, --raw 면 그 트리의 계획, 둘 다 없으면 이 트리의 계획(바닥 전 트리). */
+function rawColours(mode) {
+  if (rawTint) { const doms = []; for (let a = 0; a < AREAS; a++) for (let t = 0; t < TURNS; t++) doms.push(`r/a${String(a).padStart(2, "0")}/t${t}`);
+    const p = rawTint.tintPlan(doms, mode); return doms.map((d) => p.topics.get(d)); }
+  if (tint.floorKit) { const out = []; for (let a = 0; a < AREAS; a++) for (let t = 0; t < TURNS; t++) out.push(tint.floorKit.rawPlanColour(a, t, mode)); return out; }
+  return planColours(mode).map((c) => c.hex);
+}
+const PAIR_RULES = [["normal", (c) => c, 5, 5, true], ["deutan", (c) => simulate("deutan", c), 5, 3, false], ["protan", (c) => simulate("protan", c), 5, 3, false]];
+console.log("## Pairwise distance kept through the floor (all plan colours: 24 areas x 7 turns, CIEDE2000)\n");
+console.log("Rule: a pair at least 5 apart before stays at least 5 apart (normal vision) or 3 apart (deuteranopia, protanopia, Machado 2009 full severity) after, and no pair (normal vision) falls below half its distance before.\n");
+console.log("| theme | vision | pairs | pairs >= 5 before | below threshold after | below half after | worst pair (rank/turn: before -> after) |\n|---|---|---|---|---|---|---|");
+const pairFails = [];
+for (const mode of ["light", "dark"]) {
+  const before = rawColours(mode), after = planColours(mode).map((c) => c.hex);
+  const keys = [...new Set(before.map((h, i) => `${h}>${after[i]}`))].map((k) => { const i = before.findIndex((h, j) => `${h}>${after[j]}` === k); return i; });
+  for (const [vis, f, need0, need1, half] of PAIR_RULES) {
+    const L0 = keys.map((i) => lab(f(rgbOfHex(before[i])))), L1 = keys.map((i) => lab(f(rgbOfHex(after[i]))));
+    let pairs = 0, big = 0, bad = 0, badHalf = 0, worst = null;
+    for (let x = 0; x < keys.length; x++) for (let y = x + 1; y < keys.length; y++) {
+      if (before[keys[x]] === before[keys[y]]) continue;
+      pairs++; const d0 = de2000Lab(L0[x], L0[y]), d1 = de2000Lab(L1[x], L1[y]);
+      const lbl = (i) => `r${Math.floor(i / TURNS)}/t${i % TURNS} ${before[i]}->${after[i]}`;
+      if (d0 >= need0) { big++; if (d1 < need1) { bad++; pairFails.push({ mode, vis, a: lbl(keys[x]), b: lbl(keys[y]), d0, d1 }); if (!worst || d1 < worst.d1) worst = { d0, d1, a: lbl(keys[x]), b: lbl(keys[y]) }; } }
+      if (half && d1 < d0 / 2) { badHalf++; pairFails.push({ mode, vis: "normal half", a: lbl(keys[x]), b: lbl(keys[y]), d0, d1 }); if (!worst || d1 / d0 < worst.d1 / worst.d0) worst = worst ?? { d0, d1, a: lbl(keys[x]), b: lbl(keys[y]) }; }
+    }
+    console.log(`| ${mode} | ${vis} | ${pairs} | ${big} | ${bad} | ${half ? badHalf : "n/a"} | ${worst ? `${worst.a} / ${worst.b}: ${fmt(worst.d0)} -> ${fmt(worst.d1)}` : "none"} |`);
+  }
+}
+if (pairFails.length) {
+  console.log("\nEvery pair that breaks the rule:\n\n| theme | rule | pair | before | after |\n|---|---|---|---|---|");
+  for (const p of pairFails.sort((a, b) => a.d1 - b.d1)) console.log(`| ${p.mode} | ${p.vis} | ${p.a} / ${p.b} | ${fmt(p.d0)} | ${fmt(p.d1)} |`);
+}
+console.log("");
+
 console.log("\n## Ranks 0 to 11 (turn 0) per theme, OKLCH L C h\n\n| theme | rank | colour | OKLCH |\n|---|---|---|---|");
 for (const mode of ["light", "dark"]) for (const c of planColours(mode).filter((c) => c.turn === 0).slice(0, 12)) {
   const [L, C, h] = oklch(rgbOfHex(c.hex)); console.log(`| ${mode} | ${c.rank} | ${c.hex} | ${L.toFixed(3)} ${C.toFixed(3)} ${h.toFixed(1)} |`);

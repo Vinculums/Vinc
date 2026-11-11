@@ -19,7 +19,7 @@ const THEME_STUB = `export const topicJewels = {
   dark: [0xff8a80, 0x82b1ff, 0x69f0ae, 0xffd180, 0xce93d8] };
 export const palette = { light: { background: 0xf2f2f0, surface: 0xe9e9e6, card: 0xfbfbfa, text: 0x17171a, ring: 0x4a4f8c },
   dark: { background: 0x0a0a0a, surface: 0x121212, card: 0x1a1a1a, text: 0xededeb, ring: 0x8f96d9 } };`;
-const tintUrl = await tsUrl('view-tint.ts', { './theme': THEME_STUB, './area-key': await tsUrl('area-key.ts') });
+const tintUrl = await tsUrl('view-tint.ts', { './theme': THEME_STUB, './area-key': await tsUrl('area-key.ts'), './view-tint-floor': await tsUrl('view-tint-floor.ts') });
 const { mountCompass, compassDataFrom } = await loadTs('surfaces/view-compass.ts', {
   '../copy': copyStub("{ ui: { compass: { rootTopic: 'All topics' } } }"),
   '../components': COMPONENTS_STUB,

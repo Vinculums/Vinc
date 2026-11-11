@@ -36,7 +36,7 @@ export function oklab(c) {
 export const oklch = (c) => { const [L, a, b] = oklab(c); return [L, Math.hypot(a, b), ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360]; };
 export const dOk = (x, y) => { const a = oklab(x), b = oklab(y); return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); };
 
-function lab(c) {
+export function lab(c) {
   const [r, g, b] = c.map(lin);
   const X = (0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / 0.95047;
   const Y = 0.2126729 * r + 0.7151522 * g + 0.072175 * b;
@@ -44,9 +44,11 @@ function lab(c) {
   const f = (t) => (t > 216 / 24389 ? Math.cbrt(t) : (24389 / 27 * t + 16) / 116);
   return [116 * f(Y) - 16, 500 * (f(X) - f(Y)), 200 * (f(Y) - f(Z))];
 }
-/** CIEDE2000 (Sharma 2005). */
-export function de2000(x, y) {
-  const [L1, a1, b1] = lab(x), [L2, a2, b2] = lab(y), rad = Math.PI / 180;
+/** CIEDE2000 (Sharma 2005) on two sRGB colours. */
+export const de2000 = (x, y) => de2000Lab(lab(x), lab(y));
+/** CIEDE2000 on two CIELAB triples (lets a caller convert each colour once). */
+export function de2000Lab([L1, a1, b1], [L2, a2, b2]) {
+  const rad = Math.PI / 180;
   const C1 = Math.hypot(a1, b1), C2 = Math.hypot(a2, b2), Cb = (C1 + C2) / 2;
   const G = 0.5 * (1 - Math.sqrt(Cb ** 7 / (Cb ** 7 + 25 ** 7)));
   const a1p = (1 + G) * a1, a2p = (1 + G) * a2, C1p = Math.hypot(a1p, b1), C2p = Math.hypot(a2p, b2);
