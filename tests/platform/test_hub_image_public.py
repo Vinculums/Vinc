@@ -57,7 +57,8 @@ def test_예시_compose_는_셀프호스트이고_이_기계에서만_연다():
     doc = yaml.safe_load((ROOT / "packaging/selfhost/compose.yaml").read_text(encoding="utf-8"))
     hub = doc["services"]["hub"]
     assert hub["environment"]["VINC_SELF_HOSTED"] == "on"
-    assert hub["ports"] == ["127.0.0.1:8790:8790"]
+    # 이 기계에서만 연다: 호스트 포트는 고를 수 있어도(VINC_PORT) 루프백에 묶이고 컨테이너는 8790 이다.
+    assert hub["ports"] == ["127.0.0.1:${VINC_PORT:-8790}:8790"]
     assert hub["volumes"] == ["vinc-data:/data"]
     assert doc["services"]["caddy"]["profiles"] == ["tls"]
     assert doc["services"]["neo4j"]["profiles"] == ["neo4j"]
@@ -104,3 +105,13 @@ def test_준_토큰은_그대로이고_플래그가_없으면_아무것도_안_�
     assert not (data / "selfhost" / "mcp-token").exists()
     off = _run({}, Path(tempfile.mkdtemp()))
     assert off == {"SIDECAR": "", "MCP": "", "STATE": ""}
+
+
+def test_허브_이미지는_데스크톱과_같은_판의_Neo4j_드라이버를_싣는다():
+    """없으면 VINC_DATABASE_URI 로 띄운 허브가 driver_missing 으로 스토어를 못 연다."""
+    root = Path(__file__).resolve().parents[2]
+    pin = re.search(r'"neo4j==([0-9.]+)"', (root / "pyproject.toml").read_text(encoding="utf-8")).group(1)
+    docker = (root / "Dockerfile.hub").read_text(encoding="utf-8")
+    assert f"neo4j=={pin}" in docker
+    for wf in ("release.yml", "ci.yml"):
+        assert f"neo4j=={pin}" in (root / ".github/workflows" / wf).read_text(encoding="utf-8"), wf

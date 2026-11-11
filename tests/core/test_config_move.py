@@ -222,3 +222,25 @@ def test_계정_그래프를_Neo4j_로_받는다(home):
         assert q.neighbors("concept:acct", owner="tenant:local", store=db.store)["count"] == 1
     finally:
         db.close()
+
+
+@needs_neo4j
+def test_고정_경로로_뜬_허브는_데이터베이스로_복사만_하고_설정은_안_쓴다(home):
+    """허브는 위치를 환경(VINC_DATABASE_*)이 정하므로 설정 파일을 바꿔 봐야 소용없다. 고정 경로
+    프로세스는 데이터베이스로 복사하고 다 왔는지만 말하며, 폴더로 옮기기는 거절한다."""
+    _clean_neo4j()
+    loc = {"kind": "database", "engine": "neo4j", "uri": URI, "database": "neo4j", "user": USER,
+           "secret_ref": "vinc-database:test"}
+    data = Path(tempfile.mkdtemp()) / "db"
+    app = _open(sc.app_store_config(str(data)))
+    try:
+        app.data_pinned = True        # `vinc serve --data`(허브 엔트리포인트)가 하는 것과 같다
+        _fill(app.store)
+        code, out = app.submit_config_move({"to": {"kind": "folder", "path": str(Path(tempfile.mkdtemp()))}})
+        assert code == 409 and out["error"] == "pinned"
+        res = _wait(app, app.submit_config_move({"to": loc, "password": PASSWORD, "accept_risk": True}))
+        assert res["switched"] is False and res["copied"] is True and res["copy"]["missing"] == 0, res
+        assert res["copy"]["nodes"] > 0 and "VINC_DATABASE_URI" in res["next"]
+        assert not (home / "config.json").exists()
+    finally:
+        app.close()
