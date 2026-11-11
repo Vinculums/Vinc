@@ -3129,6 +3129,8 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 .lnb-sec-end { display: inline-flex; align-items: center; gap: var(--space-1, .25rem); }
 .lnb-sec-end.no-add { padding-right: calc(var(--pad-row) + var(--space-1) / 2); }   /* + 가 없으면 수가 아래 줄의 수와 같은 오른쪽 세로선에 선다 */
 .lnb-add { font-size: 1rem; line-height: 1; padding: .1rem .4rem; }  /* fs-allow: 글씨가 아니라 기호(+) 크기 */
+/* 판 위의 기호라 캡션(light 3.13:1)이 아니라 muted 다(6.0:1). 손이 오르면 `.rail-x:hover` 가 글자색으로 바꾼다. */
+.lnb-add { color: hsl(var(--muted-foreground)); }
 
 /* 흐름 B — 문서 열의 새 문서: 주제 칩 + id 미리보기가 편집기 위에 한 줄로 선다. */
 .writer-meta {
