@@ -2847,7 +2847,7 @@ const KO: Deck = {
       // 모달 탭(GNB) 라벨 + 섹션 소제목
       title: "설정", close: "닫기",
       groupApp: "앱", groupAccount: "계정", groupConnections: "연결",
-      groupData: "자료", groupSystem: "시스템",
+      groupData: "가져오기·공유", groupSystem: "시스템",
       navGeneral: "일반",
       navAppearance: "화면",
       navReading: "읽기",
