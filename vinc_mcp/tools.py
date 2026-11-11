@@ -2346,6 +2346,26 @@ def specs(*, hub: bool = False) -> list[dict]:
     return out
 
 
+#: 연결의 도구 프로파일. 호스티드 MCP 주소의 `?profile=` 이 고르고, 없으면 `all`(지금 목록
+#: 그대로)이다. 권한이 아니라 목록의 크기다: 쓰기를 막는 것은 여전히 키 범위와 역할이다.
+#: REST v1·CLI 는 프로파일을 모른다(`rpc.Dispatcher` 만 본다).
+TOOL_PROFILES = ("all", "read", "core")
+#: `core` 의 여섯. `read` 는 표가 없다: 읽기 전용 키가 부를 수 있는 도구(`tool_tier` 가 viewer)다.
+CORE_TOOLS = frozenset({"vinc_search", "vinc_brief", "vinc_node", "vinc_neighbors",
+                        "vinc_doc_get", "vinc_ingest"})
+
+
+def in_profile(name: str, profile: str | None) -> bool:
+    """그 도구가 그 프로파일의 목록에 드는가. None·`all` 은 전부다. 모르는 프로파일은 ValueError."""
+    if profile is None or profile == "all":
+        return True
+    if profile == "read":
+        return tool_tier(name) == "viewer"
+    if profile == "core":
+        return name in CORE_TOOLS
+    raise ValueError(f"unknown tool profile {profile!r}: use one of {', '.join(TOOL_PROFILES)}")
+
+
 #: 주제 상한이 걸리는 도구 — 새 주제를 만들 수 있는 쓰기 표면(AP-1 §3.3).
 #: 조회·삭제·병합은 주제를 **늘릴 수 없어** 대상이 아니다.
 CAPPED_TOOLS = ("vinc_ingest",)
