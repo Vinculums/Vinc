@@ -50,7 +50,7 @@ function busy(): boolean {
   if (pointerDown) return true;                   // 지도를 끌거나 올가미를 긋는 중
   if (docEditorOpen()) return true;               // 문서를 쓰는 중
   // 시트·확인창·우클릭 메뉴·팔레트. 무엇을 고르던 중이다.
-  if (document.querySelector(".sheet-scrim, .ctx-menu")) return true;
+  if (document.querySelector(".sheet-scrim, .ctx-menu, .space-menu")) return true;
   const pal = document.getElementById("palette");
   if (pal && !pal.hidden) return true;
   // 검색어·이름을 치는 중. 판정은 `keys.ts` 한 벌을 쓴다(사본이 생기면 갈린다).

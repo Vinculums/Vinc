@@ -73,12 +73,14 @@
           <button class="tb-icon" id="tb-shell-toggle" type="button" aria-controls="lnb"></button>
         </div>
       </aside>
-      <!-- 뷰 머리 — 내용 카드의 **윗줄**이다(떠 있지 않다). 앞: 지금 자리(문서는 경로,
-           그래프는 범위 — 표면이 채운다). 뒤: 검색, 문서 | 그래프 전환, 맨 끝에 보기 설정과 범례.
-           머리와 본문이 한 칼럼을 나눠 써서 경로는 본문 첫 글자와 같은 세로선에 선다.
+      <!-- 뷰 머리 — 내용 카드의 **윗줄**이다(떠 있지 않다). 맨 앞: 공간 전환(계정 그래프일 때만
+           space-switcher.ts 가 채운다, 비면 자리가 없다). 앞: 지금 자리(문서는 경로, 그래프는 범위 —
+           표면이 채운다). 뒤: 검색, 그래프의 시간 · 범례, 문서 | 그래프 전환, 맨 끝에 읽기 설정.
+           머리와 본문이 한 칼럼을 나눠 써서 첫 글자(공간 이름, 없으면 경로)가 본문 첫 글자와 같은 세로선에 선다.
            근거: [[decision:documents-and-graph-share-one-lnb-tree-2026-11-06]] -->
       <header id="topbar">
         <div class="tb-col">
+          <div class="tb-space" id="tb-space"></div>
           <div class="tb-lead" id="tb-lead"></div>
           <div class="tb-trail">
           <!-- 상시 검색(D57). 접힌 모습은 칸 하나(아이콘 · 이름 · 단축키)이고,
