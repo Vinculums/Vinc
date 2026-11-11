@@ -344,6 +344,8 @@ let lastDomains: string[] = [];   // 문서 트리가 마지막으로 받은 주
 let agentMapLoading = false;
 let agentPick = "";
 let agentCol = new Map<string, string>(), polCol = "";   // Agent 화면의 색 = Agent 단위(보드와 같은 표, agent-map.agentColours)
+/** Agent · 정책 색을 **지금 모드로** 다시 매긴다. 색은 모드마다 다른 HEX 라 paint 마다 부른다(테마를 뒤집고 다시 그릴 때 반대 모드 색이 남지 않게). */
+let colourAgents: (() => void) | null = null;
 const AGENT_POL = "agent-policies";
 function paintAgentTree(): string {
   const L = COPY.ui.lnb;
@@ -416,7 +418,7 @@ export async function refreshLnb(opts: { quiet?: boolean } = {}): Promise<void> 
       agentMapLoading = true;
       try { const m = await import("./surfaces/agent-map"); const d = await m.loadAgentMap(agentRoster);
         if (stale()) return; agentMap = d ? { agents: d.agents, procedures: d.procedures, policies: d.policies } : null;
-        agentCol = d ? m.agentColours(d.agents) : new Map(); polCol = m.policyColour();
+        colourAgents = () => { agentCol = d ? m.agentColours(d.agents) : new Map(); polCol = m.policyColour(); };
         if (!agentPick) agentPick = m.pickedInAgentMap(); }
       catch { agentMap = null; }
       agentMapLoading = false;
@@ -747,6 +749,7 @@ function paint() {
     if (agentMapLoading) { paintHead(); body.innerHTML = loaderRows(COPY.ui.lnb.loading, { count: 3, compact: true }); return; }
     const doms = lastDomains.length ? lastDomains : agentMap ? [...agentMap.agents, ...agentMap.procedures, ...agentMap.policies].map((x) => x.domain) : agentRoster.map((r) => r.domain);
     tints = planTints(doms);   // 주제 색은 문서 트리와 같은 표로(같은 주제 = 같은 색)
+    colourAgents?.();
     paintHead(agentMap ? agentMap.agents.length : agentRoster.length, COPY.ui.lnb.agents);
     body.innerHTML = paintAgentTree();
     return;

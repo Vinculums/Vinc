@@ -69,6 +69,20 @@ class LnbTintTests(unittest.TestCase):
             'matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme)',
             MAIN, "OS 추종 경로가 applyTheme 를 거치지 않으면 위 보장이 반쪽이 된다")
 
+    def test_지도를_먼저_다시_칠하고_트리를_그린다(self):
+        """그래프 트리의 색은 나침반의 표(`gsrc.colour`)다. 트리가 먼저 그려지면 나침반이 표를 새 모드로
+        다시 짓기 전이라 트리에 반대 모드 색이 남는다(배경 대비 1.6~1.8:1)."""
+        head = MAIN.index("export function applyTheme() {")
+        body = MAIN[head:MAIN.index(chr(10) + "}", head)]
+        self.assertLess(body.index("repaintView();"), body.index("repaintLnb();"))
+
+    def test_Agent_색은_그릴_때마다_지금_모드로_매긴다(self):
+        """Agent · 정책 색은 모드마다 다른 HEX 다. 불러올 때 한 번 매기면 테마를 뒤집어도 옛 모드 색이 남는다."""
+        self.assertNotRegex(LNB, r"\n\s*agentCol = d \?", "불러오는 자리에서 색을 굳히지 않는다")
+        self.assertIn("colourAgents = () => { agentCol = d ? m.agentColours(d.agents) : new Map(); polCol = m.policyColour(); };", LNB)
+        paint = LNB[LNB.index("function paint() {"):]
+        self.assertIn("colourAgents?.();", paint[:paint.index("body.innerHTML = paintAgentTree();")])
+
 
 if __name__ == "__main__":
     unittest.main()
