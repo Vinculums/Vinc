@@ -8,7 +8,9 @@
  *      npm run dev  →  /dev/space-switcher.html?state=menu&theme=dark&lang=ko
  *
  *  state: personal · team · community · menu · many · failed · collapsed · local. `open=1` 이면 메뉴를 연다.
- *  `collapsed` 는 접힌 사이드바 띠 옆에서도 머리가 공간 이름을 말하는지 본다(띠에는 공간 표시가 없다). */
+ *  `collapsed` 는 접힌 사이드바 띠 옆에서도 머리가 공간 이름을 말하는지 본다(띠에는 공간 표시가 없다).
+ *  `skin=web` 은 웹 토큰 세트, `view=graph` 는 그래프 면의 머리(앞자리 · 시간 · 범례)로 본다.
+ *  `space=t-m5` 와 `state=many` 를 함께 주면 긴 이름이다. */
 import "../src/app.css";
 import { api, cfg, isCommunitySpace, remote } from "../src/api";
 import type { NavTreeRes } from "../src/api";
@@ -17,7 +19,7 @@ import { esc } from "../src/components";
 import { mountLnb } from "../src/lnb";
 import { mountSpaceSwitcher } from "../src/space-switcher";
 import { kindOf } from "../src/space-picker";
-import { mountTopbar, setTopbarLead } from "../src/topbar";
+import { mountTopbar, setTopbarLead, setTopbarTools } from "../src/topbar";
 
 type Team = { id: string; name: string; role: string; status: string };
 const TEAMS: Team[] = [
@@ -99,6 +101,19 @@ async function main(): Promise<void> {
   mountTopbar();
   mountLnb();
   setTopbarLead(`<span class="tb-lead-name">${esc(COPY.ui.home.nav)}</span>`);
+  // `view=graph`: 그래프 면의 머리를 흉내 낸다(앞자리 "그래프 · 범위", 전환 왼쪽의 시간 · 범례 단추).
+  // 단추 모양은 나침반의 TOOLS_HTML 과 같은 클래스다. 창은 열지 않는다(나침반이 없다).
+  if (params.get("view") === "graph") {
+    document.getElementById("shell")!.dataset.surface = "view";
+    setTopbarLead(`<span class="tb-lead-name">${esc(COPY.ui.topbar.graph)}</span><span class="tb-lead-sep" aria-hidden="true">·</span><span class="tb-lead-scope">research / experiments</span>`);
+    const tools = document.createElement("span");
+    tools.className = "cmp-tools";
+    tools.innerHTML = [COPY.ui.compass.time, COPY.ui.compass.legend]
+      .map((n) => `<button class="cmp-tbtn" type="button" aria-expanded="false">${esc(n)}</button>`).join("");
+    setTopbarTools(tools);
+    document.getElementById("tb-to-docs")?.setAttribute("aria-pressed", "false");
+    document.getElementById("tb-to-graph")?.setAttribute("aria-pressed", "true");
+  }
   // 좁은 창은 서랍이 닫힌 채 시작한다(첫 화면 = 접힌 띠). 공간 전환은 머리에 있으므로 서랍을 펴지 않는다.
 
   // 부팅과 같은 조건이다(`main.ts`). localhost 에서는 거짓이라 `local` 은 여기서 멈춘다.

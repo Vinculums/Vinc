@@ -13,7 +13,7 @@ import { icon } from "./icons";
 import { createSpacePicker, currentSpace, kindOf, menuView, type CurrentSpace, type SpaceDeps,
          type SpaceKind, type SpaceRow } from "./space-picker";
 
-/** 앱의 의존. 보관과 팀 키는 고를 때만 쓰므로 그때 싣는다(머리가 그래프 모듈을 끌고 오지 않게). */
+/** 앱의 의존. 보관과 팀 키는 고르는 순간에만 싣는다(머리가 그래프 모듈을 끌고 오지 않게). */
 function appDeps(): SpaceDeps {
   return {
     cfg, teamsApi, communitiesApi, isCommunitySpace,
@@ -24,6 +24,9 @@ function appDeps(): SpaceDeps {
 }
 
 type Picker = ReturnType<typeof createSpacePicker>;
+
+/** 이보다 좁게 잘린 이름은 읽을 수 없다고 본다(글자 크기 기준, 13px 에서 65px · 라틴 글자 여덟쯤). */
+const READABLE_EM = 5;
 
 /** 화면이 부르는 이름. 목록도 남긴 이름도 없으면 종류의 이름으로 부른다. */
 function nameOf(c: CurrentSpace): string {
@@ -61,6 +64,23 @@ export function mountSpaceSwitcher(deps: SpaceDeps = appDeps()): void {
     button.setAttribute("aria-label", `${U.space}: ${name}${c.readOnly ? ` · ${U.spaceReadOnly}` : ""}`);
     button.innerHTML = `<span class="space-name">${esc(name)}</span>${ro}
       <span class="space-caret" aria-hidden="true">${icon("chevron-left", 14)}</span>`;
+    fit();
+  }
+
+  /** 좁은 머리의 마지막 수단. 이름이 잘려 `READABLE_EM` 보다 좁아지면 구분선과 앞자리를 비키게 한다
+   *  (`#tb-space[data-tight]`, app.css). 매번 비킨 표시를 먼저 지우고 잰다: 비킨 상태에서 재면 이름이
+   *  넓어 보여 다시 펴고 접기를 오간다. 커뮤니티의 자물쇠와 "읽기 전용"은 어느 쪽이든 남는다. */
+  function fit(): void {
+    head.removeAttribute("data-tight");
+    const n = button.querySelector<HTMLElement>(".space-name");
+    if (!n) return;
+    const em = parseFloat(getComputedStyle(n).fontSize) || 13;
+    if (n.scrollWidth > n.clientWidth + 1 && n.clientWidth < READABLE_EM * em) head.setAttribute("data-tight", "");
+  }
+  // 머리 폭이 바뀌거나(창 · 사이드바) 뒤 묶음이 바뀌면(그래프의 시간 · 범례) 다시 잰다.
+  if (typeof ResizeObserver !== "undefined") {
+    const ro = new ResizeObserver(() => fit());
+    for (const el of [document.getElementById("topbar"), document.querySelector(".tb-trail")]) if (el) ro.observe(el);
   }
 
   function rowHtml(kind: SpaceKind, r: SpaceRow): string {
