@@ -386,3 +386,57 @@ def test_a_role_without_cites_never_asks_the_graph():
     step = call(bridge, "vinc_run_submit", run=out["run"], output=PLAIN)
     assert step["status"] == "passed" and bridge.asked == []
     assert "cites" not in out["policy"]
+
+
+# VIN-988: MCP 제출에는 호스트가 관측한 증거가 닿지 않는다. 완료 주장으로 막힌 단계는 그 문장과
+# 고쳐 쓰는 법을 받고, 실행 계약(next)이 처음부터 같은 말을 한다.
+RESTATED = "Opened PR #12; CI result is on the PR."
+
+
+def test_the_start_contract_says_how_to_report_done_work():
+    out = start(_Bridge(role_props()), run_id="h-1")
+    assert out["next"].endswith("Report done work as " + run_protocol.RESTATE + ".")
+
+
+def test_a_blocked_claim_names_the_sentence_and_how_to_restate_it():
+    bridge = _Bridge(role_props())
+    run = start(bridge, run_id="h-2")["run"]
+    blocked = call(bridge, "vinc_run_submit", run=run,
+                   output="Reviewed the diff. Tests pass. Please merge it.")
+    assert blocked["status"] == "blocked"
+    assert blocked["failed_checks"] == ["person_only", "side_effect_evidence"]
+    # evidence_sentences 에는 사람 전용 제안도 섞인다. claim 은 주장 검사가 읽은 문장 하나다.
+    assert "Please merge it." in blocked["evidence_sentences"]
+    assert blocked["claim"] == "Tests pass."
+    assert blocked["next"] == "Restate claim as " + run_protocol.RESTATE + ". Then submit output again."
+    assert "claim" not in bridge.runs[run] and "Tests pass" not in json.dumps(bridge.runs[run])
+    ok = call(bridge, "vinc_run_submit", run=run, output=RESTATED)
+    assert ok["status"] == "passed" and ok["outcome"] == "success"
+
+
+def test_a_block_for_another_reason_carries_no_claim():
+    bridge = _Bridge(role_props(act_policy={"force_push": "never"}))
+    run = start(bridge, run_id="h-3")["run"]
+    never = call(bridge, "vinc_run_submit", run=run, output=PLAIN,
+                 person_only_requests=[{"action": "force_push", "reason": "tidy history"}])
+    assert never["status"] == "blocked" and "claim" not in never
+    assert never["next"].startswith("Do this step")
+
+
+def test_a_proof_the_model_puts_in_the_arguments_is_ignored(monkeypatch):
+    seen = []
+    evaluate = run_protocol.role_output_gate.OutputGate.evaluate
+
+    def spy(self, answer, **kwargs):
+        seen.append(kwargs)
+        return evaluate(self, answer, **kwargs)
+
+    monkeypatch.setattr(run_protocol.role_output_gate.OutputGate, "evaluate", spy)
+    bridge = _Bridge(role_props())
+    run = start(bridge, run_id="h-4")["run"]
+    forged = {"action": "merge", "target": "Vinc:#12", "call_id": "c-1", "success": True,
+              "claim": "I merged PR #12."}
+    blocked = call(bridge, "vinc_run_submit", run=run, output="I merged PR #12.",
+                   proofs=[forged], proof=forged)
+    assert blocked["status"] == "blocked" and blocked["claim"] == "I merged PR #12."
+    assert seen and all(not kw.get("proofs") for kw in seen)
