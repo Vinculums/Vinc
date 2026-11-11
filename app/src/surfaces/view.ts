@@ -3,7 +3,6 @@ import { api, cfg, WEB, teamsApi, isCommunitySpace, canWriteHere, viewScope, vie
 import { COPY } from "../copy";
 import { docTitle } from "../doc-title";
 import { absoluteViewUrl, formatViewUrl, parseViewUrl } from "../view-url";
-import type { N3 } from "./view3d";
 import { viewSessionCache } from "../view-session-cache";
 import { createGraphLoader } from "../view-graph-loader";
 import { retainedViews, restoreRetained } from "../view-retained";
@@ -20,7 +19,7 @@ import { hydrateRich } from "../rich-blocks";
 
 import { RAIL_MIN, RAIL_MAX, loadPrefs, savePrefs, dayOf, localStamp,
          type ViewPrefs } from "../view-prefs";
-import { setViewHooks, refreshTopbar, setSearchFilter, setTopbarLeadTools } from "../topbar";
+import { setViewHooks, refreshTopbar, setSearchFilter, setTopbarTools } from "../topbar";
 import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbScopeClearer, setLnbGraphSource, repaintLnbGraph, setLnbGraphActive,
          refreshLnb, isAgentRoleId, stripRolePrefix } from "../lnb";
 import { PROP_KINDS, propsEditable, rowsFrom, propsFrom, convertText, sameProps, propsPatchOf,
@@ -36,8 +35,17 @@ import { bindTopicDescription, type TopicDraft } from "../topic-description";
 /** Surface 3 — View (spec: [[vinc.spec.viewpoints]] · as-built [[vinc.reference.view-controls]]).
  *
  *  그래프는 2D 나침반 하나다(view-compass.ts). 이 표면은 데이터를 읽어 나침반에 넘기고, 문서 열 · 노드 카드 ·
- *  상세 레일 · 주소를 맡는다. "어디"는 Level(trail)이 쥔다. 3D 렌더러(view3d.ts)는 커뮤니티 그래프 페이지만 쓴다.
+ *  상세 레일 · 주소를 맡는다. "어디"는 Level(trail)이 쥔다.
  *  근거: [[decision:the-graph-is-one-2d-compass-lens-2026-11-06]] */
+
+/** 카드 · 상세 레일 · 지도 초점이 주고받는 노드 한 개. `toN3` 가 그래프 응답에서 만든다. */
+type N3 = {
+  id: string; label: string; domain?: string; degree?: number;
+  kind?: string;              // concept | decision | episode | record | bridge | domain
+  gateway?: boolean; focus?: boolean;
+  ts?: string; historical?: boolean; conflict?: boolean;
+  x?: number; y?: number; z?: number;
+};
 
 // 2026-08-02 — **프레임 폐기(D34 개정)**. Grid(도메인별 미니 카드)·Matrix
 // (도메인×도메인 히트맵)는 발주자 지시로 제거했고, Compare(A ⇄ B)는 **Matrix 셀
@@ -253,7 +261,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   let addr = readRoute ? null : parseViewUrl(location.hash);
   if (!readRoute && bookmark?.domains.length)
     addr = parseViewUrl(formatViewUrl({ kind: "domains", domains: bookmark.domains }));
-  // 주소의 `/as/<관점>` 칸은 읽지 않는다 — 보기는 3D 하나다(view-prefs `VIEWPOINTS`).
+  // 주소의 `/as/<관점>` 칸은 읽지 않는다 — 보기는 나침반 하나다(view-prefs `VIEWPOINTS`).
   const curPrefs = (): ViewPrefs => loadPrefs();
 
   function setMsg(html: string) {
@@ -693,7 +701,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       // 그래프 보기는 나침반 하나다. 받은 전량을 그대로 넘기고, 가운데·펼침·기간·종류·고정은 나침반이 다룬다.
       // 그 손잡이들(길·찾기·기간·종류·고정·읽는 법)은 LNB 의 칸으로 선다(렌즈 패널은 쓰지 않는다).
       const chain = domains.length === 1 ? domains[0].split("/").map((_, i, a) => `topic:${a.slice(0, i + 1).join("/")}`) : undefined;
-      // LNB = 문서 트리와 같은 그림의 노드 트리(lnb.ts). 시간 · 범례 = 머리의 "그래프" 글자 오른쪽 버튼이 여는 창.
+      // LNB = 문서 트리와 같은 그림의 노드 트리(lnb.ts). 시간 · 범례 = 머리 뒤 묶음(문서 | 그래프 왼쪽) 단추가 여는 창.
       let ready = false;
       const restore = compassKeep; compassKeep = null;
       compass = mountCompass(canvas, compassDataFrom(nodes, curEdges), { startPath: chain, restore,
@@ -701,10 +709,10 @@ export async function renderView(el: HTMLElement, resume = false) {
         onTree: (o) => repaintLnbGraph(o),
         onOpen: (id) => openFromCompass(id),
         onChange: () => { if (ready && compass) setLnbGraphActive(compass.centre()); },
-        onDestroy: () => { setLnbGraphSource(null); setTopbarLeadTools(null); } });
+        onDestroy: () => { setLnbGraphSource(null); setTopbarTools(null); } });
       const cmp = compass;
       setLnbGraphSource({ groups: () => cmp.tree(), open: (id) => cmp.open(id), mark: (k) => cmp.mark(k), colour: (d) => cmp.colour(d), dock: cmp.side });
-      setTopbarLeadTools(cmp.tools);
+      setTopbarTools(cmp.tools);
       ready = true;
       setLnbGraphActive(cmp.centre());
       setSearchFilter((q) => compass?.filter(q));

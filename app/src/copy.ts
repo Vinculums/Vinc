@@ -270,8 +270,6 @@ const EN = {
     connectTip: "Link this node to another",
     pickLead: (a: string) => `Connect ${a} to…`,
     pickHint: "Click a node in View, or search.",
-    // 끌어서 잇기의 발견성 한 줄. key 는 "Alt" 또는 맥의 "Option".
-    dragHint: (key: string) => `Or hold ${key} and drag from one node to another.`,
     pickSearchPh: "Search a node",
     pickNone: "No node with that name.",
     cancel: "Cancel",
@@ -649,19 +647,6 @@ const EN = {
       related: "Related (no direction)",
       cross: "Crosses topics",
       focus: "The focus color marks one thing at a time.",
-      // v2 — 마크는 렌더러가 실제로 그리는 것 그대로다. 캡션이 어느 셋인지 밝힌다.
-      // 몸통 키트: 모든 종이 같은 유리와 안의 빛을 쓰고 껍질 모양만 다르다.
-      markNote3d: {
-        concept: "Glass sphere · a cloud of light drifts inside",
-        decision: "Glass sphere · a cut crystal held still inside",
-        record: "Glass tetrahedron · it never turns, so this outline holds from every side",
-        episode: "Glass octahedron · the same glass with eight faces",
-        bridge: "Glass shard · the piece that spans a gap",
-        topic: "Hollow dotted shell",
-        area: "A glowing glass volume, stretched along time",
-        gateway: "Its own kind in outline · no faces, so nothing behind it is hidden",
-      } as Record<string, string>,
-      // v2 — 물러남(recede) 단계. 값은 recede.ts 가 토큰에서 읽어 채운다.
       // v2 — 3단 상호작용: 가리키기(밝히기) · 누르기(숨기기) · 이것만(솔로).
       reset: "Show all",
       status: (shown: number, all: number, links: number) =>
@@ -952,7 +937,7 @@ const EN = {
       labels: "Labels", off: "off",
       arrows: "Direction arrows", on: "on",
       edgeShowName: {
-        none: "nodes only", particles: "particles",
+        none: "nodes only",
       } as Record<string, string>,
       show: "show", hide: "hide",
       spread: "Spread",
@@ -966,7 +951,6 @@ const EN = {
       help: {
         links: "The better connected a mark, the bigger it is. Size is centrality.",
         none: "No names drawn. Shape and place carry everything.",
-        particles: "Particles flow instead of lines. Flow is direction, so arrowheads switch off.",
         spread: "Multiplies the coordinates you were given. It follows your hand as you drag.",
         nodeScale: "Keeps the size encoding and scales the whole View.",
         when: "Only what existed at that point. Concepts with no date of their own stay visible.",
@@ -1595,7 +1579,7 @@ const EN = {
       spacePersonalHint: "Only you see this graph.",
       spaceTeams: "Teams",
       spaceInUse: "In use",
-      spaceHint: "Switch spaces from the top of the sidebar.",
+      spaceHint: "Switch spaces from the space name at the top left of the content area.",
       spaceNone: "You are not in an active team yet.",
       spacePending: "Awaiting activation",
       spaceSuspended: "Access paused",
@@ -1603,9 +1587,7 @@ const EN = {
       spaceListFailed: "Could not load your teams.",
       spaceCommunities: "Communities",
       spaceCommunityReadOnly: "Community spaces are read only here. Edit pages on the community site.",
-      // 사이드바 머리의 공간 전환(`space-switcher.ts`): 지금 공간의 종류 줄과 메뉴.
-      spaceKindTeam: "Team",
-      spaceKindCommunity: "Community",
+      // 뷰 머리 맨 앞의 공간 전환(`space-switcher.ts`): 커뮤니티 표시와 메뉴.
       spaceReadOnly: "Read only",
       spaceSwitchTip: "Switch space",
       spaceFind: "Find a space",
@@ -1943,7 +1925,6 @@ const KO: Deck = {
     connectTip: "이 노드를 다른 노드와 이어요",
     pickLead: (a) => `${a}${j(a, "과")} 이을 노드를 골라 주세요`,
     pickHint: "View에서 노드를 누르거나 검색하세요",
-    dragHint: (key) => `${key} 키를 누른 채 노드에서 다른 노드로 끌어도 이을 수 있어요`,
     pickSearchPh: "노드 검색",
     pickNone: "그런 이름의 노드가 없어요",
     cancel: "취소",
@@ -2297,16 +2278,6 @@ const KO: Deck = {
       related: "방향 없는 연결",
       cross: "다른 주제와의 연결",
       focus: "초점색은 한 번에 한 곳에만 써요",
-      markNote3d: {
-        concept: "유리구 · 안에 빛 구름이 떠다녀요",
-        decision: "유리구 · 안에 깎인 결정이 멈춰 있어요",
-        record: "유리 정사면체 · 돌지 않아서 어느 쪽에서 봐도 이 모양이에요",
-        episode: "유리 정팔면체 · 같은 유리에 면이 여덟 개예요",
-        bridge: "유리 조각 · 틈을 잇는 면이에요",
-        topic: "속이 빈 점 껍질",
-        area: "시간을 따라 길게 늘어난, 빛나는 유리 부피",
-        gateway: "자기 종의 윤곽선 · 면이 없어서 뒤를 안 가려요",
-      } as Record<string, string>,
       reset: "전체 보기",
       status: (shown, all, links) => `${all}개 갈래 중 ${shown}개 보임 · 연결 ${links}개`,
     },
@@ -2550,7 +2521,7 @@ const KO: Deck = {
       labels: "이름", off: "끔",
       arrows: "방향 화살표", on: "켬",
       edgeShowName: {
-        none: "노드만", particles: "흐름",
+        none: "노드만",
       } as Record<string, string>,
       show: "표시", hide: "숨김",
       spread: "간격",
@@ -2559,7 +2530,6 @@ const KO: Deck = {
       help: {
         links: "연결이 많은 마디가 큽니다. 크기가 곧 중심성이에요",
         none: "이름을 그리지 않아요. 형태와 자리만 남아요",
-        particles: "선 대신 입자가 흘러요. 흐르는 방향이 곧 관계의 방향이라 화살촉은 꺼져요",
         spread: "받은 좌표를 그 배수로 벌려요. 끄는 동안 바로 따라와요",
         nodeScale: "크기 인코딩은 그대로 두고 전체를 키워요",
         when: "그 시점에 있던 것만 보여요. 자기 날짜가 없는 개념은 계속 보여요",
@@ -3109,7 +3079,7 @@ const KO: Deck = {
       spacePersonalHint: "나만 보는 그래프예요",
       spaceTeams: "팀",
       spaceInUse: "사용 중",
-      spaceHint: "공간은 사이드바 맨 위에서 바꿔요",
+      spaceHint: "공간은 내용 영역 맨 위 왼쪽의 공간 이름을 눌러 바꿔요",
       spaceNone: "아직 참여 중인 팀이 없어요",
       spacePending: "활성화 대기 중",
       spaceSuspended: "이용 중지",
@@ -3117,8 +3087,6 @@ const KO: Deck = {
       spaceListFailed: "팀 목록을 불러오지 못했어요",
       spaceCommunities: "커뮤니티",
       spaceCommunityReadOnly: "커뮤니티는 여기서 읽기만 할 수 있어요. 페이지 편집은 커뮤니티 사이트에서 하세요",
-      spaceKindTeam: "팀",
-      spaceKindCommunity: "커뮤니티",
       spaceReadOnly: "읽기 전용",
       spaceSwitchTip: "공간 바꾸기",
       spaceFind: "공간 찾기",
