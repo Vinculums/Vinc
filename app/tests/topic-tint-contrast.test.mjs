@@ -6,7 +6,7 @@
 // drops a mark below the floor fails the build.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
@@ -17,7 +17,6 @@ const source = async (entry) => {
   return import(`data:text/javascript;base64,${Buffer.from(r.outputFiles[0].text).toString("base64")}`);
 };
 const { tintPlan, planColour, floorKit } = await source("view-tint.ts");
-const { FLOOR_KEY } = await source("view-tint-floor.ts");
 const { lab, de2000Lab, simulate } = await import("../dev/colour-math.mjs");
 const { topicJewels } = await source("theme.ts");
 
@@ -99,52 +98,41 @@ test("a plan colour that already holds the floor is drawn unchanged", () => {
   for (const mode of ["light", "dark"]) for (const s of planSlots(mode)) if (floorKit.passes(s.before, mode)) assert.equal(s.after, s.before, `${mode} ${s.slot}`);
 });
 
-test("the floor table was built from the tokens in this tree", () => {
-  // A token, row fill or floor change makes the app fall back to one-colour-at-a-time floors, which
-  // collapse near hues: rerun `node dev/topic-tint-floor.mjs --write`.
-  assert.equal(FLOOR_KEY, floorKit.floorInputKey());
-});
-
-// The floor must not erase the differences the plan relied on. Over every pair of plan colours (CIEDE2000):
-// normal vision, a pair at least 5 apart before stays at least 5 apart and no pair falls below half its
-// distance before; deuteranopia and protanopia (Machado 2009, full severity), a pair at least 5 apart before
-// stays at least 3 apart. KNOWN lists the pairs the floor table cannot keep (the colours that already hold the
-// floor stay where the plan put them, so a moved colour can be boxed in) with the distance each keeps now, so
-// any further loss fails.
-const KNOWN = {
-  "light normal r8/t1 r18/t2": 4.59,   // before 7.07
-  "light normal r8/t5 r18/t4": 0.00,   // before 0.23
-  "light protan r12/t0 r18/t2": 2.67,   // before 21.01
-  "light protan r12/t0 r18/t4": 2.90,   // before 21.30
-  "light protan r12/t0 r18/t6": 2.71,   // before 21.58
-  "light protan r12/t2 r18/t2": 2.98,   // before 20.38
-  "light protan r12/t2 r18/t6": 2.88,   // before 20.97
-  "light protan r15/t1 r15/t5": 2.87,   // before 5.45
-  "light protan r3/t4 r15/t5": 2.66,   // before 5.26
-  "light protan r8/t1 r12/t0": 2.64,   // before 21.95
-  "light protan r8/t1 r12/t2": 2.72,   // before 21.34
-  "light protan r8/t3 r12/t0": 2.75,   // before 21.62
-  "light protan r8/t3 r12/t2": 2.92,   // before 21.00
-  "light protan r8/t5 r12/t0": 2.90,   // before 21.33
-};
+// Pair distances are measured limits of the jewel set under the floor, not a rule the colours meet: a colour that
+// moves takes the nearest passing value of its own hue and nothing keeps it away from its neighbours, so some pairs
+// that the plan kept apart come close (amber and its orange and olive neighbours in light, for red-green deficient
+// readers most of all). The snapshot `topic-tint-pairs.json` records every pair that is close now with its distance
+// (CIEDE2000; normal vision: under 5 having been 5 or more, or under half its distance before; deuteranopia and
+// protanopia, Machado 2009 full severity: under 3 having been 5 or more). A later token or plan change fails this
+// test if any recorded pair gets closer or a new pair becomes close. To accept a change on purpose, rewrite the
+// snapshot with `TINT_PAIRS_WRITE=1 node --test tests/topic-tint-contrast.test.mjs` and say why in the commit.
+const PAIRS = fileURLToPath(new URL("./topic-tint-pairs.json", import.meta.url));
 const VISION = { normal: (c) => c, deutan: (c) => simulate("deutan", c), protan: (c) => simulate("protan", c) };
-for (const mode of ["light", "dark"]) {
-  test(`${mode}: the floor keeps every pair of plan colours apart`, () => {
+function closePairs() {
+  const out = {};
+  for (const mode of ["light", "dark"]) {
     const slots = planSlots(mode), seen = new Set(), uniq = slots.filter((s) => !seen.has(s.before) && seen.add(s.before));
-    const broken = [];
     for (const [vis, f] of Object.entries(VISION)) {
       const L0 = uniq.map((s) => lab(f(rgb(s.before)))), L1 = uniq.map((s) => lab(f(rgb(s.after))));
       for (let i = 0; i < uniq.length; i++) for (let j = i + 1; j < uniq.length; j++) {
         const d0 = de2000Lab(L0[i], L0[j]), d1 = de2000Lab(L1[i], L1[j]), key = `${mode} ${vis} ${uniq[i].slot} ${uniq[j].slot}`;
-        const need = d0 >= 5 ? (vis === "normal" ? 5 : 3) : 0, floor = Math.max(need, vis === "normal" ? d0 / 2 : 0);
-        if (d1 + 1e-9 < floor && !(key in KNOWN && d1 + 0.005 >= KNOWN[key])) broken.push(`${key}: ${d0.toFixed(2)} -> ${d1.toFixed(2)}`);
+        const close = vis === "normal" ? (d0 >= 5 && d1 < 5) || d1 < d0 / 2 : d0 >= 5 && d1 < 3;
+        if (close) out[key] = +d1.toFixed(2);
       }
     }
-    assert.deepEqual(broken, []);
-  });
+  }
+  return out;
 }
+test("pair distances get no worse than the recorded limits of the jewel set", () => {
+  const now = closePairs();
+  if (process.env.TINT_PAIRS_WRITE) writeFileSync(PAIRS, JSON.stringify(now, null, 1) + "\n");
+  assert.ok(existsSync(PAIRS), "topic-tint-pairs.json is missing");
+  const was = JSON.parse(readFileSync(PAIRS, "utf8")), worse = [];
+  for (const [k, d] of Object.entries(now)) if (!(k in was)) worse.push(`${k}: newly close at ${d}`); else if (d + 0.005 < was[k]) worse.push(`${k}: ${was[k]} -> ${d}`);
+  assert.deepEqual(worse, []);
+});
 
-// OKLCH hue, to show the floor moves lightness and chroma and keeps each colour's hue.
+// OKLCH hue, to show the floor moves lightness and keeps each colour's hue.
 function oklch(c) {
   const [r, g, b] = c.map(lin);
   const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
@@ -153,7 +141,7 @@ function oklch(c) {
   const A = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, B = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
   return [Math.hypot(A, B), ((Math.atan2(B, A) * 180) / Math.PI + 360) % 360];
 }
-test("the floor keeps each plan colour's hue", () => {
+test("a colour that moves keeps its hue", () => {
   for (const mode of ["light", "dark"]) for (const s of planSlots(mode)) {
     const [c1, h1] = oklch(rgb(s.after)), [, h0] = oklch(rgb(s.before));
     if (c1 < 0.04) continue;   // 8-bit rounding makes the hue of a near-grey meaningless

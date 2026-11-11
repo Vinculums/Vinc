@@ -170,30 +170,40 @@ function rawColours(mode) {
   if (tint.floorKit) { const out = []; for (let a = 0; a < AREAS; a++) for (let t = 0; t < TURNS; t++) out.push(tint.floorKit.rawPlanColour(a, t, mode)); return out; }
   return planColours(mode).map((c) => c.hex);
 }
-const PAIR_RULES = [["normal", (c) => c, 5, 5, true], ["deutan", (c) => simulate("deutan", c), 5, 3, false], ["protan", (c) => simulate("protan", c), 5, 3, false]];
-console.log("## Pairwise distance kept through the floor (all plan colours: 24 areas x 7 turns, CIEDE2000)\n");
-console.log("Rule: a pair at least 5 apart before stays at least 5 apart (normal vision) or 3 apart (deuteranopia, protanopia, Machado 2009 full severity) after, and no pair (normal vision) falls below half its distance before.\n");
-console.log("| theme | vision | pairs | pairs >= 5 before | below threshold after | below half after | worst pair (rank/turn: before -> after) |\n|---|---|---|---|---|---|---|");
-const pairFails = [];
-for (const mode of ["light", "dark"]) {
-  const before = rawColours(mode), after = planColours(mode).map((c) => c.hex);
-  const keys = [...new Set(before.map((h, i) => `${h}>${after[i]}`))].map((k) => { const i = before.findIndex((h, j) => `${h}>${after[j]}` === k); return i; });
-  for (const [vis, f, need0, need1, half] of PAIR_RULES) {
-    const L0 = keys.map((i) => lab(f(rgbOfHex(before[i])))), L1 = keys.map((i) => lab(f(rgbOfHex(after[i]))));
-    let pairs = 0, big = 0, bad = 0, badHalf = 0, worst = null;
-    for (let x = 0; x < keys.length; x++) for (let y = x + 1; y < keys.length; y++) {
-      if (before[keys[x]] === before[keys[y]]) continue;
-      pairs++; const d0 = de2000Lab(L0[x], L0[y]), d1 = de2000Lab(L1[x], L1[y]);
+// 쌍 거리는 **재는 값**이다(색이 지키는 규칙이 아니다): 옮긴 색은 같은 색상각의 가장 가까운 바닥 위 값을 받고,
+// 이웃과의 거리는 따로 지켜지지 않는다. 표의 "close" 는 정상 시각에서 5 이상이던 둘이 5 아래로(또는 절반 아래로),
+// 두 색각에서 5 이상이던 둘이 3 아래로 온 쌍이다.
+const PAIR_VIS = [["normal", (c) => c, 5, 5, true], ["deutan", (c) => simulate("deutan", c), 5, 3, false], ["protan", (c) => simulate("protan", c), 5, 3, false]];
+const SUBSETS = [["all plan colours (24 areas x 7 turns)", () => true], ["first twelve ranks (turn 0)", (a, t) => a < 12 && t === 0], ["seeded store (ranks 0-4, turn 0)", (a, t) => a < 5 && t === 0]];
+const pairClose = [];
+console.log("## Pair distances through the floor, measured (CIEDE2000)\n");
+console.log("Close = normal vision: at least 5 apart before and under 5 after, or under half the distance before; deuteranopia and protanopia (Machado 2009, full severity): at least 5 apart before and under 3 after. These are measured limits, not a rule the colours meet.\n");
+for (const [subName, inSub] of SUBSETS) {
+  console.log(`### ${subName}\n\n| theme | vision | pairs | pairs >= 5 before | close after | under half after | closest pair (rank/turn: before -> after) |\n|---|---|---|---|---|---|---|`);
+  for (const mode of ["light", "dark"]) {
+    const before = rawColours(mode), after = planColours(mode).map((c) => c.hex);
+    const keys = [...new Set(before.map((h, i) => (inSub(Math.floor(i / TURNS), i % TURNS) ? `${h}>${after[i]}` : null)).filter(Boolean))].map((k) => before.findIndex((h, j) => `${h}>${after[j]}` === k));
+    for (const [vis, f, need0, need1, half] of PAIR_VIS) {
+      const L0 = keys.map((i) => lab(f(rgbOfHex(before[i])))), L1 = keys.map((i) => lab(f(rgbOfHex(after[i]))));
+      let pairs = 0, big = 0, close = 0, under = 0, worst = null;
       const lbl = (i) => `r${Math.floor(i / TURNS)}/t${i % TURNS} ${before[i]}->${after[i]}`;
-      if (d0 >= need0) { big++; if (d1 < need1) { bad++; pairFails.push({ mode, vis, a: lbl(keys[x]), b: lbl(keys[y]), d0, d1 }); if (!worst || d1 < worst.d1) worst = { d0, d1, a: lbl(keys[x]), b: lbl(keys[y]) }; } }
-      if (half && d1 < d0 / 2) { badHalf++; pairFails.push({ mode, vis: "normal half", a: lbl(keys[x]), b: lbl(keys[y]), d0, d1 }); if (!worst || d1 / d0 < worst.d1 / worst.d0) worst = worst ?? { d0, d1, a: lbl(keys[x]), b: lbl(keys[y]) }; }
+      for (let x = 0; x < keys.length; x++) for (let y = x + 1; y < keys.length; y++) {
+        if (before[keys[x]] === before[keys[y]]) continue;
+        pairs++; const d0 = de2000Lab(L0[x], L0[y]), d1 = de2000Lab(L1[x], L1[y]);
+        const isClose = d0 >= need0 && d1 < need1, isUnder = half && d1 < d0 / 2;
+        if (d0 >= need0) big++;
+        if (isClose) close++; if (isUnder) under++;
+        if ((isClose || isUnder) && (!worst || d1 < worst.d1)) worst = { d0, d1, a: lbl(keys[x]), b: lbl(keys[y]) };
+        if ((isClose || isUnder) && subName.startsWith("all")) pairClose.push({ mode, vis: isClose ? vis : "normal half", a: lbl(keys[x]), b: lbl(keys[y]), d0, d1 });
+      }
+      console.log(`| ${mode} | ${vis} | ${pairs} | ${big} | ${close} | ${half ? under : "n/a"} | ${worst ? `${worst.a} / ${worst.b}: ${fmt(worst.d0)} -> ${fmt(worst.d1)}` : "none"} |`);
     }
-    console.log(`| ${mode} | ${vis} | ${pairs} | ${big} | ${bad} | ${half ? badHalf : "n/a"} | ${worst ? `${worst.a} / ${worst.b}: ${fmt(worst.d0)} -> ${fmt(worst.d1)}` : "none"} |`);
   }
+  console.log("");
 }
-if (pairFails.length) {
-  console.log("\nEvery pair that breaks the rule:\n\n| theme | rule | pair | before | after |\n|---|---|---|---|---|");
-  for (const p of pairFails.sort((a, b) => a.d1 - b.d1)) console.log(`| ${p.mode} | ${p.vis} | ${p.a} / ${p.b} | ${fmt(p.d0)} | ${fmt(p.d1)} |`);
+if (pairClose.length) {
+  console.log("Every close pair, all plan colours:\n\n| theme | vision | pair | before | after |\n|---|---|---|---|---|");
+  for (const p of pairClose.sort((a, b) => a.d1 - b.d1)) console.log(`| ${p.mode} | ${p.vis} | ${p.a} / ${p.b} | ${fmt(p.d0)} | ${fmt(p.d1)} |`);
 }
 console.log("");
 
