@@ -148,6 +148,10 @@ class _Session:
         pass
 
 
+class StoreReadOnly(RuntimeError):
+    """읽기 전용으로 연 프로세스의 쓰기. 서버의 AccessMode 오류 대신 왜 읽기 전용인지 말한다."""
+
+
 class Neo4jBackend:
     """Neo4j 어댑터. 읽기와 쓰기가 같은 드라이버를 쓴다(엔진이 동시 트랜잭션을 받는다)."""
 
@@ -274,9 +278,18 @@ class Neo4jBackend:
             raw: bool = False) -> list[dict]:
         from neo4j import READ_ACCESS, WRITE_ACCESS
         mode = READ_ACCESS if self.read_only else WRITE_ACCESS
-        with self._driver.session(database=self.database, default_access_mode=mode) as s:
-            result = s.run(to_neo4j_cypher(query), params or {})
-            return _rows(result, raw=raw)
+        try:
+            with self._driver.session(database=self.database, default_access_mode=mode) as s:
+                result = s.run(to_neo4j_cypher(query), params or {})
+                return _rows(result, raw=raw)
+        except Exception as exc:
+            # 서버의 "Writing in read access mode not allowed" 는 사람에게 이유를 말하지 않는다.
+            # 이 프로세스가 왜 읽기 전용인지(누가 쓰기 임대를 쥐었는지)를 말하는 오류로 바꾼다.
+            if self.read_only and "AccessMode" in str(getattr(exc, "code", "") or exc):
+                raise StoreReadOnly(
+                    f"this Vinc process opened the database read-only: {self.read_only_reason}. "
+                    "Close the other Vinc that writes to it, or wait for its lease to run out") from exc
+            raise
 
     @contextmanager
     def session(self):
