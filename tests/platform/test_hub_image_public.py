@@ -104,3 +104,13 @@ def test_준_토큰은_그대로이고_플래그가_없으면_아무것도_안_�
     assert not (data / "selfhost" / "mcp-token").exists()
     off = _run({}, Path(tempfile.mkdtemp()))
     assert off == {"SIDECAR": "", "MCP": "", "STATE": ""}
+
+
+def test_허브_이미지는_데스크톱과_같은_판의_Neo4j_드라이버를_싣는다():
+    """없으면 VINC_DATABASE_URI 로 띄운 허브가 driver_missing 으로 스토어를 못 연다."""
+    root = Path(__file__).resolve().parents[2]
+    pin = re.search(r'"neo4j==([0-9.]+)"', (root / "pyproject.toml").read_text(encoding="utf-8")).group(1)
+    docker = (root / "Dockerfile.hub").read_text(encoding="utf-8")
+    assert f"neo4j=={pin}" in docker
+    for wf in ("release.yml", "ci.yml"):
+        assert f"neo4j=={pin}" in (root / ".github/workflows" / wf).read_text(encoding="utf-8"), wf

@@ -2839,14 +2839,18 @@ class VincApp:
 
         ⚠ 잡은 쓰기 큐에서 돈다: 옮기는 동안 다른 쓰기는 기다리고, 원본은 그 사이 변하지 않는다.
         옮긴 뒤 다시 띄우기 전에 들어온 쓰기는 이전 위치에 남으므로 셸은 곧바로 다시 띄운다."""
-        if self._data_pinned():
-            return 409, {"error": "pinned",
-                         "note": "this process was started with a fixed data path "
-                                 "(--data or MEMORY_DATA_DIR)"}
         try:
             to = parse_location(body.get("to"))
         except LocationError as exc:
             return 400, {"error": "bad_location", "note": str(exc)}
+        # 고정 경로로 뜬 프로세스(허브)는 위치를 설정 파일이 아니라 환경이 정한다. 그래서 이 스토어를
+        # 데이터베이스로 **복사만** 한다: 다 왔는지 확인하고 설정은 쓰지 않으며, 바꾸는 것은 사람이
+        # 환경(VINC_DATABASE_*)을 넣고 다시 띄우는 일이다. 그 밖의 이동은 거절한다.
+        copy_only = self._data_pinned()
+        if copy_only and not (isinstance(to, DatabaseLocation) and body.get("from") is None):
+            return 409, {"error": "pinned",
+                         "note": "this process was started with a fixed data path "
+                                 "(--data or MEMORY_DATA_DIR); it can only copy its graph to a database"}
         source = body.get("from")
         if source not in (None, "account"):
             return 400, {"error": "from must be omitted (this store) or 'account'"}
@@ -2870,7 +2874,8 @@ class VincApp:
             if check["risks"] and not truthy(body.get("accept_risk")):
                 return 409, {"error": "risky_database", "check": check}
             password = body["password"]
-            run = lambda: self._move_to_database(to, password, source=source, body=body)  # noqa: E731
+            run = lambda: self._move_to_database(to, password, source=source, body=body,  # noqa: E731
+                                                 copy_only=copy_only)
         elif isinstance(to, FolderLocation):
             info = localmode.inspect_folder(to.path or str(store_config.vinc_home()))
             if not info["ok"]:
@@ -2895,7 +2900,8 @@ class VincApp:
         store_config.write_local_config({**updates, "mode_chosen": True})
         return self._config_view()
 
-    def _move_to_database(self, to, password: str, *, source, body: dict) -> dict:
+    def _move_to_database(self, to, password: str, *, source, body: dict,
+                          copy_only: bool = False) -> dict:
         from store.neo4j_backend import Neo4jBackend, installation_holder
         target = Neo4jBackend(to.uri, user=to.user, password=password, database=to.database,
                               holder=installation_holder(store_config.installation_id()))
@@ -2915,6 +2921,10 @@ class VincApp:
         d = to.to_dict()
         d.pop("kind")
         ok = int(rep.get("missing") or 0) == 0
+        if copy_only:
+            return {"executed": True, "switched": False, "copied": ok, "copy": rep,
+                    "next": ("set VINC_DATABASE_URI, VINC_DATABASE_NAME, VINC_DATABASE_USER and "
+                             "VINC_DATABASE_SECRET for this database and restart the hub") if ok else None}
         view = self._switch_to({"mode": "database", "database": d}) if ok else None
         return {"executed": True, "switched": ok, "copy": rep, "config": view}
 

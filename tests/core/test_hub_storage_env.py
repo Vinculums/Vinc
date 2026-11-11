@@ -197,3 +197,42 @@ def test_차원_재구축은_데이터베이스_위치에서_건너뛴다(tmp_pa
                        cwd=ROOT, env=env, capture_output=True, text=True, timeout=120)
     assert p.returncode == 0 and "skipped" in p.stderr, p.stderr[-500:]
     assert not (tmp_path / "db").exists()
+
+
+def test_docker_exec_는_볼륨의_토큰_파일로_사이드카를_찾는다(monkeypatch, tmp_path):
+    """`docker exec` 는 엔트리포인트가 export 한 토큰을 물려받지 않는다. 셀프호스트 허브는 첫 기동 때
+    토큰을 볼륨에 두므로 그 파일로 찾는다. 못 찾으면 기본 경로의 빈 스토어를 옮겨 버린다."""
+    from api import cli_storage
+    from vinc_mcp import bridge as vb
+
+    class _Bridge:
+        def __init__(self, base=None, token=None, **_):
+            self.base, self.token = base, token
+
+        def _read_session(self):
+            return None
+
+        def health(self):
+            return self.token == "FILE"
+
+    (tmp_path / "sidecar-token").write_text("FILE\n", encoding="utf-8")
+    monkeypatch.setattr(vb, "Bridge", _Bridge)
+    monkeypatch.delenv("VINC_SIDECAR_TOKEN", raising=False)
+    monkeypatch.delenv("VINC_SIDECAR_PORT", raising=False)
+    monkeypatch.setenv("VINC_SELFHOST_STATE", str(tmp_path))
+    got = cli_storage._sidecar()
+    assert got is not None and (got.base, got.token) == ("http://127.0.0.1:8787", "FILE")
+
+
+def test_셀프호스트_허브에서_사이드카가_없으면_옮기지_않는다(monkeypatch, tmp_path):
+    from api import cli_storage
+    monkeypatch.setattr(cli_storage, "_sidecar", lambda: None)
+    monkeypatch.setenv("VINC_SELF_HOSTED", "on")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    out = []
+    args = type("A", (), {"storagecmd": "move", "to": "folder", "path": str(tmp_path / "x"),
+                          "accept_risk": False, "uri": None, "database": None, "user": None,
+                          "secret_ref": None})()
+    assert cli_storage.run(args, lambda o: out.append(o) or 0) == 1
+    assert out[-1]["error"] == "hub_sidecar_unreachable"
+    assert not (tmp_path / ".vinc" / "config.json").exists()

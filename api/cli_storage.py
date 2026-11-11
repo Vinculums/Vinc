@@ -100,6 +100,19 @@ def _location(args, remembered: dict | None) -> dict:
             "secret_ref": ref}
 
 
+def _hub_sidecar_token() -> str | None:
+    """허브 컨테이너의 사이드카 토큰. 환경 변수가 먼저고, 없으면 셀프호스트 허브가 첫 기동 때 볼륨에
+    만든 파일이다(`docker exec` 는 엔트리포인트가 export 한 값을 물려받지 않는다)."""
+    if os.environ.get("VINC_SIDECAR_TOKEN"):
+        return os.environ["VINC_SIDECAR_TOKEN"]
+    state = os.environ.get("VINC_SELFHOST_STATE") or "/data/selfhost"
+    try:
+        with open(os.path.join(state, "sidecar-token"), encoding="utf-8") as fh:
+            return fh.read().strip() or None
+    except OSError:
+        return None
+
+
 def _sidecar():
     """이 기기에서 도는 사이드카(데스크톱 앱이 띄운 것). 없으면 None."""
     try:
@@ -108,11 +121,11 @@ def _sidecar():
         session = probe._read_session()
         if session and session.get("token"):
             base, token = f"http://127.0.0.1:{session['port']}", session["token"]
-        elif os.environ.get("VINC_SIDECAR_TOKEN"):
+        elif _hub_sidecar_token():
             # 허브 컨테이너 안(`docker exec`): 셸의 session.json 이 없고, 엔트리포인트가 띄운
             # 사이드카가 루프백 8787 에서 같은 토큰으로 돈다. 스토어는 그 프로세스가 쥐고 있다.
             port = os.environ.get("VINC_SIDECAR_PORT") or "8787"
-            base, token = f"http://127.0.0.1:{port}", os.environ["VINC_SIDECAR_TOKEN"]
+            base, token = f"http://127.0.0.1:{port}", _hub_sidecar_token()
         else:
             return None
         bridge = Bridge(base=base, token=token)
@@ -188,6 +201,14 @@ def run(args, emit) -> int:
                 out = bridge.request("GET", f"/jobs/{job}")
             result = out.get("result") if job else out
         else:
+            from store.envflag import truthy
+            if truthy(os.environ.get("VINC_SELF_HOSTED")):
+                # 허브 안에서 사이드카를 못 찾았는데 이 프로세스가 스토어를 열면, 허브의 그래프가
+                # 아니라 기본 경로의 빈 스토어를 옮기고 "옮겼다"고 답한다. 허브가 떠 있을 때만 옮긴다.
+                emit({"executed": False, "error": "hub_sidecar_unreachable",
+                      "note": "the hub's sidecar did not answer: run this inside the running hub "
+                              "container (docker exec), after it has started"})
+                return 1
             from store.backend import open_store
             app = _local_app()
             app.store = open_store(app.cfg)
@@ -206,7 +227,7 @@ def run(args, emit) -> int:
                     result = out
             finally:
                 app.close()
-        if not result or result.get("error") or not result.get("switched"):
+        if not result or result.get("error") or not (result.get("switched") or result.get("copied")):
             emit(result or out)
             return 1
         if args.to == "database":
