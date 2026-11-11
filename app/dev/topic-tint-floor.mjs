@@ -2,6 +2,7 @@
  *
  *     cd app && node dev/topic-tint-floor.mjs           # 지을 표를 재기만 한다
  *     cd app && node dev/topic-tint-floor.mjs --write   # 표를 쓴다(토큰 · 줄 칠 · 바닥이 바뀐 뒤)
+ *     ... --rule=all|normal|none --out=<file>             # 쌍 규칙의 범위를 바꿔 다른 곳에 짓는다(비교용)
  *
  *  무엇을 푸는가: 계획(`tintPlan`)의 색 전부(영역 24 개 x 주제 돌림 7 칸, 모드마다)를 마크 바닥(`floorKit.floor`,
  *  비텍스트 바닥) 아래로 내리지 않으면서 계획에서 되도록 덜 옮긴다.
@@ -23,6 +24,13 @@ import { rgbOfHex, lab, de2000Lab, simulate, oklch } from "./colour-math.mjs";
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "../src");
 const WRITE = process.argv.includes("--write");
+const arg = (k) => { const a = process.argv.find((x) => x.startsWith(`--${k}=`)); return a ? a.slice(k.length + 3) : null; };
+/** 어느 쌍 규칙을 지키는가: all = 정상 시각 + 적록 두 색각(기본), normal = 정상 시각만(색각 쪽은 재기만 한다),
+ *  none = 규칙 없이 색마다 계획 색에 가장 가까운 자리(하나씩 바닥에 붙인 것과 같다). */
+const RULE = arg("rule") || "all";
+if (!["all", "normal", "none"].includes(RULE)) throw new Error(`--rule=${RULE}: all, normal, none 중 하나`);
+/** 표를 쓸 곳(기본은 src/view-tint-floor.ts). 다른 규칙의 표를 비교용으로 따로 지을 때 쓴다. */
+const OUT = arg("out") ? resolve(arg("out")) : resolve(SRC, "view-tint-floor.ts");
 const r = await build({ entryPoints: [resolve(SRC, "view-tint.ts")], bundle: true, platform: "node", format: "esm", write: false, logLevel: "silent" });
 const { floorKit: K } = await import(`data:text/javascript;base64,${Buffer.from(r.outputFiles[0].text).toString("base64")}`);
 
@@ -56,6 +64,7 @@ function solve(mode) {
   });
   const pen = (v, i, j, d) => {
     const D = d0[v][i][j];
+    if (RULE === "none" || (RULE === "normal" && v > 0)) return 0;
     if (v === 0) return RULE_WEIGHT * (Math.max(0, (D >= 5 ? 5 + SLACK : 0) - d) + Math.max(0, D / 2 + SLACK - d));
     return D >= 5 ? RULE_WEIGHT * Math.max(0, 3 + SLACK - d) : 0;
   };
@@ -123,5 +132,5 @@ export const FLOOR_TABLE: Record<"light" | "dark", readonly number[]> = {
   dark: [${table.dark.join(", ")}],
 };
 `;
-if (WRITE) { writeFileSync(resolve(SRC, "view-tint-floor.ts"), body); console.log("wrote src/view-tint-floor.ts"); }
+if (WRITE) { writeFileSync(OUT, body); console.log(`wrote ${OUT} (rule=${RULE})`); }
 else console.log(body.slice(0, 400) + "\n... (run with --write to save)");
