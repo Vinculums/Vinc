@@ -3,13 +3,15 @@
  *     cd app && node dev/topic-tint-floor.mjs           # 지을 표를 재기만 한다
  *     cd app && node dev/topic-tint-floor.mjs --write   # 표를 쓴다(토큰 · 줄 칠 · 바닥이 바뀐 뒤)
  *
- *  무엇을 푸는가: 계획(`tintPlan`)의 색 전부(영역 24 개 x 주제 돌림 7 칸, 모드마다)를 4.5:1 바닥 아래로
- *  내리지 않으면서, 바닥 전에 갈리던 둘이 바닥 뒤에도 갈리게 한다. 색마다 하나씩 바닥에 붙이면 색상각이 가까운
- *  둘(영역 보석을 20 도씩 돌린 벌이 다른 보석과 만난다)이 같은 명도로 모여 한 색이 된다.
- *  색마다 색상각은 그대로 두고 OKLab 명도와 채도 몫만 고른다. 고르는 기준(벌점, CIEDE2000):
- *    - 정상 시각: 바닥 전 5 이상 떨어진 둘은 바닥 뒤에도 5 이상, 어떤 둘도 바닥 전 거리의 절반 아래로 내려가지 않는다.
- *    - 2 색각(적록 둘, Machado 2009 정도 1.0): 바닥 전 5 이상 떨어진 둘은 바닥 뒤 3 이상.
- *    - 그 밖에는 원래 명도 · 채도에 가까울수록 좋다. 명도는 검정 · 흰빛으로 읽히지 않는 범위(`L_RANGE`) 안이다.
+ *  무엇을 푸는가: 계획(`tintPlan`)의 색 전부(영역 24 개 x 주제 돌림 7 칸, 모드마다)를 마크 바닥(`floorKit.floor`,
+ *  비텍스트 바닥) 아래로 내리지 않으면서 계획에서 되도록 덜 옮긴다.
+ *    - 이미 바닥을 넘는 색은 **그대로 둔다**(표에 0, 0 이 들어가고 앱도 표를 읽기 전에 그대로 돌려준다).
+ *    - 못 넘는 색만 옮긴다. 색상각은 그대로 두고 OKLab 명도와 채도 몫을 고른다. 하나씩 바닥에 붙이면 색상각이
+ *      가까운 둘(영역 보석을 20 도씩 돌린 벌이 다른 보석과 만난다)이 같은 명도로 모여 한 색이 될 수 있어서,
+ *      옮기는 색은 계획의 색 전부와 함께 보고 고른다. 기준(벌점, CIEDE2000):
+ *      정상 시각은 바닥 전 5 이상 떨어진 둘이 바닥 뒤에도 5 이상이고 어떤 둘도 바닥 전 거리의 절반 아래로 내려가지
+ *      않는다. 적록 두 색각(Machado 2009 정도 1.0)은 5 이상이던 둘이 3 이상이다. 그다음이 계획 색에서 옮긴 거리
+ *      (CIEDE2000)가 작은 것이다. 명도는 검정 · 흰빛으로 읽히지 않는 범위(`L_RANGE`) 안이다.
  *  풀이는 좌표 하강(색 하나씩, 정해진 순서로, 바뀌는 것이 없을 때까지)이라 같은 입력이면 같은 표가 나온다.
  *  표의 열쇠(`FLOOR_KEY`)는 입력 토큰의 지문이라, 토큰이 바뀌면 앱은 표를 버리고 색마다 바닥에 붙이며
  *  `tests/topic-tint-contrast.test.mjs` 가 실패해 이 스크립트를 다시 돌리라고 알린다. */
@@ -17,7 +19,7 @@ import { writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { rgbOfHex, lab, de2000Lab, simulate, oklab, oklch } from "./colour-math.mjs";
+import { rgbOfHex, lab, de2000Lab, simulate, oklch } from "./colour-math.mjs";
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "../src");
 const WRITE = process.argv.includes("--write");
@@ -32,19 +34,18 @@ const L_RANGE = { light: [0.3, 1], dark: [0, 0.9] };
 const C_MIN = 0.05;
 /** 규칙의 문턱 위에 두는 여유(거리 단위). 문턱에 딱 붙은 해는 8비트로 내리면서 넘어간다. */
 const SLACK = 0.4;
-/** 규칙을 어긴 거리 1 의 벌점. 원래 색에서 멀어지는 벌점은 OKLab 명도 1 에 0.5, 채도 몫 1 에 0.2 라
- *  규칙이 먼저고 원래 색에 가까움은 그다음이다. */
+/** 규칙을 어긴 거리 1 의 벌점. 계획 색에서 옮긴 거리 1(CIEDE2000)의 벌점은 1 이라 규칙이 먼저고 덜 옮김이 그다음이다. */
 const RULE_WEIGHT = 20;
 
 function solve(mode) {
   const slots = [];
   for (let a = 0; a < K.areas; a++) for (let k = 0; k < K.turns; k++) slots.push(K.rawPlanColour(a, k, mode));
   const raw = [...new Set(slots)], n = raw.length;
-  const L0 = raw.map((h) => oklab(rgbOfHex(h))[0]);
   const base = raw.map((h) => VIS.map((f) => lab(f(rgbOfHex(h)))));
   const d0 = VIS.map((_, v) => raw.map((_, i) => raw.map((_, j) => de2000Lab(base[i][v], base[j][v]))));
   // 고를 수 있는 자리: 바닥을 넘는 명도 x 채도 몫. 같은 HEX 로 떨어지는 자리는 하나만 남긴다.
-  const cand = raw.map((h) => {
+  const cand = raw.map((h, i) => {
+    if (K.passes(h, mode)) return [{ L: 0, cs: 0, hex: h, labs: base[i] }];   // 바닥을 넘는 색은 그대로
     const seen = new Set(), out = [], C0 = oklch(rgbOfHex(h))[1];
     for (const cs of CHROMA) for (let L = L_RANGE[mode][0]; L <= L_RANGE[mode][1] + 1e-9; L += 0.004) {
       const hex = K.markAt(h, +L.toFixed(4), cs);
@@ -58,9 +59,9 @@ function solve(mode) {
     if (v === 0) return RULE_WEIGHT * (Math.max(0, (D >= 5 ? 5 + SLACK : 0) - d) + Math.max(0, D / 2 + SLACK - d));
     return D >= 5 ? RULE_WEIGHT * Math.max(0, 3 + SLACK - d) : 0;
   };
-  const stay = (i, c) => 0.5 * Math.abs(c.L - L0[i]) + 0.2 * (1 - c.cs);
-  // 시작: 색마다 원래 명도에 가장 가까운 자리(채도 그대로) — 하나씩 바닥에 붙인 것과 같다
-  const pick = cand.map((cs, i) => cs.reduce((b, c, k) => (c.cs === 1 && Math.abs(c.L - L0[i]) < Math.abs(cs[b].L - L0[i]) - 1e-12 ? k : b), 0));
+  const stay = (i, c) => de2000Lab(base[i][0], c.labs[0]);   // 계획 색에서 옮긴 거리
+  // 시작: 색마다 계획 색에 가장 가까운 자리 — 하나씩 바닥에 붙인 것과 같다
+  const pick = cand.map((cs, i) => cs.reduce((b, c, k) => (stay(i, c) < stay(i, cs[b]) - 1e-12 ? k : b), 0));
   const cost = (i, c) => {
     let s = stay(i, c);
     for (let j = 0; j < n; j++) if (j !== i) for (let v = 0; v < 3; v++) s += pen(v, i, j, de2000Lab(c.labs[v], cand[j][pick[j]].labs[v]));
@@ -95,13 +96,26 @@ function solve(mode) {
     console.error(`${mode} pair round ${round}: ${moved} moved`);
     if (!moved) break;
   }
+  // 셋째 단계: 규칙 벌점을 늘리지 않는 한 계획 색에 더 가까운 자리로 되돌린다(규칙이 먼저, 덜 옮김이 그다음).
+  const rulePen = (i, c) => { let s = 0; for (let j = 0; j < n; j++) if (j !== i) for (let v = 0; v < 3; v++) s += pen(v, i, j, de2000Lab(c.labs[v], cand[j][pick[j]].labs[v])); return s; };
+  for (let round = 0; round < 20; round++) {
+    let back = 0;
+    for (let i = 0; i < n; i++) {
+      if (cand[i].length === 1) continue;
+      const now = rulePen(i, cand[i][pick[i]]), here = stay(i, cand[i][pick[i]]);
+      const order = cand[i].map((c, k) => [stay(i, c), k]).filter(([d]) => d < here - 1e-9).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+      for (const [, k] of order) if (rulePen(i, cand[i][k]) <= now + 1e-9) { pick[i] = k; back++; break; }
+    }
+    console.error(`${mode} pull-back round ${round}: ${back} moved closer`);
+    if (!back) break;
+  }
   const at = new Map(raw.map((h, i) => [h, cand[i][pick[i]]]));
   return slots.flatMap((h) => [at.get(h).L, at.get(h).cs]);
 }
 
 const table = { light: solve("light"), dark: solve("dark") };
 const body = `// AUTO-GENERATED by app/dev/topic-tint-floor.mjs --write. Do not hand-edit.
-// 계획의 색마다 [OKLab 명도, 채도 몫] 한 쌍, 차례는 (영역 x ${K.turns} + 주제 돌림). FLOOR_KEY 는 입력 토큰의 지문이다.
+// 계획의 색마다 [OKLab 명도, 채도 몫] 한 쌍(0, 0 은 옮기지 않는 색), 차례는 (영역 x ${K.turns} + 주제 돌림). FLOOR_KEY 는 입력 토큰의 지문이다.
 export const FLOOR_KEY = ${K.floorInputKey()};
 export const FLOOR_AREAS = ${K.areas};
 export const FLOOR_TABLE: Record<"light" | "dark", readonly number[]> = {

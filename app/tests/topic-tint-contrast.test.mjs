@@ -1,6 +1,7 @@
-// Topic marks are decorative, yet every colour the topic plan can give reaches 4.5:1 on every ground a
-// tinted mark sits on in the sidebar (shell base and drawer card, at rest, under the hover fill and under
-// the selected fill), in both themes and both skins. The grounds are built here from the token CSS and the
+// Topic marks are decorative: every colour the topic plan can give holds the non-text floor (the plan's own
+// `floorKit.floor`, at least 3:1, WCAG 1.4.11) on every ground a tinted mark sits on in the sidebar (shell base
+// and drawer card, at rest, under the hover fill and under the selected fill), in both themes and both skins.
+// Marks without a topic colour (the muted ink fallback, the selected row's --ring) keep the text floor 4.5:1. The grounds are built here from the token CSS and the
 // sidebar rules in app.css, not from view-tint's own constants, so a token, a fill or a plan change that
 // drops a mark below the floor fails the build.
 import test from "node:test";
@@ -73,15 +74,30 @@ const planColours = (mode) => [...new Set(planSlots(mode).map((s) => s.after))];
 /** The Agent board and the sidebar's Agent rows take the plan's whole-jewel slots. */
 const jewelMarks = (mode) => [0, 1, 2, 3, 4].map((i) => planColour(i, 0, mode));
 
+test("the tinted-mark floor is the non-text floor, not lower", () => {
+  assert.ok(floorKit.floor >= 3, `floorKit.floor ${floorKit.floor}`);
+});
 for (const skin of ["desktop", "web"]) for (const mode of ["light", "dark"]) {
-  test(`${skin} ${mode}: every plan colour reaches 4.5:1 on every sidebar ground`, () => {
+  test(`${skin} ${mode}: every plan colour holds the tinted-mark floor on every sidebar ground`, () => {
     const G = grounds(skin, mode), colours = [...planColours(mode), ...jewelMarks(mode)];
     assert.ok(colours.length > 100, "the plan should give well over a hundred colours for 24 areas");
     const bad = [];
-    for (const c of colours) for (const [g, bg] of Object.entries(G)) { const r = ratio(rgb(c), bg); if (r < 4.5) bad.push(`${c} on ${g} ${r.toFixed(2)}`); }
+    for (const c of colours) for (const [g, bg] of Object.entries(G)) { const r = ratio(rgb(c), bg); if (r < floorKit.floor) bad.push(`${c} on ${g} ${r.toFixed(2)}`); }
+    assert.deepEqual(bad, []);
+  });
+  test(`${skin} ${mode}: marks without a topic colour keep 4.5:1 on every sidebar ground`, () => {
+    const G = grounds(skin, mode), bad = [];
+    const css = read(`tokens.${skin}.css`), blk = css.match(mode === "dark" ? /\[data-theme="dark"\]\s*\{([\s\S]*?)\n\}/ : /:root(?:\[data-skin="web"\])?\s*\{([\s\S]*?)\n\}/)[1];
+    const tok = (n) => { const m = blk.match(new RegExp(`--${n}:\\s*([\\d.]+)\\s+([\\d.]+)%\\s+([\\d.]+)%`)); return hsl(+m[1], +m[2], +m[3]); };
+    for (const [g, bg] of Object.entries(G)) { const r = ratio(tok("muted-foreground"), bg); if (r < 4.5) bad.push(`muted on ${g} ${r.toFixed(2)}`); }
+    // the selected document and graph-node rows draw their mark in --ring on the selected fill
+    for (const [g, bg] of Object.entries(G)) if (/under ring/.test(g)) { const r = ratio(tok("ring"), bg); if (r < 4.5) bad.push(`ring on ${g} ${r.toFixed(2)}`); }
     assert.deepEqual(bad, []);
   });
 }
+test("a plan colour that already holds the floor is drawn unchanged", () => {
+  for (const mode of ["light", "dark"]) for (const s of planSlots(mode)) if (floorKit.passes(s.before, mode)) assert.equal(s.after, s.before, `${mode} ${s.slot}`);
+});
 
 test("the floor table was built from the tokens in this tree", () => {
   // A token, row fill or floor change makes the app fall back to one-colour-at-a-time floors, which
@@ -92,24 +108,24 @@ test("the floor table was built from the tokens in this tree", () => {
 // The floor must not erase the differences the plan relied on. Over every pair of plan colours (CIEDE2000):
 // normal vision, a pair at least 5 apart before stays at least 5 apart and no pair falls below half its
 // distance before; deuteranopia and protanopia (Machado 2009, full severity), a pair at least 5 apart before
-// stays at least 3 apart. KNOWN lists the pairs the floor table cannot keep in sRGB with the distance each
-// keeps now, so any further loss fails.
+// stays at least 3 apart. KNOWN lists the pairs the floor table cannot keep (the colours that already hold the
+// floor stay where the plan put them, so a moved colour can be boxed in) with the distance each keeps now, so
+// any further loss fails.
 const KNOWN = {
-  "dark deutan r1/t3 r17/t5": 2.93,   // before 8.84
-  "dark deutan r17/t1 r17/t5": 2.88,   // before 6.09
-  "dark normal r1/t4 r17/t5": 7.78,   // before 15.60
-  "dark normal r1/t5 r6/t3": 4.85,   // before 5.79
-  "dark normal r11/t0 r17/t5": 10.89,   // before 22.24
-  "dark protan r14/t1 r17/t5": 2.88,   // before 7.75
-  "light deutan r3/t1 r18/t1": 2.56,   // before 5.19
-  "light normal r13/t2 r23/t3": 4.84,   // before 5.20
-  "light normal r18/t0 r18/t6": 4.93,   // before 6.12
-  "light normal r18/t2 r18/t3": 4.55,   // before 5.15
-  "light normal r3/t0 r15/t1": 4.66,   // before 6.68
-  "light normal r3/t1 r15/t3": 4.95,   // before 6.87
-  "light normal r3/t3 r15/t5": 4.73,   // before 6.89
-  "light normal r8/t1 r8/t2": 4.04,   // before 5.82
-  "light protan r13/t1 r23/t0": 2.95,   // before 11.41
+  "light normal r8/t1 r18/t2": 4.59,   // before 7.07
+  "light normal r8/t5 r18/t4": 0.00,   // before 0.23
+  "light protan r12/t0 r18/t2": 2.67,   // before 21.01
+  "light protan r12/t0 r18/t4": 2.90,   // before 21.30
+  "light protan r12/t0 r18/t6": 2.71,   // before 21.58
+  "light protan r12/t2 r18/t2": 2.98,   // before 20.38
+  "light protan r12/t2 r18/t6": 2.88,   // before 20.97
+  "light protan r15/t1 r15/t5": 2.87,   // before 5.45
+  "light protan r3/t4 r15/t5": 2.66,   // before 5.26
+  "light protan r8/t1 r12/t0": 2.64,   // before 21.95
+  "light protan r8/t1 r12/t2": 2.72,   // before 21.34
+  "light protan r8/t3 r12/t0": 2.75,   // before 21.62
+  "light protan r8/t3 r12/t2": 2.92,   // before 21.00
+  "light protan r8/t5 r12/t0": 2.90,   // before 21.33
 };
 const VISION = { normal: (c) => c, deutan: (c) => simulate("deutan", c), protan: (c) => simulate("protan", c) };
 for (const mode of ["light", "dark"]) {

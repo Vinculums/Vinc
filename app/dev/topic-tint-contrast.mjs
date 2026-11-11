@@ -69,7 +69,7 @@ function grounds(skin, theme) {
       drawer, "drawer+hover": over(hov, HOVER.a, drawer), "drawer+selected": over(pick, PICK.a, drawer),
       "dock pin hover": mixSrgb(T("point"), DOCK_P, card),
     },
-    graph: T("background"), legend: card, ring: T("ring"),
+    graph: T("background"), legend: card, ring: T("ring"), muted: T("muted-foreground"),
   };
 }
 
@@ -96,6 +96,9 @@ const policyColour = (mode) => jewelOf(4, mode);
 // ── 마크 × 상태 → 그 상태에서 마크가 입는 색과 면 ─────────────────────────────
 // 선택된 문서 줄 · 그래프 노드 줄의 표식은 주제 색이 아니라 --ring 이다(app.css `.lnb-doc.on .lnb-dot`,
 // `.lnb-doc.on .lnb-gmark`). 포커스는 윤곽선만 그리고 면을 바꾸지 않는다(`:focus-visible` outline).
+/** 주제 색 마크의 바닥: 트리의 floorKit 이 정한 값(그 트리에 없으면 --floor, 기본은 비텍스트 바닥 3).
+ *  주제 색이 없는 마크(잉크 대체값 · 고른 줄의 --ring)와 글자는 이 값과 상관없이 4.5 로 잰다. */
+const FLOOR = +(opt("--floor") || tint.floorKit?.floor || 3), TEXT_FLOOR = 4.5;
 const SIDE = [
   ["document dot (ink 0, 1, 2)", "topic", { rest: "base", hover: "base+hover", focus: "base", selected: "ring" }],
   ["topic ring", "topic", { rest: "base", hover: "base+hover", focus: "base", selected: "base+selected" }],
@@ -105,14 +108,16 @@ const SIDE = [
   ["policy mark (group)", "policy", { rest: "base", hover: "base+hover", focus: "base" }],
   ["Agent dot", "agent", { rest: "base", hover: "base+hover", focus: "base", selected: "base+selected" }],
   ["pinned dock mark", "topic", { rest: "base", hover: "dock pin hover" }],
+  ["untinted mark (muted ink fallback)", "muted", { rest: "base", hover: "base+hover", focus: "base", selected: "base+selected" }],
 ];
 
 const rows = [], fmt = (x) => x.toFixed(2);
-let globalMin = Infinity;
+let globalMin = Infinity, textMin = Infinity;
 for (const skin of ["desktop", "web"]) for (const mode of ["light", "dark"]) {
   const G = grounds(skin, mode), cols = planColours(mode);
   const sets = { topic: cols.map((c) => ({ label: `rank ${c.rank} turn ${c.turn}`, hex: c.hex })),
-    agent: agentColours(mode).map((c) => ({ label: c.name, hex: c.hex })), policy: [{ label: "amethyst", hex: policyColour(mode) }] };
+    agent: agentColours(mode).map((c) => ({ label: c.name, hex: c.hex })), policy: [{ label: "amethyst", hex: policyColour(mode) }],
+    muted: [{ label: "--muted-foreground", hex: hexOfRgb(G.muted) }] };
   for (const [mark, set, states] of SIDE) for (const [state, gname] of Object.entries(states)) for (const where of ["sidebar", "drawer"]) {
     if (gname === "dock pin hover" && where === "drawer") continue;
     let ground, colours;
@@ -120,8 +125,9 @@ for (const skin of ["desktop", "web"]) for (const mode of ["light", "dark"]) {
     else { ground = G.side[where === "drawer" ? gname.replace("base", "drawer") : gname] ?? G.side[gname]; colours = sets[set]; }
     let worst = null;
     for (const c of colours) { const r = ratio(rgbOfHex(c.hex), ground); if (!worst || r < worst.r) worst = { r, c }; if (FULL) console.log([skin, mode, mark, state, where, c.label, c.hex, hexOfRgb(ground), fmt(r)].join("\t")); }
-    rows.push({ skin, mode, mark, state, where, ground: hexOfRgb(ground), worst: worst.r, colour: `${worst.c.label} ${worst.c.hex}`, ring: gname === "ring" });
-    if (gname !== "ring") globalMin = Math.min(globalMin, worst.r);
+    const untinted = gname === "ring" || set === "muted";
+    rows.push({ skin, mode, mark, state, where, ground: hexOfRgb(ground), worst: worst.r, colour: `${worst.c.label} ${worst.c.hex}`, untinted });
+    if (!untinted) globalMin = Math.min(globalMin, worst.r); else textMin = Math.min(textMin, worst.r);
   }
   for (const [name, g] of [["graph surface", G.graph], ["legend card", G.legend]]) {
     let worst = null;
@@ -135,8 +141,9 @@ console.log(`# Topic tint contrast, ${SRC}\n`);
 console.log(`Grounds from tokens.{desktop,web}.css and app.css: hover = --${HOVER.tok} / ${HOVER.a}, selected = --${PICK.tok} / ${PICK.a}, base = --surface-0 (light --${S0.light}, dark --${S0.dark}), drawer = --surface-2 (--${S2}), dock hover = --point ${DOCK_P * 100}% over --card.\n`);
 console.log(`Colours: ${AREAS} area ranks x ${TURNS} topic turns per theme from tintPlan; Agent dots ${tint.planColour ? "from planColour" : tint.markColour ? "through markColour" : "raw jewels"}.\n`);
 console.log("| skin | theme | mark | state | where | ground | worst ratio | worst colour |\n|---|---|---|---|---|---|---|---|");
-for (const r of rows) console.log(`| ${r.skin} | ${r.mode} | ${r.mark} | ${r.state} | ${r.where} | ${r.ground} | ${fmt(r.worst)}${r.ring ? " (ring, untinted)" : r.worst < 4.5 && r.where !== "compass" ? " FAIL" : ""} | ${r.colour} |`);
-console.log(`\nMinimum over every tinted sidebar mark, state and ground: ${fmt(globalMin)}:1 (${globalMin >= 4.5 ? "meets" : "below"} 4.5:1)\n`);
+for (const r of rows) console.log(`| ${r.skin} | ${r.mode} | ${r.mark} | ${r.state} | ${r.where} | ${r.ground} | ${fmt(r.worst)}${r.untinted ? ` (untinted${r.worst < TEXT_FLOOR ? ", FAIL" : ""})` : r.worst < FLOOR && r.where !== "compass" ? " FAIL" : ""} | ${r.colour} |`);
+console.log(`\nMinimum over every tinted sidebar mark, state and ground: ${fmt(globalMin)}:1 (${globalMin >= FLOOR ? "meets" : "below"} the tinted-mark floor ${FLOOR}:1)`);
+console.log(`Minimum over every untinted sidebar mark (muted ink, selected --ring): ${fmt(textMin)}:1 (${textMin >= TEXT_FLOOR ? "meets" : "below"} ${TEXT_FLOOR}:1)\n`);
 
 // ── 첫 열두 순위가 갈리는가 ─────────────────────────────────────────────────
 console.log("## Distinguishability\n\n| theme | vision | min dE2000, first 12 area ranks | pair | min OKLab dE, first 12 | min dE2000, 7 turns within an area | \n|---|---|---|---|---|---|");
@@ -188,6 +195,21 @@ if (pairFails.length) {
   console.log("\nEvery pair that breaks the rule:\n\n| theme | rule | pair | before | after |\n|---|---|---|---|---|");
   for (const p of pairFails.sort((a, b) => a.d1 - b.d1)) console.log(`| ${p.mode} | ${p.vis} | ${p.a} / ${p.b} | ${fmt(p.d0)} | ${fmt(p.d1)} |`);
 }
+console.log("");
+
+// ── 바닥이 계획 색을 얼마나 옮겼나 ────────────────────────────────────────────
+const JEWEL = ["ruby", "sapphire", "emerald", "amber", "amethyst"];
+const rankName = (a) => { const r = Math.floor(a / 5), t = r === 0 ? 0 : (r % 2 ? 1 : -1) * Math.ceil(r / 2) * 20; return `${JEWEL[a % 5]}${t ? ` ${t > 0 ? "+" : ""}${t}` : ""}`; };
+console.log("## How far the floor moves the plan's colours (CIEDE2000 from the plan's colour)\n\n| theme | plan colours | moved | largest move | mean move (moved only) | mean move (all) |\n|---|---|---|---|---|---|");
+for (const mode of ["light", "dark"]) {
+  const before = rawColours(mode), after = planColours(mode).map((c) => c.hex), seen = new Set(), d = [];
+  before.forEach((h, i) => { if (seen.has(h)) return; seen.add(h); d.push(h === after[i] ? 0 : de2000(rgbOfHex(h), rgbOfHex(after[i]))); });
+  const mv = d.filter((x) => x > 0), mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+  console.log(`| ${mode} | ${d.length} | ${mv.length} | ${fmt(Math.max(0, ...d))} | ${fmt(mean(mv))} | ${fmt(mean(d))} |`);
+}
+console.log("\nThe area jewels by name (turn 0; ranks past 4 are the jewels turned by 20 degrees a round):\n\n| theme | rank | jewel | plan | after | move |\n|---|---|---|---|---|---|");
+for (const mode of ["light", "dark"]) { const before = rawColours(mode), after = planColours(mode);
+  for (let a = 0; a < AREAS; a++) { const b = before[a * TURNS], x = after[a * TURNS].hex; console.log(`| ${mode} | ${a} | ${rankName(a)} | ${b} | ${x} | ${b === x ? "unchanged" : fmt(de2000(rgbOfHex(b), rgbOfHex(x)))} |`); } }
 console.log("");
 
 console.log("\n## Ranks 0 to 11 (turn 0) per theme, OKLCH L C h\n\n| theme | rank | colour | OKLCH |\n|---|---|---|---|");
