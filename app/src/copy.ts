@@ -1567,6 +1567,13 @@ const EN = {
       webManage: "Manage account",
       selfHostedIntro: "This hub runs on your own server. Your graph stays here and nothing goes to vincs.io.",
       selfHostedSignedIn: "Signed in to this hub.",
+      selfHostedSeats: "People on this hub",
+      selfHostedSeatsFree: "One person, free. To add people, buy self-hosted seats on your vincs.io account and link this hub.",
+      selfHostedSeatsPaid: (used: number, allowed: number, day: string) =>
+        `${used} of ${allowed} people. Seats checked ${day}.`,
+      selfHostedSeatsGrace: (used: number, allowed: number, day: string, until: string) =>
+        `${used} of ${allowed} people. The hub last reached vincs.io on ${day} and keeps these seats until ${until}.`,
+      selfHostedSeatsRevoked: "This hub was unlinked from its vincs.io account. One person can write; everyone can still read.",
       webSignedAs: (w: string) => `Signed in as ${w}`,
       space: "Space",
       spacePersonal: "Personal",
@@ -3063,6 +3070,13 @@ const KO: Deck = {
       webManage: "계정 관리",
       selfHostedIntro: "이 허브는 내 서버에서 돌아요. 그래프는 여기에 있고 vincs.io로 아무것도 보내지 않아요",
       selfHostedSignedIn: "이 허브에 로그인했어요",
+      selfHostedSeats: "이 허브의 사람",
+      selfHostedSeatsFree: "한 사람, 무료예요. 사람을 더하려면 vincs.io 계정에서 셀프호스트 좌석을 사고 이 허브를 연결하세요",
+      selfHostedSeatsPaid: (used: number, allowed: number, day: string) =>
+        `${allowed}명 중 ${used}명. 좌석은 ${day}에 확인했어요`,
+      selfHostedSeatsGrace: (used: number, allowed: number, day: string, until: string) =>
+        `${allowed}명 중 ${used}명. ${day}에 마지막으로 vincs.io에 닿았고 ${until}까지 이 좌석을 써요`,
+      selfHostedSeatsRevoked: "이 허브가 vincs.io 계정에서 연결이 끊겼어요. 한 사람이 쓰고, 모두 읽을 수는 있어요",
       webSignedAs: (w) => `로그인됨 · ${w}`,
       space: "공간",
       spacePersonal: "개인",

@@ -1496,6 +1496,14 @@ export async function selfHostedSignOut(): Promise<void> {
   location.assign("/login");
 }
 
+/** 셀프호스트 허브의 좌석 상태(`GET /api/selfhost/seats`). 못 읽으면 null 이고 화면은 그 줄을 비운다. */
+export async function selfHostedSeats(): Promise<any | null> {
+  try {
+    const r = await fetch(new URL("/api/selfhost/seats", location.origin), { credentials: "include" });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
 /** 잡 완료까지 폴링. jobs.py 계약: 상태 queued|running|done|error, 키는 job_id. */
 export async function pollJob(jobId: string, onTick?: (s: any) => void,
                              { intervalMs = 900, timeoutMs = 300000,
