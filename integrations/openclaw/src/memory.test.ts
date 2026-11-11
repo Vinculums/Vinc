@@ -91,6 +91,24 @@ test("recall puts the brief node first and drops its duplicate from search", asy
   assert.match(hits[0].snippet, /"The train leaves on Tuesday\." \(vinc\.ops\.release\)/);
 });
 
+test("recall reads a trimmed brief: a node without cite_id cites its id, and a slim temporal block passes through", async () => {
+  const slim = {
+    kind: "brief", executed: true, status: "resolved",
+    node: { id: "record:train-moved", title: "The train moved to Wednesday", kind: "record",
+      validity: "current", temporal: { valid_from: "2026-10-01" } },
+    one_liner: "Releases leave on Wednesday.",
+    quotes: [{ text: "The train leaves on Wednesday.", doc_id: "vinc.ops.release" }],
+    grounds: ["record:train-moved"],
+    omitted: "Empty, false and default fields are left out.",
+  };
+  const { o } = hub((name) => (name === "vinc_brief" ? slim : { rows: [], node_hits: [] }));
+  const [first] = await recall(o, "when do releases leave", 8);
+  assert.equal(first.path, "vinc://node/record:train-moved");
+  assert.equal(first.citation, "record:train-moved");
+  assert.deepEqual(first.temporal, { valid_from: "2026-10-01" });
+  assert.match(first.snippet, /Wednesday/);
+});
+
 test("recall survives a failed brief but not a failed search", async () => {
   const warned: string[] = [];
   const briefDown = hub((name) => {

@@ -20,6 +20,29 @@ test("search preserves temporal metadata and explicit temporal arguments", async
   assert.equal(hub.calls[0].args.known_at, "2026");
 });
 
+test("search reads the trimmed MCP default text: a slim temporal block, no page and an omitted note", async () => {
+  // 허브의 MCP 기본 본문 그대로다(빈 칸·기본값·건강한 진단이 빠지고 omitted 한 줄이 붙는다).
+  const { supplement } = makeSupplement(() => ({
+    kind: "search", executed: true,
+    rows: [
+      { id: "doc.a#00000", score: 4.1, snippet: "chunk text", truncated: true, doc_id: "doc.a",
+        temporal: { valid_from: "2026-01" }, doc_title: "Doc A", cite_id: "concept:doc.doc.a" },
+      { id: "doc.b#00001", score: 2.0, snippet: "undated", truncated: true, doc_id: "doc.b", doc_title: "Doc B" },
+    ],
+    node_hits: [{ id: "concept:a", title: "A", kind: "concept", domain: "vinc/x", rrf_score: 0.03,
+      temporal: { valid_from: "2026-01" }, cite_id: "concept:a" }],
+    arms: "fts+vector", total_count: 2, has_more: false, next_cursor: null, validity_filtered: 3,
+    omitted: "Empty, false and default fields are left out.",
+  }));
+  const out = await supplement.search({ query: "Marker" });
+  assert.deepEqual(out.map((r) => [r.path, r.score]), [
+    ["vinc://doc/doc.a", 4.1], ["vinc://doc/doc.b", 2.0], ["vinc://node/concept:a", 0.03]]);
+  assert.deepEqual(out[0].temporal, { valid_from: "2026-01" });
+  assert.equal("temporal" in out[1], false);
+  assert.deepEqual(out[2].temporal, { valid_from: "2026-01" });
+  assert.equal(out[2].snippet, "A (concept, vinc/x)");
+});
+
 test("document get preserves temporal metadata without changing canonical content", async () => {
   const temporal = { created_at: null, validity: "unknown" };
   const { supplement } = makeSupplement(() => ({ text: "Original body", temporal }));
