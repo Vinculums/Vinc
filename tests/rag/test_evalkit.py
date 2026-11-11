@@ -181,6 +181,32 @@ class ParityTests(unittest.TestCase):
         self.assertTrue(run_nodes._degraded({"arms": "fts+vector", "vector_note": "x"}))
         self.assertEqual(run_nodes._degraded({"arms": "fts+vector"}), "")
 
+    def test_재채점을_켰는데_안_돈_응답을_강등으로_센다(self):
+        ok = {"arms": "fts+vector", "node_rescore": {"state": "applied", "n": 20}}
+        self.assertEqual(run_nodes._degraded(ok), "")
+        self.assertIn("tokens missing", run_nodes._degraded(
+            {"arms": "fts+vector", "node_rescore": {"state": "skipped", "reason": "tokens missing"}}))
+
+    def test_재채점_전송은_질의_임베딩이_있을_때만_토큰을_싣는다(self):
+        calls = []
+
+        class Q:
+            marker = 1
+
+            def search(self, query, **kw):
+                calls.append(("search", kw.get("query_colbert")))
+
+            def brief(self, query, **kw):
+                calls.append(("brief", kw.get("query_colbert")))
+
+        q = transports._WithColbert(Q(), lambda text: "tok:" + text)
+        q.search("a", query_embedding=[0.1])
+        q.search("b", query_embedding=None)
+        q.brief("c", query_embedding=[0.1])
+        q.brief("d", query_embedding=[0.1], query_colbert="given")
+        self.assertEqual(calls, [("search", "tok:a"), ("search", None), ("brief", "tok:c"), ("brief", "given")])
+        self.assertEqual(q.marker, 1)
+
     def test_스탬프_없는_벡터_경고만으로는_강등이_아니다(self):
         from api.query import UNSTAMPED_RUNTIME_NOTE as u
         self.assertEqual(run_nodes._degraded({"arms": "fts+vector", "vector_note": u}), "")

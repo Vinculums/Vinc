@@ -1872,6 +1872,8 @@ def _finish_search_temporal(res: dict, store, query: str, *, mode, known_at, kwa
         temporal.finish_nodes(store, hits, owner=owner, scope=scope, current=mode == "current",
                               known_at=known_at, stats=stats, window=window)
         res["node_hits"] = hits
+        if mode == "current":
+            res["_old_ends"] = stats.get("old_ends") or set()
         hidden = len(stats.get("current_hidden", ()))
         if hidden:
             res["validity_filtered"] = int(res.get("validity_filtered") or 0) + hidden
@@ -1964,6 +1966,13 @@ def _colbert_rescore(store, hits: list[dict], query_colbert: str, owner: str | N
     return [head[i] for i in order] + hits[COLBERT_RESCORE_N:], {"state": "applied", "n": len(head)}
 
 
+def _demote_after_rescore(hits: list[dict], old_ends) -> None:
+    """current 에서 재채점이 다시 세운 상위 `COLBERT_RESCORE_N` 개 안에서, 내릴 대체된 쪽(`old_ends`,
+    :func:`store.search_temporal.superseded_old_end` 와 근거가 같다)만 그 묶음의 맨 뒤로 보낸다. 나머지는
+    재채점 순서 그대로다(안정 정렬). 숨기지 않는다. 재채점이 내림을 되돌리지 않게 하는 자리다."""
+    hits[:COLBERT_RESCORE_N] = sorted(hits[:COLBERT_RESCORE_N], key=lambda h: h.get("id") in old_ends)
+
+
 def search(query: str, *, mode: str | None = None, known_at: str | None = None, **kwargs) -> dict:
     """모든 결과 경로에 시간 메타를 붙인다. 기본 순위와 저장 데이터는 보존한다.
 
@@ -2009,6 +2018,9 @@ def search(query: str, *, mode: str | None = None, known_at: str | None = None, 
                     store, res.get("node_hits") or [], query_colbert, kwargs.get("owner"))
             except Exception as exc:          # 재채점이 검색을 죽이지 않는다 — 원래 순서로 간다
                 res["node_rescore"] = {"state": "error", "reason": f"{type(exc).__name__}: {exc}"}
+        old_ends = res.pop("_old_ends", None) or set()
+        if mode == "current" and (res.get("node_rescore") or {}).get("state") == "applied":
+            _demote_after_rescore(res["node_hits"], old_ends)
         if mode == "current" or rescore:
             res["node_hits"] = (res.get("node_hits") or [])[:kwargs["top_k"]]
         if "node_window" in res:

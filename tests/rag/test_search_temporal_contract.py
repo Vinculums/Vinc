@@ -319,6 +319,88 @@ def test_current_window_puts_an_evidenced_supersession_old_end_last():
     assert ids(alone)[-2:] == ["decision:old", "decision:old2"]
 
 
+def test_old_end_is_demoted_once_its_chain_moved_past_the_successor():
+    def row(nid, vf=None, vu=None):
+        return temporal.stamp({"id": nid, "kind": "record", "valid_from": vf, "valid_until": vu})
+    def replaced(old, new, status="uncomparable", evidence="replaced"):
+        edge = {"new": new["id"], "old": old["id"], "evidence": evidence, "status": status}
+        old["temporal"]["supersession"].append(edge)
+        new["temporal"]["supersedes"].append(edge)
+    # 세 세대: 옛 결정(닫히지 않아 지금), 그 후속(끝났다), 그 후속의 후속(지금).
+    a, b, c = row("decision:a", "2026-09-11"), row("decision:b", "2026-10-18", "2026-11-07"), row("decision:c", "2026-11-07")
+    replaced(a, b)
+    replaced(b, c)
+    # 후속이 끝났을 뿐 더 뒤가 없다 / 후속은 구간 없음인데 그 뒤가 지금 / 후속이 미래 / 후속이 지금(창에 없음)
+    d, e = row("decision:d", "2026-09-11"), row("decision:e", "2026-10-01", "2026-11-01")
+    replaced(d, e)
+    f, g, h = row("decision:f", "2026-09-11"), row("decision:g"), row("decision:h", "2026-11-01")
+    replaced(f, g)
+    replaced(g, h)
+    i, j = row("decision:i", "2026-09-11"), row("decision:j", "2999-01-01")
+    replaced(i, j)
+    k, m = row("decision:k", "2026-09-11"), row("decision:m", "2026-10-01")
+    replaced(k, m)
+    # 근거 없는 간선과 순환은 세지 않는다.
+    n, o = row("decision:n", "2026-09-11"), row("decision:o", "2026-10-01", "2026-11-01")
+    replaced(n, o, "unsupported", evidence="")
+    p, q = row("decision:p", "2026-09-11"), row("decision:q", "2026-10-01", "2026-11-01")
+    replaced(p, q, "cycle")
+    context = [a, b, c, d, e, f, g, h, i, j, k, m, n, o, p, q]
+    moved = temporal.chain_moved_on(context)
+    assert {"decision:b", "decision:e", "decision:g"} <= moved
+    assert not {"decision:c", "decision:h", "decision:j", "decision:m"} & moved
+    page = [a, d, f, i, k, n, p]
+    assert [r["temporal"]["validity"] for r in page] == ["current"] * 7
+    old = {r["id"] for r in page if temporal.superseded_old_end(r, frozenset(), moved)}
+    assert old == {"decision:a", "decision:d", "decision:f"}
+    assert not any(temporal.superseded_old_end(r, frozenset()) for r in page)
+
+
+def _three_generations(st):
+    def decision(slug, title, vf, vu=None):
+        return {"id": "decision:" + slug, "type": "decision", "title": title, "domain": "vinc/synthetic",
+                "props": {"valid_from": vf, "valid_until": vu}}
+    ingest(st, [decision("encode-holds-one-replica", "Marker encoder hub replica", "2026-09-11"),
+                decision("hub-runs-encoder-two-cores", "Marker encoder hub cores", "2026-10-18", "2026-11-07"),
+                decision("encoder-stays-inside-hub", "Marker encoder hub inside", "2026-11-07"),
+                {"id": "concept:encoder-note", "type": "concept", "title": "Marker encoder note",
+                 "domain": "vinc/synthetic"}],
+           [{"from": "decision:hub-runs-encoder-two-cores", "to": "decision:encode-holds-one-replica",
+             "type": "supersedes", "evidence": "Synthetic second generation"},
+            {"from": "decision:encoder-stays-inside-hub", "to": "decision:hub-runs-encoder-two-cores",
+             "type": "supersedes", "evidence": "Synthetic third generation"}])
+
+
+def test_current_demotes_the_two_generations_old_claim(st):
+    _three_generations(st)
+    ids = lambda res: [h["id"] for h in res["node_hits"]]  # noqa: E731
+    current = query.search("Marker encoder hub replica", owner=OWNER, store=st, mode="current", top_k=5)
+    assert "decision:hub-runs-encoder-two-cores" not in ids(current)
+    assert ids(current)[-1] == "decision:encode-holds-one-replica", ids(current)
+    assert current["node_hits"][-1]["temporal"]["validity"] == "current"
+    assert "_old_ends" not in current
+    general = query.search("Marker encoder hub replica", owner=OWNER, store=st, top_k=5)
+    assert ids(general)[0] == "decision:encode-holds-one-replica"
+
+
+def test_current_demotion_survives_colbert_rescoring(st, monkeypatch):
+    _three_generations(st)
+    def rescore(store, hits, query_colbert, owner):   # 옛 결정을 맨 앞으로 다시 세운다
+        hits = sorted(hits[:retrieval.COLBERT_RESCORE_N], key=lambda h: h["id"] != "decision:encode-holds-one-replica")
+        return hits, {"state": "applied", "n": len(hits)}
+    monkeypatch.setattr(retrieval, "_colbert_rescore_on", lambda: True)
+    monkeypatch.setattr(retrieval, "_colbert_rescore", rescore)
+    ids = lambda res: [h["id"] for h in res["node_hits"]]  # noqa: E731
+    kw = {"owner": OWNER, "store": st, "top_k": 3, "query_colbert": "tokens"}
+    current = query.search("Marker encoder hub", mode="current", **kw)
+    # 끝난 둘째 세대는 숨고, 재채점이 맨 앞에 세운 옛 결정은 재채점 묶음의 뒤로 간다.
+    assert ids(current)[-1] == "decision:encode-holds-one-replica", ids(current)
+    assert "decision:hub-runs-encoder-two-cores" not in ids(current)
+    assert "_old_ends" not in current
+    # 기본 모드는 재채점 순서 그대로다.
+    assert ids(query.search("Marker encoder hub", **kw))[0] == "decision:encode-holds-one-replica"
+
+
 def test_cursor_binds_modes_historical_known_asof_and_owner(st):
     for i in range(3):
         docstore.put_doc(st, owner=OWNER, doc_id=f"page{i}", text=f"Marker synthetic page{i}.", valid_from="2000")

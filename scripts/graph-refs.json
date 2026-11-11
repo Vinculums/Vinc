@@ -956,6 +956,7 @@
     "record:network-file-shares-break-embedded-databases-block-storage-does-not",
     "record:no-node-level-gold-set-exists-2026-09-09",
     "record:node-candidacy-tracks-title-token-reuse-not-language-2026-09-09",
+    "record:on-the-hosted-server-colbert-rescoring-decides-the-final-mode-current-order-and-the-window-ordering-only-picks-the-20-rows-2026-11-11",
     "record:one-bad-node-used-to-take-the-whole-batch",
     "record:one-logical-id-in-two-spaces-reads-as-two-orphans-2026-09-10",
     "record:path-called-an-existing-concept-unknown-2026-09-08",
@@ -1574,6 +1575,9 @@
     },
     "record:node-candidacy-tracks-title-token-reuse-not-language-2026-09-09": {
       "validity": "current"
+    },
+    "record:on-the-hosted-server-colbert-rescoring-decides-the-final-mode-current-order-and-the-window-ordering-only-picks-the-20-rows-2026-11-11": {
+      "validity": "unknown"
     },
     "record:one-bad-node-used-to-take-the-whole-batch": {
       "validity": "current"
