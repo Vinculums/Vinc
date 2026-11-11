@@ -6,7 +6,7 @@
  * 앱과 사이트가 같은 이름으로 갖는다. 종류와 자리는 vinc-loaders.js 머리 주석에 있다.
  * 모두 흑백 + 포인트 색 하나이고, 모션을 줄인 사람에게는 "진행 중"을 말하는 정지 화면을 보인다.
  */
-/* sync-sha256: 149343faed361463b4a7fcca84b5c050676fa57ba6c05205c4117048d58be910 */
+/* sync-sha256: 0dc2aa53c332a3b2730f5d9d04361183c6fcfb2500b47ee1d1480ac77c738371 */
 
 .vl {
   --vl-fg: hsl(var(--foreground, 240 6% 10%));
@@ -28,7 +28,7 @@
 @property --vl-sweep { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 /* 마스크는 vinc-ring-mono.svg 를 그대로 인코딩한 것이다. 로고가 바뀌면 이 줄도 다시 만든다. */
 .vl-mark { position: relative; display: grid; place-items: center;
-  --vl-mark-src: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='42 38 436 604'%3E%3Cpath fill-rule='evenodd' fill='black' d='M328.4 155.7L420.5 284.7Q460.0 340.0 420.5 395.3L328.4 524.3Q260.0 620.0 191.6 524.3L99.5 395.3Q60.0 340.0 99.5 284.7L191.6 155.7Q260.0 60.0 328.4 155.7Z M312.2 203.4L383.9 297.8Q416.0 340.0 383.9 382.2L312.2 476.6Q260.0 545.2 207.8 476.6L136.1 382.2Q104.0 340.0 136.1 297.8L207.8 203.4Q260.0 134.8 312.2 203.4Z'%3E%3C/path%3E%3Ccircle cx='260' cy='340' r='52' fill='black'%3E%3C/circle%3E%3C/svg%3E"); }
+  --vl-mark-src: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='42 38 436 604'%3E%3Cpath fill-rule='evenodd' fill='black' d='M327.9 156.0L419.1 285.0Q458.0 340.0 419.1 395.0L327.9 524.0Q260.0 620.0 192.1 524.0L100.9 395.0Q62.0 340.0 100.9 285.0L192.1 156.0Q260.0 60.0 327.9 156.0Z M304.4 219.8L364.0 304.1Q389.4 340.0 364.0 375.9L304.4 460.2Q260.0 523.0 215.6 460.2L156.0 375.9Q130.6 340.0 156.0 304.1L215.6 219.8Q260.0 157.0 304.4 219.8Z'%3E%3C/path%3E%3Ccircle cx='260' cy='340' r='46.7' fill='black'%3E%3C/circle%3E%3C/svg%3E"); }
 .vl-mark-ring {
   width: var(--vl-size, 48px); aspect-ratio: 436 / 604;
   -webkit-mask: var(--vl-mark-src) center / contain no-repeat; mask: var(--vl-mark-src) center / contain no-repeat;

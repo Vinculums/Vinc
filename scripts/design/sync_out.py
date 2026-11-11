@@ -53,6 +53,10 @@ MAP = [
     ("assets/logo/vinc-ring-black.svg", "../Vinc-homepage/site/assets/vinc-mark.svg"),
     ("assets/logo/vinc-ring-white.svg", "../Vinc-homepage/site/assets/vinc-mark-white.svg"),
     ("assets/logo/vinc-ring-mono.svg", "../Vinc-homepage/site/assets/vinc-mark-mono.svg"),
+    # 워드마크(2026-11-11). 사이트 상단 바는 글꼴 서브셋 대신 이 마스크를 쓴다: v·i·c 는 마크의
+    # 규칙으로 다시 그린 글리프라 글꼴로는 나오지 않는다.
+    # 근거: [[decision:vinc-wordmark-a2o-mark-rule-v-i-c-on-space-grotesk-2026-11-11]]
+    ("assets/logo/wordmark/vinc-wordmark-mono.svg", "../Vinc-homepage/site/assets/vinc-wordmark-mono.svg"),
     # 이메일용 래스터. **메일 클라이언트는 SVG 를 못 받는다** — Gmail 은 `<svg>` 를
     # 통째로 걷어내고 Outlook 데스크탑도 안 그린다. 그래서 이 한 자리만 PNG 다.
     # 소스는 흰 램프 마크(이메일 셸 배경이 #0A0B10 로 어둡다), 2배 크기(46x64).
