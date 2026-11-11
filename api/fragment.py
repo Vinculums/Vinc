@@ -35,6 +35,7 @@ from engines import domain_hierarchy
 from . import revstamp
 from . import role_contract
 from store import pkns
+from store import querybase as _qb
 # 근거 열을 가진 rel 의 정본 — 스키마가 표를 갖고 여기서는 읽기만 한다.
 from store.embedded_schema import EDGE_EVIDENCE_RELS, wiki_pairs_open
 
@@ -236,6 +237,22 @@ def _decision_interval(props: dict, stored_raw, nid: str, warnings: list[str]) -
             f"props.valid_from '{vf}' (id={nid}); stored as sent, but no instant "
             f"falls inside it")
     return out
+
+
+def _kind_default_day(*, authored: bool, owner: str) -> str:
+    """저작 경로(ingest)에서 새 결정·사건의 빈 날짜를 채울 오늘(UTC, 읽기의 오늘과 같은 시계).
+
+    빈 문자열이면 채우지 않는다: sync 복제·팩 가져오기는 원본의 빈 값을 그대로 옮기고,
+    커뮤니티 반영기는 경고 하나로도 반영을 실패로 본다(`_warn_orphan_decisions` 와 같다)."""
+    if not authored or wiki_pairs_open(owner):
+        return ""
+    return _qb._today()
+
+
+def _filled_warning(nid: str, field: str, day: str, when: str) -> str:
+    """서버가 채운 날짜를 말한다. 쓰기는 거절하지 않는다."""
+    return (f"{nid} has no {field}: filled with today's date {day} (UTC). "
+            f"Send {field} to record {when}.")
 
 
 def _warn_unkept_fields(node: dict, label: str, nid: str,
@@ -486,7 +503,8 @@ def _stored_nodes(store, types: dict[str, str], owner: str,
 def _merge_node(store, node: dict, owner: str, warnings: list[str],
                 *, owner_explicit: bool = False, theme_id: str = "",
                 theme_explicit: bool = False,
-                conflicts: list[str] | None = None) -> str | None:
+                conflicts: list[str] | None = None,
+                default_day: str = "") -> str | None:
     """단일 노드 MERGE. 반환 = 'created' | 'matched' | None(스킵).
 
     owner_id 스탬핑은 **생성 시 또는 fragment.owner 명시 시**에만 한다 — owner 없는
@@ -682,11 +700,18 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         # 위 `_warn_unkept_fields` 가 이미 냈다.
         if node.get("tags") is not None and "tags" in _KEPT_FIELDS[label]:
             _set("tags", [str(t) for t in (node.get("tags") or [])])
-        if node.get("props") is not None:
-            _pv = node["props"]
-            if label == "Decision" and isinstance(_pv, dict):
-                # 결정의 유효구간은 props 에 산다. 형식 검사는 Record 열과 같다.
-                _pv = _decision_interval(_pv, current.get("props"), nid, warnings)
+        _pv = node.get("props")
+        if label == "Decision" and isinstance(_pv, dict):
+            # 결정의 유효구간은 props 에 산다. 형식 검사는 Record 열과 같다.
+            _pv = _decision_interval(_pv, current.get("props"), nid, warnings)
+        if (label == "Decision" and default_day and not matched
+                and (_pv is None or isinstance(_pv, dict))
+                and not str((_pv or {}).get("valid_from") or "").strip()):
+            # 새 결정만 채운다. 기존 결정은 저장된 날짜를 지키고, 보낸 값은 덮지 않는다.
+            _pv = {**(_pv or {}), "valid_from": default_day}
+            warnings.append(_filled_warning(nid, "props.valid_from", default_day,
+                                            "when the decision took effect"))
+        if _pv is not None:
             _set("props", json.dumps(_claim_props(_pv, label, nid, warnings,
                                                    known_repos=lambda: _known_repos(store, owner)),
                                      ensure_ascii=False, sort_keys=True))
@@ -811,6 +836,13 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
                     _promote(_col, _val, f"props.{_col}")
                 else:
                     _set(_col, _val)
+            if default_day and not matched and not params.get("date"):
+                # 새 사건만 채운다(결정과 같은 규칙). 빈 문자열도 새 노드에선 빈 날짜다.
+                if "date" in params:
+                    params["date"] = default_day
+                else:
+                    _set("date", default_day)
+                warnings.append(_filled_warning(nid, "date", default_day, "when it happened"))
         # 출생(`created`) = **어느 공간에서든 처음 기록된 때**. 규칙이 둘로 갈린다 —
         #   신규 : 상류가 실은 값, 없으면 지금(HLC).
         #   기존 : **절대 안 덮는다**(팩 재적재가 남의 값으로 생일을 바꾸는 것을 막는다).
@@ -1634,13 +1666,14 @@ def merge_fragment(fragment: dict, *, store, themes=None,
     types: dict[str, str] = {}
     declared = {(n.get("id") or "").strip() for n in nodes}
     id_conflicts: list[str] = []
+    default_day = _kind_default_day(authored=authored, owner=owner)
     for n in nodes:
         ntype = (n.get("type") or "").strip()
         if _is_open(ntype):
             fold.fold("node", ntype)
         r = _merge_node(store, n, owner, warnings, owner_explicit=owner_explicit,
                         theme_id=fold.theme_id or "", theme_explicit=bool(fold._explicit),
-                        conflicts=id_conflicts)
+                        conflicts=id_conflicts, default_day=default_day)
         created += (r == "created")
         matched += (r == "matched")
         if r is not None:
