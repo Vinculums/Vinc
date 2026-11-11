@@ -117,7 +117,7 @@ test('the web is the hosted origin, not the shell or local dev', async () => {
   assert.deepEqual(decide({ protocol: 'tauri:', hostname: 'tauri.localhost' }, true), { IN_SHELL: true, WEB: false });
 });
 
-test('spaces are switched from the sidebar header, on the account graph only', async () => {
+test('spaces are switched from the view header, on the account graph only', async () => {
   const main = await read('src/main.ts');
   // 계정 그래프(웹 · 셸의 계정 모드)일 때만 머리를 세운다. 로컬 모드에는 고를 공간이 없다.
   // 셀프호스트 허브에는 개인 그래프 하나뿐이라 머리를 세우지 않는다(`self-hosted.ts`).
