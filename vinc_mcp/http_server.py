@@ -2185,6 +2185,8 @@ def serve_http_held(bridge: Bridge, build, *, host: str = "127.0.0.1", port: int
                     hold_s: float | None = None) -> int:
     """`make_held_server` 를 종료 신호까지 돌린다."""
     httpd = make_held_server(bridge, build, host=host, port=port, hold_s=hold_s)
+    from . import selfhost_seats
+    selfhost_seats.start_checker()
     print(json.dumps({"host": host, "port": httpd.server_address[1], "hold": True,
                       "hold_s": httpd.hold_s}), flush=True)
     try:
@@ -2210,6 +2212,9 @@ def serve_http(bridge: Bridge, *, host: str = "127.0.0.1", port: int = 8790,
                      mcp_seed=mcp_seed, account_public=account_public,
                      connect_url=connect_url, free_max_domains=free_max_domains)
     httpd = make_server(app, host, port)
+    # 셀프호스트이고 계정에 연결돼 있으면 하루 한 번 좌석을 묻는다. 한 사람 허브는 묻지 않는다.
+    from . import selfhost_seats
+    selfhost_seats.start_checker()
     modes = [m for m, on in (("static", static_token), ("oauth", oauth),
                              ("apikey", verify_key),
                              ("member", app.member_connect_enabled())) if on]

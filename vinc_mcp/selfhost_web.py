@@ -202,13 +202,14 @@ class SessionStore:
         os.chmod(tmp, 0o600)
         os.replace(tmp, self.path)
 
-    def create(self, now: float | None = None) -> tuple[str, str]:
-        """새 세션 → (세션 토큰, CSRF 토큰). 끝난 세션은 이때 같이 걷는다."""
+    def create(self, now: float | None = None, *, user: str | None = None) -> tuple[str, str]:
+        """새 세션 → (세션 토큰, CSRF 토큰). 끝난 세션은 이때 같이 걷는다. `user` 는 사람 표의
+        이름이다(표가 비어 있으면 None — S2 의 한 사람)."""
         now = time.time() if now is None else now
         token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
         with self._lock:
             data = {k: v for k, v in self._load().items() if self._alive(v, now)}
-            data[_digest(token)] = {"created": now, "seen": now, "csrf": csrf}
+            data[_digest(token)] = {"created": now, "seen": now, "csrf": csrf, "user": user}
             self._save(data)
         return token, csrf
 
@@ -341,7 +342,9 @@ _LOGIN_CSP = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self';
 def _login_page(handler, *, message: str = "", code: int = 200) -> None:
     note = f'<p class="note">{html.escape(message)}</p>' if message else ""
     form = ("" if message.startswith("Sign-in needs HTTPS") else
-            '<form method="post" action="/login"><label for="pw">Password</label>'
+            '<form method="post" action="/login"><label for="user">Name (leave empty if you are the only one)</label>'
+            '<input id="user" name="username" autocomplete="username">'
+            '<label for="pw">Password</label>'
             '<input id="pw" name="password" type="password" autocomplete="current-password" '
             'required autofocus><button type="submit">Sign in</button></form>')
     page = ("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
@@ -361,7 +364,7 @@ def _login_page(handler, *, message: str = "", code: int = 200) -> None:
 
 # ── 라우팅 ──────────────────────────────────────────────────────────────────
 
-_PATHS = ("/login", "/logout", "/api/me", "/api/teams")
+_PATHS = ("/login", "/logout", "/api/me", "/api/teams", "/api/selfhost/seats")
 
 
 def _owns(path: str) -> bool:
@@ -392,6 +395,27 @@ class _State:
             return st
 
 
+#: 없는 이름으로 로그인할 때도 scrypt 한 번을 쓰게 하는 해시(이름이 있는지 시간으로 새지 않게).
+_DUMMY_HASH = "scrypt$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA$" + "A" * 43
+
+
+def _person(rec: dict) -> dict | None:
+    """세션의 사람. 표가 비어 있으면 S2 의 한 사람이다. 표에서 지워진 사람의 세션은 끝난다.
+    `can_write` 는 더한 순서가 좌석 자격 안에 드는가다."""
+    from . import selfhost_seats, selfhost_users
+    name = rec.get("user")
+    people = selfhost_users.users()
+    if not people:
+        return None if name else {"username": selfhost_users.legacy_name(), "can_write": True}
+    if not name:
+        return None
+    hit = selfhost_users.find(str(name))
+    if hit is None:
+        return None
+    allowed = selfhost_seats.entitlement()["users_allowed"]
+    return {"username": hit[1]["username"], "can_write": hit[0] < allowed}
+
+
 def handle(handler, method: str) -> bool:
     """이 평면의 경로면 답하고 True. 셀프호스트가 아니거나 다른 경로면 False(기존 흐름)."""
     if not selfhost.enabled():
@@ -415,7 +439,8 @@ def handle(handler, method: str) -> bool:
     if url.path == "/api/me" and method == "GET" and rec is None and query.get("optional") == "1":
         _json(handler, 200, {"user": None})
         return True
-    if rec is None:
+    person = _person(rec) if rec is not None else None
+    if person is None:
         _json(handler, 401, {"error": "unauthorized"})
         return True
     if method not in ("GET", "HEAD"):
@@ -435,15 +460,31 @@ def handle(handler, method: str) -> bool:
         _json(handler, 200, {"ok": True}, cookies=_clear_cookies(kind))
         return True
     if url.path == "/api/me" and method == "GET":
-        name = (os.environ.get("VINC_LOCAL_USER_NAME") or "local").strip() or "local"
+        name = person["username"]
         _json(handler, 200, {"self_hosted": True, "user": {
             "email": None, "username": name, "name": name, "plan": "self_hosted",
-            "teams": [], "self_hosted": True, "owner": selfhost.owner()}})
+            "teams": [], "self_hosted": True, "owner": selfhost.owner(),
+            "can_write": person["can_write"]}})
+        return True
+    if url.path == "/api/selfhost/seats" and method == "GET":
+        from . import selfhost_seats, selfhost_users
+        ent = selfhost_seats.entitlement()
+        rows = selfhost_users.users()
+        _json(handler, 200, {k: ent[k] for k in (
+            "linked", "state", "seats", "features", "last_check", "last_attempt", "last_error",
+            "expires_at", "revoked")} | {"users_allowed": ent["users_allowed"],
+                                         "users_used": max(1, len(rows))})
         return True
     if url.path == "/api/teams" and method == "GET":
         _json(handler, 200, [])
         return True
     if url.path.startswith("/api/graph"):
+        if method != "GET" and not person["can_write"] and not url.path.endswith("/touch"):
+            # 좌석보다 많은 사람: 읽기와 내보내기는 그대로, 쓰기만 막는다.
+            _json(handler, 403, {"error": "seat_read_only",
+                                 "note": "This hub has fewer seats than people. You can read and "
+                                         "export; ask the owner to add seats to write."})
+            return True
         return _graph(handler, method, url.path[len("/api/graph"):] or "/", query) or True
     _json(handler, 404, {"error": f"no such route: {method} {url.path}"})
     return True
@@ -470,7 +511,18 @@ def _login(handler, method: str, st: _State, kind: str | None) -> None:
                      headers={"Retry-After": str(int(wait) + 1)})
     body = handler._body()
     password = str(body.get("password") or "")
-    encoded = password_hash()
+    from . import selfhost_users
+    people = selfhost_users.users()
+    user = None
+    if people:
+        # 사람 표가 있으면 이름으로 찾는다. 한 사람뿐이면 이름 없이도 된다(S2 로그인 화면).
+        wanted = str(body.get("username") or "").strip()
+        hit = selfhost_users.find(wanted) if wanted else (
+            (0, people[0]) if len(people) == 1 else None)
+        encoded = hit[1]["hash"] if hit else _DUMMY_HASH
+        user = hit[1]["username"] if hit else None
+    else:
+        encoded = password_hash()
     if encoded is None:
         return _json(handler, 503, {"error": "no_password_set",
                                     "note": f"Set {HASH_ENV} (vinc selfhost hash-password)."})
@@ -482,13 +534,15 @@ def _login(handler, method: str, st: _State, kind: str | None) -> None:
         ok = bool(password) and verify_password(password, encoded)
     finally:
         _KDF.release()
+    if people and user is None:
+        ok = False   # 없는 이름: 같은 시간을 쓰고 같은 답을 준다
     if ok:
         st.failures.refund(addr)
     else:
         if wants_json:
             return _json(handler, 401, {"error": "wrong_password"})
         return _send(handler, 303, b"", "text/plain", headers={"Location": "/login?error=1"})
-    token, csrf = st.sessions.create()
+    token, csrf = st.sessions.create(user=user)
     cookies = _set_cookies(kind, token, csrf)
     if wants_json:
         return _json(handler, 200, {"ok": True}, cookies=cookies)
