@@ -88,9 +88,10 @@ function planColours(mode) {
   return out;
 }
 const hex6 = (n) => `#${n.toString(16).padStart(6, "0")}`;
-const markOf = (h, mode) => (tint.markColour ? tint.markColour(h, mode) : h);
-const agentColours = (mode) => [3, 2, 0, 1].map((i) => ({ name: ["amber", "emerald", "ruby", "sapphire"][[3, 2, 0, 1].indexOf(i)], hex: markOf(hex6(topicJewels[mode][i]), mode) }));
-const policyColour = (mode) => markOf(hex6(topicJewels[mode][4]), mode);
+/** Agent 색: 계획의 보석 자리(planColour(i, 0))가 있으면 그것, 개별 바닥(markColour)만 있으면 그것, 둘 다 없으면 보석 그대로. */
+const jewelOf = (i, mode) => (tint.planColour ? tint.planColour(i, 0, mode) : tint.markColour ? tint.markColour(hex6(topicJewels[mode][i]), mode) : hex6(topicJewels[mode][i]));
+const agentColours = (mode) => [3, 2, 0, 1].map((i) => ({ name: ["amber", "emerald", "ruby", "sapphire"][[3, 2, 0, 1].indexOf(i)], hex: jewelOf(i, mode) }));
+const policyColour = (mode) => jewelOf(4, mode);
 
 // ── 마크 × 상태 → 그 상태에서 마크가 입는 색과 면 ─────────────────────────────
 // 선택된 문서 줄 · 그래프 노드 줄의 표식은 주제 색이 아니라 --ring 이다(app.css `.lnb-doc.on .lnb-dot`,
@@ -132,7 +133,7 @@ if (FULL) process.exit(0);
 
 console.log(`# Topic tint contrast, ${SRC}\n`);
 console.log(`Grounds from tokens.{desktop,web}.css and app.css: hover = --${HOVER.tok} / ${HOVER.a}, selected = --${PICK.tok} / ${PICK.a}, base = --surface-0 (light --${S0.light}, dark --${S0.dark}), drawer = --surface-2 (--${S2}), dock hover = --point ${DOCK_P * 100}% over --card.\n`);
-console.log(`Colours: ${AREAS} area ranks x ${TURNS} topic turns per theme from tintPlan; Agent dots ${tint.markColour ? "through markColour" : "raw jewels"}.\n`);
+console.log(`Colours: ${AREAS} area ranks x ${TURNS} topic turns per theme from tintPlan; Agent dots ${tint.planColour ? "from planColour" : tint.markColour ? "through markColour" : "raw jewels"}.\n`);
 console.log("| skin | theme | mark | state | where | ground | worst ratio | worst colour |\n|---|---|---|---|---|---|---|---|");
 for (const r of rows) console.log(`| ${r.skin} | ${r.mode} | ${r.mark} | ${r.state} | ${r.where} | ${r.ground} | ${fmt(r.worst)}${r.ring ? " (ring, untinted)" : r.worst < 4.5 && r.where !== "compass" ? " FAIL" : ""} | ${r.colour} |`);
 console.log(`\nMinimum over every tinted sidebar mark, state and ground: ${fmt(globalMin)}:1 (${globalMin >= 4.5 ? "meets" : "below"} 4.5:1)\n`);
