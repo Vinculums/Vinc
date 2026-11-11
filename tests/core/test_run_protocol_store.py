@@ -146,3 +146,90 @@ def test_the_waiting_list_marks_expired_requests_and_drops_them_a_day_later(stor
     gone = runs.waiting_runs(store, owner=OWNER, now=until + datetime.timedelta(days=1, minutes=1))
     assert gone["runs"] == [] and gone["total"] == 0
     assert runs.waiting_runs(store, owner="user:someone-else")["runs"] == []
+
+
+# ── VIN-987: 만료된 요청은 읽기만으로 막힘으로 보이고, 읽기는 쓰지 않는다 ─────────
+
+class _CountingBridge(_StoreBridge):
+    """`/ingest/fragment` 와 `/runs` 의 stored 표시를 센다. 읽기 길에 쓰기가 끼면 잡힌다."""
+
+    def __init__(self, store):
+        super().__init__(store)
+        self.calls = []
+
+    def request(self, method, path, params=None, body=None, timeout=60):
+        self.calls.append((method, path, dict(params or {})))
+        if path == "/runs":
+            return runs.list_runs(self.store, owner=params["owner"], run=params.get("run"),
+                                  cited=params.get("cited"), role=params.get("role"),
+                                  limit=params.get("limit") or 50,
+                                  stored=params.get("stored") in ("1", "true", True))
+        return super().request(method, path, params, body, timeout)
+
+    def writes(self):
+        return [c for c in self.calls if c[1] == "/ingest/fragment"]
+
+
+def _wait(bridge, run_id, ttl=600):
+    tools.call("vinc_run_start", {"role": ROLE, "task": "Review it.", "run_id": run_id}, bridge)
+    out = tools.call("vinc_run_submit", {
+        "run": run_id, "output": "Ready to merge.", "expires_in_s": ttl,
+        "person_only_requests": [{"action": "merge", "reason": "green"}]}, bridge)
+    assert out["state"] == "waiting", out
+    return out
+
+
+def _at(monkeypatch, stamp, seconds):
+    import datetime
+    moment = datetime.datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(
+        tzinfo=datetime.timezone.utc) + datetime.timedelta(seconds=seconds)
+    monkeypatch.setattr(run_protocol, "_now", lambda: moment)
+
+
+def test_an_expired_request_lists_as_blocked_without_anyone_answering(store, monkeypatch):
+    bridge = _CountingBridge(store)
+    out = _wait(bridge, "exp-1")
+    _at(monkeypatch, out["expires_at"], 1)
+    before = len(bridge.writes())
+    listed = tools.call("vinc_runs", {}, bridge)
+    item = next(r for r in listed["runs"] if r["run_id"] == "exp-1")
+    assert item["outcome"] == "blocked" and item["end_reason"] == run_protocol.EXPIRED_REASON
+    assert item["title"].endswith(": blocked")
+    one = tools.call("vinc_runs", {"run": "exp-1"}, bridge)["runs"][0]
+    assert one["props"]["state"] == "done" and one["props"]["outcome"] == "blocked"
+    assert one["props"]["end_reason"] == run_protocol.EXPIRED_REASON
+    assert one["props"]["ended_at"] == out["expires_at"] and "pending" not in one["props"]
+    # vinc_run_start 로 같은 실행을 다시 열어도 끝난 실행으로 보인다.
+    again = tools.call("vinc_run_start", {"role": ROLE, "task": "Review it.", "run_id": "exp-1"},
+                       bridge)
+    assert again["state"] == "done" and again["outcome"] == "blocked"
+    assert again["end_reason"] == run_protocol.EXPIRED_REASON
+    # 읽기는 쓰지 않는다: 저장된 행은 아직 waiting 이다.
+    assert len(bridge.writes()) == before
+    raw = runs.list_runs(store, owner=OWNER, run="exp-1", stored=True)["runs"][0]
+    assert raw["outcome"] == "waiting" and raw["props"]["state"] == "waiting"
+
+
+def test_a_request_inside_its_window_still_reads_waiting(store, monkeypatch):
+    bridge = _CountingBridge(store)
+    out = _wait(bridge, "exp-2")
+    _at(monkeypatch, out["expires_at"], -1)
+    item = next(r for r in tools.call("vinc_runs", {}, bridge)["runs"] if r["run_id"] == "exp-2")
+    assert item["outcome"] == "waiting" and item["end_reason"] == ""
+    one = tools.call("vinc_runs", {"run": "exp-2"}, bridge)["runs"][0]["props"]
+    assert one["state"] == "waiting" and one["pending"]["actions"] == ["merge"]
+
+
+def test_a_submit_after_expiry_still_closes_the_stored_row_as_before(store, monkeypatch):
+    bridge = _CountingBridge(store)
+    out = _wait(bridge, "exp-3")
+    _at(monkeypatch, out["expires_at"], 1)
+    assert tools.call("vinc_runs", {"run": "exp-3"}, bridge)["runs"][0]["outcome"] == "blocked"
+    # 제출·답은 저장된 행을 읽는다(stored). 그래서 지금처럼 `_expire` 가 행을 닫고 거절한다.
+    refused = run_protocol.person_answer({"run": "exp-3", "ask": 1, "answer": "approve"},
+                                         bridge, OWNER, actor="user:person")
+    assert refused["error"] == "request_expired" and refused["executed"] is False
+    assert [c[2].get("stored") for c in bridge.calls if c[1] == "/runs"][-1] == "1"
+    raw = runs.list_runs(store, owner=OWNER, run="exp-3", stored=True)["runs"][0]["props"]
+    assert raw["state"] == "done" and raw["outcome"] == "blocked" and raw["expired_at"]
+    assert raw["end_reason"] == run_protocol.EXPIRED_REASON

@@ -144,6 +144,8 @@ def _current(props: dict, ask: int) -> bool:
 def get(bridge, owner: str, params: dict, wrap) -> dict:
     """`tasks/get`. `wrap` 는 실행 보기를 도구 결과 봉투로 바꾼다."""
     eid, ask, props = _read(bridge, owner, params.get("taskId"))
+    # 읽기만 한다: 만료된 대기는 끝난 실행으로 보인다. update·cancel 은 저장된 행을 그대로 본다.
+    props = run_protocol.as_read(props)
     if _current(props, ask):
         if props.get("task_cancelled") == ask:
             return _task(props, eid, ask, "cancelled", statusMessage="The task was cancelled; the "

@@ -1700,7 +1700,7 @@
    "name": "vinc_runs",
    "summary": "List recorded agent runs, newest first. Pass cited to see only the runs that cited one claim, with whether that claim has been retired.",
    "docs_url": "https://vincs.io/docs/mcp/tools/#vinc_runs",
-   "reference": "List this space's agent run records, newest first. Returns {runs, total, truncated}. flagged:true keeps runs that used capabilities outside their role's policy; cited keeps runs that cite one claim and reports whether it is retired, which means those runs need re-checking. Read-only.",
+   "reference": "List this space's agent run records, newest first. Returns {runs, total, truncated}. flagged:true keeps runs that used capabilities outside their role's policy; cited keeps runs that cite one claim and reports whether it is retired, which means those runs need re-checking. A run whose request for a person expired reads as blocked, with end_reason saying so. Read-only.",
    "annotations": {
     "title": "List agent run records",
     "readOnlyHint": true,

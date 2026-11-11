@@ -1994,7 +1994,8 @@ TOOLS.append({"name": "vinc_runs", "reference":
         "List this space's agent run records, newest first. Returns {runs, total, truncated}. "
         "flagged:true keeps runs that used capabilities outside their role's policy; cited keeps runs "
         "that cite one claim and reports whether it is retired, which means those runs need "
-        "re-checking. Read-only."
+        "re-checking. A run whose request for a person expired reads as blocked, with end_reason "
+        "saying so. Read-only."
     )
     ),
     "inputSchema": {"type": "object", "properties": {
