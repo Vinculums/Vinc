@@ -18,6 +18,7 @@ import { mountSpaceSwitcher } from "./space-switcher";
 import { SELF_HOSTED_BUILD, selfHosted } from "./self-hosted";
 import { showNotice } from "./components";
 import { blocksSurfaceShortcuts } from "./keys";
+import { SURFACE_ORDER, shortcutList } from "./shortcuts";
 import { disposeEditorsIn, docEditorOpen } from "./doc-editor";
 import { mountAuthoringKeys, startNewDoc, startNewNode } from "./authoring";
 import { deepLinkTarget } from "./approvals";
@@ -42,7 +43,7 @@ const SURFACES: Record<Surface, (el: HTMLElement) => void | Promise<void>> = {
     await m.renderApprovals(el);
   },
 };
-const ORDER: Surface[] = ["home", "view", "search"];
+const ORDER: Surface[] = [...SURFACE_ORDER];
 const SURFACE_LABEL: Record<Surface, string> = {
   home: COPY.ui.home.nav, view: COPY.ui.topbar.home, search: COPY.ui.topbar.search,
   approvals: COPY.approvals.nav,
@@ -255,12 +256,9 @@ async function openCheatsheet() {
   const { openSheet } = await import("./components");
   const sheet = openSheet({ title: COPY.ui.palette.keyboard });
   sheet.body.innerHTML =
-    // 표 안의 범위도 표면 수에서 나온다 — 손으로 적으면 위 단축키와 갈라진다.
-    [[`1–${ORDER.length}`, COPY.ui.palette.goSurface], ["⌘/Ctrl K", COPY.ui.topbar.searchLabel],
-     ["⌘/Ctrl ⇧ K", COPY.ui.palette.cmdPalette],
-     ["⌘/Ctrl N", COPY.author.paletteDoc], ["⌘/Ctrl ⇧ N", COPY.author.paletteNode],
-     ["Esc", COPY.ui.palette.back], ["?", COPY.ui.palette.thisSheet]]
-      .map(([k, v]) => `<div class="palette-row"><span>${v}</span><span class="hint">${k}</span></div>`)
+    // 표는 설정의 단축키 분류와 한 벌이다(shortcuts.ts) — 손으로 적으면 둘이 갈라진다.
+    shortcutList()
+      .map(({ keys: k, label: v }) => `<div class="palette-row"><span>${v}</span><span class="hint">${k}</span></div>`)
       .join("");
 }
 

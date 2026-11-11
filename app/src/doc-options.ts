@@ -50,6 +50,16 @@ export function applyDocPrefs(p: DocPrefs, root: HTMLElement = document.document
   }
 }
 
+/** 설정의 읽기 분류가 쓰는 길: 지금 값을 읽고, 바꾸면 곧바로 저장하고 얹는다. 고를 수 있는
+ *  값은 `DOC_CHOICES` 뿐이다(그 밖의 값은 `readDocPrefs` 처럼 기본값으로 접힌다). */
+export const DOC_CHOICES = CHOICES;
+export function currentDocPrefs(): DocPrefs { return load(); }
+export function setDocPrefs(next: DocPrefs) {
+  prefs = readDocPrefs(JSON.stringify(next));
+  save(prefs);
+  applyDocPrefs(prefs);
+}
+
 const TAB_KEY = "vinc.doc.panel.tab";
 
 let prefs: DocPrefs = { ...DOC_DEFAULTS };
