@@ -960,14 +960,19 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   }
   // 붙은 곳: 기록·사건·결정이 붙은 뜻의 노드(개념·문서). LNB 트리가 그 아래로 들여 쓴다
   const hostOf = (n) => { if (isMean(n)) return null; for (const e of adj.get(n.id) || []) if (ATTACH.has(e.t) && e.a === n && isMean(e.b)) return e.b; return null; };
-  // ── 시간 · 범례 창: 머리 뒤 묶음의 버튼 바로 아래, 버튼 오른쪽 끝과 창 오른쪽 끝을 맞춘다. 폭과 높이는
-  //    내용 카드(`#surface`) 안쪽에서 멈춘다(창이 카드 왼쪽 · 아래로 넘지 않는다). 밖을 누르거나 Esc 면 닫힌다 ─────────────
+  // ── 시간 · 범례 창: 머리 뒤 묶음의 버튼 바로 아래. 창의 제 폭(CSS)이 단추 오른쪽 끝에서 내용 카드(`#surface`)
+  //    안쪽 왼쪽까지에 들어가면 단추 오른쪽 끝에 맞춘다. 안 들어가면 카드 안쪽 왼쪽에서 열고, 카드가 창보다 좁으면
+  //    화면 안(가장자리 8px)에 둔다 — 어느 쪽이든 창의 폭을 깎지 않아 안의 단추가 잘리지 않는다. 높이는 카드
+  //    아래에서 멈춘다. 밖을 누르거나 Esc 면 닫힌다 ─────────────
   let POP = '';
   const btnOf = (k) => tools.querySelector(`[data-pop="${k}"]`);
   function placePop() { const b = POP && btnOf(POP); if (!b) return; const r = b.getBoundingClientRect();
     const card = (document.querySelector('#surface') || document.body).getBoundingClientRect(), gap = 8, top = Math.round(r.bottom + 6);
-    pop.style.left = 'auto'; pop.style.right = `${Math.round(window.innerWidth - r.right)}px`; pop.style.top = `${top}px`;
-    pop.style.maxWidth = `${Math.max(0, Math.round(r.right - card.left - gap))}px`; pop.style.maxHeight = `min(80dvh, 46rem, ${Math.max(0, Math.round(card.bottom - gap - top))}px)`; }
+    pop.style.maxWidth = 'none'; pop.style.left = '0px'; pop.style.right = 'auto';
+    const want = pop.offsetWidth || 0, room = r.right - card.left - gap, vw = window.innerWidth;
+    if (want <= room) { pop.style.left = 'auto'; pop.style.right = `${Math.round(vw - r.right)}px`; pop.style.maxWidth = `${Math.max(0, Math.round(room))}px`; }
+    else { const w = Math.min(want, vw - gap * 2); pop.style.left = `${Math.round(Math.max(gap, Math.min(card.left + gap, vw - gap - w)))}px`; pop.style.maxWidth = `${Math.round(w)}px`; }
+    pop.style.top = `${top}px`; pop.style.maxHeight = `min(80dvh, 46rem, ${Math.max(0, Math.round(card.bottom - gap - top))}px)`; }
   function paintSide() { if (!POP) return;
     pop.innerHTML = POP === 'time' ? `<div class="cmp-sec cmp-time">${timeHTML()}</div>` : `<div class="cmp-sec">${kindsHTML()}<div class="cmp-legend">${legendHTML2()}</div></div>`; }
   function openPop(k) { if (POP === k) { closePop(); return; } POP = k; pop.dataset.pop = k; pop.hidden = false;
