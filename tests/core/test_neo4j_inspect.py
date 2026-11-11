@@ -87,6 +87,27 @@ def test_닿지_않는_주소는_ok_가_아니다(app):
     assert out["problem"] in ("unreachable", "driver_missing")
 
 
+def test_이_기계_밖으로_가는_평문만_위험이다():
+    """닿지 않는 주소여도 위험 판정은 연결 전에 난다. 루프백은 평문이어도 위험이 아니다."""
+    from store.neo4j_backend import inspect_database
+    far = inspect_database("bolt://vinc-check.invalid:7687", user="neo4j", password="x", database="neo4j", timeout_s=2)
+    assert "unencrypted_transport" in far["risks"]
+    near = inspect_database("bolt://127.0.0.1:1", user="neo4j", password="x", database="neo4j", timeout_s=2)
+    assert "unencrypted_transport" not in near["risks"]
+    secure = inspect_database("bolt+s://vinc-check.invalid:7687", user="neo4j", password="x", database="neo4j", timeout_s=2)
+    assert "unencrypted_transport" not in secure["risks"]
+
+
+def _foreign():
+    from store.neo4j_backend import Neo4jBackend
+    s = Neo4jBackend(URI, user=USER, password=PASSWORD, writer=False)
+    try:
+        with s._driver.session(database=s.database) as sess:
+            sess.run("CREATE (:Customer {name: 'acme'})").consume()
+    finally:
+        s.close()
+
+
 # ── 서버와 함께 ─────────────────────────────────────────────────────────────
 @needs_neo4j
 def test_빈_데이터베이스(app):
@@ -96,7 +117,7 @@ def test_빈_데이터베이스(app):
     assert out["auth_ok"] and out["version_supported"] and out["write_permission"] is True
     assert out["vinc_schema_version"] is None and out["vinc_counts"] == {"nodes": 0, "docs": 0}
     assert out["foreign_labels"]["nodes"] == 0
-    assert "unencrypted_transport" in out["risks"]       # bolt:// 는 평문이다
+    assert "unencrypted_transport" not in out["risks"]   # 이 기계의 bolt:// 는 밖으로 안 나간다
     assert PASSWORD not in json.dumps(out)
     # 쓰기 확인이 남긴 것이 없다.
     from store.neo4j_backend import Neo4jBackend
@@ -145,9 +166,10 @@ def test_위험은_확인해야_적고_비밀번호는_파일에_없다(app):
     _clean()
     loc = {"kind": "database", "engine": "neo4j", "uri": URI, "database": "neo4j", "user": USER,
            "secret_ref": "vinc-database:test"}
+    _foreign()                                            # 남의 데이터가 있으면 위험이다
     code, out = app.write_config({"location": loc, "password": PASSWORD})
     assert code == 409 and out["error"] == "risky_database"
-    assert "unencrypted_transport" in out["check"]["risks"]
+    assert "foreign_data_present" in out["check"]["risks"]
     assert not (app.home / "config.json").exists()
     code, out = app.write_config({"location": loc, "password": "definitely-wrong", "accept_risk": True})
     assert code == 400 and out["error"] == "auth_failed"

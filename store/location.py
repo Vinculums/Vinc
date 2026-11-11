@@ -194,6 +194,11 @@ ENV_SECRET_REF = f"env:{SECRET_ENV}"
 _LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 
 
+def is_local_uri(uri: str) -> bool:
+    """주소의 호스트가 이 기계(루프백)인가. 평문이어도 연결이 이 기계를 떠나지 않는다."""
+    return (urlsplit(uri).hostname or "").lower() in _LOCAL_HOSTS
+
+
 def env_location(environ=None) -> DatabaseLocation | None:
     """환경이 말하는 데이터베이스 위치. `URI_ENV` 가 없으면 None(폴더 위치다).
 
@@ -209,7 +214,7 @@ def env_location(environ=None) -> DatabaseLocation | None:
                           "user": (env.get(USER_ENV) or "neo4j").strip(),
                           "secret_ref": ENV_SECRET_REF})
     host = (urlsplit(loc.uri).hostname or "").lower()
-    if not loc.encrypted and host not in _LOCAL_HOSTS and not truthy(env.get(ACCEPT_PLAINTEXT_ENV)):
+    if not loc.encrypted and not is_local_uri(loc.uri) and not truthy(env.get(ACCEPT_PLAINTEXT_ENV)):
         raise LocationError(
             f"{URI_ENV} is an unencrypted connection to {host}: use neo4j+s:// or bolt+s://, "
             f"or set {ACCEPT_PLAINTEXT_ENV}=on to accept it")
