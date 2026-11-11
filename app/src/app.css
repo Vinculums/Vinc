@@ -1475,6 +1475,8 @@ button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px;
   padding: var(--space-3, .75rem) var(--space-4, 1rem) var(--space-4, 1rem);
 }
 .sheet-foot:empty { display: none; }
+/* 시트 상자는 열릴 때 초점을 받는다(tabindex=-1). 상자 테두리에 초점 고리를 그리지 않는다. */
+.sheet:focus { outline: none; }
 /* 쓰는 자리도 높이 **고정** — 시트가 내용(52vh 편집기)에 맞춰 크기를 잡던 역전을
    끊는다. 문서는 패널에 맞춰 흐르고 스크롤은 .sheet-body 가 진다(doc-editor.ts). */
 .sheet[data-size="write"]  { width: 52rem; height: 84vh; }
@@ -1804,7 +1806,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
       말고 쓰는 데가 없어 함께 지웠다. 여기 남은 둘은 Tools 공유 탭의 백업 링크다. ── */
 /* Tools 가져오기 탭 안의 드롭존: 시트 안이므로 무대 상단 여백·최대폭 제거
    (구 Packs 의 `#pack-import-host` 자리에 있던 같은 규칙이다 — P15 로 자리만 옮겼다) */
-#tools-pane .intake-stage { margin-top: 0; max-width: none; }
+#settings-tools .intake-stage { margin-top: 0; max-width: none; }
 .pack-backup { max-width: none; display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; margin: var(--space-2, .5rem) 0 0; }
 .pack-linkbtn {
   font: inherit; background: none; border: none; cursor: pointer; padding: 0;
@@ -1851,7 +1853,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 /* 키 입력칸과 저장 버튼은 **한 줄**이다 — 버튼이 다음 줄로 내려가면 무엇을 저장하는
    버튼인지 자리로 말하지 못한다. */
 .s-keyrow { display: flex; align-items: center; gap: var(--space-2, .5rem); }
-.s-keyrow > input { flex: 1 1 auto; min-width: 0; }
+.s-keyrow > input, .settings-main .s-keyrow > .set-input { flex: 1 1 auto; width: auto; min-width: 0; }
 .s-keyrow > .btn { flex: 0 0 auto; }
 
 /* 문서 패널의 머리도 **스크롤 밖에 남는다**(발주자 지시 2026-09-10 — 렌즈·LNB 와
@@ -2168,16 +2170,8 @@ textarea.props-val {
   text-transform: uppercase; letter-spacing: .075em; font-size: var(--fs-xs);
 }
 
-/* ── Tools 모달(D71) — 가져오기 · 공유를 한 층에 눕힌 탭 ────────────
-   탭은 시트 규격(머리·몸·발) 안에 산다: 갈래를 고르는 줄 하나 + 그 갈래의 몸. */
-.tools-tabs {
-  display: flex; align-items: baseline; gap: .75rem; flex-wrap: wrap;
-  margin-bottom: var(--space-4, 1rem);
-}
-/* 설명은 탭 줄 아래 한 줄이다(탭처럼 읽히지 않게). */
-.tools-sub { margin: calc(-1 * var(--space-2, .5rem)) 0 var(--space-4, 1rem); }
+/* ── Tools(D71) — 설정의 가져오기 · 공유 분류 안의 몸 ──────────────────── */
 .tools-preview:not(:empty) { margin: var(--space-3, .75rem) 0; }
-.tools-pane { display: block; }
 /* 라디오 줄 — 목록 행 문법을 그대로 쓰되 선택 컨트롤이 앞에 온다. */
 .tools-opt {
   display: flex; align-items: center; gap: .6rem; cursor: pointer;
@@ -2660,8 +2654,10 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
 .a2-metric b { color: hsl(var(--foreground)); font-weight: 600; }
 
 /* Settings — 왼쪽 분류 레일 + 본문(2026-09-22). 딤·머리·✕ 는 시트의 것이다.
-   분류는 일반·화면 · 읽기·View · 계정·동기화 · AI 연결 · 데이터 · GRAPH.md ·
-   고급 · 앱 정보. 웹 Vinc 는 AI·고급을 숨긴다. */
+   레일은 다섯 묶음(앱 · 계정 · 연결 · 정보 · 시스템)의 머리 아래 분류를 세운다.
+   본문은 카드와 줄 두 가지로만 짓는다(settings.ts `settingsCard` · `settingsRow`).
+   ⚠ 본문 칸의 발(`.settings-foot`)은 본문 열 **안**에 있다. 시트의 발을 쓰면 저장·공유 줄이
+   레일 밑까지 번져 레일이 짧아지고 버전 줄이 뛰었다 — 레일은 어느 분류에서나 같은 높이다. */
 .sheet[data-size="panel"]:has(.settings) .sheet-body {
   padding: 0; overflow: hidden; display: flex;
 }
@@ -2669,28 +2665,36 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
   display: flex; flex: 1 1 auto; min-height: 0; width: 100%;
 }
 .settings-cats {
-  flex: 0 0 16rem; width: 16rem;
-  display: flex; flex-direction: column; gap: .5rem;
+  flex: 0 0 14rem; width: 14rem;
+  display: flex; flex-direction: column; gap: var(--space-2);
   /* 낮은 창에서는 분류가 상자보다 길다. 스크롤을 안 주면 아래 분류와 버전 줄이
      모달 **밖**에 그려졌다(실측 2026-09-26, 창 844×390: 내용 313 · 상자 274). */
   min-height: 0; overflow-y: auto;
-  padding: 1.5rem 1.5rem 1.25rem;
+  padding: var(--space-4) var(--space-3) var(--space-3);
   border-right: 1px solid hsl(var(--border));
   background: hsl(var(--surface-2));
+}
+.settings-group { display: flex; flex-direction: column; gap: 2px; }
+/* 묶음 머리는 사이드바 소제목과 같은 문법이다(작고, 대문자, 캡션색). 누르는 것이 아니다. */
+.settings-group-head {
+  margin: 2px 0; padding: 0 var(--pad-row);
+  font-size: var(--fs-xs); font-weight: 600; letter-spacing: .02em; line-height: var(--lh-tight);
+  color: hsl(var(--muted-foreground)); text-transform: uppercase;
 }
 .settings-cat {
   position: relative;
   display: flex; align-items: center;
-  width: 100%; height: 2.5rem; padding: 0 .75rem;
-  border: none; border-radius: 10px; background: none;
-  color: hsl(var(--foreground)); font: inherit; font-size: var(--fs-base); font-weight: 500;
+  width: 100%; min-height: var(--row-h); padding: 0 var(--pad-row);
+  border: none; border-radius: var(--radius-xs); background: none;
+  color: hsl(var(--foreground)); font: inherit; font-size: var(--fs-sm); font-weight: 500;
   text-align: left; cursor: pointer;
 }
 /* 고른 분류 = LNB 의 고른 행과 같은 알약(ring 14%). `--muted` 는 다크에서 레일 바탕
    (surface-2 10%)보다 어두운 7% 라 고른 칸이 움푹 꺼져 거의 안 보였다. */
 .settings-cat:hover { background: hsl(var(--muted-foreground) / .1); }
 .settings-cat.on { background: hsl(var(--ring) / .14); font-weight: 600; }
-.settings-cat-space { flex: 1 1 auto; min-height: .5rem; }
+.settings-cat:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+.settings-cat-space { flex: 1 1 auto; min-height: var(--space-1); }
 .settings-cat-badge {
   margin-left: auto; min-width: 1rem; height: 1rem; padding: 0 .22rem;
   border-radius: .5rem; background: hsl(var(--ring));
@@ -2698,23 +2702,92 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
   font-weight: 650; text-align: center;
 }
 .settings-cat-badge[hidden] { display: none; }
+.settings-pane {
+  flex: 1 1 auto; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+}
 .settings-main {
   flex: 1 1 auto; min-width: 0; min-height: 0; overflow-y: auto;
-  padding: 2rem 2rem 1.5rem;
+  padding: var(--space-6) var(--space-6) var(--space-5);
 }
+.settings-foot { border-top: 1px solid hsl(var(--border)); }
 .settings-main > h2 {
-  margin: 0 0 .35rem; font-size: var(--fs-title); font-weight: 600; line-height: 1.25;
+  margin: 0 0 var(--space-1); font-size: var(--fs-title); font-weight: 600; line-height: 1.25;
 }
-.settings-main > h2 + .hint { margin-top: 0; margin-bottom: 1.25rem; }
-.settings-row {
+.settings-main > h2 + .hint { margin-top: 0; margin-bottom: var(--space-5); font-size: var(--fs-sm); }
+.settings-main > h2:not(:has(+ .hint)) { margin-bottom: var(--space-5); }
+/* ── 카드와 줄 ──────────────────────────────────────────────────────────────
+   줄: 왼쪽에 제목과 설명, 오른쪽에 컨트롤. 넓은 컨트롤은 줄 글 아래 전폭이다.
+   글 크기는 두 단계뿐이다: 줄 제목 = --fs-base, 설명·상태·안내 = --fs-sm. */
+.set-card-wrap { margin: 0 0 var(--space-5); }
+.set-card-head { margin: 0 0 var(--space-2); font-size: var(--fs-base); font-weight: 600; }
+.set-card {
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  background: hsl(var(--surface-2));
+}
+/* 자기 틀을 가진 모듈(드롭존 · 저장 위치 카드)을 담는 카드는 틀을 그리지 않는다 — 틀 안의 틀이 된다. */
+.set-card--bare { border: none; background: none; }
+.set-card--bare > .set-row { padding: 0; }
+/* 옮겨 심은 모듈의 안내문도 설명과 같은 크기다(줄 설명 = --fs-sm). 공유의 소제목은 제 크기를 지킨다. */
+.settings-main .set-card .hint:not(.rail-sec) { font-size: var(--fs-sm); }
+.set-row {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 1.5rem; min-height: 5.5rem;
+  gap: var(--space-2) var(--space-5); min-height: 3.5rem;
+  padding: var(--space-3) var(--space-4);
 }
-.settings-row-copy { flex: 1 1 auto; min-width: 0; }
-/* 줄 끝의 동작 버튼은 제 폭을 지킨다. 설명이 길면 "Turn off" 가 두 줄로 꺾였다(실측). */
-.settings-row > .btn { flex: 0 0 auto; white-space: nowrap; }
-.settings-row-copy strong { display: block; font-size: var(--fs-lg); font-weight: 600; }
-.settings-row-copy .hint { margin: .25rem 0 0; }
+.set-row + .set-row { border-top: 1px solid hsl(var(--border)); }
+.set-row--wide { flex-wrap: wrap; }
+.set-row-text { flex: 1 1 16rem; min-width: 0; }
+.settings-main .set-row-title {
+  display: block; margin: 0; font-size: var(--fs-base); font-weight: 500; line-height: var(--lh-tight);
+}
+.set-row-desc {
+  margin: var(--space-1) 0 0; font-size: var(--fs-sm); line-height: var(--lh-normal);
+  color: hsl(var(--muted-foreground));
+}
+.set-row-desc:empty { display: none; }
+.set-row-desc a { color: hsl(var(--link)); }
+/* 옮겨 심을 자리가 아직 비었거나(모듈을 불러오는 중) 그 모듈이 그릴 것이 없으면 빈 카드를 세우지 않는다. */
+.set-card-wrap:has(.set-row-wide > div:empty:only-child) { display: none; }
+/* 웹 알림 상자의 상태 줄도 설명 크기다(제목은 줄 제목이 진다). */
+.settings-main #push-box p { font-size: var(--fs-sm); }
+.set-row-desc code { font-size: var(--fs-sm); }
+.set-row-ctl { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-2); }
+.set-row-ctl > .btn { white-space: nowrap; }
+.set-row-wide { flex: 1 0 100%; min-width: 0; }
+/* 제목도 컨트롤도 없는 넓은 줄(드롭존 · GRAPH.md · 저장 위치)은 카드 안을 그대로 채운다. */
+.set-row-wide:only-child { padding: var(--space-1) 0; }
+.set-card-note {
+  margin: var(--space-2) var(--space-1) 0; font-size: var(--fs-sm); line-height: var(--lh-normal);
+  color: hsl(var(--muted-foreground));
+}
+.set-card-note:empty { display: none; }
+/* 할 일이 없는 분류가 그 까닭을 말하는 한 문장. */
+.set-lone { margin: 0; font-size: var(--fs-sm); color: hsl(var(--muted-foreground)); }
+.settings-main .set-input {
+  width: 18rem; max-width: 100%; height: var(--ctl-h); font: inherit; font-size: var(--fs-sm);
+  padding: 0 var(--space-3); border: 1px solid hsl(var(--input)); border-radius: var(--radius-sm);
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+}
+.set-num {
+  display: flex; align-items: center; gap: var(--space-2);
+  color: hsl(var(--muted-foreground)); font-size: var(--fs-sm);
+}
+.settings-main .set-num input {
+  width: 6rem; height: var(--ctl-h); font: inherit; font-size: var(--fs-sm); padding: 0 var(--space-2);
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius-sm);
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+}
+.set-kbd {
+  font: 500 var(--fs-xs)/1 var(--font-mono); color: hsl(var(--muted-foreground));
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-xs);
+  padding: var(--space-1) var(--space-2); white-space: nowrap;
+}
+.settings-select {
+  width: 15.5rem; height: var(--ctl-h); font: inherit; font-size: var(--fs-sm); padding: 0 var(--space-3);
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius-sm);
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+}
 /* 켜짐·꺼짐 표지 — 동작 버튼의 글자로 지금 상태를 짐작하지 않게 제목 옆에 적는다. */
 .settings-state {
   display: inline-block; margin-left: .5rem; padding: .05rem .5rem; vertical-align: middle;
@@ -2722,38 +2795,25 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
   color: hsl(var(--muted-foreground)); border: 1px solid hsl(var(--border));
 }
 .settings-state.on { color: hsl(var(--point-text, var(--foreground))); border-color: hsl(var(--point-text, var(--foreground)) / .45); }
-.settings-select {
-  width: 15.5rem; font: inherit; padding: .5rem .75rem;
-  border: 1px solid hsl(var(--input)); border-radius: var(--radius);
-  background: hsl(var(--background)); color: hsl(var(--foreground));
-}
-.settings-px {
-  display: flex; align-items: center; gap: .4rem;
-  color: hsl(var(--muted-foreground)); font-size: var(--fs-base);
-}
-.settings-px input {
-  width: 5.5rem; font: inherit; padding: .45rem .55rem;
-  border: 1px solid hsl(var(--input)); border-radius: var(--radius);
-  background: hsl(var(--background)); color: hsl(var(--foreground));
-}
 .settings-build {
-  font-size: var(--fs-lg); font-variant-numeric: tabular-nums; margin: .5rem 0 1rem;
+  font-size: var(--fs-lg); font-variant-numeric: tabular-nums; margin: 0;
 }
 /* 앱 정보의 첫 줄 = 마크 + 빌드. 마크는 크기 단계(128·96·64·40) 중 64 이고 상자를
    그림의 비율(viewBox 436×604)에 딱 맞춘다. 사이 여백 1.25rem 은 마크 폭(약 46px)의
    25% 보다 넓다([[vinc.design.logo]] 의 여백 규칙). */
 .settings-about-id {
-  display: flex; align-items: center; gap: 1.25rem; margin: .5rem 0 1.25rem;
+  display: flex; align-items: center; gap: 1.25rem;
 }
 .settings-about-id .brand-logo { height: 4rem; aspect-ratio: 436 / 604; }
-.settings-about-id .settings-build { margin: 0; }
 .settings-ver {
-  flex: 0 0 auto; font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
+  flex: 0 0 auto; padding: 0 var(--pad-row); font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
   color: hsl(var(--muted-foreground));
 }
-.settings-sep { border: none; border-top: 1px solid hsl(var(--border)); margin: var(--space-4, 1rem) 0; }
-.settings-main label { display: block; margin-top: var(--space-3, .75rem); font-weight: 700; }
-.settings-main input:not([type="checkbox"]):not([type="radio"]):not([type="number"]) {
+/* 옮겨 심는 모듈(저장 위치 · 공간 옮기기 · 알림)의 이름표와 입력칸. `:where` 로 감싸 낮춘다:
+   줄의 제목(`.set-row-title`)과 줄의 입력(`.set-input`)이 이 규칙에 지지 않게. 모듈 자기 규칙은
+   여전히 `.settings-body …` 로 이긴다. */
+.settings-main :where(label) { display: block; margin-top: var(--space-3, .75rem); font-weight: 700; }
+.settings-main :where(input:not([type="checkbox"]):not([type="radio"]):not([type="number"])) {
   width: 100%; font: inherit; padding: var(--space-2, .5rem);
   border: 1px solid hsl(var(--input)); border-radius: var(--radius);
   background: hsl(var(--background)); color: hsl(var(--foreground));
@@ -2765,8 +2825,12 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
     overflow-x: auto; overflow-y: hidden; border-right: none;
     border-bottom: 1px solid hsl(var(--border));
   }
+  /* 가로 레일에서는 묶음 머리를 접고 분류만 한 줄로 잇는다. */
+  .settings-group { display: contents; }
+  .settings-group-head { display: none; }
   .settings-cat { width: auto; white-space: nowrap; }
   .settings-cat-space { display: none; }
+  .set-row { flex-wrap: wrap; }
 }
 
 /* ── D37 부유 크롬 = Liquid Glass. 콘텐츠 평면(목록·캔버스 마크·레일)은 불변.
@@ -2849,22 +2913,10 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
   input.slider::-webkit-slider-thumb { transition: none; }
 }
 
-/* ── 행 목록 ─────────────────────────────────────────────────────────────
-   "이름 하나 + 그것에 대한 동작들"이 한 줄인 자리(MCP 호스트 등). `.seg` 로 이 일을
-   하지 말 것 — 그건 여럿 중 **하나를 고르는** 컨트롤이라, 독립 동작을 담으면 한
-   덩어리로 뭉쳐 보이고 선택 상태가 없는 세그가 된다(2026-08-05 재설계 이유). */
-.rowlist { list-style: none; margin: .5rem 0 0; padding: 0; }
-.rowlist .row {
-  display: flex; align-items: center; gap: var(--space-3, .75rem);
-  padding: .5rem .1rem;
-  border-bottom: 1px solid hsl(var(--border) / .5);
-}
-.rowlist .row:last-child { border-bottom: none; }
+/* ── 행 이름 ─────────────────────────────────────────────────────────────
+   "이름 하나 + 그것에 대한 동작들"이 한 줄인 자리의 이름 칸(공간 메뉴 등). 설정의 줄은
+   `.set-row` 다. 독립 동작을 `.seg` 에 담지 말 것 — 그건 여럿 중 **하나를 고르는** 컨트롤이다. */
 .row-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-acts { flex: 0 0 auto; display: flex; align-items: center; gap: .4rem; }
-.mcp-row { flex-wrap: wrap; }
-.mcp-row .mcp-result { flex-basis: 100%; margin: 0; }
-.mcp-row .mcp-result:empty { display: none; }
 /* 작은 보조 문구·긴 문자열 처리 — 인라인 style 로 매번 적던 것들을 클래스로. */
 .hint-sm { font-size: var(--fs-sm); margin-top: .35rem; }
 .break-all { word-break: break-all; }

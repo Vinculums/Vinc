@@ -4,9 +4,9 @@ import { esc, sheetActions, sheetProgress, type SheetHandle } from "./components
 import { renderIntake } from "./surfaces/intake";
 import { viewHooks } from "./topbar";
 
-/** Tools (DEC D71) — 설정의 데이터 분류. 가져오기 · 공유 두 탭이다.
+/** Tools (DEC D71) — 설정의 가져오기 · 공유 두 분류가 이 모듈을 심는다.
  *
- *  탭은 **한 층**에 눕힌다(중첩 금지): 상단에서 고르고, 아래는 그 갈래의 일만 한다.
+ *  분류 안에 탭을 두지 않는다(중첩 금지): 레일에서 고르고, 본문은 그 갈래의 일만 한다.
  *  시트 규격(D63)은 그대로다 — 머리·몸·발, 그리고 Esc·✕·배경으로 닫힘.
  *
  *  새 문서 쓰기는 여기 없다. 홈의 `새 문서` 가 같은 편집기를 넓은 자리에서 연다.
@@ -38,42 +38,22 @@ export function openTools(tab: Tab = "import") {
   void import("./surfaces/settings").then((m) => m.openSettings("data", tab));
 }
 
-/** 설정 시트의 데이터 분류 안에 그린다. 시트를 새로 열지 않는다. */
+/** 설정 시트의 가져오기·공유 분류 안에 그린다. 시트를 새로 열지 않는다.
+ *
+ *  두 갈래는 설정의 분류 둘이다(탭 줄이 없다). 설명 줄은 분류 머리가 진다. 발(`host.foot`)은
+ *  설정이 넘긴 본문 칸의 발이라, 공유의 보내기·취소가 분류 레일 밑으로 번지지 않는다. */
 export function mountTools(host: SheetHandle, tab: Tab = "import"): () => void {
-  const T = COPY.ui.tools;
-  let cleanup: (() => void) | null = null;
-  const sheet = host;
-
-  const draw = (t: Tab) => {
-    cleanup?.();
-    cleanup = null;
-    // 설명은 탭 줄 **아래** 한 줄이다. 탭과 한 줄에 두면 같은 모양의 넷째 탭으로 읽힌다.
-    host.body.innerHTML = `
-      <div class="tools-tabs">
-        <span class="seg">
-          ${(["import", "share"] as Tab[]).map((k) =>
-            `<button class="chip${k === t ? " active" : ""}" data-tab="${k}">${esc(T[k])}</button>`).join("")}
-        </span>
-      </div>
-      <p class="hint tools-sub"></p>
-      <div class="tools-pane" id="tools-pane"></div>`;
-    host.body.querySelector<HTMLElement>(".tools-sub")!.textContent =
-      t === "import" ? T.importSub : T.shareSub;
-    host.body.querySelectorAll<HTMLElement>("[data-tab]").forEach((b) =>
-      b.addEventListener("click", () => draw(b.dataset.tab as Tab)));
-    const pane = host.body.querySelector<HTMLElement>("#tools-pane")!;
-    host.foot.innerHTML = "";
-    if (t === "share") { void renderShare(pane, sheet); return; }
-    // 가져오기는 쓰기다. 읽기만 되는 공간(커뮤니티, 팀 열람자)에서는 드롭존을 열지 않고
-    // 안내만 보인다. `canWriteHere` 가 실패하면 연다: 막는 것은 서버다.
-    void canWriteHere().catch(() => true).then((ok) => {
-      if (!pane.isConnected) return;
-      if (!ok) { pane.innerHTML = `<p class="hint">${esc(COPY.ui.settingsUi.readOnlySpace)} ${esc(COPY.ui.settingsUi.readOnlyShareStill)}</p>`; return; }
-      renderImport(pane, sheet);
-    });
-  };
-  draw(tab);
-  return () => { cleanup?.(); cleanup = null; };
+  const pane = host.body;
+  host.foot.innerHTML = "";
+  if (tab === "share") { void renderShare(pane, host); return () => {}; }
+  // 가져오기는 쓰기다. 읽기만 되는 공간(커뮤니티, 팀 열람자)에서는 드롭존을 열지 않고
+  // 안내만 보인다. `canWriteHere` 가 실패하면 연다: 막는 것은 서버다.
+  void canWriteHere().catch(() => true).then((ok) => {
+    if (!pane.isConnected) return;
+    if (!ok) { pane.innerHTML = `<p class="hint">${esc(COPY.ui.settingsUi.readOnlySpace)} ${esc(COPY.ui.settingsUi.readOnlyShareStill)}</p>`; return; }
+    renderImport(pane, host);
+  });
+  return () => {};
 }
 
 // ── 가져오기 ────────────────────────────────────────────────────────────────
@@ -152,7 +132,7 @@ async function renderShare(pane: HTMLElement, sheet: SheetHandle, srcTeam?: stri
     <label class="list-row tools-opt"${domains.length ? "" : ' style="opacity:.5"'}>
       <input type="radio" name="tl-scope" value="topic" ${domains.length ? "" : "disabled"} />
       <span class="title">${esc(T.scopeTopic)}</span>
-      <select id="tl-topic" ${domains.length ? "" : "disabled"}>
+      <select id="tl-topic" aria-label="${esc(T.scopeTopic)}" ${domains.length ? "" : "disabled"}>
         ${domains.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join("")}
       </select></label>
     <label class="list-row tools-opt"${hereOn ? "" : ' style="opacity:.5"'}>

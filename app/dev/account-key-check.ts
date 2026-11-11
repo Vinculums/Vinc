@@ -123,6 +123,10 @@ function connectedFixture(accountKey, keyIsOnDisk = () => false) {
     renderAccount: () => {},
   };
   vm.createContext(state);
+  // 그리기는 설정의 두 도우미(카드 · 줄)를 거친다. 합성하지 않고 그 소스를 그대로 싣는다.
+  const helpers = settings.slice(settings.indexOf("type Row = {"), settings.indexOf("function paneHead"));
+  assert.ok(helpers.includes("function settingsRow") && helpers.includes("function settingsCard"));
+  Object.assign(state, { exports: {} }); run(helpers, state);
   const from = settings.indexOf('const acctBox = body.querySelector<HTMLElement>("#acct-box")');
   const to = settings.indexOf("\n    async function startConnect", from);
   assert.ok(from >= 0 && to > from); run(settings.slice(from, to), state); state.drawAcct();

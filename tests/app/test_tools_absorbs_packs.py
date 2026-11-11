@@ -136,10 +136,14 @@ class ToolsAbsorbsPacksTests(unittest.TestCase):
         route = _body(main, "async function route")
         self.assertRegex(route, r'openSettings\(\s*"data"\s*,\s*ALIAS_TOOLS\[rawHead\]\s*\)',
                          "라우터가 ALIAS_TOOLS 의 탭으로 설정의 정보 분류를 안 연다")
-        # 그 탭이 실제로 Tools 까지 닿는가: 시작 탭 → toolsTab → mountTools.
+        # 그 탭이 실제로 Tools 까지 닿는가: 옛 `data` 분류와 탭 → 새 분류(import·share) →
+        # toolsTab → mountTools. VIN-996 이 데이터 분류를 가져오기 · 공유 둘로 나눴다.
         settings = (APP / "surfaces" / "settings.ts").read_text(encoding="utf-8")
-        self.assertRegex(settings, r"let toolsTab: DataTab = dataTab\b",
-                         "openSettings 가 받은 탭을 정보 분류가 안 쓴다")
+        self.assertRegex(settings,
+                         r'if \(cat === "data"\) return tab \?\? "import";',
+                         "옛 data 분류가 받은 탭으로 가져오기·공유 분류를 안 연다")
+        self.assertRegex(settings, r'let toolsTab: DataTab = active === "share" \? "share" : "import";',
+                         "고른 분류를 정보 판이 안 쓴다")
         data = _inner(settings, "  function renderData")
         self.assertRegex(data, r"mountTools\([^;]*toolsTab\s*\)",
                          "정보 분류가 Tools 를 고른 탭으로 안 심는다")
@@ -172,13 +176,16 @@ class ToolsAbsorbsPacksTests(unittest.TestCase):
 
         settings = (APP / "surfaces" / "settings.ts").read_text(encoding="utf-8")
         cats = settings[settings.index("const ALL_CATS"):settings.index("const CATS")]
-        data_row = re.search(r'\{\s*id:\s*"data"[^}]*\}', cats)
-        self.assertIsNotNone(data_row, "설정에 정보(data) 분류가 없다")
-        self.assertNotIn("desktop: true", data_row.group(0),
-                         "정보 분류가 데스크탑 전용이다 · 웹에서 Tools 가 사라진다")
+        for cat in ("import", "share"):
+            with self.subTest(cat=cat):
+                row = re.search(r'\{\s*id:\s*"' + cat + r'"[^}]*\}', cats)
+                self.assertIsNotNone(row, f"설정에 {cat} 분류가 없다")
+                self.assertNotIn("desktop: true", row.group(0),
+                                 f"{cat} 분류가 데스크탑 전용이다 · 웹에서 Tools 가 사라진다")
+                self.assertNotIn("when:", row.group(0), f"{cat} 분류에 조건이 붙었다")
         self.assertRegex(_inner(settings, "  function renderBody"),
-                         r'active === "data"\) renderData\(',
-                         "정보 분류가 자기 본문을 안 그린다")
+                         r'active === "import" \|\| active === "share"\) renderData\(',
+                         "가져오기·공유 분류가 자기 본문을 안 그린다")
         self.assertIn("mountTools(", _inner(settings, "  function renderData"),
                       "정보 분류가 Tools 를 안 심는다")
 

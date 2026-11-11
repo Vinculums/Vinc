@@ -6,29 +6,45 @@ import { accountKey, accountWho, connectAccount, forgetAccount, hasAccount, keyI
 import { COPY } from "../copy";
 import { esc, openSheet, type SheetHandle } from "../components";
 import { loadPrefs, savePrefs, RAIL_MIN, RAIL_MAX } from "../view-prefs";
+import { DOC_CHOICES, DOC_DEFAULTS, currentDocPrefs, setDocPrefs, type DocPrefs } from "../doc-options";
 import { disposeEditorsIn } from "../doc-editor";
 import { mountStorage } from "../storage-mode";
 import { mountTopicConversion } from "../topic-conversion";
 import { mountPushSettings } from "../web-push-ui";
+import { shortcutList } from "../shortcuts";
 
 /** Settings — 왼쪽 분류 레일 + 본문(2026-09-22).
- *  종 레일 바닥의 설정 버튼이 예전 Settings · GRAPH.md · Tools(쓰기/가져오기/공유)
- *  를 한 상자에 담는다. 시트 머리의 ✕ 가 닫기이고, 여기 안에 닫기를 하나 더 두지 않는다.
- *  웹 Vinc 는 셸 전용 분류(AI 연결 · 고급)와 계정연결·동기화 섹션을 숨긴다. */
+ *  레일 바닥의 설정 버튼이 예전 Settings · GRAPH.md · Tools(가져오기/공유)를 한 상자에 담는다.
+ *  분류는 다섯 묶음(앱 · 계정 · 연결 · 정보 · 시스템) 아래에 서고, 보일 분류가 없는 묶음은
+ *  머리째 그리지 않는다. 시트 머리의 ✕ 가 닫기이고, 여기 안에 닫기를 하나 더 두지 않는다.
+ *  모든 본문은 아래 두 도우미(`settingsCard` · `settingsRow`)로 짓는다. */
 
 type SettingsCat =
-  | "general" | "reading" | "account" | "storage" | "ai"
-  | "data" | "graphmd" | "advanced" | "about";
+  | "general" | "appearance" | "reading" | "shortcuts" | "notifications"
+  | "account" | "spaces" | "storage"
+  | "apps" | "assistants" | "terminal"
+  | "import" | "share" | "graphmd"
+  | "advanced" | "about";
+/** 묶음 머리가 생기기 전의 분류 id. 호출부(main · lnb · home · authoring · tools · view)와 `#intake`·`#packs`
+ *  별칭이 아직 이 이름으로 연다. `data` 는 탭 인자로 가져오기·공유를 고른다.
+ *  제거 조건: 위 호출부가 전부 새 분류 id(apps · import · share)로 옮겨진 뒤. */
+type LegacyCat = "ai" | "data";
 export type DataTab = "import" | "share";
 
+function resolveCat(cat: SettingsCat | LegacyCat, tab?: DataTab): SettingsCat {
+  if (cat === "data") return tab ?? "import";
+  if (cat === "ai") return "apps";
+  return cat;
+}
+
 type Live = {
-  go: (cat: SettingsCat, dataTab?: DataTab) => void;
+  go: (cat: SettingsCat | LegacyCat, dataTab?: DataTab) => void;
   close: () => void;
 };
 let live: Live | null = null;
 
 /** 설정 시트를 연다. 이미 열려 있으면 `toggle` 이 참일 때만 닫고, 아니면 분류만 옮긴다. */
-export function openSettings(start: SettingsCat = "general", dataTab?: DataTab, toggle = false) {
+export function openSettings(start: SettingsCat | LegacyCat = "general", dataTab?: DataTab, toggle = false) {
   if (live) {
     if (toggle) { live.close(); return; }
     live.go(start, dataTab);
@@ -45,84 +61,200 @@ export function openSettings(start: SettingsCat = "general", dataTab?: DataTab, 
     // 디바운스 저장이 화면 없는 곳에서 터진다.
     onClose: () => { live = null; disposeEditorsIn(sheet.el); },
   });
-  let queued: { cat: SettingsCat; tab?: DataTab } | null = null;
+  let queued: { cat: SettingsCat | LegacyCat; tab?: DataTab } | null = null;
   live = {
     go: (cat, tab) => { queued = { cat, tab }; },
     close: sheet.close,
   };
-  void renderSettings(sheet.body, sheet, start, dataTab).then((go) => {
+  void renderSettings(sheet.body, sheet, resolveCat(start, dataTab)).then((go) => {
     if (!live) return;
     live.go = go;
     if (queued) go(queued.cat, queued.tab);
   });
 }
 
+// ── 본문을 짓는 두 도우미 ────────────────────────────────────────────────────
+// 카드 하나에 줄 여럿. 줄은 왼쪽에 제목과 설명, 오른쪽에 컨트롤이다. 넓은 컨트롤(글 상자 ·
+// 드롭존 · 호스트 목록 같은 것)은 줄 글 아래 전폭(`wide`)에 선다.
+// ⚠ 제목과 설명은 **일반 글**이다(여기서 이스케이프한다). 마크업이 필요한 상태 칸은 `extra` 에
+// 호출부가 이스케이프해서 넣는다. 입력·선택이 하나인 줄은 `labelFor` 로 제목을 그 이름표로 묶는다.
+type Row = {
+  title?: string;
+  desc?: string;
+  extra?: string;
+  control?: string;
+  wide?: string;
+  labelFor?: string;
+  /** 제목 요소의 id. 묶음 컨트롤(세그)이 `aria-labelledby` 로 가리킨다. */
+  titleId?: string;
+  /** 줄 자체의 속성(`id="…" hidden` 처럼). */
+  attrs?: string;
+};
+
+export function settingsRow(r: Row): string {
+  const id = r.titleId ? ` id="${r.titleId}"` : "";
+  const title = r.title === undefined ? ""
+    : r.labelFor ? `<label class="set-row-title" for="${r.labelFor}"${id}>${esc(r.title)}</label>`
+    : `<span class="set-row-title"${id}>${esc(r.title)}</span>`;
+  const text = title || r.desc || r.extra
+    ? `<div class="set-row-text">${title}${r.desc ? `<p class="set-row-desc">${esc(r.desc)}</p>` : ""}${r.extra ?? ""}</div>`
+    : "";
+  return `<div class="set-row${r.wide !== undefined ? " set-row--wide" : ""}"${r.attrs ? ` ${r.attrs}` : ""}>${text}${
+    r.control ? `<div class="set-row-ctl">${r.control}</div>` : ""}${
+    r.wide !== undefined ? `<div class="set-row-wide">${r.wide}</div>` : ""}</div>`;
+}
+
+/** 카드. 머리(`heading`)는 줄 여럿을 한 이름으로 묶을 때만 단다. `foot` 은 카드 아래의 짧은
+ *  안내(마크업, 호출부가 이스케이프)다. `bare` 는 자기 틀을 가진 모듈(드롭존 · 저장 위치)을 담을
+ *  때 카드의 틀을 걷는다 — 틀 안에 틀이 서지 않게. */
+export function settingsCard(rows: string[], opts: { heading?: string; foot?: string; bare?: boolean } = {}): string {
+  return `<section class="set-card-wrap">${opts.heading ? `<h3 class="set-card-head">${esc(opts.heading)}</h3>` : ""}
+    <div class="set-card${opts.bare ? " set-card--bare" : ""}">${rows.join("")}</div>${opts.foot ?? ""}</section>`;
+}
+
+/** 카드 아래 안내 한 줄. */
+const cardNote = (text: string, attrs = "") => `<p class="set-card-note"${attrs ? ` ${attrs}` : ""}>${esc(text)}</p>`;
+/** 줄 글 아래의 상태 한 줄(비어 있으면 CSS 가 접는다). */
+const rowLine = (text: string, attrs = "") => `<p class="set-row-desc"${attrs ? ` ${attrs}` : ""}>${esc(text)}</p>`;
+
+function paneHead(title: string, intro?: string): string {
+  return `<h2>${esc(title)}</h2>${intro ? `<p class="hint">${esc(intro)}</p>` : ""}`;
+}
+
 async function renderSettings(
   el: HTMLElement,
   sheet: SheetHandle,
   start: SettingsCat = "general",
-  dataTab?: DataTab,
-): Promise<(cat: SettingsCat, tab?: DataTab) => void> {
+): Promise<(cat: SettingsCat | LegacyCat, tab?: DataTab) => void> {
   const U = COPY.ui.settingsUi;
 
-  const ALL_CATS: { id: SettingsCat; label: string; desktop?: boolean }[] = [
-    { id: "general", label: U.navGeneral },
-    { id: "reading", label: U.navReading },
-    { id: "account", label: U.navAccount },
-    { id: "storage", label: U.navStorage, desktop: true },
-    { id: "ai", label: U.navAi, desktop: true },
-    { id: "data", label: U.navData },
-    { id: "graphmd", label: U.navGraphmd },
-    { id: "advanced", label: U.navAdvanced, desktop: true },
-    { id: "about", label: U.navAbout },
+  type Cat = { id: SettingsCat; label: string; desktop?: true; when?: () => boolean };
+  // 셸 전용(`desktop`)은 웹에서 숨긴다. `when` 은 그 밖의 조건이다: 알림은 웹에서만(셸은 서비스
+  // 워커를 쓰지 않는다), 공간은 계정 그래프일 때만(로컬 모드와 셀프호스트 허브에는 고를 공간이 없다).
+  const ALL_CATS: { label: string; cats: Cat[] }[] = [
+    { label: U.groupApp, cats: [
+      { id: "general", label: U.navGeneral },
+      { id: "appearance", label: U.navAppearance },
+      { id: "reading", label: U.navReading },
+      // 그래프 분류는 없다: view-prefs 의 값 중 지금 나침반 그림을 바꾸는 것이 없다(view.ts 는 문서 열 폭만 읽는다).
+      { id: "shortcuts", label: U.navShortcuts },
+      { id: "notifications", label: U.navNotifications, when: () => WEB && !selfHosted() },
+    ] },
+    { label: U.groupAccount, cats: [
+      { id: "account", label: U.navAccount },
+      { id: "spaces", label: U.navSpaces, when: () => remote() && !selfHosted() },
+      { id: "storage", label: U.navStorage, desktop: true },
+    ] },
+    { label: U.groupConnections, cats: [
+      { id: "apps", label: U.navApps, desktop: true },
+      { id: "assistants", label: U.mcpRemote, desktop: true },
+      { id: "terminal", label: U.navTerminal, desktop: true },
+    ] },
+    { label: U.groupData, cats: [
+      { id: "import", label: COPY.ui.tools.import },
+      { id: "share", label: U.navShare },
+      { id: "graphmd", label: U.navGraphmd },
+    ] },
+    { label: U.groupSystem, cats: [
+      { id: "advanced", label: U.navAdvanced, desktop: true },
+      { id: "about", label: U.navAbout },
+    ] },
   ];
-  const CATS = ALL_CATS.filter((c) => !c.desktop || !WEB);
+  const GROUPS = ALL_CATS
+    .map((g) => ({ ...g, cats: g.cats.filter((c) => (!c.desktop || !WEB) && (!c.when || c.when())) }))
+    .filter((g) => g.cats.length > 0);
+  const CATS = GROUPS.flatMap((g) => g.cats);
 
   let active: SettingsCat = CATS.some((c) => c.id === start) ? start : "general";
-  let toolsTab: DataTab = dataTab ?? "import";
+  let toolsTab: DataTab = active === "share" ? "share" : "import";
   let cleanup: (() => void) | null = null;
+  let foot: HTMLElement = sheet.foot;
 
+  // 레일은 한 번만 그린다. 분류를 바꿀 때 레일까지 다시 그리면 방금 누른 버튼이 사라져
+  // 초점이 body 로 떨어진다. 바뀌는 것은 고른 표시와 본문뿐이다.
+  // 발(`#settings-foot`)은 본문 칸 안에 산다: 시트의 발을 쓰면 저장·공유 버튼 줄이 레일 밑까지
+  // 번져 레일이 짧아지고 버전 줄이 뛰었다.
   function shell() {
     cleanup?.();
     cleanup = null;
-    sheet.foot.innerHTML = "";
     el.innerHTML = `
       <div class="settings">
         <nav class="settings-cats" aria-label="${esc(U.title)}">
-          ${CATS.map((c) => `<button type="button" class="settings-cat${c.id === active ? " on" : ""}"
-            data-cat="${c.id}" role="tab" aria-selected="${c.id === active}">${esc(c.label)}${
-              c.id === "graphmd" ? `<span id="settings-graphmd-badge" class="settings-cat-badge" hidden></span>` : ""
-            }</button>`).join("")}
+          ${GROUPS.map((g, gi) => `<div class="settings-group" role="group" aria-labelledby="settings-group-${gi}">
+            <p class="settings-group-head" id="settings-group-${gi}">${esc(g.label)}</p>
+            ${g.cats.map((c) => `<button type="button" class="settings-cat${c.id === active ? " on" : ""}"
+              data-cat="${c.id}"${c.id === active ? ' aria-current="page"' : ""}>${esc(c.label)}${
+                c.id === "graphmd" ? `<span id="settings-graphmd-badge" class="settings-cat-badge" hidden></span>` : ""
+              }</button>`).join("")}
+          </div>`).join("")}
           <span class="settings-cat-space"></span>
           <div class="settings-ver hint">Vinc ${esc(buildId)}</div>
         </nav>
-        <div class="settings-main settings-body" id="settings-body"></div>
+        <div class="settings-pane">
+          <div class="settings-main settings-body" id="settings-body"></div>
+          <div class="sheet-foot settings-foot" id="settings-foot"></div>
+        </div>
       </div>`;
+    foot = el.querySelector<HTMLElement>("#settings-foot")!;
     el.querySelectorAll<HTMLElement>(".settings-cat").forEach((b) =>
-      b.addEventListener("click", () => {
-        const next = b.dataset.cat as SettingsCat;
-        if (next === active) return;
-        active = next;
-        shell();
-      }));
+      b.addEventListener("click", () => pick(b.dataset.cat as SettingsCat)));
     void import("../conventions").then((m) => m.refreshBadge());
     renderBody();
+    el.querySelector<HTMLElement>(".settings-cat.on")?.focus({ preventScroll: true });
   }
 
   function renderBody() {
     cleanup?.();
     cleanup = null;
-    sheet.foot.innerHTML = "";
+    foot.innerHTML = "";
     const body = el.querySelector<HTMLElement>("#settings-body")!;
+    body.scrollTop = 0;
     if (active === "general") renderGeneral(body);
+    else if (active === "appearance") renderAppearance(body);
     else if (active === "reading") renderReading(body);
+    else if (active === "shortcuts") renderShortcuts(body);
+    else if (active === "notifications") renderNotifications(body);
     else if (active === "account") renderAccount(body);
+    else if (active === "spaces") renderSpaces(body);
     else if (active === "storage") renderStorage(body);
-    else if (active === "ai") renderConnections(body);
-    else if (active === "data") renderData(body);
+    else if (active === "apps") renderApps(body);
+    else if (active === "assistants") renderAssistants(body);
+    else if (active === "terminal") renderTerminal(body);
+    else if (active === "import" || active === "share") renderData(body);
     else if (active === "graphmd") renderGraphmd(body);
     else if (active === "advanced") renderAdvanced(body);
     else renderAbout(body);
+  }
+
+  function pick(next: SettingsCat) {
+    if (next === "import" || next === "share") toolsTab = next;
+    if (next === active) return;
+    active = next;
+    el.querySelectorAll<HTMLElement>(".settings-cat").forEach((b) => {
+      const on = b.dataset.cat === active;
+      b.classList.toggle("on", on);
+      if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+    });
+    renderBody();
+  }
+
+  // ── 앱 ────────────────────────────────────────────────────────────────────
+  function renderGeneral(body: HTMLElement) {
+    const lang = cfg.lang === "en" ? "en" : "ko";
+    // 언어 이름은 덱에 넣지 않는다: 각 언어가 자기 이름으로 선다(영어 화면에서 "Korean"
+    // 이 되면 영어를 못 읽는 사람이 자기 언어를 못 찾는다). `data-lang-opt` 가 카피
+    // 인벤토리(tests/design/test_copy_parity.py)의 그 면제 표식이다.
+    body.innerHTML = paneHead(U.navGeneral, U.generalIntro) + settingsCard([
+      settingsRow({ title: U.language, desc: U.languageHint, labelFor: "s-lang", control: `
+        <select id="s-lang" class="settings-select">
+          <option data-lang-opt="ko" value="ko"${lang === "ko" ? " selected" : ""}>한국어</option>
+          <option data-lang-opt="en" value="en"${lang === "en" ? " selected" : ""}>English</option>
+        </select>` }),
+    ], { foot: cardNote(U.languageReload) });
+    body.querySelector<HTMLSelectElement>("#s-lang")!.addEventListener("change", (e) => {
+      cfg.lang = (e.target as HTMLSelectElement).value as "en" | "ko";
+      location.reload();
+    });
   }
 
   const THEME_OPTS = [
@@ -130,73 +262,77 @@ async function renderSettings(
     { id: "dark", label: U.themeDark },
     { id: "auto", label: U.themeSystem },
   ] as const;
-  const themeSeg = () => THEME_OPTS.map((t) =>
-    `<button class="chip${(localStorage.getItem("vinc.theme") || "dark") === t.id ? " active" : ""}"
-      data-theme-opt="${t.id}">${esc(t.label)}</button>`).join("");
 
-  function wireThemeLang(body: HTMLElement) {
-    body.querySelector<HTMLSelectElement>("#s-lang")?.addEventListener("change", (e) => {
-      cfg.lang = (e.target as HTMLSelectElement).value as "en" | "ko";
-      location.reload();
-    });
-    body.querySelectorAll<HTMLElement>("[data-theme-opt]").forEach((b) =>
-      b.addEventListener("click", async () => {
-        localStorage.setItem("vinc.theme", b.dataset.themeOpt!);
-        const { applyTheme } = await import("../main");
-        applyTheme();
-        renderGeneral(body);
-      }));
-  }
-
-  function renderGeneral(body: HTMLElement) {
-    const lang = cfg.lang === "en" ? "en" : "ko";
-    // 언어 이름은 덱에 넣지 않는다: 각 언어가 자기 이름으로 선다(영어 화면에서 "Korean"
-    // 이 되면 영어를 못 읽는 사람이 자기 언어를 못 찾는다). `data-lang-opt` 가 카피
-    // 인벤토리(tests/design/test_copy_parity.py)의 그 면제 표식이다.
-    body.innerHTML = `
-      <h2>${esc(U.navGeneral)}</h2>
-      <p class="hint">${esc(U.generalIntro)}</p>
-      <div class="settings-row">
-        <div class="settings-row-copy">
-          <strong>${esc(U.theme)}</strong>
-          <p class="hint">${esc(U.themeHint)}</p>
-        </div>
-        <span class="seg">${themeSeg()}</span>
-      </div>
-      <hr class="settings-sep" />
-      <div class="settings-row">
-        <div class="settings-row-copy">
-          <strong>${esc(U.language)}</strong>
-          <p class="hint">${esc(U.languageHint)}</p>
-        </div>
-        <select id="s-lang" class="settings-select">
-          <option data-lang-opt="ko" value="ko"${lang === "ko" ? " selected" : ""}>한국어</option>
-          <option data-lang-opt="en" value="en"${lang === "en" ? " selected" : ""}>English</option>
-        </select>
-      </div>
-      <p class="hint">${esc(U.languageReload)}</p>`;
-    wireThemeLang(body);
+  function renderAppearance(body: HTMLElement) {
+    const now = localStorage.getItem("vinc.theme") || "dark";
+    body.innerHTML = paneHead(U.navAppearance, U.appearanceIntro) + settingsCard([
+      settingsRow({ title: U.theme, desc: U.themeHint, titleId: "s-theme-t", control: `
+        <span class="seg" role="group" aria-labelledby="s-theme-t">${THEME_OPTS.map((t) =>
+          `<button type="button" class="chip${now === t.id ? " active" : ""}" data-theme-opt="${t.id}"
+            aria-pressed="${now === t.id}">${esc(t.label)}</button>`).join("")}</span>` }),
+    ]);
+    const opts = [...body.querySelectorAll<HTMLElement>("[data-theme-opt]")];
+    opts.forEach((b) => b.addEventListener("click", async () => {
+      localStorage.setItem("vinc.theme", b.dataset.themeOpt!);
+      // 다시 그리지 않고 눌림 표시만 옮긴다 — 다시 그리면 누른 버튼의 초점이 사라진다.
+      opts.forEach((o) => {
+        const on = o === b;
+        o.classList.toggle("active", on);
+        o.setAttribute("aria-pressed", String(on));
+      });
+      const { applyTheme } = await import("../main");
+      applyTheme();
+    }));
   }
 
   function renderReading(body: HTMLElement) {
+    const D = COPY.ui.docOpts;
+    let doc = currentDocPrefs();
+    const isDefault = () => (Object.keys(DOC_DEFAULTS) as (keyof DocPrefs)[]).every((k) => doc[k] === DOC_DEFAULTS[k]);
+    // 글자 크기 · 읽기 폭 · 줄 간격은 doc-options 가 저장하고 얹는다(머리 단추는 걷혔다).
+    // 고르는 즉시 `<html>` 의 `data-doc-*` 가 바뀌어 열린 문서가 그 자리에서 다시 흐른다.
+    const docRow = (k: keyof DocPrefs, label: string) => settingsRow({
+      title: label, titleId: `s-doc-${k}-t`, control: `
+        <span class="seg" role="group" aria-labelledby="s-doc-${k}-t">${(DOC_CHOICES[k] as readonly string[]).map((v) =>
+          `<button type="button" class="chip${doc[k] === v ? " active" : ""}" data-dk="${k}" data-dv="${v}"
+            aria-pressed="${doc[k] === v}">${esc(D.choice[v as keyof typeof D.choice])}</button>`).join("")}</span>` });
     const rem = loadPrefs().railW;
     const px = Math.round(rem * 16);
     const minPx = Math.round(RAIL_MIN * 16);
     const maxPx = Math.round(RAIL_MAX * 16);
-    body.innerHTML = `
-      <h2>${esc(U.navReading)}</h2>
-      <p class="hint">${esc(U.readingIntro)}</p>
-      <div class="settings-row">
-        <div class="settings-row-copy">
-          <strong>${esc(U.readingPane)}</strong>
-          <p class="hint">${esc(U.readingPaneHint)}</p>
-        </div>
-        <label class="settings-px">
-          <input id="s-rail-w" type="number" min="${minPx}" max="${maxPx}" step="16" value="${px}" />
-          <span>px</span>
-        </label>
-      </div>
-`;   // 그래프의 '보기 옵션 열기' 줄은 걷었다: 옵션·범례 단추가 없어지고 그 손잡이는 LNB 의 나침반 칸으로 갔다
+    body.innerHTML = paneHead(U.navReading, U.readingIntro)
+      + settingsCard([
+        docRow("text", D.text), docRow("width", D.width), docRow("lines", D.lines),
+        settingsRow({ title: U.readingDefaults, control:
+          `<button class="btn" type="button" id="s-doc-reset"${isDefault() ? " disabled" : ""}>${esc(D.reset)}</button>` }),
+      ], { foot: cardNote(D.note) })
+      + settingsCard([
+        settingsRow({ title: U.readingPane, desc: U.readingPaneHint, labelFor: "s-rail-w", control: `
+          <span class="set-num"><input id="s-rail-w" type="number" min="${minPx}" max="${maxPx}" step="16" value="${px}" />
+          <span aria-hidden="true">px</span></span>` }),
+      ]);
+    // 그래프의 '보기 옵션 열기' 줄은 걷었다: 옵션·범례 단추가 없어지고 그 손잡이는 LNB 의 나침반 칸으로 갔다
+    const reset = body.querySelector<HTMLButtonElement>("#s-doc-reset")!;
+    const paint = () => {
+      body.querySelectorAll<HTMLElement>("[data-dk]").forEach((b) => {
+        const on = doc[b.dataset.dk as keyof DocPrefs] === b.dataset.dv;
+        b.classList.toggle("active", on);
+        b.setAttribute("aria-pressed", String(on));
+      });
+      reset.disabled = isDefault();
+    };
+    body.querySelectorAll<HTMLElement>("[data-dk]").forEach((b) => b.addEventListener("click", () => {
+      doc = { ...doc, [b.dataset.dk!]: b.dataset.dv } as DocPrefs;
+      setDocPrefs(doc);
+      paint();
+    }));
+    reset.addEventListener("click", () => {
+      doc = { ...DOC_DEFAULTS };
+      setDocPrefs(doc);
+      paint();
+      // 누른 버튼이 꺼지면 초점이 body 로 떨어진다. 같은 카드의 첫 고르기로 옮긴다.
+      body.querySelector<HTMLElement>("[data-dk]")?.focus();
+    });
     body.querySelector<HTMLInputElement>("#s-rail-w")!.addEventListener("change", (e) => {
       const n = Number((e.target as HTMLInputElement).value);
       const next = Math.min(RAIL_MAX, Math.max(RAIL_MIN, n / 16));
@@ -206,62 +342,69 @@ async function renderSettings(
     });
   }
 
-  function renderAbout(body: HTMLElement) {
-    body.innerHTML = `
-      <h2>${esc(U.navAbout)}</h2>
-      <p class="hint">${esc(U.aboutIntro)}</p>
-      <div class="settings-about-id">
-        <span class="brand-logo" aria-hidden="true"></span>
-        <p class="settings-build">Vinc ${esc(buildId)}</p>
-      </div>
-      <p class="hint">${esc(remote() ? COPY.sovereigntyWeb : COPY.sovereignty)}</p>`;
+  function renderShortcuts(body: HTMLElement) {
+    // `?` 시트와 같은 표다(shortcuts.ts). 여기서 줄을 따로 적지 않는다.
+    body.innerHTML = paneHead(U.navShortcuts, U.shortcutsIntro) + settingsCard(
+      shortcutList().map((s) => settingsRow({ title: s.label, control: `<kbd class="set-kbd">${esc(s.keys)}</kbd>` })));
   }
 
+  function renderNotifications(body: HTMLElement) {
+    // 이 기기의 알림(웹 푸시). 웹에서만 그린다: 데스크톱 셸은 서비스 워커를 쓰지 않는다.
+    body.innerHTML = paneHead(U.navNotifications) + settingsCard([
+      settingsRow({ title: COPY.push.title, wide: `<div id="push-box"></div>` }),
+    ]);
+    cleanup = mountPushSettings(body.querySelector<HTMLElement>("#push-box")!);
+  }
+
+  function renderAbout(body: HTMLElement) {
+    body.innerHTML = paneHead(U.navAbout, U.aboutIntro) + settingsCard([
+      settingsRow({ wide: `
+        <div class="settings-about-id">
+          <span class="brand-logo" aria-hidden="true"></span>
+          <p class="settings-build">Vinc ${esc(buildId)}</p>
+        </div>` }),
+    ], { foot: cardNote(remote() ? COPY.sovereigntyWeb : COPY.sovereignty) });
+  }
+
+  // ── 데이터 ────────────────────────────────────────────────────────────────
   function renderData(body: HTMLElement) {
-    body.innerHTML = `
-      <h2>${esc(U.navData)}</h2>
-      <p class="hint">${esc(U.dataIntro)}</p>
-      <div id="settings-tools"></div>`;
+    const T = COPY.ui.tools;
+    const share = toolsTab === "share";
+    body.innerHTML = paneHead(share ? U.navShare : T.import, share ? T.shareSub : T.importSub)
+      + settingsCard([settingsRow({ wide: `<div id="settings-tools"></div>` })], { bare: !share });
     const pane = body.querySelector<HTMLElement>("#settings-tools")!;
-    // 분류들은 시트의 발(`sheet.foot`)을 함께 쓴다. 모듈이 오는 사이 다른 분류로
+    // 분류들은 본문 칸의 발(`foot`)을 함께 쓴다. 모듈이 오는 사이 다른 분류로
     // 옮겼으면 이 판은 이미 떨어져 나갔으므로 아무것도 안 그린다 — 그리면 그 발
     // 버튼이 지금 분류 밑에 선다. 판 안의 늦은 쓰기도 같은 규칙이다(tools.ts ·
     // conventions.ts 가 `isConnected` 로 본다).
     void import("../tools").then((m) => {
       if (!pane.isConnected) return;
       cleanup = m.mountTools(
-        { el: sheet.el, body: pane, foot: sheet.foot, close: sheet.close }, toolsTab);
+        { el: sheet.el, body: pane, foot, close: sheet.close }, toolsTab);
     });
   }
 
   function renderGraphmd(body: HTMLElement) {
-    body.innerHTML = `
-      <h2>${esc(U.navGraphmd)}</h2>
-      <p class="hint">${esc(U.graphmdIntro)}</p>
-      <div id="settings-conv"></div>`;
+    body.innerHTML = paneHead(U.navGraphmd, U.graphmdIntro)
+      + settingsCard([settingsRow({ wide: `<div id="settings-conv"></div>` })]);
     const pane = body.querySelector<HTMLElement>("#settings-conv")!;
     void import("../conventions").then((m) => {
       if (!pane.isConnected) return;       // 위 renderData 와 같은 이유
-      void m.mountConventions(pane, sheet);
+      void m.mountConventions(pane, { body: pane, foot, close: sheet.close });
     });
   }
 
-  // ── Account 탭 ────────────────────────────────────────────────────────────
+  // ── 계정 ──────────────────────────────────────────────────────────────────
   function renderAccount(body: HTMLElement) {
-    // 웹 Vinc: 로그인 계정을 @username(없으면 이메일)으로 표시.
-    // ⚠ 이 블록의 카피는 예전에 여기 EN/KO 사전으로 인라인돼 있었다. 사유는
-    // "셸 편집 충돌 회피"였는데 그 충돌은 이미 없고, 덱 밖 카피는 언어 프록시도
-    // 게이트도 타지 않는다(tests/design/test_copy_parity.py 가 이제 막는다).
+    // ⚠ 이 블록의 카피는 예전에 여기 EN/KO 사전으로 인라인돼 있었다. 덱 밖 카피는 언어
+    // 프록시도 게이트도 타지 않는다(tests/design/test_copy_parity.py 가 이제 막는다).
     // 셀프호스트 허브: 계정·공간·팀으로 옮기기·알림이 없다. 이 허브의 로그인과 로그아웃만 둔다.
     if (selfHosted()) {
-      body.innerHTML = `
-        <h2>${esc(U.navAccount)}</h2>
-        <p class="hint">${esc(U.selfHostedIntro)}</p>
-        <label>${U.account}</label>
-        <div class="hint" style="font-size:var(--fs-sm)">${esc(U.selfHostedSignedIn)}
-          <p><button class="btn" id="sh-signout" type="button">${esc(U.acctSignOut)}</button></p></div>
-        <label>${esc(U.selfHostedSeats)}</label>
-        <div class="hint" id="sh-seats" role="status" style="font-size:var(--fs-sm)"></div>`;
+      body.innerHTML = paneHead(U.navAccount, U.selfHostedIntro) + settingsCard([
+        settingsRow({ title: U.account, desc: U.selfHostedSignedIn,
+          control: `<button class="btn" id="sh-signout" type="button">${esc(U.acctSignOut)}</button>` }),
+        settingsRow({ title: U.selfHostedSeats, extra: `<p class="set-row-desc" id="sh-seats" role="status"></p>` }),
+      ]);
       body.querySelector("#sh-signout")!.addEventListener("click", () => { void selfHostedSignOut(); });
       // 좌석·마지막 확인·유예 상태(S8). 허브가 하루 한 번 계정에 묻고 30일 동안 마지막 답을 쓴다.
       void selfHostedSeats().then((s) => {
@@ -276,74 +419,45 @@ async function renderSettings(
       });
       return;
     }
-    body.innerHTML = `
-      <h2>${esc(U.navAccount)}</h2>
-      <p class="hint">${esc(U.accountIntro)}</p>
-      ${remote() ? `
-      <label>${U.account}</label>
-      <div id="web-acct" class="hint" style="font-size:var(--fs-sm)">…</div>
-      <label>${U.space}</label>
-      <p class="hint">${esc(U.spaceHint)}</p>
-      ${!cfg.team ? '<div id="topic-conversion"></div>' : ""}
-      ${WEB ? `<label>${COPY.push.title}</label><div id="push-box"></div>` : ""}` : ""}
-      ${!remote() ? `
-      <label>${U.account}</label>
-      <div id="acct-box"></div>` : ""}
-      ${!WEB ? `
-      <hr class="settings-sep" />
-      <div class="settings-row">
-        <div class="settings-row-copy">
-          <strong>${esc(U.storage)}</strong>
-          <p class="hint">${esc(accountMode() ? U.storageAccount : U.storageDevice)}</p>
-        </div>
-        <button class="btn" type="button" id="acct-storage-go">${esc(U.storageOpen)}</button>
-      </div>` : ""}`;
-    body.querySelector("#acct-storage-go")?.addEventListener("click", () => go("storage"));
     if (remote()) {
-      const conversion = body.querySelector<HTMLElement>("#topic-conversion");
-      if (conversion) cleanup = mountTopicConversion(conversion);
-      // 이 기기의 알림(웹 푸시). 웹에서만 그린다: 데스크톱 셸은 서비스 워커를 쓰지 않는다.
-      const pushBox = body.querySelector<HTMLElement>("#push-box");
-      if (pushBox) {
-        const before = cleanup;
-        const stop = mountPushSettings(pushBox);
-        cleanup = () => { before?.(); stop(); };
-      }
-      // 웹모드: /api/me 로 로그인 계정 표시(@username 우선). 연결/동기화 섹션은 없음(셸 전용).
       // 셸 계정 모드: 쿠키가 없어 /api/me 를 못 부른다. 기기 플로우가 남긴 이름을 쓰고,
       // 로그아웃을 여기 둔다(로그아웃하면 로그인 시트로 돌아간다, VIN-128).
-      const box = body.querySelector<HTMLElement>("#web-acct");
-      if (box && accountMode()) {
+      if (accountMode()) {
         const who = accountWho();
-        box.innerHTML = `${who ? U.webSignedAs(esc(who)) : U.acctSignedIn}
-          <p><button class="btn" id="acct-signout" type="button">${U.acctSignOut}</button></p>
-          <p class="hint">${U.acctSignOutHint}</p>`;
-        box.querySelector("#acct-signout")!.addEventListener("click", () => {
+        body.innerHTML = paneHead(U.navAccount, U.accountIntro) + settingsCard([
+          settingsRow({ title: U.account, desc: who ? U.webSignedAs(who) : U.acctSignedIn,
+            extra: rowLine(U.acctSignOutHint),
+            control: `<button class="btn" id="acct-signout" type="button">${esc(U.acctSignOut)}</button>` }),
+        ]);
+        body.querySelector("#acct-signout")!.addEventListener("click", () => {
           forgetAccount();
           forgetMemberKey();
           // 화면 전체가 계정 그래프를 들고 있다. 부분 갱신하면 옛 계정의 데이터가 남는다.
           location.reload();
         });
-      } else if (box) {
-        api.me()
-          .then((r) => (r.ok ? r.json() : null))
-          .then((d) => {
-            const u = d && d.user;
-            if (!u) { box.textContent = U.webNotSignedIn; return; }
-            const who = u.username ? "@" + u.username : u.email;
-            box.innerHTML = `${U.webSignedAs(esc(who))} · <a href="/account/" target="_blank" rel="noopener">${U.webManage}</a>`;
-          })
-          .catch(() => { if (box) box.textContent = ""; });
+        return;
       }
-      // 공간 전환은 사이드바 머리에 있다(`space-switcher.ts`). 여기는 그 자리를 한 줄로 알리고,
-      // 개인 공간이면 주제를 새 팀 공간으로 옮기는 칸을 둔다.
+      // 웹모드: /api/me 로 로그인 계정 표시(@username 우선). 연결 섹션은 없다(셸 전용).
+      body.innerHTML = paneHead(U.navAccount, U.accountIntro) + settingsCard([
+        settingsRow({ title: U.account, extra: `<p class="set-row-desc" id="web-acct">…</p>` }),
+      ]);
+      const box = body.querySelector<HTMLElement>("#web-acct")!;
+      api.me()
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          const u = d && d.user;
+          if (!u) { box.textContent = U.webNotSignedIn; return; }
+          const who = u.username ? "@" + u.username : u.email;
+          box.innerHTML = `${esc(U.webSignedAs(who))} · <a href="/account/" target="_blank" rel="noopener">${esc(U.webManage)}</a>`;
+        })
+        .catch(() => { if (box) box.textContent = ""; });
       return;
     }
-    if (WEB) return;
 
     // 계정 연결(디바이스 플로우) — 흐름은 `account-connect` 한 벌을 쓴다.
     // 여기서 하는 일은 **그리기**뿐이다: 같은 플로우를 첫 실행 카드와 원격 커넥터
     // 행도 부르므로, 폴링을 이 탭 안에 두면 세 벌이 된다.
+    body.innerHTML = paneHead(U.navAccount, U.accountIntro) + `<div id="acct-box"></div>`;
     const acctBox = body.querySelector<HTMLElement>("#acct-box")!;
     function drawAcct() {
       // 연결 여부와 표시할 이름은 **다른 질문**이다. 수동으로 붙여넣은 키는 누구
@@ -351,13 +465,14 @@ async function renderSettings(
       // 나왔다. 카피(`acctConnected`)는 빈 이름을 이미 감당한다.
       const who = accountWho();
       if (hasAccount()) {
-        acctBox.innerHTML = `
-          <p>${U.acctConnected(who ? esc(who) : "")}
-             <button class="btn" id="acct-disc" style="margin-left:.5rem">${U.acctDisconnect}</button></p>
-          <p class="hint">${U.acctDisconnectHint}</p>
-          <p class="hint" id="acct-ondisk" hidden>${U.acctOnDisk}</p>
-          <p class="hint" id="acct-key-failure" role="status" aria-live="polite" hidden>
-            ${U.acctKeyFailed} <button class="btn" id="acct-key-retry">${U.acctKeyRetry}</button></p>`;
+        acctBox.innerHTML = settingsCard([
+          settingsRow({ title: U.account, desc: U.acctConnected(who || ""),
+            extra: rowLine(U.acctDisconnectHint)
+              + rowLine(U.acctOnDisk, 'id="acct-ondisk" hidden')
+              + `<p class="set-row-desc" id="acct-key-failure" role="status" aria-live="polite" hidden>${
+                  esc(U.acctKeyFailed)} <button class="btn" id="acct-key-retry" type="button">${esc(U.acctKeyRetry)}</button></p>`,
+            control: `<button class="btn" id="acct-disc" type="button">${esc(U.acctDisconnect)}</button>` }),
+        ]);
         // OS 저장소 유무는 물어봐야 안다(프로브가 쓰고 지운다). 약한 상태를
         // 기본으로 두지 않고 **화면에 적는다** — 안 적으면 사용자는 자기 키가
         // 어디 있는지 모른다.
@@ -392,11 +507,11 @@ async function renderSettings(
         // 지금 상태를 먼저 말한다. 첫 실행이 선택을 요구하게 되면서(firstrun) 여기가
         // **되돌아오는 유일한 길**이 됐는데, 여태 이 자리는 연결 버튼만 있어서
         // "오프라인"이 고른 상태가 아니라 아직 안 한 일처럼 보였다.
-        acctBox.innerHTML = `
-          <p class="hint">${U.acctOffline}</p>
-          <p><button class="btn" id="acct-connect">${U.acctConnect}</button></p>
-          <p class="hint">${U.acctConnectHint}</p>
-          <div id="acct-result" class="hint" style="font-size:var(--fs-sm)"></div>`;
+        acctBox.innerHTML = settingsCard([
+          settingsRow({ title: U.account, desc: U.acctOffline,
+            extra: rowLine(U.acctConnectHint) + `<p class="set-row-desc" id="acct-result" role="status" aria-live="polite"></p>`,
+            control: `<button class="btn" id="acct-connect" type="button">${esc(U.acctConnect)}</button>` }),
+        ]);
         acctBox.querySelector("#acct-connect")!.addEventListener("click", () => void startConnect());
       }
     }
@@ -409,21 +524,28 @@ async function renderSettings(
       if (r === "failed") acctResult.textContent = U.acctFail;
     }
     drawAcct();
+  }
 
+  // 공간 전환은 사이드바 머리에 있다(`space-switcher.ts`). 여기는 그 자리를 한 줄로 알리고,
+  // 개인 공간이면 주제를 새 팀 공간으로 옮기는 칸을 둔다.
+  function renderSpaces(body: HTMLElement) {
+    body.innerHTML = paneHead(U.navSpaces, U.spacesIntro)
+      + settingsCard([settingsRow({ title: U.space, desc: U.spaceHint })])
+      + (!cfg.team ? settingsCard([settingsRow({ wide: `<div id="topic-conversion"></div>` })]) : "");
+    const conversion = body.querySelector<HTMLElement>("#topic-conversion");
+    if (conversion) cleanup = mountTopicConversion(conversion);
   }
 
   // ── Storage 탭 (셸 전용) ─────────────────────────────────────────────────
   // 이 기기가 그래프를 두는 곳과 옮기기(`storage-mode.ts`). 웹 Vinc 의 데이터는 늘 계정에 있어
   // 이 탭이 없다. 옮기기에 로그인이 필요하면 계정 탭으로 보낸다.
   function renderStorage(body: HTMLElement) {
-    body.innerHTML = `
-      <h2>${esc(U.navStorage)}</h2>
-      <p class="hint">${esc(U.storageIntro)}</p>
-      <div id="st-box"></div>`;
+    body.innerHTML = paneHead(U.navStorage, U.storageIntro)
+      + settingsCard([settingsRow({ wide: `<div id="st-box"></div>` })], { bare: true });
     mountStorage(body.querySelector<HTMLElement>("#st-box")!, { openAccount: () => go("account") });
   }
 
-  // ── Connections 탭 (MCP, 셸 전용) ─────────────────────────────────────────
+  // ── 연결 (MCP, 셸 전용) ───────────────────────────────────────────────────
   // 등록 가능한 호스트 — 사이드카 `vinc_mcp.install.CLIENTS` 와 짝. 여기 없는
   // 호스트도 서버는 그대로 동작한다(수동 등록 안내는 U.mcpOtherHint).
   const MCP_HOSTS = ["desktop", "code", "cursor", "codex"] as const;
@@ -441,65 +563,24 @@ async function renderSettings(
   const hostResults = new Map<string, string>();
   let paintConnections = () => {};
 
-  function renderConnections(body: HTMLElement) {
-    // 호스트 하나 = 행 하나(2026-08-05 재설계). 여태 `.seg` 안에 연결 버튼 4개,
-    // 다른 `.seg` 안에 해제 버튼 4개를 넣었다 — `.seg` 는 **여럿 중 하나를 고르는**
-    // 컨트롤이므로 독립 동작 8개를 담을 그릇이 아니었고(그래서 한 덩어리로 뭉쳐
-    // 보였다), 같은 호스트의 연결과 해제가 화면 위아래로 갈라져 있어 "Claude Desktop
-    // 을 어떻게 하지"를 두 곳에서 찾아야 했다. 행이 되면 그 둘이 한 줄에 있다.
-    const rows = MCP_HOSTS.map((h) => `
-      <li class="row mcp-row">
-        <span class="row-name">${U.mcpHosts[h]}</span>
-        <span class="row-acts">
-          <button class="btn btn-quiet" id="mcp-rm-${h}"
-                  aria-label="${U.mcpRemove(U.mcpHosts[h])}">${U.mcpRemoveAct}</button>
-          <button class="btn" id="mcp-add-${h}"
-                  disabled
-                  aria-label="${U.mcpConnect(U.mcpHosts[h])}">${U.mcpConnectAct}</button>
-        </span>
-        <span id="mcp-result-${h}" class="hint hint-sm break-all mcp-result"
-              role="status" aria-live="polite"></span>
-      </li>`).join("");
-    body.innerHTML = `
-      <h2>${esc(U.navAi)}</h2>
-      <p class="hint">${esc(U.aiIntro)}</p>
-      <label>${U.mcp}</label><p class="hint">${COPY.settings.mcp}</p>
-      <ul class="rowlist">${rows}</ul>
-      <p class="hint hint-sm" id="mcp-mode"></p>
-      <p class="hint hint-sm">${U.mcpOtherHint}</p>
-
-      <!-- 원격 호스트. 위의 넷은 앱 모드를 따르지만 여기는 계정 그래프에 붙으므로 계정이
-           있어야 한다(루프백은 구조적으로 원격에 노출할 수 없다). 여태 이 경로는
-           화면에 아예 없어서, 계정이 도움이 될 사람조차 존재를 몰랐다.
-           근거: [[decision:the-desktop-signs-in-and-shows-the-account-graph-live-and-local-mode-is-a-setting]] -->
-      <label>${U.mcpRemote}</label><p class="hint">${U.mcpRemoteHint}</p>
-      <ul class="rowlist">
-        <li class="row">
-          <span class="row-name">${U.mcpRemoteHosts}</span>
-          <span class="row-acts">
-            <button class="btn btn-quiet" id="mcp-remote-copy">${U.mcpRemoteCopyAct}</button>
-            <button class="btn" id="mcp-remote-acct" hidden>${U.acctConnect}</button>
-          </span>
-        </li>
-      </ul>
-      <p class="hint hint-sm break-all"><code>${REMOTE_MCP_URL}</code></p>
-      <div id="mcp-remote-state" class="hint hint-sm"></div>
-
-      <label>${U.cli}</label><p class="hint">${U.cliHint}</p>
-      <ul class="rowlist">
-        <li class="row">
-          <span class="row-name" id="cli-state">${U.cliChecking}</span>
-          <span class="row-acts">
-            <button class="btn btn-quiet" id="cli-rm" hidden>${U.cliRemoveAct}</button>
-            <button class="btn" id="cli-add" hidden>${U.cliInstallAct}</button>
-          </span>
-        </li>
-      </ul>
-      <div id="cli-note" class="hint hint-sm break-all"></div>`;
+  function renderApps(body: HTMLElement) {
+    // 호스트 하나 = 줄 하나(2026-08-05 재설계). `.seg` 는 **여럿 중 하나를 고르는** 컨트롤이라
+    // 독립 동작 여덟 개를 담을 그릇이 아니다. 같은 호스트의 연결과 해제가 한 줄에 있다.
+    const rows = MCP_HOSTS.map((h) => settingsRow({
+      title: U.mcpHosts[h],
+      extra: `<p id="mcp-result-${h}" class="set-row-desc break-all" role="status" aria-live="polite"></p>`,
+      control: `
+        <button class="btn btn-quiet" id="mcp-rm-${h}" type="button"
+                aria-label="${esc(U.mcpRemove(U.mcpHosts[h]))}">${esc(U.mcpRemoveAct)}</button>
+        <button class="btn" id="mcp-add-${h}" type="button" disabled
+                aria-label="${esc(U.mcpConnect(U.mcpHosts[h]))}">${esc(U.mcpConnectAct)}</button>`,
+    }));
+    body.innerHTML = paneHead(U.navApps, COPY.settings.mcp)
+      + settingsCard(rows, { foot: cardNote("", 'id="mcp-mode"') + cardNote(U.mcpOtherHint) });
     let keyReady = !accountMode();
     function paintHost(client: string) {
-      const add = body.querySelector<HTMLButtonElement>(`#mcp-add-${client}`)!;
-      const remove = body.querySelector<HTMLButtonElement>(`#mcp-rm-${client}`)!;
+      const add = body.querySelector<HTMLButtonElement>(`#mcp-add-${client}`);
+      const remove = body.querySelector<HTMLButtonElement>(`#mcp-rm-${client}`);
       if (!add || !remove) return;
       const linked = registeredHosts.has(client);
       add.hidden = linked; remove.hidden = !linked;
@@ -536,11 +617,12 @@ async function renderSettings(
     async function mcpAction(action: "install" | "uninstall", client: string) {
       if (busyHosts.has(client) || (action === "install" && registeredHosts.has(client))) return;
       busyHosts.add(client); paintHost(client);
-      const mcpResult = rowResult(client);
       const host = U.mcpHosts[client] || client;
       const say = (text: string) => {
         hostResults.set(client, text);
-        mcpResult.textContent = text;
+        // 기다리는 사이 다른 분류로 옮겼으면 줄이 없다. 결과는 기억해 두고 돌아오면 그린다.
+        const line = body.isConnected ? body.querySelector<HTMLElement>(`#mcp-result-${client}`) : null;
+        if (line) line.textContent = text;
       };
       try {
         // 화면을 연 뒤 키가 지워졌을 수도 있다. 등록 직전에 다시 확인한다.
@@ -573,15 +655,28 @@ async function renderSettings(
         say(`${U.mcpFail}: ${messageOf(e)}`);
       } finally {
         busyHosts.delete(client);
-        paintConnections();
+        if (body.isConnected) paintConnections();
       }
     }
     for (const h of MCP_HOSTS) {
       body.querySelector(`#mcp-add-${h}`)!.addEventListener("click", () => mcpAction("install", h));
       body.querySelector(`#mcp-rm-${h}`)!.addEventListener("click", () => mcpAction("uninstall", h));
     }
+  }
 
-    // 원격 행: 여기서 할 수 있는 것은 주소 복사와 계정 연결 둘뿐이다. 커넥터 등록은
+  // 원격 호스트(claude.ai · ChatGPT). 데스크톱 앱 호스트는 앱 모드를 따르지만 여기는 계정
+  // 그래프에 붙으므로 계정이 있어야 한다(루프백은 구조적으로 원격에 노출할 수 없다).
+  // 근거: [[decision:the-desktop-signs-in-and-shows-the-account-graph-live-and-local-mode-is-a-setting]]
+  function renderAssistants(body: HTMLElement) {
+    body.innerHTML = paneHead(U.mcpRemote, U.mcpRemoteHint) + settingsCard([
+      settingsRow({ title: U.mcpRemoteHosts,
+        extra: `<p class="set-row-desc break-all"><code>${esc(REMOTE_MCP_URL)}</code></p>
+          <p class="set-row-desc" id="mcp-remote-state" role="status" aria-live="polite"></p>`,
+        control: `
+          <button class="btn btn-quiet" id="mcp-remote-copy" type="button">${esc(U.mcpRemoteCopyAct)}</button>
+          <button class="btn" id="mcp-remote-acct" type="button" hidden>${esc(U.acctConnect)}</button>` }),
+    ]);
+    // 여기서 할 수 있는 것은 주소 복사와 계정 연결 둘뿐이다. 커넥터 등록은
     // 호스트 쪽 화면에서 사용자가 한다(우리가 대신 써 줄 설정 파일이 없다).
     const remoteState = body.querySelector<HTMLElement>("#mcp-remote-state")!;
     const remoteAcct = body.querySelector<HTMLButtonElement>("#mcp-remote-acct")!;
@@ -604,22 +699,33 @@ async function renderSettings(
       else remoteState.textContent = r === "expired" ? U.acctExpired : U.acctFail;
     });
     paintRemote();
+  }
 
-    // ── 터미널에서 `vinc` 부르기 ────────────────────────────────────────────
-    // 리눅스 패키지(deb·rpm)는 이미 `/usr/bin/vinc` 를 깔아 두므로 이 행이 할 일이
-    // 없고, macOS·AppImage 는 설치 훅이 없어 여기서 링크를 건다. Windows 는 설치기
-    // 몫이라 `supported:false` 로 와서 행 자체를 숨긴다.
+  // ── 터미널에서 `vinc` 부르기 ────────────────────────────────────────────────
+  // 리눅스 패키지(deb·rpm)는 이미 `/usr/bin/vinc` 를 깔아 두므로 이 줄이 할 일이
+  // 없고, macOS·AppImage 는 설치 훅이 없어 여기서 링크를 건다. 이 플랫폼이 `supported:false`
+  // 를 주면 빈 목록 대신 한 문장으로 그렇다고 말한다.
+  function renderTerminal(body: HTMLElement) {
+    body.innerHTML = paneHead(U.navTerminal, U.cliHint) + `<div id="cli-box">${settingsCard([
+      settingsRow({ title: U.cli,
+        extra: rowLine(U.cliChecking, 'id="cli-state" role="status" aria-live="polite"')
+          + `<p class="set-row-desc break-all" id="cli-note"></p>`,
+        control: `
+          <button class="btn btn-quiet" id="cli-rm" type="button" hidden>${esc(U.cliRemoveAct)}</button>
+          <button class="btn" id="cli-add" type="button" hidden>${esc(U.cliInstallAct)}</button>` }),
+    ])}</div>`;
+    const box = body.querySelector<HTMLElement>("#cli-box")!;
     const cliState = body.querySelector<HTMLElement>("#cli-state")!;
     const cliNote = body.querySelector<HTMLElement>("#cli-note")!;
     const cliAdd = body.querySelector<HTMLButtonElement>("#cli-add")!;
     const cliRm = body.querySelector<HTMLButtonElement>("#cli-rm")!;
     type CliStatus = { supported: boolean; linked: boolean; path: string; dir: string; on_path: boolean };
     function paintCli(st: CliStatus | null, err?: string) {
+      if (!box.isConnected) return;
       if (err) { cliState.textContent = `${U.cliFail}: ${err}`; return; }
       if (!st || !st.supported) {
-        // 이 플랫폼에서 할 일이 없으면 조용히 접는다 — 못 누르는 버튼을 남기지 않는다.
-        cliState.closest("li")!.hidden = true;
-        cliNote.textContent = "";
+        // 못 누르는 버튼을 남기지 않는다. 대신 왜 할 일이 없는지 한 문장으로 말한다.
+        box.innerHTML = `<p class="set-lone">${esc(st ? U.cliUnsupported : U.mcpNoShell)}</p>`;
         return;
       }
       cliState.textContent = st.linked ? U.cliLinked(st.path) : U.cliMissing;
@@ -630,7 +736,7 @@ async function renderSettings(
     }
     async function cliAction(cmd: "cli_link_status" | "cli_link_install" | "cli_link_remove") {
       const invoke = await shellInvoke();
-      if (!invoke) { paintCli(null); return; }   // 웹 Vinc — 행 자체가 의미 없다
+      if (!invoke) { paintCli(null); return; }   // 웹 Vinc · 브라우저 dev — 셸이 없다
       try { paintCli(await invoke(cmd) as any); }
       catch (e: any) { paintCli(null, messageOf(e)); }
     }
@@ -639,29 +745,27 @@ async function renderSettings(
     void cliAction("cli_link_status");
   }
 
-  // ── Advanced 탭 (셸 전용) ─────────────────────────────────────────────────
+  // ── 시스템 ────────────────────────────────────────────────────────────────
   function renderAdvanced(body: HTMLElement) {
-    body.innerHTML = `
-      <h2>${esc(U.navAdvanced)}</h2>
-      <p class="hint">${esc(U.advancedIntro)}</p>
-      <!-- 작업 공간(owner)은 로컬 모드에서만 뜻이 있다. 계정 모드에서는 허브가 키로 소유자를
-           정하므로 바꿔도 아무 일도 안 일어나고, 힌트가 말하는 샘플도 계정 모드에는 없다. -->
-      ${accountMode() ? "" : `
-      <label for="s-owner">${U.workspace}</label>
-      <p class="hint">${U.workspaceHint}</p>
-      <input id="s-owner" value="${esc(cfg.owner)}" />`}
-      <label for="s-sync-key">${U.syncKey}</label>
-      <p class="hint">${U.syncKeyHint}</p>
-      <p class="s-keyrow"><input id="s-sync-key" type="password" placeholder="vinc_sk_…"
-         autocomplete="off" /><button class="btn" id="s-sync-key-save" type="button">${
-        U.syncKeySave}</button></p>
-      <p class="hint" id="s-sync-key-said" hidden></p>
-      <label for="s-base">${U.engine}</label>
-      <input id="s-base" value="${cfg.base}" />
-      <label for="s-token">${U.secret}</label>
-      <p class="hint">${U.secretHint}</p>
-      <input id="s-token" type="password" placeholder="••••••"
-             autocomplete="off" />`;
+    // 작업 공간(owner)은 로컬 모드에서만 뜻이 있다. 계정 모드에서는 허브가 키로 소유자를
+    // 정하므로 바꿔도 아무 일도 안 일어나고, 힌트가 말하는 샘플도 계정 모드에는 없다.
+    body.innerHTML = paneHead(U.navAdvanced, U.advancedIntro)
+      + settingsCard([
+        settingsRow({ title: U.engine, labelFor: "s-base",
+          control: `<input id="s-base" class="set-input" value="${esc(cfg.base)}" />` }),
+        settingsRow({ title: U.secret, desc: U.secretHint, labelFor: "s-token",
+          control: `<input id="s-token" class="set-input" type="password" placeholder="••••••" autocomplete="off" />` }),
+      ], { heading: U.advEngine })
+      + settingsCard([
+        settingsRow({ title: U.syncKey, desc: U.syncKeyHint, labelFor: "s-sync-key",
+          extra: rowLine("", 'id="s-sync-key-said" role="status" hidden'),
+          wide: `<p class="s-keyrow"><input id="s-sync-key" class="set-input" type="password" placeholder="vinc_sk_…"
+            autocomplete="off" /><button class="btn" id="s-sync-key-save" type="button">${esc(U.syncKeySave)}</button></p>` }),
+      ])
+      + (accountMode() ? "" : settingsCard([
+        settingsRow({ title: U.workspace, desc: U.workspaceHint, labelFor: "s-owner",
+          control: `<input id="s-owner" class="set-input" value="${esc(cfg.owner)}" />` }),
+      ]));
     body.querySelector<HTMLInputElement>("#s-base")!.addEventListener("change", (e) =>
       (cfg.base = (e.target as HTMLInputElement).value));
     // 동기화 키와 **같은 규율**(감사 M8): 값을 다시 그리지 않고, 비어 있으면
@@ -709,10 +813,10 @@ async function renderSettings(
     keyInput.addEventListener("keydown", (e) => { if (e.key === "Enter") save(); });
   }
 
-  function go(cat: SettingsCat, tab?: DataTab) {
-    if (tab) toolsTab = tab;
-    active = CATS.some((c) => c.id === cat) ? cat : "general";
-    shell();
+  /** 밖에서 분류를 옮긴다(이미 열린 시트에 `openSettings` 가 다시 왔을 때 · 저장 위치의 계정 버튼). */
+  function go(cat: SettingsCat | LegacyCat, tab?: DataTab) {
+    const next = resolveCat(cat, tab);
+    pick(CATS.some((c) => c.id === next) ? next : "general");
   }
   shell();
   return go;
