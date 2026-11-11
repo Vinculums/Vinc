@@ -165,6 +165,41 @@
       },
       "encoder_model": "dragonkue/BGE-m3-ko int8 (hub bake recipe, reduce_range), run under the bge-m3 model key: same architecture, dimension, pooling and no prefix; its own tokenizer.json sits beside the ONNX",
       "note": "Why it exists: the mirror text rules changed after ko-ort130-2026-10-18 was built, so the current code on that pin sees stale mirror rows and drops them from the meaning arm (union 46 of 60 against 51). This store is the pin the current code is measured on; ko-ort130-2026-10-18 stays for the code of its day."
+    },
+    "ko-main-r4-2026-11-11": {
+      "path": "_eval-stores/ko-main-r4-2026-11-11/hub.db",
+      "sha256": "b7f31a76f732aa9fb58f8256f094253c149e8c984cc8d2d98dc8bfc08103e354",
+      "owner": "tenant:local",
+      "gold": "rag_eval/fixtures/brief_gold.jsonl",
+      "derived_from": "ko-main-2026-10-27 (same rows, chunks, vectors and mention links; a copy opened once under main 18d0fecc with ladybug 0.20.3 and relinked by engines.mentions_link.ensure_rule, which moved only the rule marker)",
+      "built_at_tree": "18d0fecc",
+      "engine": "ladybug 0.20.3",
+      "encoder": "BAAI/bge-m3",
+      "encoder_sha256": "fb70eacc6a93c8645ccaa79c71d65e8ff2d3bcef89cbe6889224e7b647d43226",
+      "encoder_runtime": {
+        "onnxruntime": "1.30.0",
+        "tokenizers": "0.23.2",
+        "numpy": "2.5.3",
+        "note": "the stored vectors are those of ko-main-2026-10-27, so the query runtime is the same"
+      },
+      "rows": {
+        "Concept": 442,
+        "Record": 610,
+        "Decision": 153,
+        "Episode": 160,
+        "Bridge": 0,
+        "Entity": 0,
+        "Domain": 65,
+        "Chunk": 1157,
+        "ChunkVec": 1624,
+        "NodeVec": 1365
+      },
+      "settled": {
+        "mentions_rule": "4:lossy-title-phrase",
+        "note": "engines.mentions_link.ensure_rule applied once on the copy (previous marker 3:title-before-source). The link set is the same before and after: 498 links, and the sorted list of (chunk, target, method) has one hash on both sides. A second ensure_rule changes nothing."
+      },
+      "encoder_model": "dragonkue/BGE-m3-ko int8 (hub bake recipe, reduce_range), run under the bge-m3 model key: same architecture, dimension, pooling and no prefix; its own tokenizer.json sits beside the ONNX",
+      "note": "Why it exists: rule 4:lossy-title-phrase made every earlier pin unsettled, and the in-process harness refuses an unsettled store. This is the pin for code at or after that rule; ko-main-2026-10-27 stays for the code before it. Open it with ladybug 0.20.3 and that engine's extensions, as for ko-main-2026-10-27: its key index was built by 0.20.3, and ladybug 0.21 cannot find 150 of its 183 non-ASCII concept ids by exact key, so 12 gold nodes read as absent. Build the venv with rag_eval.evalkit.venv --store ko-main-r4-2026-11-11, which also fetches that engine's vector and fts extensions."
     }
   }
 }
