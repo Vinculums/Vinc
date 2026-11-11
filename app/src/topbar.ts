@@ -232,7 +232,10 @@ export function mountTopbar() {
     const root = document.documentElement.style, room = innerWidth - lnb.right - 24;
     // LNB 오른쪽에 자리가 모자라면(좁은 창의 서랍) 칸 바로 아래, 화면 안쪽에 띄운다
     if (room >= 320) { root.setProperty("--lnbs-top", `${Math.round(s.top)}px`); root.setProperty("--lnbs-left", `${Math.round(lnb.right + 12)}px`); root.setProperty("--lnbs-w", `min(34rem, ${room}px)`); }
-    else { root.setProperty("--lnbs-top", `${Math.round(s.bottom + 6)}px`); root.setProperty("--lnbs-left", `${Math.max(8, Math.round(s.left))}px`); root.setProperty("--lnbs-w", `${Math.round(innerWidth - Math.max(8, s.left) - 8)}px`); } };
+    else { root.setProperty("--lnbs-top", `${Math.round(s.bottom + 6)}px`); root.setProperty("--lnbs-left", `${Math.max(8, Math.round(s.left))}px`); root.setProperty("--lnbs-w", `${Math.round(innerWidth - Math.max(8, s.left) - 8)}px`); }
+    // 모드 메뉴도 같은 까닭으로 화면 고정이다(LNB 안에 두면 힌트가 LNB 가장자리에서 잘렸다). 모드 단추 바로 아래, 왼쪽 끝을 맞춘다
+    const mb = modeBtn?.getBoundingClientRect();
+    if (mb) { root.setProperty("--lnbm-top", `${Math.round(mb.bottom + 6)}px`); root.setProperty("--lnbm-left", `${Math.max(8, Math.round(mb.left))}px`); } };
   if (docked) { window.addEventListener("resize", placeFloats); const l = $("lnb"); if (l) new ResizeObserver(placeFloats).observe(l); placeFloats(); }
 
   // ── 접힌 칸 ↔ 펼친 검색 ────────────────────────────────────────────────
@@ -323,6 +326,7 @@ export function mountTopbar() {
     if (!modeMenu) return;
     const willOpen = modeMenu.hidden;
     close();                              // 결과 드롭다운과 겹치지 않게
+    if (willOpen) placeFloats();          // 화면 고정 메뉴의 자리(--lnbm-*)를 지금 단추에 맞춘다
     drawModeMenu();
     modeMenu.hidden = !willOpen;
     modeBtn.setAttribute("aria-expanded", String(willOpen));
