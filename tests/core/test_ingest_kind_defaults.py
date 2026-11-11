@@ -94,6 +94,15 @@ def test_new_episode_without_date_gets_today_and_a_warning(store):
     assert len(filled(res)) == 2
 
 
+def test_a_new_decision_with_only_an_end_is_not_given_a_start(store):
+    """끝만 보낸 결정은 닫힌 구간이다. 시작을 오늘로 두면 구간이 뒤집힌다."""
+    res = ingest(store, [{"id": "decision:ended", "type": "decision", "title": "Ended",
+                          "props": {"valid_until": "2026-01-01"}}])
+    assert res["executed"] and filled(res) == []
+    assert stored(res, "decision:ended")["props"] == {"valid_until": "2026-01-01"}
+    assert not any("inverted" in w for w in res["warnings"])
+
+
 def test_the_writers_own_value_is_kept(store):
     res = ingest(store, [
         {"id": "decision:own", "type": "decision", "title": "Own",

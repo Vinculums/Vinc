@@ -233,13 +233,13 @@ def schema_section(key: str, lang: str) -> list[str]:
         out += ([f"- content_time({ct}): 기록이 가리키는 일이 일어난 때. YYYY[-MM[-DD]].",
                  f"- 성립 구간: Record 는 {rec[0]}·{rec[1]}, Decision 은 {dec[0]}·{dec[1]}. 다른 종류에는 구간이 없다.",
                  "- Episode 는 date 하나다. 생성 시각이 없어 known_at 이 거르지 못한다.",
-                 f"- {dec[0]} 없이 쓴 새 Decision 과 date 없이 쓴 새 Episode 는 오늘 날짜(UTC)를 받고, warnings 가 그렇게 말한다. 실제 날짜를 알면 보낸다.",
+                 f"- {dec[0]}·{dec[1]} 없이 쓴 새 Decision 과 date 없이 쓴 새 Episode 는 오늘 날짜(UTC)를 받고, warnings 가 그렇게 말한다. 실제 날짜를 알면 보낸다.",
                  "- as_of 는 그때 성립하던 것(구간), known_at 은 그때 그래프가 알던 것(생성 시각)을 읽는다. 현재·과거 상태는 저장하지 않고 날짜에서 계산한다."]
                 if ko else
                 [f"- content_time ({ct}): when the described thing happened. YYYY[-MM[-DD]].",
                  f"- Validity: a Record uses {rec[0]} and {rec[1]}, a Decision {dec[0]} and {dec[1]}. Other kinds have no interval.",
                  "- An Episode has its date only. It has no creation time, so known_at cannot filter it.",
-                 f"- A new Decision written without {dec[0]}, or a new Episode without date, gets today's date (UTC) and a warning that says so. Send the real date when you know it.",
+                 f"- A new Decision written without {dec[0]} and {dec[1]}, or a new Episode without date, gets today's date (UTC) and a warning that says so. Send the real date when you know it.",
                  "- as_of reads what held during a period (intervals); known_at reads what the graph had recorded by then (creation time). Current or past is computed from dates, never stored."])
     elif key == "roles":
         req, tiers, rungs = ", ".join(_rc.REQUIRED), "|".join(_rc.TIERS), "|".join(_rc.RUNGS)

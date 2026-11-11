@@ -706,8 +706,10 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
             _pv = _decision_interval(_pv, current.get("props"), nid, warnings)
         if (label == "Decision" and default_day and not matched
                 and (_pv is None or isinstance(_pv, dict))
-                and not str((_pv or {}).get("valid_from") or "").strip()):
+                and not str((_pv or {}).get("valid_from") or "").strip()
+                and not str((_pv or {}).get("valid_until") or "").strip()):
             # 새 결정만 채운다. 기존 결정은 저장된 날짜를 지키고, 보낸 값은 덮지 않는다.
+            # 끝만 있는 결정은 닫힌 구간이라 시작을 오늘로 두면 뒤집힌다. 그대로 둔다.
             _pv = {**(_pv or {}), "valid_from": default_day}
             warnings.append(_filled_warning(nid, "props.valid_from", default_day,
                                             "when the decision took effect"))
