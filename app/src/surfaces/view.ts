@@ -280,7 +280,16 @@ export async function renderView(el: HTMLElement, resume = false) {
       trail.length = 1;
       void show(trail[0]);
     });
+    // 읽기 실패 상자의 다시 시도 — 지금 보던 층을 그대로 다시 읽는다(층을 바꾸거나 바닥으로 내리지 않는다).
+    msg.querySelector("[data-view-retry]")?.addEventListener("click", () => {
+      void show(trail[trail.length - 1]);
+    });
   }
+
+  /** 그래프를 못 읽었을 때의 상자: 빈 상태와 같은 모양에 다시 시도 단추 하나. 스토어·데이터베이스가
+   *  응답하지 않는 상자(storeDown · showDatabaseDown)는 따로 있고 자기 단추를 가진다. */
+  const readFailedBox = () => `<div class="empty" role="alert"><p>${COPY.view.error}</p>
+      <p><button class="btn" type="button" data-view-retry>${esc(COPY.ui.lnb.retry)}</button></p></div>`;
 
   /** 결과가 0 인 자리의 빈 상태. 범위를 좁혀서 빈 것과 스토어가 빈 것은 다르게 말한다:
    *  주제 하나가 비었는데 "아직 그래프가 없다"고 하면 개념이 수백 개 있는 사람에게
@@ -654,7 +663,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     // 다른 사건처럼 읽힌다. 문구는
     // 그대로 "못 불러왔다"다 — 상자를 통일하는 것이지 사정을 뭉개는 것이 아니다
     // (여기에 "파일을 추가하세요"를 대면 백엔드가 죽었을 때 거짓 조언이 된다).
-    if (!res.executed) { setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`); return; }
+    if (!res.executed) { setMsg(readFailedBox()); return; }
     // 주제 설명의 문서 미러는 그 주제의 노드가 아니다(주제가 글을 못 담아 문서로 둔 것). 지도·트리·수에서 빼고
     // 설명은 주제 상세가 보여 준다. 표시는 서버가 단다(`api/query.py` `_mark_topic_descriptions`)
     const nodes: GraphNode[] = (res.nodes || []).filter((n) => !n.topic_description);
@@ -1055,7 +1064,19 @@ export async function renderView(el: HTMLElement, resume = false) {
         closeFloatPanel();
         closeRail();
         void show(trail[trail.length - 1]);
-      } catch { /* 실패는 조용히 — 지워진 것이 없다 */ }
+      } catch {
+        // 지워진 것은 없지만 조용히 넘기지 않는다: 상세 열의 삭제와 같은 문장을 카드 바닥에 남긴다.
+        // 유틸 줄의 단추는 좁아서 문장을 받지 못하므로 그 아래 한 줄이다. 다시 누르면 다시 시도한다.
+        let note = card.body.querySelector<HTMLElement>("[data-del-fail]");
+        if (!note) {
+          note = document.createElement("p");
+          note.className = "card-note";
+          note.dataset.delFail = "";
+          note.setAttribute("role", "alert");
+          card.body.querySelector(".card-rows")?.append(note);
+        }
+        note.textContent = V.delFail;
+      }
     });
     // Links 는 기본 접힘. 펼치는 것도 접는 것도 카드 안의 일이라 캐럿이 아래를 본다.
     const linksBox = q("#c-rels")!;
@@ -2374,7 +2395,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       const why = storeDownReason(e);
       if (import.meta.env.DEV) console.error("view show failed", e);
       if (why === null) {
-        setMsg(`<div class="empty"><p>${COPY.view.error}</p></div>`);
+        setMsg(readFailedBox());
       } else {
         setMsg(`<div class="empty"><p>${COPY.view.storeDown}</p>${
           why ? `<details><summary>${COPY.view.storeDownWhy}</summary><pre></pre></details>` : ""}</div>`);

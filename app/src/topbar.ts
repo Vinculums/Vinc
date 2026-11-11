@@ -230,7 +230,10 @@ export function mountTopbar() {
     const root = document.documentElement.style, room = innerWidth - lnb.right - 24;
     // LNB 오른쪽에 자리가 모자라면(좁은 창의 서랍) 칸 바로 아래, 화면 안쪽에 띄운다
     if (room >= 320) { root.setProperty("--lnbs-top", `${Math.round(s.top)}px`); root.setProperty("--lnbs-left", `${Math.round(lnb.right + 12)}px`); root.setProperty("--lnbs-w", `min(34rem, ${room}px)`); }
-    else { root.setProperty("--lnbs-top", `${Math.round(s.bottom + 6)}px`); root.setProperty("--lnbs-left", `${Math.max(8, Math.round(s.left))}px`); root.setProperty("--lnbs-w", `${Math.round(innerWidth - Math.max(8, s.left) - 8)}px`); } };
+    else { root.setProperty("--lnbs-top", `${Math.round(s.bottom + 6)}px`); root.setProperty("--lnbs-left", `${Math.max(8, Math.round(s.left))}px`); root.setProperty("--lnbs-w", `${Math.round(innerWidth - Math.max(8, s.left) - 8)}px`); }
+    // 모드 메뉴도 같은 까닭으로 화면 고정이다(LNB 안에 두면 힌트가 LNB 가장자리에서 잘렸다). 모드 단추 바로 아래, 왼쪽 끝을 맞춘다
+    const mb = modeBtn?.getBoundingClientRect();
+    if (mb) { root.setProperty("--lnbm-top", `${Math.round(mb.bottom + 6)}px`); root.setProperty("--lnbm-left", `${Math.max(8, Math.round(mb.left))}px`); } };
   if (docked) { window.addEventListener("resize", placeFloats); const l = $("lnb"); if (l) new ResizeObserver(placeFloats).observe(l); placeFloats(); }
 
   // ── 접힌 칸 ↔ 펼친 검색 ────────────────────────────────────────────────
@@ -255,7 +258,7 @@ export function mountTopbar() {
     if (fl) fl.textContent = COPY.ui.topbar.findOpen;
     const fk = $("tb-find-kbd");
     if (fk) fk.textContent = /mac/i.test(navigator.platform) ? "⌘K" : "Ctrl K";
-    findOpen.setAttribute("aria-label", COPY.ui.topbar.searchPh);
+    findOpen.setAttribute("aria-label", COPY.ui.topbar.searchLabel);
     findOpen.setAttribute("aria-expanded", "false");
     // 접힌 LNB 띠에서는 이 단추(돋보기)만 보인다: 누르면 LNB 를 펴고 칸에 초점을 준다
     findOpen.addEventListener("click", () => { if (docked && $("shell")?.dataset.lnb !== "open") $("tb-shell-toggle")?.click(); window.setTimeout(() => expand(), 0); });
@@ -264,7 +267,6 @@ export function mountTopbar() {
     if (!findCard.contains(document.activeElement)) collapse();
   }, 140));
 
-  q.setAttribute("aria-label", COPY.ui.topbar.searchPh);
   if (caret) caret.innerHTML = icon("chevron-left", 12);
   // 표기는 플랫폼 관용구를 따른다(mac ⌘K · 그 외 Ctrl K) — 팔레트 단축키와 같은 키.
   if (kbd) kbd.textContent = /mac/i.test(navigator.platform) ? "⌘K" : "Ctrl K";
@@ -283,6 +285,8 @@ export function mountTopbar() {
     modeBtn?.setAttribute("aria-label",
       `${COPY.ui.topbar.modeLabel}: ${modeLabel?.textContent || ""}`);
     q.placeholder = m === "ask" ? COPY.ui.topbar.askPh : COPY.ui.topbar.searchPh;
+    // 자리표시는 한 낱말이라 접근 이름이 되지 못한다. 칸의 이름은 모드의 문장이다.
+    q.setAttribute("aria-label", m === "ask" ? COPY.ui.topbar.askLabel : COPY.ui.topbar.searchLabel);
     // 모드를 바꾸면 다른 모드의 패널은 반드시 닫는다 — 둘이 같은 앵커에 겹쳐 뜬다.
     close();
     if (m === "find") void closeChat();
@@ -320,6 +324,7 @@ export function mountTopbar() {
     if (!modeMenu) return;
     const willOpen = modeMenu.hidden;
     close();                              // 결과 드롭다운과 겹치지 않게
+    if (willOpen) placeFloats();          // 화면 고정 메뉴의 자리(--lnbm-*)를 지금 단추에 맞춘다
     drawModeMenu();
     modeMenu.hidden = !willOpen;
     modeBtn.setAttribute("aria-expanded", String(willOpen));

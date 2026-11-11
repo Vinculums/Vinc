@@ -27,7 +27,7 @@
 """
 from __future__ import annotations
 
-from store import pkns
+from store import pkns, write_batch
 
 SEP = "/"
 
@@ -97,11 +97,22 @@ def ensure_chain(store, domain: str | None) -> list[str]:
 
     ``store`` 는 ``run(cypher, params)`` 만 쓰므로 GraphStore·세션 어느 쪽이든 된다."""
     chain = parse_chain(domain)
+    # 쓰기 묶음(`store.write_batch`) 안에서는 이미 만든 도메인·고리를 다시 MERGE 하지 않는다. 묶음이
+    # 되돌려지면 이 기록도 같이 버려지므로, 다음 시도는 처음부터 다시 만든다.
+    batch = write_batch.current(store)
+    done = batch.domains if batch is not None else set()
+    links = batch.domain_links if batch is not None else set()
     for name in chain:
+        if name in done:
+            continue
         store.run("MERGE (:Domain {name: $n})", {"n": name})
+        done.add(name)
     for parent, child in zip(chain, chain[1:]):
+        if (parent, child) in links:
+            continue
         store.run("MATCH (p:Domain {name: $p}), (c:Domain {name: $c}) "
                   "MERGE (p)-[:PARENT_OF]->(c)", {"p": parent, "c": child})
+        links.add((parent, child))
     return chain
 
 
@@ -116,9 +127,17 @@ def link_node(store, label: str, node_id: str, domain: str | None) -> str:
     pk = DOMAIN_LABELS.get(label)
     if not pk:
         return ""
+    norm = normalize(domain)
+    batch = write_batch.current(store)
+    if batch is not None:
+        # 쓰기 묶음 안이면 고리 맞추기를 모아 두었다가 커밋 직전에 라벨마다 한 번에 한다
+        # (`store.write_batch.flush_domain_links`). 사슬은 지금 만든다 — 고리가 그것을 가리킨다.
+        if norm:
+            ensure_chain(store, norm)
+        batch.links_pending.append((label, pk, node_id, norm))
+        return norm
     store.run(f"MATCH (n:{label} {{{pk}: $id}})-[r:IN_DOMAIN]->(:Domain) DELETE r",
               {"id": node_id})
-    norm = normalize(domain)
     if not norm:
         return ""
     ensure_chain(store, norm)

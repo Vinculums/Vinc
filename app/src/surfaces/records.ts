@@ -165,10 +165,19 @@ export async function renderBrowse(body: HTMLElement, opts: BrowseOpts = {}) {
     });
   }
 
-  try {
-    await load();
-    draw();
-  } catch {
-    body.innerHTML = `<div class="error-banner">${COPY.records.error}</div>`;
-  }
+  // 목록을 못 읽으면 배너에 다시 시도 단추를 둔다. 누르면 읽기부터 다시 하고, 또 실패하면 같은 배너가 다시 선다.
+  const start = async () => {
+    try {
+      await load();
+      draw();
+    } catch {
+      body.innerHTML = `<div class="error-banner" role="alert">${COPY.records.error}
+        <button class="btn btn-sm" type="button" data-dl-retry>${esc(COPY.ui.lnb.retry)}</button></div>`;
+      body.querySelector<HTMLButtonElement>("[data-dl-retry]")?.addEventListener("click", () => {
+        body.innerHTML = loaderRows(COPY.ui.common.loading, { count: 6 });
+        void start();
+      });
+    }
+  };
+  await start();
 }
