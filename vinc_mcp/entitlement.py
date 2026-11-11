@@ -139,6 +139,11 @@ def _account_url() -> str:
 
 
 def _seed() -> bytes | None:
+    # 셀프호스트 허브는 계정과 말하지 않는다: 시드가 없는 것과 같게 두면 키 검증·멤버십·
+    # 커뮤니티·실행 알림이 한자리에서 같이 꺼진다.
+    from . import selfhost
+    if selfhost.enabled():
+        return None
     raw = os.environ.get("VINC_MCP_ED25519_SEED")
     if not raw:
         return None

@@ -28,7 +28,10 @@ _NORMALIZE = {
 
 
 def enabled() -> bool:
-    """네임스페이싱이 켜져 있나. 로컬 스토어는 영구히 off(vinc.plan.node-pk-namespacing §7)."""
+    """네임스페이싱이 켜져 있나. 로컬 스토어는 영구히 off(vinc.plan.node-pk-namespacing §7).
+    셀프호스트 허브(`VINC_SELF_HOSTED`)도 소유자가 하나라 off 다(`vinc_mcp/selfhost.py`)."""
+    if truthy(os.environ.get("VINC_SELF_HOSTED")):
+        return False
     return truthy(os.environ.get("VINC_PK_NAMESPACED"))
 
 

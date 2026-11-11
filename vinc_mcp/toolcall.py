@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from . import community, tools, viewurl
+from . import community, selfhost, tools, viewurl
 
 
 @dataclass(frozen=True)
@@ -31,6 +31,8 @@ def preflight(name: str, args: dict, *, base_auth: dict,
                     "in local mode), which this hosted connector cannot read. Use the "
                     "desktop app's own connector on that device."))
         if want and want != viewurl.PERSONAL:
+            if selfhost.enabled():
+                return Outcome("space_not_found", message=selfhost.NO_SPACES)
             if not valid_space(want):
                 return Outcome("space_not_found", message=(
                     "no such space. Call vinc_whoami to see the spaces you can reach."))

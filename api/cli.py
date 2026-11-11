@@ -1250,7 +1250,11 @@ def _serve_http_kwargs(args) -> dict:
     # 티어 쿼터(B-D2) — 인증된 회원(owner) 의 tools/call 만 소비. 미설정 시
     # 무제한(로컬·파일럿 프로파일 무영향).
     quota_cfg = None
-    if os.environ.get("VINC_QUOTA") == "on":
+    # 셀프호스트 허브(`vinc_mcp/selfhost.py`): 소유자 모양을 기동 때 확인하고, 한도·연결
+    # 흐름은 싣지 않는다. 키·멤버십·커뮤니티는 `entitlement.enabled()` 가 이미 끈다.
+    from vinc_mcp import selfhost
+    selfhost.check()
+    if os.environ.get("VINC_QUOTA") == "on" and not selfhost.enabled():
         quota_cfg = {
             # Curious(free) 만 센다: 스페이스당 하루 이만큼, 00:00 UTC 리셋, 잠금 없음.
             # Genius 는 세지 않는다. 창 길이와 잠금은 정책이라 env 로 열지 않는다.
@@ -1281,15 +1285,16 @@ def _serve_http_kwargs(args) -> dict:
     # 회원 승인 흐름(B-B3) — 우리 서명키 + 계정 공개키 핀 + 공홈 동의 URL.
     # 셋 다 있어야 활성(없으면 관리 키 경로만). 공개키만 교환 → B2 준수.
     from vinc_mcp import edverify as _ev
-    seed_raw = os.environ.get("VINC_MCP_ED25519_SEED")
-    acct_raw = os.environ.get("VINC_ACCOUNT_PUBLIC_KEY")
+    seed_raw = None if selfhost.enabled() else os.environ.get("VINC_MCP_ED25519_SEED")
+    acct_raw = None if selfhost.enabled() else os.environ.get("VINC_ACCOUNT_PUBLIC_KEY")
     return dict(
         static_token=static, oauth=gate, verify_key=vk, verify_member=vm,
         verify_community=vc, community_write=cw, community_read=cr,
         quota_config=quota_cfg,
         mcp_seed=_ev.load_seed(seed_raw) if seed_raw else None,
         account_public=_ev.load_public(acct_raw) if acct_raw else None,
-        connect_url=os.environ.get("VINC_CONNECT_URL") or "https://vincs.io/connect",
+        connect_url=None if selfhost.enabled()
+        else os.environ.get("VINC_CONNECT_URL") or "https://vincs.io/connect",
         free_max_domains=free_cap)
 
 
