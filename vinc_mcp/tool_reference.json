@@ -78,7 +78,7 @@
    "name": "vinc_search",
    "summary": "Search this graph's documents and nodes by keywords and meaning. Use it for 'anything about X' and to find existing ids before vinc_ingest. Rows carry excerpts; read a whole document with vinc_doc_get.",
    "docs_url": "https://vincs.io/docs/mcp/tools/#vinc_search",
-   "reference": "Hybrid keyword and vector search over this graph's documents and nodes; use it before vinc_ingest to find ids to reuse. Returns `rows` (chunk excerpts with doc_id and cite_id) and, on the first page only, `node_hits`. Read whole documents with vinc_doc_get and cite `cite_id`. Page with `cursor` set to `next_cursor` while `has_more` (rows only). `node_window` and `node_semantic` report on the node arm. `vector_note` means the meaning arm did not fully run: right after a document write the index rebuilds (`arms` is \"fts\", the call never waits, and this is benign); otherwise (a timeout, a missing index) the rows came from text matching alone, so tell the user. A backend failure returns `error`. Read-only.",
+   "reference": "Hybrid keyword and vector search over this graph's documents and nodes; use it before vinc_ingest to find ids to reuse. Returns `rows` (chunk excerpts with doc_id and cite_id) and, on the first page only, `node_hits`. Read whole documents with vinc_doc_get and cite `cite_id`. Page with `cursor` set to `next_cursor` while `has_more` (rows only). `node_window` and `node_semantic` appear when the node arm was not complete. `vector_note` means the meaning arm did not fully run: right after a document write the index rebuilds (`arms` is \"fts\", the call never waits, and this is benign); otherwise (a timeout, a missing index) the rows came from text matching alone, so tell the user. A backend failure returns `error`. Read-only.",
    "annotations": {
     "title": "Search knowledge",
     "readOnlyHint": true,
@@ -141,8 +141,8 @@
      "name": "raw",
      "type": "boolean",
      "required": false,
-     "description": "true returns the full result; by default ranking diagnostics, empty fields and temporal blocks with nothing set are left out.",
-     "reference": "Over MCP the result is trimmed by default: ranking diagnostics are left out (`score` on rows and `rrf_score` on node hits stay), a `temporal` block with no validity interval, content time, supersession or conflict shrinks to `{updated_at}`, brief drops flat copies of its temporal fields, and neighbors drop empty fields. A missing field means it was empty or default. raw:true returns the result unchanged. REST v1 always returns it unchanged."
+     "description": "true returns the full result; by default empty, default and duplicated fields and healthy diagnostics are left out.",
+     "reference": "Over MCP the result is trimmed by default and sent as compact JSON. Ranking diagnostics are left out (`score` on rows and `rrf_score` on node hits stay). A `temporal` block lists only what is set: valid_from, valid_until, content_time, superseded_by and holds_in_scope when not null, supersession, supersedes and conflicts when not empty, interval_invalid when true, claim_status when the claim was assessed (none means unscoped, or unassessed on vinc_node), updated_at when the block has no other date, and validity only when the dates do not give it: no validity means current when valid_from or valid_until is set and unknown otherwise, so historical and future stay. created_at, interval_known and claim_assessment_scope are left out. Search also leaves out validity_note, page, total_count_capped when false, and node_window with node_semantic when the node arm completed with nothing stale, missing or capped. Brief leaves out its flat copies of temporal fields (node.validity stays), validity_best_dropped, validity_note, cite_grounds when it equals grounds, null, empty and false fields of relation items, and links.executed, offset and truncated at their defaults. vinc_node leaves out sync_seq, owner_id, tenant_id, empty fields and temporal values the node already holds; props are always whole. Neighbors leave out empty fields, rev, and on a domain listing the domain each row repeats. A trimmed search, brief or node result carries `omitted` with this rule in one sentence. raw:true (or \"true\") returns the result unchanged. REST v1 and the CLI always return the full result."
     },
     {
      "name": "kinds",
@@ -310,7 +310,7 @@
    "name": "vinc_node",
    "summary": "Read one node by exact id with all its stored fields, without neighbours. Use vinc_neighbors to walk relations and vinc_brief for answer material.",
    "docs_url": "https://vincs.io/docs/mcp/tools/#vinc_node",
-   "reference": "Read one node by exact id with all its stored fields and no neighbours. Returns {kind:'node', executed, found, node}. Retired claims are included, so check valid_from/valid_until. found:false means no such id here; executed:false means the store could not be read. Use vinc_brief for answer material and vinc_neighbors for relations. Read-only.",
+   "reference": "Read one node by exact id with all its stored fields and no neighbours. Returns {kind:'node', executed, found, node}. Retired claims are included, so check valid_from/valid_until. found:false means no such id here; executed:false means the store could not be read. Use vinc_brief for answer material and vinc_neighbors for relations. Over MCP, empty fields and the temporal values already in the node are left out; raw:true returns the stored shape. Read-only.",
    "annotations": {
     "title": "Read one stored node",
     "readOnlyHint": true,
@@ -323,6 +323,13 @@
      "type": "string",
      "required": true,
      "description": "Exact stored node id, including its type prefix."
+    },
+    {
+     "name": "raw",
+     "type": "boolean",
+     "required": false,
+     "description": "true returns the full result; by default empty, default and duplicated fields and healthy diagnostics are left out.",
+     "reference": "Over MCP the result is trimmed by default and sent as compact JSON. Ranking diagnostics are left out (`score` on rows and `rrf_score` on node hits stay). A `temporal` block lists only what is set: valid_from, valid_until, content_time, superseded_by and holds_in_scope when not null, supersession, supersedes and conflicts when not empty, interval_invalid when true, claim_status when the claim was assessed (none means unscoped, or unassessed on vinc_node), updated_at when the block has no other date, and validity only when the dates do not give it: no validity means current when valid_from or valid_until is set and unknown otherwise, so historical and future stay. created_at, interval_known and claim_assessment_scope are left out. Search also leaves out validity_note, page, total_count_capped when false, and node_window with node_semantic when the node arm completed with nothing stale, missing or capped. Brief leaves out its flat copies of temporal fields (node.validity stays), validity_best_dropped, validity_note, cite_grounds when it equals grounds, null, empty and false fields of relation items, and links.executed, offset and truncated at their defaults. vinc_node leaves out sync_seq, owner_id, tenant_id, empty fields and temporal values the node already holds; props are always whole. Neighbors leave out empty fields, rev, and on a domain listing the domain each row repeats. A trimmed search, brief or node result carries `omitted` with this rule in one sentence. raw:true (or \"true\") returns the result unchanged. REST v1 and the CLI always return the full result."
     },
     {
      "name": "space",
@@ -388,8 +395,8 @@
      "name": "raw",
      "type": "boolean",
      "required": false,
-     "description": "true returns the full result; by default ranking diagnostics, empty fields and temporal blocks with nothing set are left out.",
-     "reference": "Over MCP the result is trimmed by default: ranking diagnostics are left out (`score` on rows and `rrf_score` on node hits stay), a `temporal` block with no validity interval, content time, supersession or conflict shrinks to `{updated_at}`, brief drops flat copies of its temporal fields, and neighbors drop empty fields. A missing field means it was empty or default. raw:true returns the result unchanged. REST v1 always returns it unchanged."
+     "description": "true returns the full result; by default empty, default and duplicated fields and healthy diagnostics are left out.",
+     "reference": "Over MCP the result is trimmed by default and sent as compact JSON. Ranking diagnostics are left out (`score` on rows and `rrf_score` on node hits stay). A `temporal` block lists only what is set: valid_from, valid_until, content_time, superseded_by and holds_in_scope when not null, supersession, supersedes and conflicts when not empty, interval_invalid when true, claim_status when the claim was assessed (none means unscoped, or unassessed on vinc_node), updated_at when the block has no other date, and validity only when the dates do not give it: no validity means current when valid_from or valid_until is set and unknown otherwise, so historical and future stay. created_at, interval_known and claim_assessment_scope are left out. Search also leaves out validity_note, page, total_count_capped when false, and node_window with node_semantic when the node arm completed with nothing stale, missing or capped. Brief leaves out its flat copies of temporal fields (node.validity stays), validity_best_dropped, validity_note, cite_grounds when it equals grounds, null, empty and false fields of relation items, and links.executed, offset and truncated at their defaults. vinc_node leaves out sync_seq, owner_id, tenant_id, empty fields and temporal values the node already holds; props are always whole. Neighbors leave out empty fields, rev, and on a domain listing the domain each row repeats. A trimmed search, brief or node result carries `omitted` with this rule in one sentence. raw:true (or \"true\") returns the result unchanged. REST v1 and the CLI always return the full result."
     },
     {
      "name": "kinds",
@@ -659,8 +666,8 @@
      "name": "raw",
      "type": "boolean",
      "required": false,
-     "description": "true returns the full result; by default ranking diagnostics, empty fields and temporal blocks with nothing set are left out.",
-     "reference": "Over MCP the result is trimmed by default: ranking diagnostics are left out (`score` on rows and `rrf_score` on node hits stay), a `temporal` block with no validity interval, content time, supersession or conflict shrinks to `{updated_at}`, brief drops flat copies of its temporal fields, and neighbors drop empty fields. A missing field means it was empty or default. raw:true returns the result unchanged. REST v1 always returns it unchanged."
+     "description": "true returns the full result; by default empty, default and duplicated fields and healthy diagnostics are left out.",
+     "reference": "Over MCP the result is trimmed by default and sent as compact JSON. Ranking diagnostics are left out (`score` on rows and `rrf_score` on node hits stay). A `temporal` block lists only what is set: valid_from, valid_until, content_time, superseded_by and holds_in_scope when not null, supersession, supersedes and conflicts when not empty, interval_invalid when true, claim_status when the claim was assessed (none means unscoped, or unassessed on vinc_node), updated_at when the block has no other date, and validity only when the dates do not give it: no validity means current when valid_from or valid_until is set and unknown otherwise, so historical and future stay. created_at, interval_known and claim_assessment_scope are left out. Search also leaves out validity_note, page, total_count_capped when false, and node_window with node_semantic when the node arm completed with nothing stale, missing or capped. Brief leaves out its flat copies of temporal fields (node.validity stays), validity_best_dropped, validity_note, cite_grounds when it equals grounds, null, empty and false fields of relation items, and links.executed, offset and truncated at their defaults. vinc_node leaves out sync_seq, owner_id, tenant_id, empty fields and temporal values the node already holds; props are always whole. Neighbors leave out empty fields, rev, and on a domain listing the domain each row repeats. A trimmed search, brief or node result carries `omitted` with this rule in one sentence. raw:true (or \"true\") returns the result unchanged. REST v1 and the CLI always return the full result."
     },
     {
      "name": "space",

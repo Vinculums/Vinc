@@ -619,7 +619,7 @@
       "post": {
         "operationId": "vinc_search_post__v1_search",
         "summary": "Search this graph's documents and nodes by keywords and meaning. Use it for 'anything about X' and to find existing ids before vinc_ingest. Rows carry excerpts; read a whole document with vinc_doc_get.",
-        "description": "Hybrid keyword and vector search over this graph's documents and nodes; use it before vinc_ingest to find ids to reuse. Returns `rows` (chunk excerpts with doc_id and cite_id) and, on the first page only, `node_hits`. Read whole documents with vinc_doc_get and cite `cite_id`. Page with `cursor` set to `next_cursor` while `has_more` (rows only). `node_window` and `node_semantic` report on the node arm. `vector_note` means the meaning arm did not fully run: right after a document write the index rebuilds (`arms` is \"fts\", the call never waits, and this is benign); otherwise (a timeout, a missing index) the rows came from text matching alone, so tell the user. A backend failure returns `error`. Read-only.",
+        "description": "Hybrid keyword and vector search over this graph's documents and nodes; use it before vinc_ingest to find ids to reuse. Returns `rows` (chunk excerpts with doc_id and cite_id) and, on the first page only, `node_hits`. Read whole documents with vinc_doc_get and cite `cite_id`. Page with `cursor` set to `next_cursor` while `has_more` (rows only). `node_window` and `node_semantic` appear when the node arm was not complete. `vector_note` means the meaning arm did not fully run: right after a document write the index rebuilds (`arms` is \"fts\", the call never waits, and this is benign); otherwise (a timeout, a missing index) the rows came from text matching alone, so tell the user. A backend failure returns `error`. Read-only.",
         "security": [
           {
             "MemberKey": []
@@ -832,7 +832,7 @@
       "get": {
         "operationId": "vinc_node_get__v1_nodes_id",
         "summary": "Read one node by exact id with all its stored fields, without neighbours. Use vinc_neighbors to walk relations and vinc_brief for answer material.",
-        "description": "Read one node by exact id with all its stored fields and no neighbours. Returns {kind:'node', executed, found, node}. Retired claims are included, so check valid_from/valid_until. found:false means no such id here; executed:false means the store could not be read. Use vinc_brief for answer material and vinc_neighbors for relations. Read-only.",
+        "description": "Read one node by exact id with all its stored fields and no neighbours. Returns {kind:'node', executed, found, node}. Retired claims are included, so check valid_from/valid_until. found:false means no such id here; executed:false means the store could not be read. Use vinc_brief for answer material and vinc_neighbors for relations. Over MCP, empty fields and the temporal values already in the node are left out; raw:true returns the stored shape. Read-only.",
         "security": [
           {
             "MemberKey": []
