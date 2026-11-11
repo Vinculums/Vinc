@@ -953,7 +953,7 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
     const rows = ns.filter((n) => (!TSEL || (when(n) >= TSEL[0] && when(n) <= TSEL[1])) && matchQ(n) && !KOFF.has(kindKey(n)));
     const cnt = K.map(([k, name]) => `${name} ${rows.filter((n) => tKind(n) === k).length}`).join(' · '), undated = nodes.filter((n) => !when(n)).length;
     // 날짜가 있는 노드가 하나도 없으면 칸은 '이전' 하나뿐이다: 범위(allDays[1] ~ …)도 기간 단추도 말할 것이 없다.
-    // 그때는 그렇다고 적고 기간 단추와 막대(끌어 고르기)를 내놓지 않는다. 'undefined ~ 이전'을 다시 만들지 말 것
+    // 이 경우 범위 자리에는 noDates 문장을 쓰고, 기간 단추는 끄고 막대(끌어 고르기)는 그리지 않는다. 범위 줄에 undefined 가 나오면 안 된다
     const noDays = allDays.length < 2;
     const lab = noDays ? esc(C.noDates) : TSEL ? `${TSEL[0] === '0000-01-01' ? C.start : TSEL[0]} ~ ${TSEL[1]}` : `${allDays[1]} ~ ${allDays[allDays.length - 1]}`;
     return `      <div class="cmp-seg">${[['7', C.days(7)], ['30', C.days(30)], ['all', C.all]].map(([k, l]) => `<button class="btn btn-sm" data-cmp-r="${k}"${noDays && k !== 'all' ? ' disabled' : ''}>${l}</button>`).join('')}</div>

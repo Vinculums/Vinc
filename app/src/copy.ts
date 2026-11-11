@@ -2312,7 +2312,7 @@ const KO: Deck = {
       home: "View",
       search: "Search",
       depthTip: "지금 있는 곳 보기",
-      // 자리표시는 EN 덱과 같은 라틴 표기다(발주자 판정 2026-11-11). 문장은 접근 이름이 든다.
+      // 자리표시는 EN 덱과 같은 라틴 표기다(번역하지 않는다). 문장은 접근 이름(searchLabel · askLabel)이 든다.
       searchPh: "Search…",
       searchLabel: "내 지식에서 검색하기",
       modeLabel: "검색 모드",
