@@ -5,7 +5,7 @@
 #   docker compose --profile neo4j up -d       # 그래프를 같은 compose 의 Neo4j 에 둔다
 #
 # 처음 한 번: 비밀번호 해시를 만들어 .env 에 넣는다.
-#   docker run --rm -i ghcr.io/vinculums/vinc-hub:latest python -m api.cli selfhost hash-password
+#   docker run --rm -i --entrypoint python ghcr.io/vinculums/vinc-hub:latest -m api.cli selfhost hash-password
 # MCP 접속 토큰은 첫 기동 때 볼륨에 생긴다:
 #   docker compose exec hub cat /data/selfhost/mcp-token
 #
