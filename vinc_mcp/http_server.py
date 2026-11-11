@@ -43,7 +43,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from store import httpbody
 from store.envflag import truthy
 
-from . import burst, community, edverify, entitlement, modern, toolcall, tools, viewurl
+from . import burst, community, edverify, entitlement, modern, selfhost, toolcall, tools, viewurl
 
 from .bridge import Bridge
 from .oauth import CONNECT_TTL, OAuthGate
@@ -567,6 +567,8 @@ class MCPHTTPApp:
         miss = {"ok": False, "owner": None, "plan": None, "scope": None, "source": None}
         if not header or not header.startswith("Bearer "):
             return miss
+        if selfhost.enabled():
+            return self._resolve_self_hosted(header, space, presented_at, miss)
         if community.is_space(space):
             from store import pkns
             if not pkns.enabled() or self.verify_community is None:
@@ -641,6 +643,29 @@ class MCPHTTPApp:
                         "plan": self._fresh_plan(owner, rec.get("plan")),
                         "scope": "full", "source": "oauth"}
         return miss
+
+    def _resolve_self_hosted(self, header: str, space: str | None, presented_at: str,
+                             miss: dict) -> dict:
+        """셀프호스트 허브: 들어오는 길(정적 토큰·OAuth)과 무관하게 소유자는 하나다.
+
+        소유자를 None 으로 두면 도구가 호출자가 보낸 `owner` 를 그대로 쓴다. 여기서
+        고정 소유자를 실어야 `forced_owner` 가 모든 경로에서 그 값을 덮는다. 스페이스를
+        겨눈 호출은 인증 전에 거절한다(`reason` 이 사람이 읽을 답이다).
+        """
+        if space:
+            return {**miss, "reason": selfhost.NO_SPACES}
+        token = header[len("Bearer "):].strip()
+        source = None
+        if self.static_token and secrets.compare_digest(token, self.static_token):
+            source = "static"
+        elif self.oauth is not None:
+            rec = self.oauth.resolve(token)
+            if rec and self._resource_ok(rec, presented_at):
+                source = "oauth"
+        if source is None:
+            return miss
+        return {"ok": True, "owner": selfhost.owner(), "plan": None, "scope": "full",
+                "source": source}
 
     def _resource_ok(self, rec: dict, presented_at: str) -> bool:
         """RFC 8707 audience — 토큰은 **자기가 발급된 끝점에 제시**돼야 한다.

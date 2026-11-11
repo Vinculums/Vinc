@@ -828,6 +828,14 @@ def _t_brief(args, bridge):
 #: (노드는 vinc_brief) 의 얇은 별칭이다.
 #: 근거: [[vinc.canon.mcp-contract]]
 _CITE_ORIGIN = (os.environ.get("VINC_CITE_ORIGIN") or "https://vincs.io").rstrip("/")
+
+
+def _cite_origin() -> str:
+    """인용 주소의 앞부분. 셀프호스트 허브는 자기 바깥 주소이고, 그것도 없으면 빈 값이다."""
+    from . import selfhost
+    if os.environ.get("VINC_CITE_ORIGIN") or not selfhost.enabled():
+        return _CITE_ORIGIN
+    return selfhost.public_url() or ""
 _NODE_PREFIXES = ("concept:", "record:", "decision:", "episode:", "domain:", "bridge:")
 
 
@@ -842,7 +850,8 @@ def _cite_url(kind: str, ident: str, owner: str = "") -> str:
     space = (owner[len("team:"):] if owner.startswith("team:") else
              owner if owner.startswith("community:") else "personal")
     where = "doc" if kind == "doc" else "trace"
-    return f"{_CITE_ORIGIN}/app/?space={space}#view/{where}/{ident}"
+    origin = _cite_origin()
+    return f"{origin}/app/?space={space}#view/{where}/{ident}" if origin else ""
 
 
 def _t_host_search(args, bridge):

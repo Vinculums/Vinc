@@ -486,26 +486,41 @@ def _host_enforcement(props: dict, format: str) -> str:
                      if not (line == "" and i > 0 and lines[i - 1] == "")) + "\n"
 
 
+def _mcp_url() -> str:
+    """내보낸 설정에 적을 MCP 주소. 셀프호스트 허브는 자기 바깥 주소다(없으면 자리표시)."""
+    from . import selfhost
+    if not selfhost.enabled():
+        return MCP_URL
+    base = selfhost.public_url()
+    return f"{base}/mcp" if base else "https://<your-hub>/mcp"
+
+
 def _mcp_entries() -> str:
     """호스트마다 Vinc MCP 서버를 더하는 설정. 키는 넣지 않는다(OAuth 가 되는 곳은 OAuth)."""
+    from . import selfhost
+    url = _mcp_url()
+    key_line = ("it needs no key. Otherwise put this hub's access token where <key> stands; "
+                "never commit it." if selfhost.enabled() else
+                "it needs no key. Otherwise make a key on your vincs.io account page and put it "
+                "where <key> stands; never commit it.")
+    sign_in = "sign in to this hub." if selfhost.enabled() else "sign in on vincs.io."
     return "\n".join([
         "# Connect Vinc to your agent host", "",
-        f"Every host uses the same address: {MCP_URL}. Where the host can sign in with OAuth, "
-        "it needs no key. Otherwise make a key on your vincs.io account page and put it where "
-        "<key> stands; never commit it.", "",
-        "## Claude Code", "", "```", f"claude mcp add --scope user --transport http vinc {MCP_URL}", "```", "",
-        "## Codex", "", "```", f"codex mcp add vinc --url {MCP_URL}", "codex mcp login vinc", "```", "",
+        f"Every host uses the same address: {url}. Where the host can sign in with OAuth, "
+        + key_line, "",
+        "## Claude Code", "", "```", f"claude mcp add --scope user --transport http vinc {url}", "```", "",
+        "## Codex", "", "```", f"codex mcp add vinc --url {url}", "codex mcp login vinc", "```", "",
         "## Cursor and Grok Bot", "",
         "Cursor reads `~/.cursor/mcp.json`. Grok Bot takes the same MCP servers, plugins and skills "
         "as Cursor, or a custom connector at grok.com/connectors with this address and OAuth.", "",
-        "```json", '{ "mcpServers": { "vinc": { "url": "' + MCP_URL + '" } } }', "```", "",
+        "```json", '{ "mcpServers": { "vinc": { "url": "' + url + '" } } }', "```", "",
         "## OpenClaw", "", "Under `mcp.servers` in `~/.openclaw/openclaw.json`; keep the transport line.", "",
-        "```json", '{ "mcp": { "servers": { "vinc": { "url": "' + MCP_URL
+        "```json", '{ "mcp": { "servers": { "vinc": { "url": "' + url
         + '", "transport": "streamable-http", "headers": { "Authorization": "Bearer <key>" } } } } }', "```", "",
         "## Hermes", "", "Under `mcp_servers` in `~/.hermes/config.yaml`.", "",
-        "```yaml", "mcp_servers:", "  vinc:", f'    url: "{MCP_URL}"', "    auth: oauth", "```", "",
+        "```yaml", "mcp_servers:", "  vinc:", f'    url: "{url}"', "    auth: oauth", "```", "",
         "## Claude.ai and ChatGPT", "",
-        f"Add a custom connector with the address {MCP_URL} and sign in on vincs.io.", ""])
+        f"Add a custom connector with the address {url} and {sign_in}", ""])
 
 
 def _tail(props: dict, format: str) -> str:

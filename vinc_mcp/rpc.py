@@ -26,7 +26,7 @@ from __future__ import annotations
 import json
 
 from . import __version__
-from . import builtin_prompts, community, events, modern, roles, run_tasks
+from . import builtin_prompts, community, events, modern, roles, run_tasks, selfhost
 from . import tools
 from . import toolcall
 from .bridge import Bridge
@@ -208,14 +208,18 @@ class Dispatcher:
             # PNG 를 먼저 놓는 이유: 클라이언트는 PNG·JPEG 지원이 **필수**이고 SVG 는
             # 선택이다(SVG 는 스크립트를 품을 수 있다). 아이콘 자체는 /favicon.* 로
             # 계속 서빙한다 — 프로토콜 밖이라 무해하다.
-            if negotiated >= "2025-11-25":   # ISO 날짜라 사전식 비교가 곧 시간순
+            # 셀프호스트 허브는 자기 바깥 주소의 아이콘을 싣고, 주소가 없으면 아무것도 안 싣는다.
+            icon_base, website = "https://mcp.vincs.io", "https://vincs.io"
+            if selfhost.enabled():
+                icon_base = website = selfhost.public_url()
+            if negotiated >= "2025-11-25" and icon_base:   # ISO 날짜라 사전식 비교가 곧 시간순
                 info["icons"] = [
-                    {"src": "https://mcp.vincs.io/favicon.png",
+                    {"src": f"{icon_base}/favicon.png",
                      "mimeType": "image/png", "sizes": ["128x128"]},
-                    {"src": "https://mcp.vincs.io/favicon.svg",
+                    {"src": f"{icon_base}/favicon.svg",
                      "mimeType": "image/svg+xml", "sizes": ["any"]},
                 ]
-                info["websiteUrl"] = "https://vincs.io"
+                info["websiteUrl"] = website
             out = {
                 # `prompts` 는 로스터가 **비어 있어도** 광고한다. 그래프에 vinc/agent
                 # 도메인이 없는 것은 고장이 아니라 상태이고(역할 없는 목록이 정답), 능력을

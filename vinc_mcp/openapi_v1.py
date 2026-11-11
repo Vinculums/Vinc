@@ -56,8 +56,10 @@ def generate() -> dict:
     paths["/v1/openapi.json"] = {"get": {"operationId": "openapi_v1",
         "summary": "OpenAPI 3.1 document", "security": [],
         "responses": {"200": {"description": "OpenAPI document"}}}}
+    from . import selfhost
+    server = selfhost.public_url() if selfhost.enabled() else "https://mcp.vincs.io"
     return {"openapi": "3.1.0", "info": {"title": "Vinc API", "version": "1.0.0"},
-            "servers": [{"url": "https://mcp.vincs.io"}],
+            "servers": [{"url": server}] if server else [],
             "paths": paths,
             "components": {"securitySchemes": {"MemberKey": {
                 "type": "http", "scheme": "bearer", "bearerFormat": "Vinc API key"}},
