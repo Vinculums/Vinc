@@ -1027,9 +1027,9 @@ _SUMMARY: dict[str, str] = {
         "to walk relations and vinc_brief for answer material."),
     "vinc_brief": (
         "Turn one question into answer material in one call: the best matching node, its relations "
-        "and the passages behind them. Read status first: 'choose' means candidates tied, so ask "
-        "again with one id. Quote a `quotes` sentence as it stands: a claim may say no more "
-        "than its quote."),
+        "and passages. 'choose' means candidates tied, so ask again with one id; "
+        "`candidate_material` is the first one's, unconfirmed. Quote a `quotes` sentence as it "
+        "stands: a claim may say no more than its quote."),
     "vinc_recall": (
         "Read the episode timeline (what happened), newest first. Use it to resume context or to check "
         "whether an event is already recorded. For 'anything about X' use vinc_search."),
@@ -1331,7 +1331,9 @@ TOOLS: list[dict] = [
                 "vinc_search, vinc_graph and vinc_doc_get. A node id in the question is used directly. "
                 "Returns {kind, executed, query, status, node, one_liner, excerpts, links, candidates, "
                 "grounds}. status 'resolved' fills the material; 'choose' means candidates tied, so ask again "
-                "with one id; 'none' means no match, unless `unreadable` or `search_error` is present. "
+                "with one id; a choose also carries `candidate_material` {candidate, one_liner, excerpts} "
+                "for the first candidate, which is not a confirmed answer; "
+                "'none' means no match, unless `unreadable` or `search_error` is present. "
                 "`partial:true` means excerpts or relations are missing. Text is quoted verbatim, never "
                 "generated; cite `cite_id`. A node reached by id may be historical: check node.validity "
                 "before quoting it as current. Read-only."
@@ -2444,6 +2446,9 @@ def _shrink_brief_result(out: dict, budget: int) -> dict | None:
         return _size() > budget
 
     dropped_ex = dropped_ln = 0
+    # choose 의 첫 후보 재료(`candidate_material`)의 발췌가 맨 먼저다 — 확정 답이 아니다.
+    if isinstance(out.get("candidate_material"), dict):
+        dropped_ex += _shrink_material_lists(out["candidate_material"], _over)[0]
     # 확정 답에서는 발췌 → 질문이 가리키는 절(`section`) → 관계 순서다. 절은 발췌보다 답에
     # 가깝고, 관계는 근거 지도라 마지막이다. 절의 미러는 `grounds` 에 남아 되찾을 수 있다.
     ex = out.get("excerpts")
