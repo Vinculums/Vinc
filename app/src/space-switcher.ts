@@ -87,6 +87,11 @@ export function mountSpaceSwitcher(deps: SpaceDeps = appDeps()): void {
     const ro = new ResizeObserver(() => fit());
     for (const el of [document.getElementById("topbar"), document.querySelector(".tb-trail")]) if (el) ro.observe(el);
   }
+  // 웹 글꼴(swap)이 늦게 오면 머리 폭은 그대로인데 이름 폭만 바뀐다: 글꼴이 자리 잡을 때도 다시 잰다.
+  if ("fonts" in document) {
+    void document.fonts.ready.then(() => fit());
+    document.fonts.addEventListener("loadingdone", () => fit());
+  }
 
   function rowHtml(kind: SpaceKind, r: SpaceRow): string {
     const name = kind === "personal" ? U.spacePersonal : r.name;
