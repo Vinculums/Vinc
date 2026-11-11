@@ -1,4 +1,4 @@
-import { accountMode, api, buildId, cfg, forgetMemberKey, messageOf, remote, selfHostedSignOut, WEB, shellInvoke } from "../api";
+import { accountMode, api, buildId, cfg, forgetMemberKey, messageOf, remote, selfHostedSeats, selfHostedSignOut, WEB, shellInvoke } from "../api";
 import { mcpUrl, selfHosted } from "../self-hosted";
 import { accountKey, accountWho, connectAccount, forgetAccount, hasAccount, keyIsOnDisk,
          mcpKeyPresent,
@@ -259,8 +259,21 @@ async function renderSettings(
         <p class="hint">${esc(U.selfHostedIntro)}</p>
         <label>${U.account}</label>
         <div class="hint" style="font-size:var(--fs-sm)">${esc(U.selfHostedSignedIn)}
-          <p><button class="btn" id="sh-signout" type="button">${esc(U.acctSignOut)}</button></p></div>`;
+          <p><button class="btn" id="sh-signout" type="button">${esc(U.acctSignOut)}</button></p></div>
+        <label>${esc(U.selfHostedSeats)}</label>
+        <div class="hint" id="sh-seats" role="status" style="font-size:var(--fs-sm)"></div>`;
       body.querySelector("#sh-signout")!.addEventListener("click", () => { void selfHostedSignOut(); });
+      // 좌석·마지막 확인·유예 상태(S8). 허브가 하루 한 번 계정에 묻고 30일 동안 마지막 답을 쓴다.
+      void selfHostedSeats().then((s) => {
+        const el = body.querySelector<HTMLElement>("#sh-seats");
+        if (!el || !s) return;
+        const day = (sec: unknown) => typeof sec === "number" ? new Date(sec * 1000).toLocaleDateString() : "";
+        const used = Number(s.users_used) || 1, allowed = Number(s.users_allowed) || 1;
+        el.textContent = s.revoked ? U.selfHostedSeatsRevoked
+          : s.state === "paid" ? U.selfHostedSeatsPaid(used, allowed, day(s.last_check))
+          : s.state === "grace" ? U.selfHostedSeatsGrace(used, allowed, day(s.last_check), day(s.expires_at))
+          : U.selfHostedSeatsFree;
+      });
       return;
     }
     body.innerHTML = `

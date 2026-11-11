@@ -54,6 +54,24 @@
         }
       }
     },
+    "/api/selfhost/seats": {
+      "get": {
+        "operationId": "selfhost_seats",
+        "summary": "Seats, last check and grace state of a self-hosted hub (same origin, session cookie). Served by the hub's account-shaped surface, never by the sidecar.",
+        "x-internal": false,
+        "x-served-by": "account",
+        "security": [
+          {
+            "accountSession": []
+          }
+        ],
+        "responses": {
+          "default": {
+            "$ref": "#/components/responses/Json"
+          }
+        }
+      }
+    },
     "/logout": {
       "post": {
         "operationId": "selfhost_logout",
