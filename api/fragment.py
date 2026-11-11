@@ -34,7 +34,7 @@ from engines import domain_hierarchy
 
 from . import revstamp
 from . import role_contract
-from store import pkns
+from store import pkns, write_batch
 from store import querybase as _qb
 # 근거 열을 가진 rel 의 정본 — 스키마가 표를 갖고 여기서는 읽기만 한다.
 from store.embedded_schema import EDGE_EVIDENCE_RELS, wiki_pairs_open
@@ -1052,15 +1052,29 @@ def _stamp_edge_endpoints(store, rel: str, ends: _Ends, src: str, dst: str,
     끝점을 논리로 되돌려 `src|REL|dst` 를 짓고 그 전체를 **한 번만** 합성한다."""
     own = " AND n.owner_id = $owner" if osc else ""
     op = {"owner": owner} if osc else {}
+    batched = write_batch.current(store) is not None
     for (label, pk), nid in zip(ends, (src, dst)):
-        rows = store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id{own} RETURN n.rev AS rev",
-                         {"id": nid, **op})
+        if batched:
+            # 쓰기 묶음 안: 읽기와 쓰기를 한 문장으로 한다. 시계·카운터는 메모리 값이므로 미리 받고,
+            # 노드가 없으면(남의 노드) 받은 sync_seq 를 돌려준다. 결과는 아래 두 문장과 같다.
+            seq = revstamp.next_seq(store, owner)
+            rows = store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id{own} "
+                             "SET n.updated_at = $ua, n.rev = coalesce(n.rev, 0) + 1, "
+                             "n.sync_seq = $seq RETURN n.rev AS rev",
+                             {"id": nid, "ua": revstamp.hlc_now(store), "seq": seq, **op})
+            if not rows:
+                revstamp.give_back_seq(store, owner, seq)
+        else:
+            rows = store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id{own} RETURN n.rev AS rev",
+                             {"id": nid, **op})
         if not rows:
             if osc and warnings is not None:
                 warnings.append(
                     f"edge endpoint not stamped — {nid} is not yours, so its revision "
                     "was left alone (the edge itself merged). Cross-owner edges do not "
                     "propagate: the other side never sees it")
+            continue
+        if batched:
             continue
         store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id{own} "
                   "SET n.updated_at = $ua, n.rev = $rev, n.sync_seq = $seq",
@@ -1071,9 +1085,26 @@ def _stamp_edge_endpoints(store, rel: str, ends: _Ends, src: str, dst: str,
     # `_EdgeTombstone` 은 owner_id 열을 갖는다(store/embedded_schema.py:170-173) —
     # 예측자는 api/sync.py:140 에 이미 프로덕션으로 있다. `t.rev` 는 없다(그 열은
     # `_Tombstone` 전용).
+    _drop_edge_tombstone(store, pkns.ekey(owner, src, rel, dst), osc=osc, op=op)
+
+
+def _drop_edge_tombstone(store, ekey: str, *, osc: bool, op: dict) -> None:
+    """엣지가 (다시) 생겼으니 그 엣지의 삭제 표식을 지운다. 쓰기 묶음 안이면 그 owner 에게 표식이
+    하나도 없을 때 지우기를 건너뛴다: 표식은 삭제 경로(`api.sync`·`api.query`)만 만들고 merge 는
+    만들지 않으므로, 묶음 동안 한 번 센 값이 그대로다."""
+    batch = write_batch.current(store)
+    if batch is not None:
+        key = ("edge_tombstones", op.get("owner") if osc else None)
+        if key not in batch.memo:
+            rows = store.run("MATCH (t:_EdgeTombstone)"
+                             + (" WHERE t.owner_id = $owner" if osc else "")
+                             + " RETURN count(t) AS c", op if osc else {})
+            batch.memo[key] = bool(rows and int(rows[0].get("c") or 0))
+        if not batch.memo[key]:
+            return
     store.run("MATCH (t:_EdgeTombstone) WHERE t.ekey = $k"
               + (" AND t.owner_id = $owner" if osc else "") + " DELETE t",
-              {"k": pkns.ekey(owner, src, rel, dst), **op})
+              {"k": ekey, **op})
 
 
 def _resolve_endpoint_type(store, nid: str, *, owner: str | None,
@@ -1412,9 +1443,8 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         if stamp_edges:
             _stamp_edge_endpoints(store, "ATTACHES_TO", (("Record", "record_id"), (dl, dp)),
                                   ksrc, kdst, eowner, osc=osc, warnings=warnings)
-            store.run("MATCH (t:_EdgeTombstone) WHERE t.ekey = $k"
-                      + (" AND t.owner_id = $owner" if osc else "") + " DELETE t",
-                      {"k": pkns.ekey(eowner, ksrc, "ATTACHES_TO:" + etype, kdst), **op})
+            _drop_edge_tombstone(store, pkns.ekey(eowner, ksrc, "ATTACHES_TO:" + etype, kdst),
+                                 osc=osc, op=op)
         return "created"
     # 여기 도달 = 양 끝 타입이 **선언돼 있고** 쌍이 rel 테이블 밖(진짜 토폴로지 한계).
     warnings.append(
@@ -1574,11 +1604,50 @@ def _link_mentions(store, owner: str, ids: list[str], before: dict | None) -> No
         print(f"[fragment] mentions not linked ({len(ids)} nodes): {exc}", file=sys.stderr)
 
 
+#: 이보다 노드·엣지가 많은 fragment 는 트랜잭션 하나로 묶지 않고 한 문장씩 쓴다(`merge_fragment`).
+BATCH_MAX_ITEMS = 20_000
+
+
+def _item_count(fragment) -> int:
+    if not isinstance(fragment, dict):
+        return 0
+    return sum(len(v) for v in (fragment.get("nodes"), fragment.get("edges")) if isinstance(v, list))
+
+
 def merge_fragment(fragment: dict, *, store, themes=None,
                    stamp_edges: bool = True,
                    max_domains: int | None = None,
                    read_back: bool = False,
                    authored: bool = False) -> dict:
+    """fragment 전체 MERGE 를 트랜잭션 하나로 쓴다(`store.write_batch`). 계약은 :func:`_merge_fragment_once`.
+
+    커밋이 한 번이라 문장마다 WAL 을 디스크에 내리지 않고, 도중에 예외가 나면 아무것도 남지 않는다.
+
+    ⚠ 이 함수는 몇몇 문장의 실패를 **삼키고 이어 간다**(노드 하나만 건너뛰기·도메인 고리·링크).
+    트랜잭션 안에서는 실패한 문장이 트랜잭션 전체를 되돌리므로, 그런 실패가 하나라도 있었으면
+    묶음을 버리고 한 문장씩 다시 쓴다. 결과는 묶기 전과 같다. `VINC_FRAGMENT_BATCH=off` 면 늘
+    한 문장씩 쓴다.
+
+    노드·엣지가 :data:`BATCH_MAX_ITEMS` 를 넘는 fragment 는 묶지 않는다: 커밋 전의 변경은 엔진이
+    메모리에 들고 있으므로, 로컬 본문 상한(256MB)까지 오는 fragment 하나가 메모리를 다 쓸 수 있다.
+    근거: [[vinc.manual.core]] §3"""
+    kwargs = dict(store=store, themes=themes, stamp_edges=stamp_edges, max_domains=max_domains,
+                  read_back=read_back, authored=authored)
+    if _item_count(fragment) > BATCH_MAX_ITEMS:
+        return _merge_fragment_once(fragment, **kwargs)
+    result, first = write_batch.run_batched(
+        store, lambda: _merge_fragment_once(fragment, **kwargs), what="fragment")
+    # 어휘 제안은 첫 시도에서만 "새로" 보인다(다시 돌리면 이미 제안돼 있다). 사라지지 않게 옮긴다.
+    if first and first.get("proposed_types") and not result.get("proposed_types"):
+        result["proposed_types"] = first["proposed_types"]
+    return result
+
+
+def _merge_fragment_once(fragment: dict, *, store, themes=None,
+                         stamp_edges: bool = True,
+                         max_domains: int | None = None,
+                         read_back: bool = False,
+                         authored: bool = False) -> dict:
     """fragment 전체 MERGE. 반환 = D11 §4 계약(+ dedupe/partial/개방층 확장):
     ``{merged:{nodes:{created,matched}, edges:{created,[skipped_duplicate]}},
     warnings:[…], executed:…, [partial:True], [proposed_types:[…]],

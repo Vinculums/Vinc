@@ -27,6 +27,7 @@ from contextlib import contextmanager
 
 from . import pkns
 from .embedded_backend import _filter_clause, _Result
+from .write_batch import Batch, BatchSlot, flush
 from .embedded_schema import meta_table_specs, node_table_specs
 
 #: 지원 하한(연.월). 그 아래 판은 열지 않는다.
@@ -202,6 +203,9 @@ class Neo4jBackend:
         self.read_only, self.read_only_reason = not writer, "" if writer else "opened read-only"
         self._stop = threading.Event()
         self._beat: threading.Thread | None = None
+        #: 스레드마다 열린 쓰기 묶음과 그 트랜잭션(:meth:`write_batch`). 다른 스레드의 읽기는 끼지 않는다.
+        self._batches = BatchSlot()
+        self._batch_tx = threading.local()
         self._driver = GraphDatabase.driver(
             uri, auth=(user, password),
             notifications_min_severity=NotificationMinimumSeverity.OFF)
@@ -274,8 +278,53 @@ class Neo4jBackend:
                 "reason": self.read_only_reason}
 
     # ── 질의 ──────────────────────────────────────────────────────────────
+    def current_batch(self) -> Batch | None:
+        return self._batches.get()
+
+    @contextmanager
+    def write_batch(self):
+        """트랜잭션 하나를 연다(임베디드의 :meth:`EmbeddedBackend.write_batch` 와 같은 계약). 이 스레드의
+        `run` 은 묶음이 끝날 때까지 그 트랜잭션으로 간다. 안의 문장이 실패하면 Neo4j 가 트랜잭션을
+        끝내므로 묶음을 깨진 것으로 적고, 끝에서 되돌린다."""
+        outer = self._batches.get()
+        if outer is not None:
+            yield outer
+            return
+        from neo4j import READ_ACCESS, WRITE_ACCESS
+        mode = READ_ACCESS if self.read_only else WRITE_ACCESS
+        batch = Batch()
+        with self._driver.session(database=self.database, default_access_mode=mode) as s:
+            tx = s.begin_transaction()
+            self._batch_tx.tx = tx
+            self._batches.set(batch)
+            committed = False
+            try:
+                yield batch
+                if batch.broken is None:
+                    flush(self, batch, lambda q, p: self.run(q, p))
+                    tx.commit()
+                    committed = True
+            finally:
+                self._batches.set(None)
+                self._batch_tx.tx = None
+                if not committed:
+                    try:
+                        tx.rollback()
+                    except Exception:   # noqa: BLE001 — 이미 끝난 트랜잭션이면 되돌릴 것이 없다
+                        pass
+                tx.close()
+
     def run(self, query: str, params: dict | None = None, *, conn=None,
             raw: bool = False) -> list[dict]:
+        batch = self._batches.get()
+        if batch is not None:
+            batch.check()
+            batch.statements += 1
+            try:
+                return _rows(self._batch_tx.tx.run(to_neo4j_cypher(query), params or {}), raw=raw)
+            except Exception as exc:
+                batch.fail(exc)
+                raise
         from neo4j import READ_ACCESS, WRITE_ACCESS
         mode = READ_ACCESS if self.read_only else WRITE_ACCESS
         try:

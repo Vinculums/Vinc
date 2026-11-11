@@ -13,7 +13,7 @@ export type Shortcut = { keys: string; label: string };
 export function shortcutList(): Shortcut[] {
   return [
     { keys: SURFACE_ORDER.map((_, i) => String(i + 1)).join(" · "), label: COPY.ui.palette.goSurface },
-    { keys: "⌘/Ctrl K", label: COPY.ui.topbar.searchPh },
+    { keys: "⌘/Ctrl K", label: COPY.ui.topbar.searchLabel },
     { keys: "⌘/Ctrl ⇧ K", label: COPY.ui.palette.cmdPalette },
     { keys: "⌘/Ctrl N", label: COPY.author.paletteDoc },
     { keys: "⌘/Ctrl ⇧ N", label: COPY.author.paletteNode },

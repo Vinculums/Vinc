@@ -542,6 +542,8 @@ const EN = {
       conceptAndDoc: "Concept · document",
       undated: (n: number) => `No date ${n}`,
       undatedTip: "Nodes that only have an update time",
+      // 시간 창: 날짜(작성·유효 시작·사건 시각)가 있는 노드가 하나도 없을 때 범위 자리에 선다.
+      noDates: "Nothing here has a date yet, so there is no range to pick.",
     },
     agentMap: {
       title: "Agents",
@@ -684,15 +686,20 @@ const EN = {
       // 표면 이름이라 한국어에서도 라틴 문자 그대로다(View 와 같다, D42).
       search: "Search",
       depthTip: "Show where you are",
-      searchPh: "Search your knowledge",
+      // 자리표시는 한 낱말이다(좁은 LNB 칸에서 문장이 잘렸다). 두 덱 모두 같은 라틴 표기다.
+      // 칸과 접힌 단추의 접근 이름, 단축키 표의 줄은 문장을 쓴다: searchLabel · askLabel.
+      searchPh: "Search…",
+      searchLabel: "Search your knowledge",
       // 모드 2종(D73) — 왼쪽 끝 드롭다운. 이름이 기대치를 정한다: "Chat" 은 LLM
       // 대화 상대를 기대하게 하므로 쓰지 않는다(Vinc 는 문장을 생성하지 않는다).
+      // 모드 이름은 자리표시와 같은 낱말이다(Search · Ask). 내부 id 는 그대로 `find` 다.
       modeLabel: "Search mode",
-      modeFind: "Find",
+      modeFind: "Search",
       modeFindHint: "Names and keywords",
       modeAsk: "Ask",
       modeAskHint: "Answers quoted from your own notes",
-      askPh: "Ask about your knowledge",
+      askPh: "Ask…",
+      askLabel: "Ask about your knowledge",
       browseAll: "All documents",
       searchInside: "Search inside documents",
       results: "Results",
@@ -721,7 +728,7 @@ const EN = {
       examplesHint: "Try",
       thinking: "Looking…",
       notFound: (q: string) => `Nothing in your knowledge matched "${q}".`,
-      notFoundHint: "Try a name that appears in your notes, or switch to Find.",
+      notFoundHint: "Try a name that appears in your notes, or switch to Search.",
       // A4: ask again as of a past date; the answer is what was in force then.
       asOf: "As of",
       asOfToday: "Today",
@@ -2190,6 +2197,7 @@ const KO: Deck = {
       conceptAndDoc: "개념·문서",
       undated: (n: number) => `날짜 없음 ${n}`,
       undatedTip: "고친 때만 있는 노드",
+      noDates: "아직 날짜가 있는 항목이 없어서 고를 기간이 없어요",
     },
     agentMap: {
       title: "Agent",
@@ -2312,13 +2320,16 @@ const KO: Deck = {
       home: "View",
       search: "Search",
       depthTip: "지금 있는 곳 보기",
-      searchPh: "내 지식에서 찾기",
+      // 자리표시는 EN 덱과 같은 라틴 표기다(번역하지 않는다). 문장은 접근 이름(searchLabel · askLabel)이 든다.
+      searchPh: "Search…",
+      searchLabel: "내 지식에서 검색하기",
       modeLabel: "검색 모드",
-      modeFind: "찾기",
+      modeFind: "검색",
       modeFindHint: "이름과 키워드로",
       modeAsk: "묻기",
       modeAskHint: "내 기록에서 인용해 답해요",
-      askPh: "내 지식에 물어보기",
+      askPh: "Ask…",
+      askLabel: "내 지식에 물어보기",
       browseAll: "모든 문서",
       searchInside: "문서 안에서 찾기",
       results: "결과",
@@ -2341,7 +2352,7 @@ const KO: Deck = {
       examplesHint: "예시",
       thinking: "찾는 중…",
       notFound: (q) => `'${q}'에 맞는 기록을 찾지 못했어요`,
-      notFoundHint: "기록에 나오는 이름으로 물어보거나, 찾기 모드로 바꿔 보세요",
+      notFoundHint: "기록에 나오는 이름으로 물어보거나, 검색 모드로 바꿔 보세요",
       asOf: "기준일",
       asOfToday: "오늘로",
       asOfNote: (d) => `${d} 기준 답이에요`,

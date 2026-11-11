@@ -418,15 +418,25 @@ def _with_fts_repair(store, fn: Callable[[], Any]) -> Any:
 _VALIDITY_FORMAT = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
 
 
-def put_doc(store, *, owner: str, text: str, doc_id: str | None = None,
-            title: str | None = None, origin: str | None = None, layer: str = "ssot",
-            max_chars: int = DEFAULT_MAX_CHARS,
-            boundaries: list[int] | None = None,
-            link: bool = True, updated_at: str | None = None,
-            created_at: str | None = None, content_time: str | None = None,
-            topic: str | None = None, valid_from: str | None = None,
-            valid_until: str | None = None, superseded_by: str | None = None,
-            expected_content_hash: str | None = None, create_only: bool = False) -> dict:
+def put_doc(store, **kwargs) -> dict:
+    """:func:`_put_doc_once` 를 트랜잭션 하나로 쓴다(`store.write_batch`). 청크·미러·링크를 문장마다
+    커밋하지 않는다. 안의 문장이 실패하면(FTS 수리 포함) 묶음을 버리고
+    한 문장씩 다시 쓴다(`store.write_batch.run_batched`)."""
+    from store import write_batch
+    result, _first = write_batch.run_batched(store, lambda: _put_doc_once(store, **kwargs),
+                                             what="doc.put")
+    return result
+
+
+def _put_doc_once(store, *, owner: str, text: str, doc_id: str | None = None,
+                  title: str | None = None, origin: str | None = None, layer: str = "ssot",
+                  max_chars: int = DEFAULT_MAX_CHARS,
+                  boundaries: list[int] | None = None,
+                  link: bool = True, updated_at: str | None = None,
+                  created_at: str | None = None, content_time: str | None = None,
+                  topic: str | None = None, valid_from: str | None = None,
+                  valid_until: str | None = None, superseded_by: str | None = None,
+                  expected_content_hash: str | None = None, create_only: bool = False) -> dict:
     """raw 텍스트를 doc 단위로 적재/갱신(파일 I/O 없음) — Chunk=SSoT 의 쓰기 정본.
 
     - 신규: doc_id 미지정 시 결정론 파생(make_doc_id). 반환 doc_id 로 이후 편집.
