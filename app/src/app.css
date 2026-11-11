@@ -309,6 +309,10 @@ body {
      데스크탑 창에는 도구막대가 없어 둘이 같다. */
   height: 100vh; height: 100dvh; min-height: 0; overflow: hidden;
   padding: var(--shell-gap);
+  /* 왼쪽만 덜 비운다: 카드가 없는 사이드바의 줄 알약(안쪽 여백 `--pad-card` 뒤)이 타이틀바 마크와
+     같은 세로선(.75rem, `.tb-title`)에 서게. 웹은 아래 GNB 블록이 로고 선(`--site-gutter`)으로 바꾼다. */
+  --lnb-pad-l: calc(.75rem - var(--pad-card));
+  padding-left: var(--lnb-pad-l);
   /* 행 사이는 0 이다 — 뷰 머리(1행)와 내용 카드(2행)가 붙어 한 장의 카드가 된다. */
   column-gap: var(--shell-gap); row-gap: 0;
   background: hsl(var(--surface-0));
@@ -341,7 +345,6 @@ body {
   flex: 0 0 auto;
   display: flex; align-items: center; gap: var(--space-1, .25rem);
   padding: var(--pad-card) var(--pad-card) var(--space-2, .5rem);
-  border-bottom: 1px solid hsl(var(--border));
 }
 .lnb-nav { display: flex; align-items: center; gap: var(--space-1, .25rem); flex: 1 1 auto; min-width: 0; }
 /* 맨 위 줄: 홈 · Agent 가 폭을 반씩 나눠 채운다(접기 손잡이는 바닥으로 갔다) */
@@ -349,8 +352,8 @@ body {
 .lnb-foot {
   flex: 0 0 auto; margin-top: auto;
   display: flex; align-items: center; gap: var(--space-1, .25rem);
-  padding: var(--space-2, .5rem) var(--pad-card) var(--pad-card);
-  border-top: 1px solid hsl(var(--border));
+  /* 위 선이 없다: 판 위에서는 트리와 바닥을 여백이 가른다(맨 위 줄 아래도 같다). */
+  padding: var(--space-3, .75rem) var(--pad-card) var(--pad-card);
 }
 /* 맨 위 줄 · 바닥의 버튼 한 벌. 표식 + 이름이 **한 줄**이고, 접힌 띠에서는 이름이 숨는다. */
 .rail-btn {
@@ -362,33 +365,38 @@ body {
   font: inherit; font-size: var(--fs-sm); white-space: nowrap;
 }
 .rail-btn svg { display: block; }
-.rail-btn:hover { background: hsl(var(--muted-foreground) / .12); color: hsl(var(--foreground)); }
+.rail-btn:hover { background: hsl(var(--foreground) / .07); color: hsl(var(--foreground)); }
 .rail-btn:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
 /* 고른 것은 **채움과 글자 굵기**로 말한다. 홈과 Agent 는 둘 중 하나가 늘 켜져 있다. */
 .rail-btn[aria-pressed="true"] {
-  background: hsl(var(--foreground) / .08); color: hsl(var(--foreground)); font-weight: 600;
+  background: hsl(var(--foreground) / .1); color: hsl(var(--foreground)); font-weight: 600;
 }
 .rail-name { line-height: 1; }
 .rail-n {
   font-family: var(--font-mono); font-weight: 400;
-  color: hsl(var(--caption-foreground));
+  color: hsl(var(--muted-foreground));
 }
 #rail-settings { flex: 1 1 auto; min-width: 0; }
+/* 넓은 창의 사이드바는 **카드가 아니다**(2026-11-11 발주자 결정): 면 · 테두리 · 모서리 · 그림자가
+   없고 줄이 셸 판(`--surface-0`)에 바로 선다. 판은 타이틀바와 이어지고, 떠 있는 면은 오른쪽
+   내용 카드 하나뿐이다. 유리로 만들지 않는 것은 그대로다(스크롤 조상의 블러는 끊긴다).
+   위 1px 은 사라진 테두리 자리다: 맨 위 줄(홈 · Agent)이 뷰 머리의 컨트롤과 한 줄에 선다.
+   왼쪽은 셸이 덜 비운다(`--lnb-pad-l`): 줄의 알약 왼쪽 끝이 타이틀바 마크(웹은 GNB 로고)와
+   같은 세로선이다. 좁은 창(<900)의 서랍은 내용 위에 뜨므로 카드를 되찾는다(아래 900 블록). */
 #lnb {
   grid-column: 1; grid-row: 1 / -1;      /* 천장까지 — 첫 칸이 홈 · Agent · 접기 줄이다 */
   display: flex; flex-direction: column; overflow: hidden;
-  background: hsl(var(--surface-2));
-  border: 1px solid hsl(var(--border));
-  border-radius: var(--shell-card-r);
-  /* 구조 면이라 **불투명**이다. 유리로 만들지 않는 이유가 둘 있고 둘 다 실측이다:
-     ① 이 카드의 본문은 스크롤하는데, 조상에 backdrop-filter 가 있으면 스크롤마다
-        블러가 다시 계산돼 끊긴다(렌즈 패널이 유리를 형제 층으로 뗀 이유와 같은 것).
-     ② 부유 유리(D37) 위에 부유 유리를 겹치면 글자가 못 읽힌다 — 문서 패널이 이미
-        유리이므로 그 아래 면은 불투명해야 한다.
-     깊이는 상단 바와 **같은 단**이다 — 나란히 뜬 두 카드가 서로 다른 높이로
-     떠 있으면 어느 쪽이 위인지 눈이 매 프레임 다시 판정한다. */
-  box-shadow: var(--shadow-elev-3);
+  padding-top: 1px;
 }
+/* 판 위의 줄(아래 `.rail-btn` · `.lnb-*` 규칙): 쉼은 글자색 쪽으로 한 단(`--foreground / .07`, 눌린 홈 ·
+   Agent 는 `.1`), 고른 것은 초점색 알약(`--ring / .16`) + 굵기. 회색 알파(`--muted-foreground`)는 판(light 91%)
+   위에서 묻혀 글자색 알파로 바꿨다. 작은 글씨(수 · 절 이름 · 캐럿 · 깊은 문서 줄)는 캡션이 아니라 muted 다:
+   캡션은 light 판에서 3.09:1 이라 4.5:1 에 못 미친다(muted 6.0:1, 고른 알약 위 4.76:1).
+   ⚠ 고른 알약을 .16 보다 진하게 하지 말 것: light 에서 그 위의 수(muted)가 4.5:1 아래로 내려간다(.2 에서 4.48). */
+#lnb .cmp-side { --c-mute: hsl(var(--muted-foreground)); }
+/* 사이드바의 검색 칸은 판 위의 칸이다: 카드 면과 테두리로 판에서 떠오른다(칸 안의 모드 메뉴 ·
+   결과 판은 건드리지 않는다). 접힌 띠의 돋보기 단추도 같은 면이다. */
+#lnb #tb-search, #lnb .tb-find-open { background: hsl(var(--card)); border-color: hsl(var(--border)); }
 /* 접힌 띠 — 손잡이(맨 위) · 홈 · Agent 가 세로로 서고 이름은 숨는다. 머리와 트리는
    그리지 않는다(좁은 띠에 잘린 글자를 남기지 않는다). 설정은 바닥에 아이콘으로 남는다. */
 #shell[data-lnb="closed"] .lnb-top {
@@ -708,13 +716,13 @@ body {
   color: hsl(var(--muted-foreground)); text-decoration: none;
   font-size: var(--fs-base); white-space: nowrap; overflow: hidden;
 }
-.lnb-navrow:hover { background: hsl(var(--muted-foreground) / .1); color: hsl(var(--foreground)); }
+.lnb-navrow:hover { background: hsl(var(--foreground) / .07); color: hsl(var(--foreground)); }
 /* 활성 = **채워진 알약 + 굵기**. 좌측 색띠(box-shadow inset 2px)를 쓰지 말 것.
    각 줄 옆에 색 막대가 서면 장식이 내용보다 먼저 읽힌다(발주자 지적 2026-07-31,
    문서 사이트에 먼저 적용된 뒤 2026-08-02 앱에도 확대). 게다가 홈 행은 View 표면에서
    항상 활성이라, 주제를 고르는 순간 사이드바에 띠가 **두 개 동시에** 섰다. */
 .lnb-navrow.on {
-  background: hsl(var(--ring) / .14); color: hsl(var(--foreground)); font-weight: 600;
+  background: hsl(var(--ring) / .16); color: hsl(var(--foreground)); font-weight: 600;
 }
 
 .lnb-sec {
@@ -746,7 +754,7 @@ body {
 
 .lnb-sec-label {
   font-size: var(--fs-sm); font-weight: 600; letter-spacing: .02em;
-  color: hsl(var(--caption-foreground)); text-transform: uppercase;
+  color: hsl(var(--muted-foreground)); text-transform: uppercase;
 }
 /* ⚠ 여기 있던 갈래 칩(`문서 | 노드`)은 폐기됐다 - 종 레일이 그 일을 일반화했고,
    같은 일을 하는 손잡이를 두 벌 두지 않는다. 남은 규칙은 없다.
@@ -765,13 +773,13 @@ body {
   color: hsl(var(--foreground)); cursor: pointer; text-align: left;
   padding: 0 var(--pad-row); border-radius: var(--shell-ctl-r);
 }
-.lnb-group:hover { background: hsl(var(--muted-foreground) / .1); }
+.lnb-group:hover { background: hsl(var(--foreground) / .07); }
 /* 홈 행과 같은 알약. 색띠를 걷어내면서 배경을 함께 준다 — 굵기만 남기면 hover
    배경(--ring/.1)이 활성보다 더 눈에 띄는 역전이 난다. */
-.lnb-group.on { font-weight: 600; background: hsl(var(--ring) / .14); }
+.lnb-group.on { font-weight: 600; background: hsl(var(--ring) / .16); }
 .lnb-caret {
   display: inline-block; flex: 0 0 auto; width: .7rem; text-align: center;
-  color: hsl(var(--caption-foreground));
+  color: hsl(var(--muted-foreground));
   /* 회전이 실제로 도는 것은 lnb.ts spinCaret 덕이다 — 트리는 통째로 다시 그려지므로. */
   transition: transform var(--dur-fast) var(--ease-out);
 }
@@ -781,7 +789,7 @@ body {
 .lnb-unfiled { color: hsl(var(--muted-foreground)); font-style: italic; }
 .lnb-gcount {
   flex: 0 0 auto; font-family: var(--font-mono); font-size: var(--fs-xs);
-  color: hsl(var(--caption-foreground));
+  color: hsl(var(--muted-foreground));
 }
 /* 문서 묶음 = 주제의 자식. 담김을 말하는 것은 **들여쓰기와 여백**이지 선이 아니다.
    여기 세로 안내선이 있었고 2026-09-09 에 걷어냈다: 층당 5px(border 1 + padding 4)을
@@ -815,7 +823,7 @@ body {
   color: hsl(var(--muted-foreground)); cursor: pointer; text-align: left;
   padding: 0 var(--pad-row); border-radius: var(--shell-ctl-r);
 }
-.lnb-fold:hover { background: hsl(var(--muted-foreground) / .1); }
+.lnb-fold:hover { background: hsl(var(--foreground) / .07); }
 .lnb-fold:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
 .lnb-fname { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 깊이는 세 갈래로 말한다: 들여쓰기(--lvl) · 잉크 3단(--ink) · 도트 차등.
@@ -831,8 +839,8 @@ body {
   border-radius: var(--shell-ctl-r);
 }
 .lnb-doc[style*="--ink:0"] { color: hsl(var(--foreground)); }
-.lnb-doc[style*="--ink:2"] { color: hsl(var(--caption-foreground)); }
-.lnb-doc:hover { background: hsl(var(--muted-foreground) / .1); color: hsl(var(--foreground)); }
+.lnb-doc[style*="--ink:2"] { color: hsl(var(--muted-foreground)); }   /* 판 위라 캡션은 4.5:1 미달: 셋째 단은 들여쓰기 · 도트가 말한다 */
+.lnb-doc:hover { background: hsl(var(--foreground) / .07); color: hsl(var(--foreground)); }
 .lnb-doc.on {
   background: hsl(var(--ring) / .16); color: hsl(var(--foreground)); font-weight: 600;
 }
@@ -879,7 +887,7 @@ body {
 /* 셸도 같은 틀에 선다: 사이드바 왼쪽은 GNB 로고와, 내용 카드 오른쪽은 GNB 오른쪽
    단추와 같은 세로선이다. 틀보다 넓은 창에서는 양옆이 바탕(셸과 같은 면)으로 빈다. */
 [data-skin="web"] body { background: hsl(var(--surface-0)); }
-[data-skin="web"] #shell { max-width: var(--gnb-max); margin: 0 auto; padding-left: var(--site-gutter); padding-right: var(--site-gutter); }
+[data-skin="web"] #shell { max-width: var(--gnb-max); margin: 0 auto; --lnb-pad-l: calc(var(--site-gutter) - var(--pad-card)); padding-left: var(--lnb-pad-l); padding-right: var(--site-gutter); }
 /* 웹 빌드는 index.html 에 빈 `#site-gnb` 를 미리 둔다(vite.config.ts `webShell`). gnb.js 가 갈아
    끼우기 전까지 그 자리를 같은 높이(52 + 테두리 1)로 잡아, 주입 순간 셸이 밀리지 않게 한다. */
 [data-skin="web"] #site-gnb:empty {
@@ -895,7 +903,8 @@ body {
 [data-shell] #titlebar {
   display: flex; align-items: stretch; justify-content: space-between;
   height: var(--titlebar-h); flex: 0 0 auto;
-  background: hsl(var(--muted));
+  /* 셸 판과 같은 면이다: 카드 없는 사이드바가 타이틀바에서 끊기지 않고 이어진다(dark 에서 muted 는 판보다 밝다). */
+  background: hsl(var(--surface-0));
   user-select: none; -webkit-user-select: none;
 }
 [data-shell] #shell { height: calc(100vh - var(--titlebar-h)); height: calc(100dvh - var(--titlebar-h)); }
@@ -1272,7 +1281,7 @@ body {
    정사각 · `--radius-sm` 을 준다. */
 #tb-shell-toggle { flex: 0 0 auto; align-self: center; }
 #rail-settings { position: relative; }
-#rail-settings .rail-name { color: hsl(var(--caption-foreground)); }
+#rail-settings .rail-name { color: hsl(var(--muted-foreground)); }
 #rail-settings-badge {
   position: absolute; top: .1rem; left: 1.4rem; min-width: .9rem; height: .9rem;
   padding: 0 .18rem; border-radius: .5rem; background: hsl(var(--ring));
@@ -2508,10 +2517,17 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
      **서랍**이다 — 열을 뺏으면 내용이 쓸 수 없을 만큼 좁아진다. 서랍은 띠와 같은 격자 칸에
      서되 자기 폭(`--lnb-w`)만큼 오른쪽으로 넘쳐 내용을 덮는다(z 가 상단 바보다 위). */
   #shell, #shell[data-lnb="closed"] { grid-template-columns: var(--lnb-mini-w) minmax(0, 1fr); }
+  /* 서랍은 내용 위에 뜨므로 **카드다**(넓은 창의 판 위 사이드바와 다르다). 셸이 왼쪽을 덜 비운
+     만큼(`--lnb-pad-l`) 오른쪽으로 옮겨 카드의 왼쪽 끝이 다른 카드와 같은 여백(셸 간격, 웹은
+     GNB 거터)에 선다. 위 1px 은 테두리가 대신한다. */
   #shell[data-lnb="open"] #lnb {
     position: relative; z-index: 45; width: var(--lnb-w);
+    left: calc(var(--shell-gap) - var(--lnb-pad-l)); padding-top: 0;
+    background: hsl(var(--surface-2));
+    border: 1px solid hsl(var(--border)); border-radius: var(--shell-card-r);
     box-shadow: var(--shadow-elev-3), 0 0 0 100vmax hsl(var(--background) / .35);
   }
+  [data-skin="web"] #shell[data-lnb="open"] #lnb { left: calc(var(--site-gutter) - var(--lnb-pad-l)); }
 
   /* 지표 줄은 `nowrap` 이라 좁은 창에서 지도 카드 밖으로 밀려났다(실측 R435 / 화면
      375). 줄이되 **버리지 않는다** — 넷 중 무엇이 덜 중요한지는 읽는 사람이 정할
