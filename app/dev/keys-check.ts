@@ -12,7 +12,7 @@
  *
  *  `keys.ts` 가 DOM 을 안 쓰는 것(오리 타이핑)이 이 검사가 성립하는 조건이다. */
 import assert from "node:assert/strict";
-import { blocksSurfaceShortcuts, isTypingTarget } from "../src/keys.ts";
+import { blocksSurfaceShortcuts, holdSurfaceShortcuts, isTypingTarget } from "../src/keys.ts";
 
 let n = 0;
 const ok = (label: string) => { n += 1; console.log("  ok", label); };
@@ -58,5 +58,20 @@ ok("문서 열이 떠 있으면 포커스가 어디 있든 막는다");
 
 assert.equal(blocksSurfaceShortcuts(null, null, false), false);
 ok("문서 열이 닫혀 있고 타이핑도 아니면 단축키가 산다");
+
+// ── 6. 시트가 떠 있으면 표면 단축키를 막는다 ────────────────────────────────
+// 설정을 연 채 초점이 시트의 버튼이나 body 에 있으면 위의 어느 갈래도 안 걸린다.
+// 시트가 잡고 놓는 수로 가른다. 겹친 시트는 마지막 하나가 닫혀야 풀린다.
+const outer = holdSurfaceShortcuts();
+assert.equal(blocksSurfaceShortcuts(null, null, false), true);
+ok("시트가 떠 있으면 포커스가 어디 있든 막는다");
+const inner = holdSurfaceShortcuts();
+inner();
+inner();
+assert.equal(blocksSurfaceShortcuts(null, null, false), true);
+ok("겹친 시트 하나를 (두 번) 닫아도 아래 시트가 남아 있으면 막는다");
+outer();
+assert.equal(blocksSurfaceShortcuts(null, null, false), false);
+ok("마지막 시트가 닫히면 단축키가 산다");
 
 console.log(`\nkeys: ${n}개 검사 통과`);

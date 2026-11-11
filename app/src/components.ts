@@ -5,6 +5,7 @@ import { COPY } from "./copy";
 import { temporalEntries } from "./search-temporal";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
 import { loaderTrack } from "./vinc-loaders.js";
+import { holdSurfaceShortcuts } from "./keys";
 
 /** ── 바깥 클릭으로 닫기 ────────────────────────────────────────────────────
  *
@@ -104,6 +105,50 @@ export type SheetHandle = {
 export const esc = (s: unknown): string => String(s ?? "").replace(/[&<>"]/g, (c) =>
   c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
 
+/** ── 겹친 층의 초점 ─────────────────────────────────────────────────────
+ *
+ *  시트와 작은 다이얼로그가 함께 쓴다. 맨 위 층은 마지막 `.sheet-scrim` 이다(Esc 와 같은
+ *  규칙). 셋을 지킨다: 열 때 초점이 층 안으로 들어가고, Tab·Shift+Tab 은 맨 위 층 안을
+ *  돌며, 닫으면 연 자리로 돌아간다. 아래 층의 덫은 위 층이 떠 있는 동안 비켜선다.
+ *  ⚠ `inert` 아래(문서 편집기가 삭제를 기다리는 동안의 본문)와 숨은 것은 고르지 않는다. */
+const FOCUSABLE = "a[href], button:not([disabled]), input:not([disabled]):not([type=\"hidden\"]), "
+  + "select:not([disabled]), textarea:not([disabled]), summary, [contenteditable=\"true\"], "
+  + "[tabindex]:not([tabindex=\"-1\"])";
+
+function focusablesIn(root: HTMLElement): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) =>
+    !el.closest("[inert]") && !el.closest("[hidden]") && el.getClientRects().length > 0);
+}
+
+const isTopLayer = (scrim: HTMLElement): boolean => {
+  const all = document.querySelectorAll(".sheet-scrim");
+  return all[all.length - 1] === scrim;
+};
+
+/** Tab 을 층 안에 가둔다. 반환 = 배선 해제. */
+function trapFocus(scrim: HTMLElement, box: HTMLElement): () => void {
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key !== "Tab" || !isTopLayer(scrim)) return;
+    const items = focusablesIn(box);
+    const at = document.activeElement as HTMLElement | null;
+    if (!items.length) { e.preventDefault(); box.focus(); return; }
+    const first = items[0], last = items[items.length - 1];
+    const inside = !!at && box.contains(at);
+    if (e.shiftKey && (!inside || at === first || at === box)) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && (!inside || at === last)) { e.preventDefault(); first.focus(); }
+  };
+  document.addEventListener("keydown", onKey, true);
+  return () => document.removeEventListener("keydown", onKey, true);
+}
+
+/** 닫을 때 초점을 연 자리로 돌린다. 초점이 이미 다른 곳(새로 뜬 층 등)에 가 있으면 두고,
+ *  이 층 안이나 body 에 있을 때만 돌린다. */
+function returnFocus(scrim: HTMLElement, to: Element | null): void {
+  const at = document.activeElement;
+  if (at && at !== document.body && !scrim.contains(at)) return;
+  if (to instanceof HTMLElement && to.isConnected && !to.closest("[inert]")) to.focus({ preventScroll: true });
+}
+
 export function openSheet(opts: {
   title: string; subtitle?: string;
   /** 크기는 **내용의 종류**를 따른다 — 시트마다 제멋대로면 열 때마다 화면이
@@ -131,17 +176,19 @@ export function openSheet(opts: {
    *  영영 못 빠져나온다. */
   mustChoose?: boolean;
 }): SheetHandle {
+  // 닫힐 때 초점을 돌려줄 자리. 시트를 붙이고 초점을 옮기기 **전에** 잡는다.
+  const opener = document.activeElement;
   const el = document.createElement("div");
   el.className = "sheet-scrim";
   el.innerHTML = `
-    <div class="sheet" role="dialog" aria-modal="true"
+    <div class="sheet" role="dialog" aria-modal="true" tabindex="-1"
          aria-label="${esc(opts.title)}" data-size="${opts.size || "action"}">
       <div class="sheet-head">
         <div class="sheet-titles">
           ${opts.bare ? "" : `<h2>${esc(opts.title)}</h2>`}
           ${opts.subtitle ? `<p class="hint">${esc(opts.subtitle)}</p>` : ""}
         </div>
-        <button class="rail-x sheet-x" aria-label="Close">✕</button>
+        <button class="rail-x sheet-x" aria-label="${esc(COPY.ui.settingsUi.close)}">✕</button>
       </div>
       <div class="sheet-body"></div>
       <div class="sheet-foot"></div>
@@ -154,11 +201,19 @@ export function openSheet(opts: {
   const sheetEl = el.querySelector<HTMLElement>(".sheet")!;
   fadeIn(el);
   popIn(sheetEl);
+  // 초점은 시트 상자로 들어온다. 안의 무엇을 고를지는 호출부가 내용을 그린 뒤 정한다
+  // (설정은 고른 분류, 확인류는 기본 버튼) — 여기서 첫 버튼을 고르면 ✕ 가 잡힌다.
+  sheetEl.focus({ preventScroll: true });
+  const untrap = trapFocus(el, sheetEl);
+  const release = holdSurfaceShortcuts();
   let closed = false;
   const close = () => {
     if (closed) return;            // 애니메이션 도중 두 번 눌려도 한 번만 닫는다
     closed = true;
     document.removeEventListener("keydown", onKey, true);
+    untrap();
+    release();
+    returnFocus(el, opener);
     // 퇴장을 **기다린 뒤** 지운다 — 여태 닫기는 애니메이션이 아예 없어 뚝 끊겼다.
     void Promise.all([popOut(sheetEl), fadeOut(el)]).then(() => {
       el.remove();
@@ -320,13 +375,21 @@ export function openContextMenu(x: number, y: number, items: MenuItem[]) {
 function wireDialogMotion(el: HTMLElement, dismiss: () => void): (then: () => void) => void {
   const sheetEl = el.querySelector<HTMLElement>(".sheet")!;
   // 이 다이얼로그를 연 버튼. 아래에서 자기 버튼으로 포커스를 옮기기 **전에** 잡는다.
+  const opener = document.activeElement;
   fadeIn(el);
   popIn(sheetEl);
   wireScrimDismiss(el, dismiss);
+  // 기본 버튼에 초점을 두는 것은 호출부다(이 함수 다음 줄). 여기서는 Tab 을 가두고 단축키를 쉬게 한다.
+  sheetEl.tabIndex = -1;
+  const untrap = trapFocus(el, sheetEl);
+  const release = holdSurfaceShortcuts();
   let closed = false;
   return (then) => {
     if (closed) return;            // 애니메이션 도중 두 번 눌려도 한 번만 닫는다
     closed = true;
+    untrap();
+    release();
+    returnFocus(el, opener);
     void Promise.all([popOut(sheetEl), fadeOut(el)]).then(() => { el.remove(); then(); });
   };
 }
