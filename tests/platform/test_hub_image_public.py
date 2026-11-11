@@ -57,7 +57,8 @@ def test_예시_compose_는_셀프호스트이고_이_기계에서만_연다():
     doc = yaml.safe_load((ROOT / "packaging/selfhost/compose.yaml").read_text(encoding="utf-8"))
     hub = doc["services"]["hub"]
     assert hub["environment"]["VINC_SELF_HOSTED"] == "on"
-    assert hub["ports"] == ["127.0.0.1:8790:8790"]
+    # 이 기계에서만 연다: 호스트 포트는 고를 수 있어도(VINC_PORT) 루프백에 묶이고 컨테이너는 8790 이다.
+    assert hub["ports"] == ["127.0.0.1:${VINC_PORT:-8790}:8790"]
     assert hub["volumes"] == ["vinc-data:/data"]
     assert doc["services"]["caddy"]["profiles"] == ["tls"]
     assert doc["services"]["neo4j"]["profiles"] == ["neo4j"]
