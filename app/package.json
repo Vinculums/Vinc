@@ -24,7 +24,6 @@
     "test:view-retained": "node --test tests/view-retained.test.mjs",
     "test:layout-service": "node --test tests/layout-service.test.mjs",
     "build:layout-service": "node service/build.mjs",
-    "build:community-view": "npm run typecheck && vite build --config vite.community-view.config.ts",
     "test:topic-conversion": "node --test tests/topic-conversion.test.mjs tests/conversion-inventory.test.mjs",
     "test:topic-detail": "node --test tests/topic-detail.test.mjs",
     "test:role-fields": "node --test tests/role-fields.test.mjs",
