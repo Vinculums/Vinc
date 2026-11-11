@@ -468,7 +468,10 @@ def inspect_database(uri: str, *, user: str, password: str, database: str,
     except ImportError:
         out["problem"] = "driver_missing"
         return out
-    if urlsplit(uri).scheme not in ("neo4j+s", "neo4j+ssc", "bolt+s", "bolt+ssc"):
+    # 평문은 이 기계 밖으로 나갈 때만 위험이다. 같은 노트북의 Neo4j 에 bolt:// 로 붙는 것까지
+    # 확인을 받으면 사람은 늘 "그래도 쓰기"를 누르게 되고, 경고가 뜻을 잃는다.
+    from .location import is_local_uri
+    if urlsplit(uri).scheme not in ("neo4j+s", "neo4j+ssc", "bolt+s", "bolt+ssc") and not is_local_uri(uri):
         out["risks"].append("unencrypted_transport")
     driver = GraphDatabase.driver(uri, auth=(user, password), connection_timeout=timeout_s,
                                   connection_acquisition_timeout=timeout_s,

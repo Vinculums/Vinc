@@ -145,9 +145,8 @@ def test_폴더에서_Neo4j_로_갔다가_폴더로_돌아온다(home):
     app = _open(sc.app_store_config())
     try:
         _fill(app.store)
-        code, out = app.submit_config_move({"to": loc, "password": PASSWORD})
-        assert code == 409 and out["error"] == "risky_database"      # bolt:// 는 평문이다
-        res = _wait(app, app.submit_config_move({"to": loc, "password": PASSWORD, "accept_risk": True}))
+        # 이 기계의 bolt:// 는 위험이 아니라 확인 없이 옮긴다.
+        res = _wait(app, app.submit_config_move({"to": loc, "password": PASSWORD}))
         assert res["switched"] is True and res["copy"]["missing"] == 0, res
         assert res["config"]["location"] == loc and res["config"]["restart_needed"] is True
         assert PASSWORD not in (home / "config.json").read_text(encoding="utf-8")

@@ -50,9 +50,7 @@ def test_고르기_전과_닿지_않는_주소():
 @pytest.mark.skipif(not URI, reason="VINC_CONFORMANCE_NEO4J_URI 없음")
 def test_연결하고_폴더로_옮긴다():
     home = Path(tempfile.mkdtemp())
-    code, out = _cli(home, "connect", URI, secret=PASSWORD)
-    assert code == 1 and out["error"] == "risky_database"            # bolt:// 는 평문이다
-    code, out = _cli(home, "connect", URI, "--accept-risk", secret=PASSWORD)
+    code, out = _cli(home, "connect", URI, secret=PASSWORD)    # 이 기계의 bolt:// 는 확인이 필요 없다
     assert code == 0, out
     assert out["location"]["kind"] == "database" and "keyring" in out
     text = (home / ".vinc" / "config.json").read_text(encoding="utf-8")
