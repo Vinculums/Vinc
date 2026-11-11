@@ -46,7 +46,8 @@ def test_뒤에_연_쪽은_읽기_전용이고_쓰기는_서버가_거절한다(
         assert b.read_only is True and a.holder in b.read_only_reason
         a.run("CREATE (:LeaseProbe {v: 1})")
         assert b.run("MATCH (p:LeaseProbe) RETURN p.v AS v") == [{"v": 1}]
-        with pytest.raises(Exception, match="AccessMode|read access mode"):
+        from store.neo4j_backend import StoreReadOnly
+        with pytest.raises(StoreReadOnly, match="read-only: another Vinc process holds the writer lease"):
             b.run("CREATE (:LeaseProbe {v: 2})")
     finally:
         b.close()
