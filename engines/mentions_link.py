@@ -12,6 +12,10 @@ Chunk(벡터/FTS 검색 노드)를 그것이 언급하는 Concept 에 잇는 규
      hub 를 문단 곳곳에 하나씩만 담은 2000자 청크에도 걸려, 디자인과 무관한 문서
      8건의 대표 개념이 그 개념이 됐다(2026-09-05 실측). 근거·창 크기 선택:
      [[decision:mention-title-tokens-within-a-window]]
+     **어구 가드**(규칙 4): 토큰화가 기호나 한 글자 토큰을 버려 토큰이 둘 이하만 남은
+     제목("Q-learning" → learning, "A* search" → search, "GPT-4" → gpt)은 청크가 제목을
+     어구 그대로 담을 때만 링크한다. 토큰이 0개인 "C++" 도 어구로 링크된다. 손실 없는
+     제목과 토큰이 셋 이상 남는 제목은 위 규칙 그대로다(`_title_phrase`).
   2. **source_file basename 일치**(method='source') — 같은 원본 문서에서 파생된 Chunk
      와 Concept. Chunk.source_file 은 절대경로, Concept.source_file 은 hub-상대경로라
      basename(파일명)으로 비교한다.
@@ -70,12 +74,55 @@ _MAX_TITLE_TOKENS = 6
 _TITLE_WINDOW = 12
 #: 링크 규칙의 식별자. 규칙을 바꾸면 이 값을 바꿔야 `ensure_rule` 이 재링크한다 —
 #: 값이 같으면 코드를 바꿔도 기존 링크는 그대로다.
-MENTIONS_RULE = "3:title-before-source"
+MENTIONS_RULE = "4:lossy-title-phrase"
 _RULE_KEY = "mentions_rule"
+
+# 어구 가드: 토큰화가 제목에서 무언가를 버렸으면(낱말 안·옆의 기호, 한 글자 토큰)
+# 토큰 일치만으로는 링크하지 않고, 청크가 제목을 어구 그대로 담아야 한다.
+# "Q-learning" 이 learning 하나로, "A* search" 가 search 하나로 줄어 그 낱말만 담은
+# 문서마다 걸리던 것을 막는다. 손실 없는 제목은 예전 규칙 그대로다.
+# 어구 비교: 소문자, 공백·하이픈류(-, U+2010~U+2015, U+2212)는 같은 구분자 하나로
+# 친다("Q-learning" = "q learning" = "Q‑learning", "qlearning" 은 아니다). 앞뒤는
+# 낱말 경계여야 하되, 뒤에 한글이 붙는 것은 허용한다("GPT-4는").
+_SEP_RE = re.compile(r"[\s\-\u2010-\u2015\u2212]+")
+_SEP_PAT = r"[\s\-\u2010-\u2015\u2212]+"
+#: 낱말 가장자리의 문장 부호 — 손실로 치지 않고 어구에서도 뺀다("built," "(see").
+_EDGE_PUNCT = ",;:!?.()[]{}\"'\u201c\u201d\u2018\u2019\u00ab\u00bb"
+_WORD_CHAR_RE = re.compile(r"[0-9a-z가-힣]")
+_CLEAN_RE = re.compile(r"[0-9a-z가-힣]{2,}")
+#: 어구의 최소 글자 수(구분자 제외). 토큰 길이 하한(2)과 같은 값 — 한 글자 제목("R")은
+#: 홀로 선 r 마다 걸리므로 어구로도 링크하지 않는다.
+_MIN_PHRASE = 2
+#: 가드는 살아남은 토큰이 이 수 이하인 손실 제목에만 건다. 셋 이상이면 창 조건이 이미
+#: 거르고, 날짜·관사("a")·소유격이 섞인 긴 제목은 어구 그대로 인용되는 일이 드물다.
+#: 바꾸면 MENTIONS_RULE 도 올릴 것.
+_PHRASE_MAX_TOKENS = 2
+#: 곱은 따옴표를 곧은 것으로 — "owner’s" 와 "owner's" 를 같게 본다.
+_QUOTE_FOLD = str.maketrans({"\u2019": "'", "\u2018": "'"})
 
 
 def _tokens(text: str) -> list[str]:
     return [t for t in _TOKEN_RE.findall((text or "").lower()) if len(t) >= 2]
+
+
+def _title_phrase(title: str) -> tuple[bool, re.Pattern | None]:
+    """(가드 여부, 어구 패턴). 가드가 아니면 (False, None) — 예전 규칙 그대로다.
+
+    손실 = 구분자로 자른 조각 가운데 낱말 글자를 담았는데 `[0-9a-z가-힣]{2,}` 가 통째로
+    아닌 것이 있다(기호가 붙었거나 한 글자거나 다른 문자). 기호만으로 된 조각("&")은
+    손실이 아니지만 어구에는 남는다. 가드 = 손실이고 토큰이 `_PHRASE_MAX_TOKENS` 이하.
+    가드인데 어구가 `_MIN_PHRASE` 보다 짧으면 패턴이 None 이고, 그 제목은 title 로
+    링크하지 않는다."""
+    low = (title or "").lower().translate(_QUOTE_FOLD)
+    pieces = [p.strip(_EDGE_PUNCT) for p in _SEP_RE.split(low)]
+    pieces = [p for p in pieces if p]
+    lossy = any(_WORD_CHAR_RE.search(p) and not _CLEAN_RE.fullmatch(p) for p in pieces)
+    if not lossy or len(_tokens(low)) > _PHRASE_MAX_TOKENS:
+        return False, None
+    if sum(len(p) for p in pieces) < _MIN_PHRASE:
+        return True, None
+    body = _SEP_PAT.join(re.escape(p) for p in pieces)
+    return True, re.compile(r"(?<![0-9a-z가-힣])" + body + r"(?![0-9a-z])")
 
 
 def _basename(path: str) -> str:
@@ -121,13 +168,18 @@ def compute_links(chunks: list[dict], concepts: list[dict]) -> list[dict]:
         if not cid:
             continue
         title_toks = _tokens(c.get("title") or "")[:_MAX_TITLE_TOKENS]
+        guarded, phrase = _title_phrase(c.get("title") or "")
         prepped.append({
             "id": cid,
             "base": _basename(c.get("source_file") or ""),
             "title_toks": set(title_toks),
-            "has_title": bool(title_toks),
+            # 가드 제목은 어구가 있어야 title 후보다. 토큰이 0개여도 어구가 있으면
+            # 후보다("C++") — 빈 토큰 집합은 어느 청크에나 포함되고 어구가 가른다.
+            "has_title": phrase is not None if guarded else bool(title_toks),
+            "phrase": phrase,
             "stem": (c.get("stem") or "").lower().strip(),
         })
+    need_low = any(c["phrase"] is not None for c in prepped)
     out: list[dict] = []
     for ch in chunks:
         chid = ch.get("chunk_id")
@@ -139,12 +191,15 @@ def compute_links(chunks: list[dict], concepts: list[dict]) -> list[dict]:
         for i, tok in enumerate(_tokens(ch.get("text") or "")):
             positions.setdefault(tok, []).append(i)
         ch_tokset = set(positions)
+        # 어구 비교용 소문자 본문 — 손실 제목이 하나라도 있을 때만 만든다.
+        ch_low = (ch.get("text") or "").lower().translate(_QUOTE_FOLD) if need_low else ""
         for c in prepped:
             method = None
             # 순서 주의 — 쌍마다 method 는 하나다. title 이 source 보다 먼저인 이유는
             # 모듈 docstring ⚠ 절에 있다(바꾸면 MENTIONS_RULE 도 올릴 것).
             if (c["has_title"] and c["title_toks"] <= ch_tokset
-                    and _within_window(positions, c["title_toks"])):
+                    and _within_window(positions, c["title_toks"])
+                    and (c["phrase"] is None or c["phrase"].search(ch_low))):
                 method = "title"
             elif ch_base and c["base"] and ch_base == c["base"]:
                 method = "source"
