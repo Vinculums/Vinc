@@ -26,19 +26,19 @@ def _block(**over):
 
 UPD = {"updated_at": "2026-02-01T00:00:00Z"}
 
-#: (블록에 얹는 값, 줄인 뒤 남아야 하는 블록). 날짜가 하나라도 있으면 updated_at 은 빠진다.
+#: (블록에 얹는 값, 줄인 뒤 남아야 하는 블록). updated_at 은 늘 남는다.
 SLIM_CASES = [
     ({"valid_from": "2026-01", "validity": "current", "interval_known": True},
-     {"valid_from": "2026-01"}),
+     {"valid_from": "2026-01", **UPD}),
     ({"valid_until": "2099", "validity": "current", "interval_known": True},
-     {"valid_until": "2099"}),
+     {"valid_until": "2099", **UPD}),
     ({"valid_until": "2020", "validity": "historical", "interval_known": True},
-     {"valid_until": "2020", "validity": "historical"}),
+     {"valid_until": "2020", "validity": "historical", **UPD}),
     ({"valid_from": "2099", "validity": "future", "interval_known": True},
-     {"valid_from": "2099", "validity": "future"}),
+     {"valid_from": "2099", "validity": "future", **UPD}),
     ({"valid_from": "nope", "interval_invalid": True},
-     {"valid_from": "nope", "interval_invalid": True}),
-    ({"content_time": "1905"}, {"content_time": "1905"}),
+     {"valid_from": "nope", "interval_invalid": True, **UPD}),
+    ({"content_time": "1905"}, {"content_time": "1905", **UPD}),
     ({"superseded_by": "record:new"}, {"superseded_by": "record:new", **UPD}),
     ({"supersession": [{"by": "record:new"}]}, {"supersession": [{"by": "record:new"}], **UPD}),
     ({"supersedes": ["record:old"]}, {"supersedes": ["record:old"], **UPD}),
@@ -53,7 +53,7 @@ SLIM_CASES = [
       "holds_in_scope": True, "claim_status": "candidate",
       "supersession": [{"by": "record:new", "evidence": True}]},
      {"valid_from": "2026-01", "holds_in_scope": True, "claim_status": "candidate",
-      "supersession": [{"by": "record:new", "evidence": True}]}),
+      "supersession": [{"by": "record:new", "evidence": True}], **UPD}),
 ]
 
 #: 되찾는 규칙이 돌려줘야 하는 칸(이것 말고는 시각 둘과 평가 범위뿐이다).
@@ -268,7 +268,7 @@ def test_resolved_brief_keeps_node_validity_the_dated_excerpt_and_the_evidence()
     for k in ("valid_from", "valid_until", "superseded_by", "created_at", "updated_at", "content_time"):
         assert k not in node, k
     ex = out["excerpts"][0]
-    assert ex["temporal"] == {"valid_from": "2026-01"} and not set(_flat(src["excerpts"][0])) & set(ex)
+    assert ex["temporal"] == {"valid_from": "2026-01", **UPD} and not set(_flat(src["excerpts"][0])) & set(ex)
     assert ex["text"] == "body" and ex["doc_id"] == "d"
     links = out["links"]
     assert links == {"degree": 2, "out": 2, "in": 0, "items": links["items"]}
@@ -377,7 +377,7 @@ def test_props_are_never_walked():
 def test_the_note_states_the_validity_rule_the_slim_block_relies_on():
     """`omitted` 의 validity 문장을 그대로 따라 읽으면 모든 구간 꼴에서 저장 쪽 validity 가 나온다."""
     from store import search_temporal
-    clause = "no validity: unknown if interval_invalid or no valid_from/valid_until, else current."
+    clause = "No validity: unknown if interval_invalid or no valid_from/until, else current."
     assert clause in tools.OMITTED_NOTE and "raw:true" in tools.OMITTED_NOTE
 
     def read_as_the_note_says(t):
@@ -395,6 +395,117 @@ def test_the_note_states_the_validity_rule_the_slim_block_relies_on():
             assert read_as_the_note_says(tools._slim_temporal(meta)) == meta["validity"], row
     # vinc_node 는 알려진 validity 를 남기므로 짧은 문장이다.
     assert "raw:true" in tools.OMITTED_NODE_NOTE and len(tools.OMITTED_NODE_NOTE) <= 70
+
+
+def _dropped(raw, lean, where=""):
+    """raw 에 있고 lean 에 없는 칸을 (자리, 키, 값)으로 모은다. 남은 칸의 값이 바뀌었으면 그것도 낸다."""
+    if isinstance(raw, dict) and isinstance(lean, dict):
+        for k, v in raw.items():
+            if k not in lean:
+                yield where, k, v
+            elif k == "props":
+                assert lean[k] == v, where
+            elif k == "temporal" or isinstance(v, (dict, list)):
+                yield from _dropped(v, lean[k], f"{where}/{k}")
+            else:
+                assert lean[k] == v, (where, k, v, lean[k])
+    elif isinstance(raw, list) and isinstance(lean, list):
+        assert len(raw) == len(lean), where
+        for i, (a, b) in enumerate(zip(raw, lean)):
+            yield from _dropped(a, b, f"{where}[{i}]")
+    else:
+        assert raw == lean, where
+
+
+def _rich_results():
+    """빠질 수 있는 칸을 다 담은 결과들: 날짜 있는·없는 블록, mode=current 블록, 관계·재료가 있는 brief."""
+    cur = _block(valid_from="2026-01", validity="current", interval_known=True, holds_in_scope=True,
+                 claim_status="candidate", supersedes=["record:old"])
+    search = _search_result(rows=2, temporal=_block(valid_from="2026-01", validity="current",
+                                                    interval_known=True))
+    search["node_hits"].append({**copy.deepcopy(search["node_hits"][0]), "id": "record:c",
+                                "temporal": cur, "cite_id": "record:c"})
+    search["page"]["row_offsets"] = {"doc.a#00000": 0}
+    choose = _choose_brief()
+    choose["candidate_material"]["excerpts"] = [{"doc_id": "d", "excerpt": "e", "temporal": _block(),
+                                                 **_flat(_block())}]
+    choose["candidate_material"]["links"] = {"executed": True, "offset": 0, "truncated": False,
+                                             "items": [_link_item(1)]}
+    yield "vinc_search", search
+    yield "vinc_brief", choose
+    yield "vinc_brief", _resolved_brief()
+    yield "vinc_node", _record_node(temporal=_block(valid_from="2026-01-05", validity="current",
+                                                     interval_known=True, claim_status="unassessed",
+                                                     claim_assessment_scope="stored_fields"))
+
+
+def test_every_key_left_out_falls_under_a_kind_the_note_names():
+    note = tools.OMITTED_NOTE.lower()
+    assert all(kind in note for kind in set(tools.OMITTED_KINDS.values()) | {"empty"})
+    assert all(k in tools.OMITTED_KINDS for drops in tools.LEAN_DROP.values()
+               for keys in drops.values() for k in keys)
+    seen = set()
+    for name, raw in _rich_results():
+        lean = tools.lean_result(name, {}, raw)
+        for where, key, value in _dropped(raw, lean):
+            if name == "vinc_node" and where in ("/node", "/node/temporal"):
+                continue                # vinc_node 는 짧은 자기 문장을 싣는다(아래 테스트)
+            kind = "empty" if value is None or value in ("", [], {}) else tools.OMITTED_KINDS[key]
+            assert kind in note, (name, where, key, value)
+            seen.add(kind)
+    assert seen == set(tools.OMITTED_KINDS.values()) | {"empty"}, seen
+
+
+def test_node_drops_only_unset_internal_and_repeated_keys():
+    raw = next(r for n, r in _rich_results() if n == "vinc_node")
+    lean = tools.lean_result("vinc_node", {}, raw)
+    for where, key, value in _dropped(raw, lean):
+        unset = value is None or value in ("", [], {}) or (key, value) in (
+            ("claim_status", "unassessed"), ("interval_invalid", False),
+            ("claim_assessment_scope", "stored_fields"))
+        internal = key in tools._NODE_DROP
+        repeated = (where == "/node/temporal" and (raw["node"].get(key) == value
+                    or key == "created_at" and raw["node"].get("created") == value
+                    or key in ("validity", "interval_known")))
+        assert unset or internal or repeated, (where, key, value)
+
+
+LONG = "Measured 2026-10-07 on the owner's laptop: " + "one epoch takes nine minutes " * 10 + "end"
+
+
+def test_long_titles_and_ids_come_back_unchanged():
+    search = _search_result()
+    search["rows"][0]["doc_title"] = LONG
+    search["node_hits"][0]["title"] = LONG
+    out = tools.lean_result("vinc_search", {}, search)
+    assert out["rows"][0]["doc_title"] == LONG and out["node_hits"][0]["title"] == LONG
+    assert out["node_hits"][0]["cite_id"] == out["node_hits"][0]["id"]
+    choose = _choose_brief()
+    choose["candidates"][0]["title"] = LONG
+    out = tools.lean_result("vinc_brief", {}, choose)
+    assert out["candidates"][0]["title"] == LONG
+    assert all(c["cite_id"] == c["id"] and c["kind"] == "concept" for c in out["candidates"])
+    resolved = _resolved_brief()
+    resolved["node"]["title"] = LONG
+    out = tools.lean_result("vinc_brief", {}, resolved)
+    assert out["node"]["title"] == LONG and out["node"]["cite_id"] == "concept:n"
+    node = _record_node(title=LONG)
+    assert tools.lean_result("vinc_node", {}, node)["node"]["title"] == LONG
+
+
+def test_failures_and_notes_in_the_envelope_survive():
+    search = _search_result()
+    extra = {"error": "index_missing", "vector_note": "meaning arm timed out", "answer_note": "a",
+             "search_error": "s", "partial": True, "node_error": "RuntimeError: x"}
+    search.update(extra)
+    out = tools.lean_result("vinc_search", {}, search)
+    assert {k: out[k] for k in extra} == extra
+    brief = _choose_brief()
+    extra = {"vector_note": "v", "search_error": "s", "partial": True, "unreadable": ["d"],
+             "fell_through": True, "resolved_via": "id", "shrunk": {"excerpts_dropped": 1}}
+    brief.update(extra)
+    out = tools.lean_result("vinc_brief", {}, brief)
+    assert {k: out[k] for k in extra} == extra
 
 
 def test_an_untrimmed_result_carries_no_omitted_note():
@@ -592,13 +703,19 @@ BEFORE = {"search": 27078, "choose": 4737}
 
 @pytest.mark.parametrize("label,name,result,ceiling", [
     ("search", "vinc_search", _realistic_search(), 0.80),
-    ("choose", "vinc_brief", _realistic_choose(), 0.77),
+    ("choose", "vinc_brief", _realistic_choose(), 0.75),
 ])
 def test_the_default_text_is_smaller_by_the_package_target(label, name, result, ceiling):
-    text = rpc._mcp_text(name, {}, result)
-    # `omitted` 한 줄까지 센다.
-    assert '"omitted":' in text
-    assert len(text.encode()) <= ceiling * BEFORE[label], (len(text.encode()), BEFORE[label])
+    out = json.loads(rpc._mcp_text(name, {}, result))
+    # 목표는 `omitted` 한 줄을 빼고 센다(명세의 목표가 그 줄을 셈에 넣지 않았다). 그 줄의 길이는 따로 묶는다.
+    assert out.pop("omitted") == tools.OMITTED_NOTE
+    size = len(json.dumps(out, ensure_ascii=False, separators=(",", ":")).encode())
+    assert size <= ceiling * BEFORE[label], (size, BEFORE[label])
+
+
+def test_the_notes_stay_short():
+    assert len(tools.OMITTED_NOTE) <= 190
+    assert len(tools.OMITTED_NODE_NOTE) <= 70
 
 
 # ── 축소기: 줄인 뒤에도 페이지가 이어진다 ──────────────────────────────────────

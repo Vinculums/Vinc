@@ -141,10 +141,11 @@ _RAW_PROP = {"type": "boolean", "description": (
         "what is set: valid_from, valid_until, content_time, superseded_by and holds_in_scope when not "
         "null, supersession, supersedes and conflicts when not empty, interval_invalid when true, "
         "claim_status when the claim was assessed (none means unscoped, or unassessed on vinc_node), "
-        "updated_at when the block has no other date, and validity only when the dates do not give "
-        "it: no validity means unknown when interval_invalid is true or neither valid_from nor "
-        "valid_until is set, and current otherwise, so historical and future stay. created_at, interval_known and claim_assessment_scope are "
-        "left out. Search also leaves out validity_note, page, total_count_capped when false, and "
+        "updated_at when set, and validity only when the dates do not give it: no validity means "
+        "unknown when interval_invalid is true or neither valid_from nor valid_until is set, and "
+        "current otherwise, so historical and future stay. interval_known is left out and is true "
+        "when valid_from or valid_until is set and interval_invalid is not. created_at and "
+        "claim_assessment_scope are left out. Search also leaves out validity_note, page, total_count_capped when false, and "
         "node_window with node_semantic when the node arm completed with nothing stale, missing or "
         "capped. Brief leaves out its flat copies of temporal fields (node.validity stays), "
         "validity_best_dropped, validity_note, cite_grounds when it equals grounds, null, empty and "
@@ -152,8 +153,8 @@ _RAW_PROP = {"type": "boolean", "description": (
         "vinc_node leaves out sync_seq, owner_id, tenant_id, empty fields and temporal values the "
         "node already holds; props are always whole. Neighbors leave out empty fields, rev, and on a "
         "domain listing the domain each row repeats. A trimmed search or brief result carries "
-        "`omitted` with the validity rule in one sentence, and a trimmed vinc_node result a shorter "
-        "`omitted` (it keeps validity whenever it is known). raw:true (or \"true\") returns the result "
+        "`omitted`, one sentence naming the kinds of key left out and the validity rule; a trimmed "
+        "vinc_node result carries a shorter `omitted` (it keeps validity whenever it is known). raw:true (or \"true\") returns the result "
         "unchanged. REST v1 and the CLI always return the full result."
     ))}
 
@@ -1338,8 +1339,9 @@ TOOLS: list[dict] = [
                 "{kind:'node', executed, found, node}. Retired claims are included, so check "
                 "valid_from/valid_until. found:false means no such id here; executed:false means the store "
                 "could not be read. Use vinc_brief for answer material and vinc_neighbors for relations. "
-                "Over MCP, empty fields and the temporal values already in the node are left out; raw:true "
-                "returns the stored shape. Read-only."
+                "Over MCP, empty fields and the temporal values already in the node are left out "
+                "(interval_known is true when valid_from or valid_until is set and interval_invalid is "
+                "not); raw:true returns the stored shape. Read-only."
             )
             ),
         "inputSchema": {"type": "object", "properties": {
@@ -2709,12 +2711,28 @@ LEAN_DROP: dict[str, dict[str, tuple[str, ...]]] = {
     },
 }
 #: 줄인 결과에 붙는 한 줄. 도구 목록을 예전에 받아 둔 호스트는 새 설명을 못 읽으므로 빠진 칸의
-#: 뜻을 결과가 직접 말한다. 문장의 validity 규칙은 `temporal_expand` 와 같아야 한다(테스트가 대조한다).
-OMITTED_NOTE = ("Empty and default keys are omitted; no validity: unknown if interval_invalid or no "
-                "valid_from/valid_until, else current. raw:true returns all.")
+#: 뜻을 결과가 직접 말한다. 빠지는 칸은 모두 문장이 이름 붙인 종류 중 하나여야 하고(`OMITTED_KINDS`),
+#: validity 규칙은 `temporal_expand` 와 같아야 한다(둘 다 테스트가 대조한다).
+OMITTED_NOTE = ("Omitted: empty, default, derived, duplicate, diagnostic keys, fixed notes, page, "
+                "created_at. No validity: unknown if interval_invalid or no valid_from/until, else "
+                "current. raw:true has all.")
+#: 값이 비지 않았는데 search·brief 가 빼는 칸 → `OMITTED_NOTE` 가 부르는 종류. 빈 값(None·""·[]·{})은
+#: 이 표 없이 "empty" 다. LEAN_DROP 의 칸은 아래에서 채운다.
+OMITTED_KINDS: dict[str, str] = {
+    "validity_note": "fixed notes", "page": "page", "created_at": "created_at",
+    "node_window": "diagnostic", "node_semantic": "diagnostic",
+    "validity": "derived", "interval_known": "derived",
+    "interval_invalid": "default", "claim_status": "default", "claim_assessment_scope": "default",
+    "total_count_capped": "default", "executed": "default", "offset": "default",
+    "truncated": "default", "evidence": "default",
+    "cite_grounds": "duplicate", "updated_at": "duplicate", "content_time": "duplicate",
+    "valid_from": "duplicate", "valid_until": "duplicate", "superseded_by": "duplicate",
+}
 #: vinc_node 의 한 줄. 노드는 알려진 validity 를 늘 남기므로 규칙을 싣지 않는다. 빠지는 것은 빈·기본값
 #: 칸, 내부 좌표(sync_seq·owner_id·tenant_id), 노드 칸과 겹치는 시간 값이다.
 OMITTED_NODE_NOTE = "Unset, internal, repeated keys omitted; raw:true gives all."
+OMITTED_KINDS.update({k: "diagnostic" for drops in LEAN_DROP.values() for keys in drops.values()
+                      for k in keys if k not in OMITTED_KINDS})
 #: `stamp` 이 행에 평평하게 한 벌 더 쓰는 칸(`store.search_temporal.FLAT` 과 같다).
 _TEMPORAL_FLAT = ("created_at", "updated_at", "content_time", "valid_from", "valid_until",
                   "superseded_by", "validity")
@@ -2753,7 +2771,6 @@ def temporal_expand(t: dict, *, claim_status: str = "unscoped") -> dict:
 def _slim_temporal(t: dict) -> dict:
     """시간 블록에서 차 있는 것만 남긴다. 모르는 칸은 그대로 둔다(뜻을 모르는 것은 빼지 않는다).
     validity·interval_known 은 되찾을 수 있을 때만 뺀다: 저장된 날짜에서 계산한 값과 다르면 남는다."""
-    dated = any(t.get(k) for k in ("valid_from", "valid_until", "content_time"))
     out = {}
     for k, v in t.items():
         if k in ("created_at", "claim_assessment_scope"):
@@ -2771,8 +2788,8 @@ def _slim_temporal(t: dict) -> dict:
             continue
         if k == "claim_status" and v in _CLAIM_NOT_ASSESSED:
             continue
-        if k == "updated_at" and (dated or not v):
-            continue                    # 주장 자신의 날짜가 있으면 수정 시각은 뺀다
+        if k == "updated_at" and not v:
+            continue                    # 수정 시각은 늘 남긴다(되찾을 길이 없다)
         out[k] = v
     return out
 

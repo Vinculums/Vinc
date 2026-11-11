@@ -832,7 +832,7 @@
       "get": {
         "operationId": "vinc_node_get__v1_nodes_id",
         "summary": "Read one node by exact id with all its stored fields, without neighbours. Use vinc_neighbors to walk relations and vinc_brief for answer material.",
-        "description": "Read one node by exact id with all its stored fields and no neighbours. Returns {kind:'node', executed, found, node}. Retired claims are included, so check valid_from/valid_until. found:false means no such id here; executed:false means the store could not be read. Use vinc_brief for answer material and vinc_neighbors for relations. Over MCP, empty fields and the temporal values already in the node are left out; raw:true returns the stored shape. Read-only.",
+        "description": "Read one node by exact id with all its stored fields and no neighbours. Returns {kind:'node', executed, found, node}. Retired claims are included, so check valid_from/valid_until. found:false means no such id here; executed:false means the store could not be read. Use vinc_brief for answer material and vinc_neighbors for relations. Over MCP, empty fields and the temporal values already in the node are left out (interval_known is true when valid_from or valid_until is set and interval_invalid is not); raw:true returns the stored shape. Read-only.",
         "security": [
           {
             "MemberKey": []
