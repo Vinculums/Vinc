@@ -1565,6 +1565,8 @@ const EN = {
       // 없다). 덱 밖 카피는 언어 전환도 검사도 받지 못하므로 여기로 옮긴다.
       webNotSignedIn: "Not signed in.",
       webManage: "Manage account",
+      selfHostedIntro: "This hub runs on your own server. Your graph stays here and nothing goes to vincs.io.",
+      selfHostedSignedIn: "Signed in to this hub.",
       webSignedAs: (w: string) => `Signed in as ${w}`,
       space: "Space",
       spacePersonal: "Personal",
@@ -3059,6 +3061,8 @@ const KO: Deck = {
       syncKeySaveFailed: "키를 저장하지 못했어요. 다시 시도해 주세요.",
       webNotSignedIn: "로그인하지 않았어요",
       webManage: "계정 관리",
+      selfHostedIntro: "이 허브는 내 서버에서 돌아요. 그래프는 여기에 있고 vincs.io로 아무것도 보내지 않아요",
+      selfHostedSignedIn: "이 허브에 로그인했어요",
       webSignedAs: (w) => `로그인됨 · ${w}`,
       space: "공간",
       spacePersonal: "개인",

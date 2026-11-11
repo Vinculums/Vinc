@@ -3,7 +3,17 @@
 venv
 __pycache__
 *.pyc
-app
+# app/ 은 웹 번들을 굽는 데 필요한 것만 싣는다(Dockerfile.hub 의 `web` 단계). 셸(src-tauri)·
+# node_modules·테스트는 빼둔다.
+app/*
+!app/package.json
+!app/package-lock.json
+!app/index.html
+!app/vite.config.ts
+!app/tsconfig.json
+!app/tsconfig.node.json
+!app/public
+!app/src
 node_modules
 dist
 build

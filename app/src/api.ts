@@ -4,6 +4,7 @@ import type { LayoutAnswer } from "./view-layout-wire";
  *  control plane (port, token, sidecar lifecycle) goes over Tauri IPC (`shellInvoke`).
  *  Graph/query logic never lives here. */
 import { chunkPack, type StageCounts } from "./packchunks";
+import { noteMe, SELF_HOSTED_BUILD } from "./self-hosted";
 
 const BASE_KEY = "vinc.sidecar.base";
 const TOKEN_KEY = "vinc.sidecar.token";
@@ -31,8 +32,10 @@ const DEFAULT_BASE = IN_SHELL ? "http://127.0.0.1:8787" : location.origin;
 // (/api/graph/*)로 가고, 인증은 Bearer 토큰이 아니라 **계정 세션 쿠키**로 한다
 // (쓰기는 CSRF 더블서브밋). owner 는 클라가 보내지 않는다 — 허브가 세션 sub 로 강제.
 // (로컬 vite dev 는 !IN_SHELL 이지만 localhost 라 WEB=false → 기존 same-origin 프록시.)
-export const WEB = !IN_SHELL
-  && location.hostname !== "localhost" && location.hostname !== "127.0.0.1";
+// 셀프호스트 허브의 번들(`SELF_HOSTED_BUILD`)은 localhost 로 열어도 웹 Vinc 다: 허브가 같은
+// 출처에서 `/login`·`/api/*` 를 답한다(`vinc_mcp/selfhost_web.py`).
+export const WEB = !IN_SHELL && (SELF_HOSTED_BUILD
+  || (location.hostname !== "localhost" && location.hostname !== "127.0.0.1"));
 
 // ── 데스크톱 데이터 모드 ──────────────────────────────────────────────────
 // 셸은 두 모드 중 하나다. **계정 모드**면 화면이 읽고 쓰는 그래프가 계정 그래프이고
@@ -1471,11 +1474,26 @@ export async function ensureWebAuth(): Promise<boolean> {
   primeBootReads();
   try {
     const res = await api.me();
-    if (res.ok) return true;
+    if (res.ok) {
+      // 셀프호스트 허브는 여기서 자기를 밝힌다(`self-hosted.ts`). 본문이 JSON 이 아니어도 세션은 섰다.
+      noteMe(await res.clone().json().catch(() => null));
+      return true;
+    }
   } catch { /* 네트워크 실패 → 아래 로그인으로(안전측) */ }
   viewSessionCache.purge();
   location.assign("/login");
   return false;
+}
+
+/** 셀프호스트 허브에서 로그아웃한다(`POST /logout`, CSRF 더블서브밋). 끝나면 로그인 화면으로 간다.
+ *  호스티드 웹은 계정 사이트가 로그아웃을 맡으므로 부르지 않는다. */
+export async function selfHostedSignOut(): Promise<void> {
+  try {
+    await fetch(new URL("/logout", location.origin), {
+      method: "POST", credentials: "include", headers: { "X-CSRF-Token": csrfToken() } });
+  } catch { /* 세션이 남아도 아래에서 로그인 화면으로 간다 */ }
+  viewSessionCache.purge();
+  location.assign("/login");
 }
 
 /** 잡 완료까지 폴링. jobs.py 계약: 상태 queued|running|done|error, 키는 job_id. */

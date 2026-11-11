@@ -106,17 +106,22 @@ test('Share offers Community on the web only', async () => {
 
 test('the web is the hosted origin, not the shell or local dev', async () => {
   const flags = slice(api, 'export const IN_SHELL', '\n\n// ──');
-  const decide = await run(`export default (location) => { ${flags.replace(/export /g, '').replace(/const DEFAULT_BASE[^\n]*\n/, '')} return { IN_SHELL, WEB }; };`);
+  const decide = await run(`export default (location, SELF_HOSTED_BUILD = false) => { ${flags.replace(/export /g, '').replace(/const DEFAULT_BASE[^\n]*\n/, '')} return { IN_SHELL, WEB }; };`);
   assert.deepEqual(decide({ protocol: 'https:', hostname: 'vincs.io' }), { IN_SHELL: false, WEB: true });
   assert.deepEqual(decide({ protocol: 'tauri:', hostname: 'tauri.localhost' }), { IN_SHELL: true, WEB: false });
   assert.deepEqual(decide({ protocol: 'http:', hostname: 'localhost' }), { IN_SHELL: false, WEB: false });
   assert.deepEqual(decide({ protocol: 'http:', hostname: '127.0.0.1' }), { IN_SHELL: false, WEB: false });
+  // 셀프호스트 허브의 번들은 localhost 로 열어도 웹 Vinc 다(허브가 같은 출처의 /login·/api/* 를 답한다).
+  assert.deepEqual(decide({ protocol: 'http:', hostname: 'localhost' }, true), { IN_SHELL: false, WEB: true });
+  assert.deepEqual(decide({ protocol: 'https:', hostname: 'vinc.example.com' }, true), { IN_SHELL: false, WEB: true });
+  assert.deepEqual(decide({ protocol: 'tauri:', hostname: 'tauri.localhost' }, true), { IN_SHELL: true, WEB: false });
 });
 
 test('spaces are switched from the sidebar header, on the account graph only', async () => {
   const main = await read('src/main.ts');
   // 계정 그래프(웹 · 셸의 계정 모드)일 때만 머리를 세운다. 로컬 모드에는 고를 공간이 없다.
-  assert.match(main, /\n  if \(remote\(\)\) mountSpaceSwitcher\(\);\n/);
+  // 셀프호스트 허브에는 개인 그래프 하나뿐이라 머리를 세우지 않는다(`self-hosted.ts`).
+  assert.match(main, /\n  if \(remote\(\) && !selfHosted\(\)\) mountSpaceSwitcher\(\);\n/);
   // 머리는 모드와 스페이스가 정해진 뒤에 선다(주소의 `?space=` 를 받은 뒤).
   assert.ok(main.indexOf('mountSpaceSwitcher();') > main.indexOf('await adoptSpaceFromAddress()'));
   const settings = await read('src/surfaces/settings.ts');

@@ -1408,6 +1408,10 @@ class _Handler(BaseHTTPRequestHandler):
         from . import selfhost_web
         if selfhost_web.handle(self, "GET"):
             return
+        # 셀프호스트의 웹 앱 번들(/·/app/*). 꺼져 있으면 지나간다.
+        from . import selfhost_static
+        if selfhost_static.handle(self, "GET"):
+            return
         from . import rest_api
         if rest_api.handle(self, "GET"):
             return

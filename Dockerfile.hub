@@ -2,6 +2,22 @@
 # 데스크톱 배포는 PyInstaller(packaging/sidecar.spec)를 쓰지만, 서버 컨테이너는
 # 정적분석 사각(동적 import) 문제와 무관하므로 그냥 `python -m api.cli`로 직접
 # 실행한다 — PyInstaller 프리징 자체가 불필요.
+
+# ── 웹 Vinc 번들 ────────────────────────────────────────────────────────────
+# 셀프호스트 허브(`VINC_SELF_HOSTED=on`)가 `/app/*` 로 서빙한다(`vinc_mcp/selfhost_static.py`).
+# 셀프호스트 판으로 굽는다(`VITE_SELF_HOSTED=1`: 사이트 머리 없음, localhost 에서도 웹 모드).
+# 플래그가 꺼진 허브(호스티드)는 이 디렉터리를 읽지 않는다. 테스트·타입 검사는 CI 가 돌므로
+# 여기서는 vite 빌드만 한다.
+FROM node:22-bookworm-slim AS web
+WORKDIR /web
+COPY app/package.json app/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY app/index.html app/vite.config.ts app/tsconfig.json app/tsconfig.node.json ./
+COPY app/public ./public
+COPY app/src ./src
+ARG VINC_BUILD_SHA=
+RUN GITHUB_SHA="${VINC_BUILD_SHA}" VITE_BASE=/app/ VITE_SELF_HOSTED=1 npx vite build --outDir dist
+
 FROM python:3.12-slim-bookworm
 
 # Hub and encoder are deployed from one image. Bind both to its source revision
@@ -156,6 +172,9 @@ ENV VINC_LBUG_EXT_DIR=/srv/vinc/lbug_extensions
 # 이 이미지의 세 프로세스(사이드카·MCP·임베딩 워커)에 모두 걸린다.
 # 정본: vinc.ops.incident-2026-08-28-hub-sidecar §2·§7.
 ENV PYTHONFAULTHANDLER=1
+
+COPY --from=web /web/dist /srv/vinc/web
+ENV VINC_WEB_DIR=/srv/vinc/web
 
 COPY packaging/docker-entrypoint.sh /usr/local/bin/vinc-entrypoint.sh
 # ⚠ `mkdir -p /data` 이지 `/data/db` 가 아니다. `--data` 는 **DB 파일 경로**라서
