@@ -439,6 +439,19 @@ def _rich_results():
                                                      claim_assessment_scope="stored_fields"))
 
 
+#: "default" 로 빠지는 칸이 가질 수 있는 값. 다른 값이 빠지면 그것은 기본값이 아니다.
+DEFAULTS = {"interval_invalid": (False,), "claim_status": ("unscoped", "unassessed"),
+            "claim_assessment_scope": ("stored_fields", "retrieved_candidates"),
+            "total_count_capped": (False,), "executed": (True,), "offset": (0,),
+            "truncated": (False,), "evidence": (False,)}
+
+
+def _at(obj, where):
+    for part in [p for p in where.replace("[", "/[").split("/") if p]:
+        obj = obj[int(part[1:-1])] if part.startswith("[") else obj[part]
+    return obj
+
+
 def test_every_key_left_out_falls_under_a_kind_the_note_names():
     note = tools.OMITTED_NOTE.lower()
     assert all(kind in note for kind in set(tools.OMITTED_KINDS.values()) | {"empty"})
@@ -452,6 +465,14 @@ def test_every_key_left_out_falls_under_a_kind_the_note_names():
                 continue                # vinc_node 는 짧은 자기 문장을 싣는다(아래 테스트)
             kind = "empty" if value is None or value in ("", [], {}) else tools.OMITTED_KINDS[key]
             assert kind in note, (name, where, key, value)
+            if kind == "default":
+                assert any(value is d or (value == d and type(value) is type(d))
+                           for d in DEFAULTS[key]), (where, key, value)
+            if kind == "duplicate":
+                # 같은 값이 남은 자리에서 한 번은 읽힌다(같은 객체의 블록이거나 봉투의 grounds).
+                here = _at(lean, where)
+                assert value in ((here.get("temporal") or {}).get(key), lean.get("grounds")), \
+                    (where, key, value)
             seen.add(kind)
     assert seen == set(tools.OMITTED_KINDS.values()) | {"empty"}, seen
 
