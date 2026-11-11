@@ -964,7 +964,7 @@ class _ReaderView:
         return self._b.chunk_vector_distances(chunk_ids, embedding, conn=self._conn)
 
     def node_vector_search(self, embedding, top_k, *, owner=None,
-                           use_index: bool = False) -> list[dict]:
+                           use_index: bool = False, kinds=None) -> list[dict]:
         """노드 미러(NodeVec) 의미 검색 — **이 뷰가 노출해야 조회 경로에서 산다.**
 
         ⚠ 2026-09-10 에 이 자리에서 세 번째로 물렸다(앞의 둘은 아래 `graph_algo` 주석에
@@ -976,7 +976,7 @@ class _ReaderView:
         `graph_algo`·`ensure_search_indexes` 와 달리 **쓰기 지점으로 보내지 않는다** —
         이건 순수 조회이고 DDL 을 안 돌린다. 인덱스가 없으면 백엔드가 빈 목록을 준다."""
         return self._b.node_vector_search(embedding, top_k, owner=owner,
-                                          conn=self._conn, use_index=use_index)
+                                          conn=self._conn, use_index=use_index, kinds=kinds)
 
     def validate_node_vector_hits(self, hits, *, owner=None):
         return self._b.validate_node_vector_hits(hits, owner=owner, conn=self._conn)
@@ -2259,7 +2259,7 @@ class EmbeddedBackend:
 
     @request_timing.timed("node_vector")
     def node_vector_search(self, embedding, top_k, *, owner=None, conn=None,
-                           use_index: bool = False) -> list[dict]:
+                           use_index: bool = False, kinds=None) -> list[dict]:
         """노드 미러(NodeVec)에서 의미로 찾는다 — 어휘가 하나도 안 겹쳐도 닿는 유일한 팔.
 
         Chunk 쪽 :meth:`vector_search` 와 **모양이 다르다**. 저쪽은 자식(ChunkVec)에서
@@ -2273,6 +2273,7 @@ class EmbeddedBackend:
         미러가 `_NODE_VEC_EXACT_MAX_ROWS` 밑이면 HNSW 를 부르지 않고 정확 코사인으로 훑는다
         (진단 구간 `node_vector_exact`). `use_index=True` 는 행 수와 무관하게 HNSW 경로를
         탄다 — 인덱스가 실제로 답하는지 재는 쪽(:func:`api.node_mirror.index_answers`)이 쓴다.
+        ``kinds`` 는 `NodeVec.kind` 로 자르기 전에 거른다(owner 와 같은 자리).
         근거: [[decision:the-semantic-arm-ships-on-and-the-mirror-rebuilds-at-the-release-boundary]]"""
         c = conn or self._conn
         try:
@@ -2286,6 +2287,9 @@ class EmbeddedBackend:
         if owner:
             where = "WHERE node.owner_id = $owner "
             params["owner"] = owner
+        if kinds:
+            where += ("AND " if where else "WHERE ") + "node.kind IN $kinds "
+            params["kinds"] = list(kinds)
         # 정확 스캔 한 문장. 인덱스 없이 테이블을 훑으므로 벡터 질의 가드 밖이다(원래 폴백과 같다).
         exact = (f"MATCH (node:NodeVec) {where}"
                  "RETURN node.node_id AS id, node.kind AS kind, node.title AS title, "
@@ -2299,7 +2303,7 @@ class EmbeddedBackend:
                     # 미러가 작은 동안은 정확 스캔이 HNSW 보다 싸고 재현율도 그 이상이다.
                     with request_timing.measure("node_vector_exact"):
                         return _exec_to_dicts(c, exact, {**params, "k": int(top_k)})
-            k = int(top_k) * (self._OVERSAMPLE if owner else 1)
+            k = int(top_k) * (self._OVERSAMPLE if owner or kinds else 1)
             cypher = (
                 f"CALL QUERY_VECTOR_INDEX('NodeVec','{self._NODE_VEC_INDEX}', $emb, $k) "
                 f"{where}"
@@ -2310,7 +2314,7 @@ class EmbeddedBackend:
             with request_timing.measure("node_vector_index"):
                 with _vector_query_guard():
                     rows = _exec_to_dicts(c, cypher, {**params, "k": k})
-            if owner and len(rows) < int(top_k):
+            if (owner or kinds) and len(rows) < int(top_k):
                 # 전역 상위 k 에 이 소유자의 행이 모자랐다 — 그 소유자 안을 정확히 훑는다
                 # (:meth:`vector_search` 와 같은 이유·같은 거리).
                 with request_timing.measure("node_vector_fallback"):

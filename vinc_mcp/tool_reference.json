@@ -145,6 +145,12 @@
      "reference": "Over MCP the result is trimmed by default: ranking diagnostics are left out (`score` on rows and `rrf_score` on node hits stay), a `temporal` block with no validity interval, content time, supersession or conflict shrinks to `{updated_at}`, brief drops flat copies of its temporal fields, and neighbors drop empty fields. A missing field means it was empty or default. raw:true returns the result unchanged. REST v1 always returns it unchanged."
     },
     {
+     "name": "kinds",
+     "type": "array",
+     "required": false,
+     "description": "Limit nodes to these kinds before ranking; document rows are not filtered."
+    },
+    {
      "name": "space",
      "type": "string",
      "required": false,
@@ -384,6 +390,12 @@
      "required": false,
      "description": "true returns the full result; by default ranking diagnostics, empty fields and temporal blocks with nothing set are left out.",
      "reference": "Over MCP the result is trimmed by default: ranking diagnostics are left out (`score` on rows and `rrf_score` on node hits stay), a `temporal` block with no validity interval, content time, supersession or conflict shrinks to `{updated_at}`, brief drops flat copies of its temporal fields, and neighbors drop empty fields. A missing field means it was empty or default. raw:true returns the result unchanged. REST v1 always returns it unchanged."
+    },
+    {
+     "name": "kinds",
+     "type": "array",
+     "required": false,
+     "description": "Limit nodes to these kinds before ranking; document rows are not filtered."
     },
     {
      "name": "space",

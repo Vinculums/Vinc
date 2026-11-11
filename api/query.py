@@ -173,7 +173,7 @@ def search(query: str, *, query_embedding: list[float] | None = None,
            historical: bool = False, as_of: str | None = None,
            mode: str | None = None, known_at: str | None = None,
            query_runtime: str | None = None, query_model: str | None = None,
-           query_colbert: str | None = None,
+           query_colbert: str | None = None, kinds=None,
            cfg=None, store=None) -> dict:
     """검색 순위와 페이지는 그대로 두고 공개 응답에 정확한 인용 id를 붙인다.
 
@@ -183,7 +183,8 @@ def search(query: str, *, query_embedding: list[float] | None = None,
         query, query_embedding=query_embedding, top_k=top_k, filters=filters,
         owner=owner, cursor=cursor, detail=detail, historical=historical,
         as_of=as_of, mode=mode, known_at=known_at, query_runtime=query_runtime,
-        query_model=query_model, query_colbert=query_colbert, cfg=cfg, store=store)
+        query_model=query_model, query_colbert=query_colbert, cfg=cfg, store=store,
+        **({"kinds": kinds} if kinds else {}))
     result["node_hits"] = [{**hit, "cite_id": hit.get("id") or None}
                            for hit in result.get("node_hits") or []]
     _drop_unstarted_episodes(result, query, as_of=as_of, mode=mode, historical=historical)
@@ -4517,7 +4518,7 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
           mode: str | None = None, known_at: str | None = None,
           cfg=None, store=None, _reask: bool = False,
           query_runtime: str | None = None, query_model: str | None = None,
-          query_colbert: str | None = None) -> dict:
+          query_colbert: str | None = None, kinds=None) -> dict:
     """질문 하나 → 답변 재료 한 벌(조인 읽기, 조회 전용).
 
     질문에 노드 id 가 그대로 들어 있으면 그 노드를 **직참조**한다(검색·랭킹 생략,
@@ -4542,10 +4543,17 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
     해소(검색), 직참조 노드, 발췌, 관계 모두에. 사이드카가 뒤에서 다시 거르지 않는다
     (감사 B1·B2·F14). `known_at` 은 저장 시각 컷오프이고 과거 본문을
     복원하지 않는다(검색과 같다).
+    `kinds` 가 있으면 후보와 확정 노드를 그 종류로 한정한다(검색의 노드 팔이 자르기 전에 거른다).
+    질문 속 id 가 다른 종류면 열지 않고 none 으로 답한다(as_of 밖의 id 와 같다).
     근거: [[vinc.plan.mcp-agent-surface §4]]"""
     cfg = cfg or load_config()
     base: dict = {"kind": "brief", "executed": False, "query": query,
                   "status": "none", "candidates": [], "grounds": []}
+    try:
+        kinds = _retrieval.parse_kinds(kinds)
+    except ValueError as exc:
+        base["note"] = base["error"] = f"invalid_kinds: {exc}"
+        return base
     # Direct-ID reads bypass search by design, but an explicit time request must
     # still be validated and applied before the early return.
     try:
@@ -4586,6 +4594,14 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         known_out: list[str] = []
         # 개방 타입 id 는 네 접두 id 가 없을 때만, 실재하는 것만 연다(F12).
         qids = _brief_query_ids(query) or _brief_entity_ids(store, query, owner=owner)
+        if kinds and qids:
+            kept = [i for i in qids if i.split(":", 1)[0] in kinds]
+            if not kept:
+                base["executed"] = True
+                base["kinds_filtered"] = len(qids)
+                base["note"] = "the referenced node is not of the requested kinds"
+                return base
+            qids = kept
         for qid in qids:
             got = node_context(owner=owner, node=qid, limit=max_excerpts,
                                with_evidence=True, store=store)
@@ -4651,7 +4667,8 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                      as_of=as_of, mode=mode, known_at=known_at,
                      query_runtime=query_runtime, query_model=query_model,
                      # 기존 규칙은 ColBERT 순서 위에서 잰 적이 없다 — 학습 규칙일 때만 재채점된 후보로 해소한다.
-                     query_colbert=query_colbert if _brief_rule_colbert() else None)
+                     query_colbert=query_colbert if _brief_rule_colbert() else None,
+                     **({"kinds": kinds} if kinds else {}))
         # executed 는 노드 팔 기준이다 — 청크 팔만 죽어도 노드 팔은 owner 스코프 결과를 낸다.
         base["executed"] = bool(res.get("executed") or res.get("node_hits"))
         # 벡터 팔의 상태도 함께 나른다. 두 표면이 같은 임베딩 창구를 쓰는데 `/search`

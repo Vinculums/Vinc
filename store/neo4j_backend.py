@@ -363,11 +363,14 @@ class Neo4jBackend:
         return list(best.values())[:int(top_k)]
 
     def node_vector_search(self, embedding, top_k, *, owner=None, conn=None,
-                           use_index: bool = False) -> list[dict]:
-        params: dict = {"emb": list(embedding), "k": int(top_k) * (_OVERSAMPLE if owner else 1)}
+                           use_index: bool = False, kinds=None) -> list[dict]:
+        params: dict = {"emb": list(embedding), "k": int(top_k) * (_OVERSAMPLE if owner or kinds else 1)}
         where = ""
         if owner:
             where, params["owner"] = "WHERE v.owner_id = $owner ", owner
+        if kinds:
+            where += ("AND " if where else "WHERE ") + "v.kind IN $kinds "
+            params["kinds"] = list(kinds)
         rows = self.run(
             f"CALL db.index.vector.queryNodes('{_NODE_VEC_INDEX}', $k, $emb) YIELD node AS v, score "
             f"{where}"
