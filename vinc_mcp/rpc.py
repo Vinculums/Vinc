@@ -125,7 +125,8 @@ class Dispatcher:
     def handle(self, msg: dict, forced_owner: str | None = None,
                plan: str | None = None, quota=None, quota_view=None,
                entitlements: dict | None = None, community_write=None, community_read=None,
-               events_auth: dict | None = None) -> dict | None:
+               events_auth: dict | None = None, profile: str | None = None) -> dict | None:
+        # profile: 연결의 도구 프로파일(`tools.TOOL_PROFILES`). None 이면 `all` 이고 지금과 바이트까지 같다.
         method = msg.get("method")
         msg_id = msg.get("id")
         params = msg.get("params") or {}
@@ -144,7 +145,8 @@ class Dispatcher:
                                     plan=plan, quota=quota, quota_view=quota_view,
                                     entitlements=entitlements,
                                     community_write=community_write, community_read=community_read,
-                                    modern_version=version, events_auth=events_auth)
+                                    modern_version=version, events_auth=events_auth,
+                                    profile=profile)
         except events.EventsError as e:
             return None if msg_id is None else e.reply(msg_id)
         except modern.MissingClientCapability as e:
@@ -169,7 +171,8 @@ class Dispatcher:
     def _dispatch(self, method: str, params: dict, *, forced_owner: str | None = None,
                   plan: str | None = None, quota=None, quota_view=None,
                   entitlements: dict | None = None, community_write=None, community_read=None,
-                  modern_version: str | None = None, events_auth: dict | None = None) -> dict:
+                  modern_version: str | None = None, events_auth: dict | None = None,
+                  profile: str | None = None) -> dict:
         if method in run_tasks.METHODS and modern_version is not None:
             return self._tasks(method, params, forced_owner=forced_owner, plan=plan, quota=quota,
                                events_auth=events_auth)
@@ -245,11 +248,18 @@ class Dispatcher:
             # 순서는 레지스트리(`tools.TOOLS` + `HOST_TOOLS`)의 소스 순서이고 계약이다.
             # 재시작이나 해시 시드가 바뀌어도 바이트까지 같아야 호스트의 프롬프트 캐시가
             # 산다(tests/mcp/test_mcp_modern.py 가 다른 해시 시드의 두 프로세스로 대조한다).
-            out = {"tools": _tool_specs(self.hub)}
+            listed = _tool_specs(self.hub)
+            if profile is not None and profile != "all":
+                # 프로파일은 순서를 지킨 채 걸러 낼 뿐이다. `all` 은 위 목록 그대로다.
+                listed = [s for s in listed if tools.in_profile(s["name"], profile)]
+            out = {"tools": listed}
             return modern.with_cache_hints(out, method) if modern_version else out
         if method == "tools/call":
             name = params.get("name") or ""
             args = params.get("arguments") or {}
+            if not tools.in_profile(name, profile):
+                # 목록에 없는 도구는 실행하지 않는다(쿼터도 안 쓴다). 모델이 읽을 수 있게 도구 오류로 낸다.
+                return _tool_result(_profile_refusal(name, profile), name, is_error=True)
             if (modern_version is not None and name == run_tasks.SUBMIT_TOOL
                     and isinstance(args, dict) and "inputResponses" in params):
                 # MRTR 재시도: 같은 호출에 사람의 답이 실려 왔다. 답이면 이어 가고, 입력창을
@@ -425,6 +435,13 @@ def _tool_result(text: str, name: str, *, is_error: bool) -> dict:
         if isinstance(payload, dict):
             out["structuredContent"] = payload
     return out
+
+
+def _profile_refusal(name: str, profile: str) -> str:
+    """프로파일 밖 도구 호출의 거절문. 프로파일 이름과 전체 목록을 얻는 길을 같이 말한다."""
+    return (f"{name or 'This tool'} is not in this connection's tool profile '{profile}', so it "
+            "did not run. For the full tool list, connect with profile=all on the MCP URL "
+            "(or remove the profile parameter).")
 
 
 def _mcp_text(name: str, args: dict, result) -> str:
