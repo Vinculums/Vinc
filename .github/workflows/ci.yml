@@ -637,6 +637,7 @@ jobs:
           python -m pytest -q -p no:cacheprovider -rs tests/core/test_store_conformance.py \
             tests/core/test_neo4j_writer_lease.py tests/core/test_neo4j_location_open.py \
             tests/core/test_neo4j_inspect.py tests/core/test_store_copy.py tests/core/test_config_move.py \
+            tests/core/test_cli_storage.py \
             -k neo4j | tee "$RUNNER_TEMP/neo4j-conformance.txt"
           if grep -q "SKIPPED" "$RUNNER_TEMP/neo4j-conformance.txt"; then
             echo "::error::Neo4j 적합성이 건너뛰어졌다 — 서비스 컨테이너나 드라이버를 볼 것"; exit 1
