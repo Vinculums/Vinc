@@ -131,7 +131,7 @@ a = Analysis(
         # 정적 분석이 잡지만, 빠지면 검색이 통째로 죽으므로 위와 같은 이유로 못 박는다.
         "store.querybase", "vinc_rag", "vinc_rag.retrieval",
         # 저장 위치가 데이터베이스일 때만 `store.backend.open_store` 가 지연 import 한다.
-        "store.location", "store.neo4j_backend",
+        "store.location", "store.neo4j_backend", "api.cli_storage",
     ],
     # cryptography/OpenSSL 은 우리 의존이 아님(argon2 도 옵션 lazy) — 시스템
     # dist-packages 의 pyo3 훅 충돌을 피하려고 명시 제외한다. ⚠ 여기 "OpenSSL" 은

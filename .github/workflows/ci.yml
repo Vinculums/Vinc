@@ -627,19 +627,21 @@ jobs:
           python-version: "3.12"
       - name: Install deps (ladybug pinned + neo4j driver + argon2 + pytest + pypdf)
         run: pip install ladybug==0.21.2 neo4j==6.4.1 argon2-cffi pyyaml pytest pypdf
+      # 확장 경로가 Neo4j 단계보다 먼저다: 그 단계의 복사·이동 시험이 임베디드 스토어도 연다.
+      - name: Point to bundled G0 extensions (no network)
+        run: echo "VINC_LBUG_EXT_DIR=$GITHUB_WORKSPACE/packaging/lbug_extensions" >> "$GITHUB_ENV"
       # Neo4j 쪽이 조용히 skip 되면 이 잡은 "두 엔진이 같다"가 아니라 "한 엔진만 봤다"가 된다.
       - name: Store conformance on Neo4j (no silent skips)
         run: |
           set -euo pipefail
           python -m pytest -q -p no:cacheprovider -rs tests/core/test_store_conformance.py \
             tests/core/test_neo4j_writer_lease.py tests/core/test_neo4j_location_open.py \
-            tests/core/test_neo4j_inspect.py \
+            tests/core/test_neo4j_inspect.py tests/core/test_store_copy.py tests/core/test_config_move.py \
+            tests/core/test_cli_storage.py \
             -k neo4j | tee "$RUNNER_TEMP/neo4j-conformance.txt"
           if grep -q "SKIPPED" "$RUNNER_TEMP/neo4j-conformance.txt"; then
             echo "::error::Neo4j 적합성이 건너뛰어졌다 — 서비스 컨테이너나 드라이버를 볼 것"; exit 1
           fi
-      - name: Point to bundled G0 extensions (no network)
-        run: echo "VINC_LBUG_EXT_DIR=$GITHUB_WORKSPACE/packaging/lbug_extensions" >> "$GITHUB_ENV"
       # `core` 와 같은 이유로 드라이버를 강제한다 — 임베디드 왕복이 조용히 skip 되면
       # 이 잡은 "켠 모드가 초록"이 아니라 "켠 모드를 안 돌렸다"가 된다.
       - name: Assert driver is importable (no silent skips)

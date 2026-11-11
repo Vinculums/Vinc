@@ -165,9 +165,10 @@ def _encode_call(url: str, texts: list[str], kind: str, timeout: float, *,
 
 from store.config import load_config
 from store import config as store_config
-from store.location import (AccountLocation, DatabaseLocation, LocationError, parse_database,
-                            parse_location, read_location)
+from store.location import (AccountLocation, DatabaseLocation, FolderLocation, LocationError,
+                            parse_database, parse_location, read_location)
 from store.neo4j_backend import BLOCKING_RISKS
+from store import migrate
 from store import httpbody
 from store import request_timing
 from store.write_waits import WRITE_WAITS
@@ -2810,6 +2811,117 @@ class VincApp:
             raise
         return 202, job.to_dict()
 
+    def submit_config_move(self, body):
+        """그래프를 다른 저장 위치로 옮긴다(잡, 202). 바디:
+
+        - `to`: 저장 위치(`store.location`). 데이터베이스나 폴더. 데이터베이스면 `password` 와(위험이
+          있으면) `accept_risk`, 폴더면 위험이 있을 때 `accept_risk`.
+        - `from`: 생략하면 이 사이드카가 연 스토어. `"account"` 면 계정 그래프(`token` 필요)를
+          데이터베이스로 받는다.
+
+        원본에는 아무것도 쓰지 않는다. 대상에 원본의 키가 전부 있을 때만 설정을 그 위치로 바꾸고
+        (`switched`), 하나라도 빠지면 바꾸지 않고 `missing` 을 말한다. 같은 이동을 다시 돌리면 같은
+        상태로 수렴한다(MERGE). 바뀐 위치는 셸이 사이드카를 다시 띄울 때 먹는다(`restart_needed`).
+
+        ⚠ 잡은 쓰기 큐에서 돈다: 옮기는 동안 다른 쓰기는 기다리고, 원본은 그 사이 변하지 않는다.
+        옮긴 뒤 다시 띄우기 전에 들어온 쓰기는 이전 위치에 남으므로 셸은 곧바로 다시 띄운다."""
+        if self._data_pinned():
+            return 409, {"error": "pinned",
+                         "note": "this process was started with a fixed data path "
+                                 "(--data or MEMORY_DATA_DIR)"}
+        try:
+            to = parse_location(body.get("to"))
+        except LocationError as exc:
+            return 400, {"error": "bad_location", "note": str(exc)}
+        source = body.get("from")
+        if source not in (None, "account"):
+            return 400, {"error": "from must be omitted (this store) or 'account'"}
+        if source == "account" and not isinstance(to, DatabaseLocation):
+            return 400, {"error": "from account moves only to a database location"}
+        if source == "account" and not body.get("token"):
+            return 400, {"error": "missing field: token (member key)"}
+        if isinstance(to, DatabaseLocation):
+            check, err = _check_database({**to.to_dict(), "password": body.get("password")})
+            if err:
+                return 400, err
+            if not check["ok"]:
+                return 400, {"error": check["problem"], "check": check}
+            blocking = [r for r in check["risks"] if r in BLOCKING_RISKS]
+            if blocking:
+                return 400, {"error": blocking[0], "check": check}
+            lease = check.get("writer_lease") or {}
+            if lease.get("active"):
+                return 409, {"error": "another_writer", "check": check,
+                             "note": "another Vinc process is writing to this database"}
+            if check["risks"] and not truthy(body.get("accept_risk")):
+                return 409, {"error": "risky_database", "check": check}
+            password = body["password"]
+            run = lambda: self._move_to_database(to, password, source=source, body=body)  # noqa: E731
+        elif isinstance(to, FolderLocation):
+            info = localmode.inspect_folder(to.path or str(store_config.vinc_home()))
+            if not info["ok"]:
+                return 400, {"error": info["problem"], "inspect": info}
+            target = os.path.join(info["path"], "db")
+            cur = getattr(self.cfg, "data_dir", None)
+            if cur and os.path.normcase(os.path.abspath(cur)) == os.path.normcase(os.path.abspath(target)):
+                return 409, {"error": "same_location", "inspect": info}
+            if info["has_store"]:
+                # 폴더에 이미 그래프가 있으면 옮겨 붓지 않는다. 그것을 열려면 위치만 바꾼다(`POST /config`).
+                return 409, {"error": "folder_has_store", "inspect": info}
+            if info["risks"] and not truthy(body.get("accept_risk")):
+                return 409, {"error": "risky_folder", "inspect": info}
+            run = lambda: self._move_to_folder(to, info, target)  # noqa: E731
+        else:
+            return 400, {"error": "move to the account with /sync/push-all"}
+        if source is None and self.store is None:
+            return 503, {"executed": False, **store_unavailable()}
+        return self._submit_move("config:move", run)
+
+    def _switch_to(self, updates: dict) -> dict:
+        store_config.write_local_config({**updates, "mode_chosen": True})
+        return self._config_view()
+
+    def _move_to_database(self, to, password: str, *, source, body: dict) -> dict:
+        from store.neo4j_backend import Neo4jBackend, installation_holder
+        target = Neo4jBackend(to.uri, user=to.user, password=password, database=to.database,
+                              holder=installation_holder(store_config.installation_id()))
+        try:
+            if target.read_only:
+                return {"executed": False, "switched": False, "error": "another_writer",
+                        "note": target.read_only_reason}
+            if source == "account":
+                target.provision(dim=self.cfg.embedding_dim)
+                owner = body.get("owner") or "tenant:local"
+                rep = sync.pull_everything(target, self.cfg, owner=owner,
+                                           remote=sync.RemoteHTTP(body["token"], body.get("base")))
+            else:
+                rep = migrate.copy_store(self.store, target, dim=self.cfg.embedding_dim)
+        finally:
+            target.close()
+        d = to.to_dict()
+        d.pop("kind")
+        ok = int(rep.get("missing") or 0) == 0
+        view = self._switch_to({"mode": "database", "database": d}) if ok else None
+        return {"executed": True, "switched": ok, "copy": rep, "config": view}
+
+    def _move_to_folder(self, to, info: dict, target_file: str) -> dict:
+        from store.backend import open_store
+        os.makedirs(info["path"], exist_ok=True)
+        dst = open_store(load_config({"data_dir": target_file}))
+        if dst is None:
+            from store.backend import last_open_error
+            return {"executed": False, "switched": False, "error": "folder_store_unavailable",
+                    "note": last_open_error()}
+        try:
+            rep = migrate.copy_store(self.store, dst, dim=self.cfg.embedding_dim)
+        finally:
+            dst.close()
+        home = store_config.vinc_home()
+        same = os.path.normcase(os.path.abspath(info["path"])) == os.path.normcase(os.path.abspath(str(home)))
+        ok = int(rep.get("missing") or 0) == 0
+        view = self._switch_to({"mode": "local", "data_path": None if same else info["path"]}) if ok else None
+        return {"executed": True, "switched": ok, "copy": rep, "config": view}
+
     def submit_sync_push_all(self, body):
         """로컬 → 계정: 이 기기의 모든 주제를 계정으로(`sync.push_everything`). 202+job.
 
@@ -3308,6 +3420,8 @@ class _Handler(BaseHTTPRequestHandler):
             # 모드 전환의 데이터 이동(VIN-130) — 전량, 한 번, 202+job_id.
             "/sync/push-all": app.submit_sync_push_all,
             "/sync/pull-all": app.submit_sync_pull_all,
+            # 저장 위치 이동(폴더 ↔ 사용자 데이터베이스, 계정 → 데이터베이스) — 202+job_id.
+            "/config/move": app.submit_config_move,
             "/config": app.write_config,   # 저장 설정(VIN-130)
             # 데이터베이스를 고르기 전에 살핀다. 비밀번호가 바디에 오므로 GET 이 아니다.
             "/config/inspect-database": app.write_config_inspect_database,

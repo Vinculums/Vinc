@@ -515,3 +515,151 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+# ── 저장 위치 이동(폴더 ↔ 사용자 데이터베이스) ─────────────────────────────────
+#: 한 문장에 싣는 행 수. 원격 데이터베이스는 왕복이 비싸서 행마다 보내면 몇십 분이 된다.
+COPY_BATCH = 500
+
+
+def _batches(rows: list, n: int):
+    for i in range(0, len(rows), n):
+        yield rows[i:i + n]
+
+
+def _filled(v) -> bool:
+    return v is not None and v != []
+
+
+def _merge_rows(label: str, pk: str, cols: list[str], part: list[dict]) -> tuple[str, dict]:
+    """한 묶음의 MERGE 문과 파라미터. 묶음 안에서 값이 하나도 없는 열은 SET 에서 뺀다.
+
+    임베디드 엔진은 `UNWIND` 의 행 목록에서 열 타입을 추론하는데, 묶음 전체가 NULL 인 열은 STRING 으로
+    잡혀 STRING[] 열에 넣지 못한다(Binder exception). 빈 열을 빼면 대상의 그 열은 손대지 않는다 —
+    새 대상에는 원래 없는 값이고, 이미 있던 그래프에 더할 때는 원본에 없는 값을 지우지 않는다."""
+    use = [c for c in cols if c != pk and any(_filled(r.get(c)) for r in part)]
+    sets = ", ".join(f"n.{c} = row.{c}" for c in use)
+    q = f"UNWIND $rows AS row MERGE (n:{label} {{{pk}: row.{pk}}})" + (f" SET {sets}" if sets else "")
+    return q, {"rows": [{c: r.get(c) for c in [pk, *use]} for r in part]}
+
+
+def copy_store(src, dst, *, dim: int, batch: int = COPY_BATCH, progress=None) -> dict:
+    """스토어 전량을 다른 스토어로 옮겨 싣는다(저장 위치 이동). **원본에는 아무것도 쓰지 않는다.**
+
+    `export_store` 로 읽고(벡터 포함 — 인코더가 고정이라 같은 차원이면 그대로 쓴다) 표마다 키로 MERGE
+    한다. 같은 이동을 다시 돌리면 같은 상태로 수렴한다(멱등). 한 문장에 `batch` 행씩 `UNWIND` 로 싣는다.
+    끝나면 `verify_copy` 로 원본의 키가 대상에 전부 있는지 센다. 반환의 `missing` 이 0 이 아니면
+    부르는 쪽은 저장 위치를 바꾸지 않는다.
+
+    `progress(done, total)` 는 행 단위로 불린다(잡 화면용)."""
+    from . import pkns
+    raw = pkns.enabled()
+    dump = export_store(src, raw=raw)
+    want = vector_dim(src)
+    if want is not None and want != dim and (dump["nodes"].get("ChunkVec") or dump["nodes"].get("NodeVec")):
+        raise RuntimeError(f"vector width differs: source {want}, target {dim}")
+    dst.provision(dim=dim)
+    node_specs = _schema.node_table_specs()
+    total = sum(len(r) for r in dump["nodes"].values()) + len(dump["edges"]) \
+        + sum(len(r) for r in dump["meta"].values())
+    done = 0
+
+    def _tick(n):
+        nonlocal done
+        done += n
+        if progress:
+            progress(done, total)
+
+    def _w(q, params):
+        return dst.run(q, params, raw=True) if raw else dst.run(q, params)
+
+    for label, rows in dump["nodes"].items():
+        spec = node_specs.get(label)
+        if not spec or not rows:
+            continue
+        for part in _batches(rows, batch):
+            _w(*_merge_rows(label, spec["pk"], spec["cols"], part))
+            _tick(len(part))
+    groups: dict[tuple, list[dict]] = {}
+    for e in dump["edges"]:
+        key = (e["label"], e["from_label"], e["to_label"], tuple(sorted(e.get("props") or {})))
+        groups.setdefault(key, []).append(e)
+    for (label, fl, tl, props), edges in groups.items():
+        fpk, tpk = node_specs[fl]["pk"], node_specs[tl]["pk"]
+        for part in _batches(edges, batch):
+            use = [p for p in props if any(_filled((e.get("props") or {}).get(p)) for e in part)]
+            sets = ", ".join(f"r.{p} = row.p_{p}" for p in use)
+            q = (f"UNWIND $rows AS row MATCH (a:{fl}), (b:{tl}) WHERE a.{fpk} = row.s AND b.{tpk} = row.d "
+                 f"MERGE (a)-[r:{label}]->(b)" + (f" SET {sets}" if sets else ""))
+            _w(q, {"rows": [{"s": e["from"], "d": e["to"],
+                             **{f"p_{p}": (e.get("props") or {}).get(p) for p in use}} for e in part]})
+            _tick(len(part))
+    for label, spec in _schema.meta_table_specs().items():
+        pk, cols = spec["pk"], spec["cols"]
+        rows = [r for r in dump["meta"].get(label) or [] if (label, r.get(pk)) not in _META_SKIP]
+        if not rows:
+            continue
+        for part in _batches(rows, batch):
+            _w(*_merge_rows(label, pk, cols, part))
+            _tick(len(part))
+    dst.ensure_search_indexes(dim=dim)
+    return verify_copy(dump, dst, raw=raw, batch=batch)
+
+
+def verify_copy(dump: dict, dst, *, raw: bool = False, batch: int = COPY_BATCH) -> dict:
+    """덤프의 키가 대상에 전부 있는가. 수로만 말한다: 표마다 원본 수와 대상에서 찾은 수.
+
+    `raw` 는 덤프를 읽은 것과 같아야 한다(물리 키 덤프면 True). 다르면 키가 안 맞아 0건으로 센다.
+
+    대상에 원래 있던 행(이미 있던 Vinc 그래프에 더한 경우)은 세지 않는다 — 묻는 것은 "원본이 다
+    왔나"다. 엣지는 끝점 키와 관계 종류로 찾는다."""
+    def _r(q, params):
+        return dst.run(q, params, raw=True) if raw else dst.run(q, params)
+
+    node_specs = _schema.node_table_specs()
+    tables: dict[str, dict] = {}
+    missing = 0
+
+    def _count(label: str, pk: str, keys: list) -> int:
+        found = 0
+        for part in _batches(keys, batch):
+            rows = _r(f"UNWIND $ks AS k MATCH (n:{label}) WHERE n.{pk} = k RETURN count(n) AS c",
+                      {"ks": part}) or [{"c": 0}]
+            found += int(rows[0]["c"])
+        return found
+
+    for label, rows in dump["nodes"].items():
+        if not rows or label not in node_specs:
+            continue
+        pk = node_specs[label]["pk"]
+        keys = sorted({r[pk] for r in rows if r.get(pk) is not None})
+        found = _count(label, pk, keys)
+        tables[label] = {"source": len(keys), "found": found}
+        missing += max(0, len(keys) - found)
+    for label, spec in _schema.meta_table_specs().items():
+        pk = spec["pk"]
+        keys = sorted({r[pk] for r in dump["meta"].get(label) or []
+                       if r.get(pk) is not None and (label, r.get(pk)) not in _META_SKIP})
+        if not keys:
+            continue
+        found = _count(label, pk, keys)
+        tables[label] = {"source": len(keys), "found": found}
+        missing += max(0, len(keys) - found)
+    groups: dict[tuple, set] = {}
+    for e in dump["edges"]:
+        groups.setdefault((e["label"], e["from_label"], e["to_label"]), set()).add((e["from"], e["to"]))
+    edge_tables: dict[str, dict] = {}
+    for (label, fl, tl), pairs in groups.items():
+        fpk, tpk = node_specs[fl]["pk"], node_specs[tl]["pk"]
+        found = 0
+        for part in _batches(sorted(pairs), batch):
+            rows = _r(f"UNWIND $ps AS p MATCH (a:{fl})-[r:{label}]->(b:{tl}) "
+                      f"WHERE a.{fpk} = p.s AND b.{tpk} = p.d RETURN count(DISTINCT [a.{fpk}, b.{tpk}]) AS c",
+                      {"ps": [{"s": s, "d": d} for s, d in part]}) or [{"c": 0}]
+            found += int(rows[0]["c"])
+        t = edge_tables.setdefault(label, {"source": 0, "found": 0})
+        t["source"] += len(pairs)
+        t["found"] += found
+        missing += max(0, len(pairs) - found)
+    return {"tables": tables, "edges": edge_tables, "missing": missing,
+            "nodes": sum(len(r) for r in dump["nodes"].values()), "edge_rows": len(dump["edges"])}

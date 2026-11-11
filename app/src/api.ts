@@ -648,6 +648,17 @@ export const storage = {
   /** 비밀번호는 이 요청에만 실린다. 사이드카는 확인에만 쓰고 버린다. 주소가 틀리면 400 으로 던진다. */
   inspectDatabase: (body: DatabaseConnect): Promise<ConnectionCheck> =>
     localCall("/config/inspect-database", undefined, body),
+  /** 그래프를 옮긴다(잡). 대상에 원본이 전부 왔을 때만 위치가 바뀐다(`result.switched`). 원본은 지우지
+   *  않는다. 400·409 는 던지지 않고 그대로 준다(`error`·`check`·`inspect`). */
+  move: async (body: { to: StorageLocation; password?: string; accept_risk?: boolean;
+                       from?: "account"; token?: string; base?: string; owner?: string }): Promise<any> => {
+    try { return await localCall("/config/move", undefined, body); }
+    catch (e: any) {
+      const m = /^(400|409) (.*)$/s.exec(messageOf(e, ""));
+      if (m) { try { return { status: Number(m[1]), ...JSON.parse(m[2]!) }; } catch {} }
+      throw e;
+    }
+  },
   /** 400·409 는 던지지 않고 그대로 준다: 화면이 사유(`error`·`inspect`·`check`)를 그려야 한다.
    *  `location` 은 예전 키(mode·data_path)와 섞지 않는다. 데이터베이스면 `password` 로 다시 확인하고 적는다. */
   setConfig: async (body: { mode?: DataMode; mode_chosen?: boolean;
