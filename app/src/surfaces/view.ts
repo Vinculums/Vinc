@@ -1,4 +1,4 @@
-import { api, cfg, WEB, teamsApi, isCommunitySpace, canWriteHere, viewScope, viewAccess, docMidWrite, spaceName, storeDownReason, messageOf, isWriteConflict, type GraphEdge, type GraphNode,
+import { api, cfg, WEB, teamsApi, isCommunitySpace, canWriteHere, viewScope, viewAccess, docMidWrite, spaceName, storeDownReason, messageOf, isWriteConflict, storage, restartSidecar, type GraphEdge, type GraphNode,
          type NodeLinks, type NodeContext } from "../api";
 import { COPY } from "../copy";
 import { docTitle } from "../doc-title";
@@ -13,6 +13,7 @@ import { sayings, statedStart, decisionSteps, type ItemLink, type Step } from ".
 import { isHistorical, conflictIds } from "../node-validity";
 import { tintMap } from "../view-tint";
 import { esc, openContextMenu, confirmDestructive } from "../components";
+import { hostOf } from "../storage-mode";
 import { blocksSurfaceShortcuts } from "../keys";
 import { disposeEditorsIn, docEditorOpen, renderMarkdown } from "../doc-editor";
 import { hydrateRich } from "../rich-blocks";
@@ -2302,6 +2303,28 @@ export async function renderView(el: HTMLElement, resume = false) {
     canvas.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: "ease-out" });
   }
   let showSeq = 0;
+  /** 스토어가 안 열렸고 저장 위치가 내 데이터베이스면, 빈 지도 대신 그 데이터베이스가 응답하지 않는다고
+   *  말하고 다시 시도 · 저장 설정을 준다. 그 밖의 위치는 위의 일반 문장을 그대로 둔다. */
+  async function showDatabaseDown(seq: number) {
+    if (WEB) return;
+    const conf = await storage.config().catch(() => null);
+    const loc = conf?.location;
+    if (seq !== showSeq || loc?.kind !== "database") return;
+    const L = COPY.ui.settingsUi.db;
+    setMsg(`<div class="empty" role="alert"><p><strong>${esc(L.downTitle)}</strong></p>
+      <p>${esc(L.downBody(hostOf(loc.uri)))}</p>
+      <p><button class="btn btn-primary" type="button" data-db-retry>${esc(L.downRetry)}</button>
+        <button class="btn" type="button" data-db-settings>${esc(L.downSettings)}</button></p></div>`);
+    msg.querySelector<HTMLButtonElement>("[data-db-retry]")?.addEventListener("click", async (e) => {
+      (e.currentTarget as HTMLButtonElement).disabled = true;
+      // 사이드카는 기동할 때 한 번 연다. 다시 띄운 뒤 화면을 새로 읽는다.
+      await restartSidecar();
+      location.reload();
+    });
+    msg.querySelector("[data-db-settings]")?.addEventListener("click", () => {
+      void import("./settings").then((m) => m.openSettings("storage"));
+    });
+  }
   async function show(level: Level,
                       opts?: { keepPanel?: boolean; keepCamera?: boolean; keepDetail?: boolean }) {
     const seq = ++showSeq;
@@ -2358,6 +2381,7 @@ export async function renderView(el: HTMLElement, resume = false) {
         // 사유는 드라이버·OS 가 만든 문자열(경로 포함)이라 마크업으로 붙이지 않는다.
         const pre = msg.querySelector("pre");
         if (pre) pre.textContent = why;
+        void showDatabaseDown(seq);
       }
     } finally {
       if (seq === showSeq) {

@@ -61,6 +61,16 @@ export async function setTeamAccountKey(subject: string, team: string, key: stri
   await store("secret_set", { name, value: key });
 }
 
+/** 이름 붙은 비밀 하나를 OS 저장소에 둔다(내 데이터베이스의 비밀번호, `storage-mode.ts`). 셸이 아니거나
+ *  저장소가 없으면 false 다: 평문으로 물러서지 않는다. 셸은 사이드카를 띄울 때 같은 이름으로 꺼낸다
+ *  (`src-tauri/src/storage_secret.rs`). */
+export async function setDeviceSecret(name: string, value: string): Promise<boolean> {
+  const store = await secretStore();
+  if (!store) return false;
+  await store("secret_set", { name, value });
+  return true;
+}
+
 /** 이 기기에 OS 저장소가 없어 키가 앱 프로파일에 눕는가. 설정 화면이 이걸 적는다. */
 export function keyIsOnDisk(): boolean {
   return secretOk === false && !!(localStorage.getItem(K_KEY) || "").trim();
