@@ -4252,6 +4252,41 @@ def _brief_candidate_rows(picked: list[dict]) -> list[dict]:
     } for h in picked]
 
 
+#: choose 의 첫 후보 재료에 싣는 발췌 수 상한(`max_excerpts` 가 더 작으면 그쪽).
+_BRIEF_CHOOSE_EXCERPTS = 2
+
+
+def _brief_candidate_material(store, cand: dict, *, max_excerpts: int, owner: str, mode,
+                              historical: bool, as_of_scope, known_scope) -> dict | None:
+    """choose 의 첫 후보 재료 — 확정 답과 같은 이름(one_liner·body_src·body_cite·excerpts)으로,
+    발췌는 같은 시간 규칙으로 거른다. 확정이 아니므로 `node`·`grounds`·관계는 싣지 않는다.
+    후보가 안 열리면 None. 감춘 수는 choose 응답의 수에 더하지 않고 재료 안의 알림으로만 낸다.
+    근거: [[vinc.plan.choose-cost-measurement-2026-10-19]]"""
+    cid = str(cand.get("id") or "")
+    if not cid:
+        return None
+    got = node_context(owner=owner, node=cid, limit=max(1, int(max_excerpts)), store=store)
+    if not got.get("executed"):
+        return None
+    ctx, note = _brief_scope_material({**got, "links": {}}, store, {}, owner=owner, mode=mode,
+                                      historical=historical, as_of_scope=as_of_scope,
+                                      known_scope=known_scope)
+    ctx["excerpts"] = list(ctx.get("excerpts") or [])[:min(_BRIEF_CHOOSE_EXCERPTS,
+                                                          max(0, int(max_excerpts)))]
+    body = _brief_body(ctx)
+    out = {"candidate": cid, "cite_id": cid, "one_liner": body["text"],
+           "body_src": body["src"], "body_cite": body["cite"], "excerpts": ctx["excerpts"]}
+    if note:
+        out["validity_note"] = note
+    why = [f"reading around the node failed: {got['error']}" if got.get("error") else "",
+           f"excerpts could not be searched: {got['excerpt_error']}"
+           if got.get("excerpt_error") else ""]
+    if any(why):
+        out["partial"] = True
+        out["partial_note"] = "; ".join(w for w in why if w)
+    return out
+
+
 #: 제목이 안 먹은 부분 중 **검색이 가져온 어디에도 없는** 토큰의 비율이 이 값을 넘으면
 #: 확신하지 않는다. 실측으로 고른 자리다(2026-09-10, 정답 81문항 · 확신 18건):
 #:
@@ -4498,7 +4533,9 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
            resolved_via("id" — 직참조로 확정된 경우에만),
            fell_through/unreadable(안 열린 후보·질문 속 id 의 공개),
            search_error(청크 팔이 실패한 사유 — 해소는 노드 팔로 계속한다),
-           partial/partial_note(노드는 읽었는데 발췌·관계를 못 읽었을 때)}.
+           partial/partial_note(노드는 읽었는데 발췌·관계를 못 읽었을 때),
+           candidate_material(choose 에서만 — 첫 후보의 {candidate, cite_id, one_liner,
+           body_src, body_cite, excerpts(최대 2)})}.
     확정 노드와 되묻기 후보는 `quotes`(글자 그대로의 인용 단위)를 달고 올 수 있다.
 
     시간 인자(`as_of`·`mode`·`historical`·`known_at`)는 여기서 전부 적용한다 —
@@ -4755,6 +4792,13 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
                 _brief_attach_section(base, store, owner=owner, query=query, res=res,
                                       query_embedding=query_embedding,
                                       nodes=[str(c.get("id") or "") for c in base["candidates"]])
+            # 첫 후보의 재료를 따로 한 키에 싣는다. status·candidates 는 그대로다 — 이 재료가
+            # 확정 답으로 읽히면 안 된다(재료의 꼴과 이유는 `_brief_candidate_material`).
+            if not _reask and base["candidates"]:
+                _mat = _brief_candidate_material(store, base["candidates"][0],
+                                                 max_excerpts=max_excerpts, **rule)
+                if _mat is not None:
+                    base["candidate_material"] = _mat
             return base
         if status == "none":
             return base
