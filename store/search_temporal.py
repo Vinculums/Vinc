@@ -280,14 +280,32 @@ def _interval(t):
             instant(t["valid_until"]) or dt.datetime.max.replace(tzinfo=dt.timezone.utc))
 
 
-def current_order(rows, sources=None):
-    """Order by validity and relevance; use claim freshness only on ties, never update time."""
+def superseded_old_end(row):
+    """근거 있는 SUPERSEDES 에서 대체된 쪽인가(비교 가능·불가 모두). 순환과 근거 없는 간선은 아니다."""
+    return any(e.get("evidence") and e.get("status") in ("comparable", "uncomparable")
+               for e in row["temporal"].get("supersession") or ())
+
+
+def current_order(rows, sources=None, window=None):
+    """Order by validity and relevance; use claim freshness only on ties, never update time.
+
+    `window` 가 있으면 관련도 순 상위 `window` 행 안에서만 세 묶음으로 세운다(묶음 안은 관련도 순):
+    구간이 지금인 행, 나머지, 근거 있는 SUPERSEDES 에서 대체된 쪽(비교 가능 여부 무관). `window=0` 은
+    융합 전 팔이다: 관련도 순에서 그 대체된 쪽만 맨 뒤로 보낸다. 어느 쪽도 숨기지 않고 `claim_status`
+    도 그대로다. 없으면(청크 풀) 전체를 구간 먼저 세운다. 노드는 종류마다 구간 유무가 달라서
+    전체를 구간 먼저 세우면 덜 맞는 기록·결정이 넓은 후보에서 올라와 상위를 채운다.
+    근거: [[record:kind-leaks-on-the-81-row-gold-set-current-sort-81-fields-73-graph-arm-61-tie-break-17-id-prefix-0-2026-11-11]]"""
     sources = sources or {}
     def relevance(r):
         if "rrf_score" in r or "score" in r:
             return (float(r.get("rrf_score") or r.get("score") or 0),)
         return (r.get("hit_tokens", 0), r.get("title_tokens", 0), -float(r.get("distance") or 0))
-    rows.sort(key=lambda r: (r["temporal"]["validity"] != "current", tuple(-v for v in relevance(r))))
+    if window is None:
+        rows.sort(key=lambda r: (r["temporal"]["validity"] != "current", tuple(-v for v in relevance(r))))
+    else:
+        rows.sort(key=lambda r: tuple(-v for v in relevance(r)))
+        rows[:window] = sorted(rows[:window], key=lambda r: 2 if superseded_old_end(r)
+                               else 0 if r["temporal"]["validity"] == "current" else 1)
     groups = {}
     for i, row in enumerate(rows):
         key = claim_key(sources.get(row.get("id"), {}))
@@ -297,9 +315,12 @@ def current_order(rows, sources=None):
         ordered = sorted((rows[i] for i in positions), key=lambda r: instant(r["temporal"]["valid_from"]) or dt.datetime.min.replace(tzinfo=dt.timezone.utc), reverse=True)
         for i, row in zip(positions, ordered):
             rows[i] = row
+    if window == 0:
+        rows.sort(key=superseded_old_end)
 
 
-def finish_nodes(store, hits, *, owner=None, scope=None, current=False, known_at=None, stats=None):
+def finish_nodes(store, hits, *, owner=None, scope=None, current=False, known_at=None, stats=None,
+                 window=None):
     sources = node_sources(store, [h.get("id") for h in hits], owner=owner)
     edges, seen_edges = [], set()
     exhausted = True
@@ -350,7 +371,7 @@ def finish_nodes(store, hits, *, owner=None, scope=None, current=False, known_at
         if stats is not None:
             stats.setdefault("current_hidden", set()).update(h["id"] for h in hits if h["id"] in retired or h["temporal"]["validity"] in ("historical", "future"))
         hits[:] = [h for h in hits if h["id"] not in retired and h["temporal"]["validity"] not in ("historical", "future")]
-        current_order(hits, sources)
+        current_order(hits, sources, window=window)
     return hits
 
 

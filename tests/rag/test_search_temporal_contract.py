@@ -256,6 +256,51 @@ def test_current_relevance_before_same_claim_recency():
     assert [h["id"] for h in hits] == ["b", "a", "c"]
 
 
+def test_current_puts_a_known_interval_first_only_inside_the_window():
+    hits = [{"id": "concept:near", "kind": "concept", "score": 10},
+            {"id": "record:mid", "kind": "record", "score": 5, "valid_from": "2000"},
+            {"id": "concept:far", "kind": "concept", "score": 3},
+            {"id": "record:deep", "kind": "record", "score": 1, "valid_from": "2000"}]
+    for h in hits:
+        temporal.stamp(h)
+    ids = lambda rows: [h["id"] for h in rows]  # noqa: E731
+    whole = list(hits)
+    temporal.current_order(whole)
+    assert ids(whole) == ["record:mid", "record:deep", "concept:near", "concept:far"]
+    two = list(hits)
+    temporal.current_order(two, window=2)
+    assert ids(two) == ["record:mid", "concept:near", "concept:far", "record:deep"]
+    none = list(reversed(hits))
+    temporal.current_order(none, window=0)
+    assert ids(none) == ["concept:near", "record:mid", "concept:far", "record:deep"]
+
+
+def test_current_window_puts_an_evidenced_supersession_old_end_last():
+    hits = [{"id": "decision:old", "kind": "decision", "score": 10},
+            {"id": "concept:near", "kind": "concept", "score": 8},
+            {"id": "record:now", "kind": "record", "score": 5, "valid_from": "2000"},
+            {"id": "record:old-now", "kind": "record", "score": 4, "valid_from": "2000"},
+            {"id": "record:noproof", "kind": "record", "score": 3, "valid_from": "2000"},
+            {"id": "record:deep", "kind": "record", "score": 1, "valid_from": "2000"}]
+    for h in hits:
+        temporal.stamp(h)
+    edge = {"new": "x", "evidence": "replaced"}
+    hits[0]["temporal"]["supersession"].append({**edge, "old": "decision:old", "status": "uncomparable"})
+    hits[3]["temporal"]["supersession"].append({**edge, "old": "record:old-now", "status": "comparable"})
+    hits[4]["temporal"]["supersession"].append({**edge, "old": "record:noproof", "evidence": "",
+                                                "status": "unsupported"})
+    temporal.current_order(hits, window=5)
+    # 숨기지 않는다: 창 안 순서만 바뀌고 주장 상태도 그대로다.
+    assert [h["id"] for h in hits] == ["record:now", "record:noproof", "concept:near",
+                                       "decision:old", "record:old-now", "record:deep"]
+    assert all(h["temporal"]["claim_status"] != "superseded" for h in hits)
+    arm = sorted(hits, key=lambda h: h["id"])
+    temporal.current_order(arm, window=0)
+    # 팔(window=0): 관련도 순, 근거 있는 대체에서 대체된 쪽만 맨 뒤로. 구간 먼저는 하지 않는다.
+    assert [h["id"] for h in arm] == ["concept:near", "record:now", "record:noproof",
+                                      "record:deep", "decision:old", "record:old-now"]
+
+
 def test_cursor_binds_modes_historical_known_asof_and_owner(st):
     for i in range(3):
         docstore.put_doc(st, owner=OWNER, doc_id=f"page{i}", text=f"Marker synthetic page{i}.", valid_from="2000")

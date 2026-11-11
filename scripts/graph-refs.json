@@ -942,6 +942,7 @@
     "record:job-count-checkpointing-was-removed",
     "record:job-isolation-has-to-catch-baseexception",
     "record:keep-index-mode-survived-104-trials-on-ladybug-0-21-2-at-two-cores-while-the-unguarded-control-crashed-1-of-20-2026-10-18",
+    "record:kind-leaks-on-the-81-row-gold-set-current-sort-81-fields-73-graph-arm-61-tie-break-17-id-prefix-0-2026-11-11",
     "record:korean-titled-nodes-answer-with-provenance-excerpts-2026-09-14",
     "record:korean-to-korean-node-misses-are-the-semantic-second-candidate-lost-to-a-tie-at-the-top-five-cut-2026-10-19",
     "record:linux-50-forced-kill-reopen-requalification-on-main-2026-11-04",
@@ -1530,6 +1531,9 @@
       "validity": "current"
     },
     "record:keep-index-mode-survived-104-trials-on-ladybug-0-21-2-at-two-cores-while-the-unguarded-control-crashed-1-of-20-2026-10-18": {
+      "validity": "current"
+    },
+    "record:kind-leaks-on-the-81-row-gold-set-current-sort-81-fields-73-graph-arm-61-tie-break-17-id-prefix-0-2026-11-11": {
       "validity": "current"
     },
     "record:korean-titled-nodes-answer-with-provenance-excerpts-2026-09-14": {

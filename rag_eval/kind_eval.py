@@ -314,16 +314,16 @@ def leak_current_relevance_only():
     from store import search_temporal as T
     orig = T.current_order
 
-    def order_safe(rows, sources=None):
+    def order_safe(rows, sources=None, **kw):
         # 청크 풀(`doc_id` 가 있는 행)은 그대로 둔다 — 노드 순서만 바꾼다.
         if any("doc_id" in r for r in rows):
-            return orig(rows, sources)
+            return orig(rows, sources, **kw)
         # 구간 상태를 모두 같게 보이게 한 뒤 원래 함수를 부르고, 행 객체로 되돌린다.
         saved = {id(r): r["temporal"]["validity"] for r in rows}
         for r in rows:
             r["temporal"]["validity"] = "current"
         try:
-            orig(rows, sources)
+            orig(rows, sources, **kw)
         finally:
             for r in rows:
                 r["temporal"]["validity"] = saved.get(id(r), r["temporal"]["validity"])

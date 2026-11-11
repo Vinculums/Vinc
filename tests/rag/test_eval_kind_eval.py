@@ -141,15 +141,17 @@ class OnAStore(unittest.TestCase):
         with K.leak_identity():
             self.assertEqual(ids()[0], "concept:zzz-note", "대조 감싸기가 순서를 바꿨다")
 
-    def test_current_mode_puts_an_interval_first_and_the_switch_orders_by_relevance(self):
+    def test_current_mode_puts_an_interval_first_only_inside_the_shown_window(self):
         from api import query as q
-        ids = lambda: [h["id"] for h in q.search(  # noqa: E731
-            "rain gauge calibration drift", top_k=2, owner=self.OWNER, store=self.store,
+        ids = lambda k: [h["id"] for h in q.search(  # noqa: E731
+            "rain gauge calibration drift", top_k=k, owner=self.OWNER, store=self.store,
             mode="current")["node_hits"]]
-        self.assertEqual(ids(), ["record:rain-memo", "concept:rain-gauge"],
-                         "오늘의 누수: 구간 있는 종류가 덜 맞아도 먼저")
+        self.assertEqual(ids(2), ["record:rain-memo", "concept:rain-gauge"],
+                         "창 안에서는 구간이 지금인 행이 먼저")
+        self.assertEqual(ids(1), ["concept:rain-gauge"],
+                         "덜 맞는 기록이 창 밖에서 올라와 자리를 빼앗지 않는다")
         with K.leak_current_relevance_only():
-            self.assertEqual(ids(), ["concept:rain-gauge", "record:rain-memo"])
+            self.assertEqual(ids(2), ["concept:rain-gauge", "record:rain-memo"])
 
 
 if __name__ == "__main__":
