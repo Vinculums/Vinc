@@ -1617,7 +1617,6 @@ const EN = {
       goTo: (s: string) => `Go to ${s}`,
       ingest: "Add data", share: "Share a pack", settings: "Open Settings",
       keyboard: "Keyboard", goSurface: "Go to screen", cmdPalette: "Command palette",
-      fit: "Fit to screen (View)",
       back: "Step back", thisSheet: "This sheet",
     },
     packsUi: {
@@ -3120,7 +3119,6 @@ const KO: Deck = {
       goTo: (s) => `${s} 열기`,
       ingest: "정보 추가하기", share: "팩 공유하기", settings: "설정 열기",
       keyboard: "단축키", goSurface: "화면 이동", cmdPalette: "명령 팔레트",
-      fit: "화면에 맞추기 (View)",
       back: "한 단계 뒤로", thisSheet: "이 도움말",
     },
     packsUi: {
