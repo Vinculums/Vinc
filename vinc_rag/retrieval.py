@@ -1396,7 +1396,8 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
                                                    scope=None if mode == "current" else _scope,
                                                    doc_intervals=True)
                 if mode == "current":
-                    # 팔 안은 관련도 순, 근거 있는 대체에서 대체된 쪽만 뒤로(window=0). 구간 먼저는 융합 뒤 창에서만.
+                    # 팔 안은 관련도 순, 근거 있게 대체된 행만 뒤로(window=0, `superseded_old_end`).
+                    # 구간 먼저는 융합 뒤 창에서만.
                     temporal.finish_nodes(store, title_hits, owner=owner, scope=_scope, current=True, known_at=known_at, stats=_vstats,
                                           window=0)
                     if _vstats.get("current_hidden"):

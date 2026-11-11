@@ -280,9 +280,14 @@ def _interval(t):
             instant(t["valid_until"]) or dt.datetime.max.replace(tzinfo=dt.timezone.utc))
 
 
-def superseded_old_end(row):
-    """근거 있는 SUPERSEDES 에서 대체된 쪽인가(비교 가능·불가 모두). 순환과 근거 없는 간선은 아니다."""
+def superseded_old_end(row, current_ids=frozenset()):
+    """근거 있는 SUPERSEDES 에서 대체된 쪽(비교 가능·불가 모두)을 내릴 것인가. 자기 구간이 오늘
+    성립하지 않거나, 그 간선의 새 쪽이 `current_ids`(같이 세우는 행 중 구간이 지금인 id)에 있으면
+    내린다. 새 쪽이 없으면(미래에 시작해 이미 빠졌다) 오늘 유효한 대체된 쪽은 그대로 둔다.
+    순환과 근거 없는 간선은 세지 않는다."""
+    own_current = row["temporal"]["validity"] == "current"
     return any(e.get("evidence") and e.get("status") in ("comparable", "uncomparable")
+               and (not own_current or e.get("new") in current_ids)
                for e in row["temporal"].get("supersession") or ())
 
 
@@ -290,8 +295,8 @@ def current_order(rows, sources=None, window=None):
     """Order by validity and relevance; use claim freshness only on ties, never update time.
 
     `window` 가 있으면 관련도 순 상위 `window` 행 안에서만 세 묶음으로 세운다(묶음 안은 관련도 순):
-    구간이 지금인 행, 나머지, 근거 있는 SUPERSEDES 에서 대체된 쪽(비교 가능 여부 무관). `window=0` 은
-    융합 전 팔이다: 관련도 순에서 그 대체된 쪽만 맨 뒤로 보낸다. 어느 쪽도 숨기지 않고 `claim_status`
+    구간이 지금인 행, 나머지, 근거 있게 대체된 행(:func:`superseded_old_end`). `window=0` 은
+    융합 전 팔이다: 관련도 순에서 그 세 번째 묶음만 맨 뒤로 보낸다. 어느 쪽도 숨기지 않고 `claim_status`
     도 그대로다. 없으면(청크 풀) 전체를 구간 먼저 세운다. 노드는 종류마다 구간 유무가 달라서
     전체를 구간 먼저 세우면 덜 맞는 기록·결정이 넓은 후보에서 올라와 상위를 채운다.
     근거: [[record:kind-leaks-on-the-81-row-gold-set-current-sort-81-fields-73-graph-arm-61-tie-break-17-id-prefix-0-2026-11-11]]"""
@@ -303,8 +308,10 @@ def current_order(rows, sources=None, window=None):
     if window is None:
         rows.sort(key=lambda r: (r["temporal"]["validity"] != "current", tuple(-v for v in relevance(r))))
     else:
+        current_ids = frozenset(r.get("id") for r in rows if r["temporal"]["validity"] == "current")
+        demote = lambda r: superseded_old_end(r, current_ids)  # noqa: E731
         rows.sort(key=lambda r: tuple(-v for v in relevance(r)))
-        rows[:window] = sorted(rows[:window], key=lambda r: 2 if superseded_old_end(r)
+        rows[:window] = sorted(rows[:window], key=lambda r: 2 if demote(r)
                                else 0 if r["temporal"]["validity"] == "current" else 1)
     groups = {}
     for i, row in enumerate(rows):
@@ -316,7 +323,7 @@ def current_order(rows, sources=None, window=None):
         for i, row in zip(positions, ordered):
             rows[i] = row
     if window == 0:
-        rows.sort(key=superseded_old_end)
+        rows.sort(key=demote)
 
 
 def finish_nodes(store, hits, *, owner=None, scope=None, current=False, known_at=None, stats=None,
