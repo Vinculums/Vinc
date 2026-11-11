@@ -95,7 +95,7 @@ export async function mountConventions(host: HTMLElement, sheet: { body: HTMLEle
           <details class="conv-fold">
             <summary>${C.generated}</summary>
             <pre class="conv-gen" aria-readonly="true">${esc(gen)}</pre>
-            <textarea id="conv-tail" class="conv-ta" spellcheck="false" aria-label="${esc(C.prose)}">${esc(tail)}</textarea>
+            <textarea id="conv-tail" class="conv-ta" spellcheck="false" aria-label="${esc(C.proseAfter)}">${esc(tail)}</textarea>
           </details>`}
         <div id="conv-ratify"></div>
       </div>`;
