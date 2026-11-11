@@ -1113,6 +1113,12 @@ body {
   background: hsl(var(--card)); box-shadow: var(--shadow-elev-3, none);
   padding: .35rem; z-index: 61;
 }
+/* LNB 에 놓인 칸의 모드 메뉴는 화면 고정이다. LNB 는 넘치는 것을 자르므로 absolute 로 두면 힌트가
+   LNB 가장자리에서 잘린다. 자리는 topbar.ts placeFloats 가 모드 단추 아래로 준다(--lnbm-*). 폭은 화면 안에 머문다 */
+.lnb-search .tb-modemenu {
+  position: fixed; top: var(--lnbm-top, 4rem); left: var(--lnbm-left, var(--space-2));
+  max-width: calc(100vw - var(--lnbm-left, var(--space-2)) - var(--space-2)); z-index: 80;
+}
 .tb-mrow {
   display: grid; grid-template-columns: 1.1rem 1fr auto; gap: .6rem;
   align-items: center; width: 100%; text-align: left;

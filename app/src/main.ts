@@ -256,10 +256,10 @@ async function openCheatsheet() {
   const sheet = openSheet({ title: COPY.ui.palette.keyboard });
   sheet.body.innerHTML =
     // 표 안의 범위도 표면 수에서 나온다 — 손으로 적으면 위 단축키와 갈라진다.
-    [[`1–${ORDER.length}`, COPY.ui.palette.goSurface], ["⌘/Ctrl K", COPY.ui.topbar.searchPh],
+    [[`1–${ORDER.length}`, COPY.ui.palette.goSurface], ["⌘/Ctrl K", COPY.ui.topbar.searchLabel],
      ["⌘/Ctrl ⇧ K", COPY.ui.palette.cmdPalette],
      ["⌘/Ctrl N", COPY.author.paletteDoc], ["⌘/Ctrl ⇧ N", COPY.author.paletteNode],
-     ["F", COPY.ui.palette.fit], ["Esc", COPY.ui.palette.back], ["?", COPY.ui.palette.thisSheet]]
+     ["Esc", COPY.ui.palette.back], ["?", COPY.ui.palette.thisSheet]]
       .map(([k, v]) => `<div class="palette-row"><span>${v}</span><span class="hint">${k}</span></div>`)
       .join("");
 }
