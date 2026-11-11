@@ -165,7 +165,9 @@ def _encode_call(url: str, texts: list[str], kind: str, timeout: float, *,
 
 from store.config import load_config
 from store import config as store_config
-from store.location import DatabaseLocation, LocationError, read_location
+from store.location import (AccountLocation, DatabaseLocation, LocationError, parse_database,
+                            parse_location, read_location)
+from store.neo4j_backend import BLOCKING_RISKS
 from store import httpbody
 from store import request_timing
 from store.write_waits import WRITE_WAITS
@@ -223,6 +225,20 @@ def _ingest_recall(store, body: dict) -> dict:
 
 
 DEFAULT_INGEST = {"recall": _ingest_recall}
+
+
+def _check_database(body: dict) -> tuple[dict | None, dict | None]:
+    """연결 확인 한 번. (확인 결과, None) 아니면 (None, 400 바디). 비밀번호는 결과에 없다."""
+    try:
+        loc = parse_database({**{k: body.get(k) for k in ("uri", "database", "user")},
+                              "secret_ref": "check"})
+    except LocationError as exc:
+        return None, {"error": "bad_location", "note": str(exc)}
+    password = body.get("password")
+    if not isinstance(password, str) or not password:
+        return None, {"error": "missing field: password"}
+    from store.neo4j_backend import inspect_database
+    return inspect_database(loc.uri, user=loc.user, password=password, database=loc.database), None
 
 
 def store_unavailable() -> dict:
@@ -2656,6 +2672,17 @@ class VincApp:
         """폴더 하나를 받기 전에 살핀다(`api.localmode.inspect_folder`). 아무것도 안 쓴다."""
         return 200, {"executed": True, **localmode.inspect_folder(str(p.get("path") or ""))}
 
+    def write_config_inspect_database(self, body):
+        """사용자 데이터베이스 하나를 고르기 전에 살핀다(`store.neo4j_backend.inspect_database`).
+
+        바디: `uri`·`database`·`user`·`password`. 연결해 보고 아무것도 남기지 않는다(임대도 안 집는다).
+        주소·이름이 틀렸으면 400 이고, 연결 실패·비밀번호 틀림은 200 의 `ok: false` 와 `problem` 이다
+        (화면이 그 문장을 그린다). 비밀번호는 이 호출 안에서만 쓰고 버린다."""
+        check, err = _check_database(body)
+        if err:
+            return 400, err
+        return 200, {"executed": True, **check}
+
     def write_config(self, body):
         """저장 설정을 바꾼다: `mode`(account|local) · `mode_chosen`(사람이 골랐다) ·
         `data_path`(폴더, 빈 값 = 기본).
@@ -2669,6 +2696,38 @@ class VincApp:
         나르는 것은 `/sync/pull-all`·`/sync/push-all` 이다."""
         updates: dict = {}
         info = None
+        check = None
+        if "location" in body:
+            # 저장 위치 한 덩이(`store.location`). 예전 키(mode·data_path)와 섞어 보내지 않는다.
+            if any(k in body for k in ("mode", "data_path")):
+                return 400, {"error": "send location alone, not with mode or data_path"}
+            try:
+                loc = parse_location(body["location"])
+            except LocationError as exc:
+                return 400, {"error": "bad_location", "note": str(exc)}
+            if isinstance(loc, DatabaseLocation):
+                if self._data_pinned():
+                    return 409, {"error": "pinned",
+                                 "note": "this process was started with a fixed data path "
+                                         "(--data or MEMORY_DATA_DIR)"}
+                check, err = _check_database({**loc.to_dict(), "password": body.get("password")})
+                if err:
+                    return 400, err
+                if not check["ok"]:
+                    return 400, {"error": check["problem"], "check": check}
+                blocking = [r for r in check["risks"] if r in BLOCKING_RISKS]
+                if blocking:
+                    return 400, {"error": blocking[0], "check": check}
+                if check["risks"] and not truthy(body.get("accept_risk")):
+                    return 409, {"error": "risky_database", "check": check}
+                d = loc.to_dict()
+                d.pop("kind")
+                updates.update({"mode": "database", "database": d})
+            elif isinstance(loc, AccountLocation):
+                updates["mode"] = "account"
+            else:
+                # 폴더는 예전 길(mode local + data_path)로 적는다. 폴더 검사도 그 길이 한다.
+                body = {**body, "mode": "local", "data_path": loc.path or ""}
         if "mode" in body:
             mode = body.get("mode")
             if mode not in ("account", "local"):
@@ -2709,6 +2768,8 @@ class VincApp:
         view = self._config_view()
         if info is not None:
             view["inspect"] = info
+        if check is not None:
+            view["check"] = check
         return 200, view
 
     #: `serve` 가 채우는 정지 스위치. 테스트·임베드처럼 `serve` 밖에서 만든 앱은 None 이다.
@@ -3185,7 +3246,7 @@ class _Handler(BaseHTTPRequestHandler):
         "/space/proxy",
         # 저장 설정은 그래프 밖 파일이다. 폴더를 잘못 골라 스토어가 안 열렸을 때 다시
         # 고를 길이 이것뿐이다(VIN-130).
-        "/config",
+        "/config", "/config/inspect-database",
         # 안 열린 사이드카도 닫고 다시 띄울 수 있어야 한다(VIN-130).
         "/shutdown",
     })
@@ -3248,6 +3309,8 @@ class _Handler(BaseHTTPRequestHandler):
             "/sync/push-all": app.submit_sync_push_all,
             "/sync/pull-all": app.submit_sync_pull_all,
             "/config": app.write_config,   # 저장 설정(VIN-130)
+            # 데이터베이스를 고르기 전에 살핀다. 비밀번호가 바디에 오므로 GET 이 아니다.
+            "/config/inspect-database": app.write_config_inspect_database,
             "/shutdown": app.write_shutdown,   # 셸의 재기동 전 정상 종료(VIN-130)
             # 계정 연결(디바이스 플로우) — state 발급(인증). callback 은 _dispatch 의
             # 무인증 예외 경로(여기 표에 없음 — 표는 인증 이후에만 닿는다).

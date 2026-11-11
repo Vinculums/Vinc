@@ -428,3 +428,119 @@ class _ReaderView:
 
     def close(self) -> None:
         pass
+
+
+# ── 연결 확인(저장 위치를 고르기 전에) ─────────────────────────────────────────
+#: 그래프 노드로 세는 표(청크·벡터 미러는 문서와 노드의 부속이라 세지 않는다).
+_COUNTED_LABELS = ("Episode", "Concept", "Decision", "Bridge", "Domain", "Record",
+                   "SkillExecution", "LearnerPattern", "Entity")
+#: 이 왕복 시간(ms, 세 번의 중앙값)을 넘으면 원격 지연을 위험으로 알린다. 검색 한 번이 수십 번 왕복한다.
+REMOTE_LATENCY_MS = 30.0
+#: 막는 위험. 나머지(평문 연결·원격 지연·남의 데이터)는 사람이 확인하면 받는다.
+BLOCKING_RISKS = ("version_below_floor", "read_only_user")
+
+
+def vinc_labels() -> set[str]:
+    return set(node_table_specs()) | set(meta_table_specs()) | {LEASE_LABEL}
+
+
+def inspect_database(uri: str, *, user: str, password: str, database: str,
+                     timeout_s: float = 8.0) -> dict:
+    """연결해 보고 **아무것도 남기지 않는다**(쓰기 권한은 되돌리는 트랜잭션으로 본다). 임대를 집지 않는다.
+
+    `ok` 가 False 면 이 위치를 받을 수 없고 `problem` 이 이유다: unreachable · auth_failed ·
+    database_not_found · driver_missing · error. `risks` 는 받을 수 있지만 사람에게 말할 것이다.
+    비밀번호는 결과·로그 어디에도 싣지 않는다."""
+    import time
+    from urllib.parse import urlsplit
+    out: dict = {"ok": False, "problem": None, "detail": None, "reachable": False, "auth_ok": False,
+                 "server_version": None, "edition": None, "version_supported": None,
+                 "write_permission": None, "latency_ms": None,
+                 "vinc_schema_version": None, "vinc_counts": {"nodes": 0, "docs": 0},
+                 "foreign_labels": {"count": 0, "names": [], "nodes": 0},
+                 "writer_lease": None, "risks": []}
+    try:
+        from neo4j import GraphDatabase, NotificationMinimumSeverity
+        from neo4j.exceptions import AuthError, ClientError, Forbidden, ServiceUnavailable
+    except ImportError:
+        out["problem"] = "driver_missing"
+        return out
+    if urlsplit(uri).scheme not in ("neo4j+s", "neo4j+ssc", "bolt+s", "bolt+ssc"):
+        out["risks"].append("unencrypted_transport")
+    driver = GraphDatabase.driver(uri, auth=(user, password), connection_timeout=timeout_s,
+                                  connection_acquisition_timeout=timeout_s,
+                                  notifications_min_severity=NotificationMinimumSeverity.OFF)
+    try:
+        try:
+            driver.verify_connectivity()
+        except AuthError as exc:
+            out.update(reachable=True, problem="auth_failed", detail=_safe_error(exc))
+            return out
+        except (ServiceUnavailable, OSError) as exc:
+            out.update(problem="unreachable", detail=_safe_error(exc))
+            return out
+        out.update(reachable=True, auth_ok=True)
+        info = driver.get_server_info()
+        out["server_version"] = (info.agent or "").split("/", 1)[-1] or None
+        out["version_supported"] = _version_tuple(out["server_version"] or "") >= VERSION_FLOOR
+        if not out["version_supported"]:
+            out["risks"].append("version_below_floor")
+        with driver.session(database=database) as s:
+            try:
+                rows = s.run("CALL dbms.components() YIELD edition RETURN edition").data()
+                out["edition"] = rows[0]["edition"] if rows else None
+            except ClientError as exc:
+                if "DatabaseNotFound" in (exc.code or ""):
+                    out.update(problem="database_not_found", detail=_safe_error(exc))
+                    return out
+                raise
+            rtts = []
+            for _ in range(3):
+                t0 = time.perf_counter()
+                s.run("RETURN 1").consume()
+                rtts.append((time.perf_counter() - t0) * 1000)
+            out["latency_ms"] = round(sorted(rtts)[1], 1)
+            if out["latency_ms"] > REMOTE_LATENCY_MS:
+                out["risks"].append("remote_latency")
+            vinc = vinc_labels()
+            labels = [r["label"] for r in s.run("CALL db.labels() YIELD label RETURN label").data()]
+            present = [lb for lb in labels if lb in vinc]
+            foreign = sorted(lb for lb in labels if lb not in vinc)
+            if present:
+                row = s.run("MATCH (m:_SchemaMeta {key: 'schema_version'}) RETURN m.value AS v").single()
+                out["vinc_schema_version"] = int(row["v"]) if row and str(row["v"]).isdigit() else None
+                out["vinc_counts"]["nodes"] = s.run(
+                    "MATCH (n) WHERE any(l IN labels(n) WHERE l IN $ls) RETURN count(n) AS c",
+                    {"ls": list(_COUNTED_LABELS)}).single()["c"]
+                out["vinc_counts"]["docs"] = s.run("MATCH (d:_DocMeta) RETURN count(d) AS c").single()["c"]
+                lease = s.run(f"MATCH (l:{LEASE_LABEL} {{key: 'writer'}}) "
+                              "RETURN l.holder AS holder, l.expires > timestamp() AS active").single()
+                if lease is not None:
+                    out["writer_lease"] = {"holder": lease["holder"], "active": bool(lease["active"])}
+            if foreign:
+                n = s.run("MATCH (n) WHERE none(l IN labels(n) WHERE l IN $ls) RETURN count(n) AS c",
+                          {"ls": sorted(vinc)}).single()["c"]
+                out["foreign_labels"] = {"count": len(foreign), "names": foreign[:20], "nodes": n}
+                if n:
+                    out["risks"].append("foreign_data_present")
+            # 쓰기 권한: 되돌리는 트랜잭션 안에서 만들어 본다. 커밋하지 않으므로 남는 것이 없다.
+            tx = s.begin_transaction()
+            try:
+                tx.run("CREATE (p:_VincProbe) DELETE p").consume()
+                out["write_permission"] = True
+            except (Forbidden, ClientError) as exc:
+                if "Forbidden" in type(exc).__name__ or "Security" in (exc.code or "") \
+                        or "AccessMode" in (exc.code or ""):
+                    out["write_permission"] = False
+                    out["risks"].append("read_only_user")
+                else:
+                    raise
+            finally:
+                tx.rollback()
+        out["ok"] = True
+        return out
+    except Exception as exc:   # noqa: BLE001 — 확인은 사유를 돌려주지 예외로 죽지 않는다
+        out.update(problem=out["problem"] or "error", detail=f"{type(exc).__name__}: {_safe_error(exc)}")
+        return out
+    finally:
+        driver.close()
