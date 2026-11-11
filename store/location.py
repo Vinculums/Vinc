@@ -176,3 +176,59 @@ def take_secret(environ=None) -> str | None:
     env = os.environ if environ is None else environ
     value = env.pop(SECRET_ENV, None)
     return value or None
+
+
+# ── 환경 변수로 정하는 저장 위치(셀프호스트 허브) ─────────────────────────────
+# 허브에는 설정 파일을 고를 화면이 없다. 컨테이너 환경이 저장 위치를 말한다:
+# `VINC_DATABASE_URI` 가 있으면 그 Neo4j, 없으면 지금처럼 볼륨의 폴더(`--data`)다.
+# 비밀번호는 `SECRET_ENV` 나 `SECRET_FILE_ENV`(도커·쿠버네티스 비밀 파일)로만 온다.
+URI_ENV = "VINC_DATABASE_URI"
+NAME_ENV = "VINC_DATABASE_NAME"
+USER_ENV = "VINC_DATABASE_USER"
+SECRET_FILE_ENV = "VINC_DATABASE_SECRET_FILE"
+#: 평문 연결(`neo4j://`·`bolt://`)을 이 기계 밖의 호스트로 여는 것을 받아들인다는 표시.
+ACCEPT_PLAINTEXT_ENV = "VINC_DATABASE_ACCEPT_PLAINTEXT"
+#: 환경에서 온 위치의 비밀 참조. 키링 항목이 아니라 "비밀번호는 환경에 있다"는 표지다.
+ENV_SECRET_REF = f"env:{SECRET_ENV}"
+
+_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
+
+
+def env_location(environ=None) -> DatabaseLocation | None:
+    """환경이 말하는 데이터베이스 위치. `URI_ENV` 가 없으면 None(폴더 위치다).
+
+    검사는 설정 파일과 같은 `parse_database` 다. 그에 더해 이 기계 밖의 호스트로 가는 평문
+    연결은 `ACCEPT_PLAINTEXT_ENV` 가 켜져 있지 않으면 거절한다: 화면의 확인처럼 위험을 보여 줄
+    자리가 없으니 기동이 멈추고 로그가 그 말을 한다."""
+    from .envflag import truthy
+    env = os.environ if environ is None else environ
+    uri = (env.get(URI_ENV) or "").strip()
+    if not uri:
+        return None
+    loc = parse_database({"uri": uri, "database": (env.get(NAME_ENV) or "neo4j").strip(),
+                          "user": (env.get(USER_ENV) or "neo4j").strip(),
+                          "secret_ref": ENV_SECRET_REF})
+    host = (urlsplit(loc.uri).hostname or "").lower()
+    if not loc.encrypted and host not in _LOCAL_HOSTS and not truthy(env.get(ACCEPT_PLAINTEXT_ENV)):
+        raise LocationError(
+            f"{URI_ENV} is an unencrypted connection to {host}: use neo4j+s:// or bolt+s://, "
+            f"or set {ACCEPT_PLAINTEXT_ENV}=on to accept it")
+    return loc
+
+
+def env_secret(environ=None) -> str | None:
+    """환경 위치의 비밀번호: `SECRET_ENV`, 없으면 `SECRET_FILE_ENV` 가 가리키는 파일의 첫 줄.
+    파일을 못 읽으면 `LocationError` 다(빈 비밀번호로 열면 인증 실패가 원인을 가린다)."""
+    env = os.environ if environ is None else environ
+    value = env.get(SECRET_ENV)
+    if value:
+        return value
+    path = (env.get(SECRET_FILE_ENV) or "").strip()
+    if not path:
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            line = fh.readline().rstrip("\r\n")
+    except OSError as exc:
+        raise LocationError(f"cannot read {SECRET_FILE_ENV} ({type(exc).__name__})") from None
+    return line or None
