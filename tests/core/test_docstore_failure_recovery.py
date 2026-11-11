@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """합성 문서의 교체 실패를 실제 임베디드 엔진에서 재현한다.
 
-제품 저장 로직은 바꾸지 않는다. 이전 청크 보존과 불완전 본문 읽기 거절은
-다른 보장이다. 전체 원문 재전송이 복구 전제임을 테스트 결과에 남긴다.
+`put_doc` 은 문서 하나를 트랜잭션 하나로 쓴다(`store.write_batch`). 그래서 교체가 도중에 실패하거나
+프로세스가 죽으면 이전 문서가 그대로 남는다. 한 문장씩 쓰는 경로(`VINC_FRAGMENT_BATCH=off`)에서는
+이전 청크 보존과 불완전 본문 읽기 거절이 다른 보장이고, 전체 원문 재전송이 복구 전제다. 두 경로 다
+테스트 결과에 남긴다.
 """
 from __future__ import annotations
 
@@ -89,9 +91,15 @@ def write(store, text):
     return ds.put_doc(store, owner=OWNER, doc_id=DOC, text=text, title="합성 문서", max_chars=120, link=False)
 
 
-def check_interrupted(store, stage, old_chunks):
+def check_interrupted(store, stage, old_chunks, *, batched=True):
     current = chunks(store)
     result = ds.get_doc(store, DOC, owner=OWNER)
+    if batched:
+        # 트랜잭션 하나였으므로 어느 단계에서 끊겨도 이전 문서가 온전히 남는다.
+        assert current == old_chunks
+        assert result["executed"] and result["verified"] and result["text"] == OLD
+        return {"stage": stage, "old_chunks_preserved": True,
+                "read_executed": True, "live_chunks": len(current)}
     if stage == "delete_before":
         assert current == old_chunks  # 삭제 전에는 이전 청크가 물리적으로 남는다.
     else:
@@ -105,9 +113,12 @@ def check_interrupted(store, stage, old_chunks):
             "read_executed": result["executed"], "live_chunks": len(current)}
 
 
+@pytest.mark.parametrize("batch", ["on", "off"])
 @pytest.mark.parametrize("stage", STAGES)
 @pytest.mark.parametrize("retry_text", [OLD, NEW], ids=["retry_original", "retry_replacement"])
-def test_exception_reopen_and_full_text_retry(tmp_path, stage, retry_text):
+def test_exception_reopen_and_full_text_retry(tmp_path, stage, retry_text, batch, monkeypatch):
+    monkeypatch.setenv("VINC_FRAGMENT_BATCH", batch)
+    batched = batch == "on"
     path = tmp_path / "synthetic-store"
     store = make_store(path)
     try:
@@ -118,12 +129,12 @@ def test_exception_reopen_and_full_text_retry(tmp_path, stage, retry_text):
         with pytest.raises(InjectedFailure):
             write(injected, NEW)
         assert injected.hit
-        before = check_interrupted(store, stage, old_chunks)
+        before = check_interrupted(store, stage, old_chunks, batched=batched)
     finally:
         store.close()
     store = make_store(path)
     try:
-        assert check_interrupted(store, stage, old_chunks) == before
+        assert check_interrupted(store, stage, old_chunks, batched=batched) == before
         assert write(store, retry_text)["executed"]
         result = ds.get_doc(store, DOC, owner=OWNER)
         assert result["executed"] and result["verified"] and result["text"] == retry_text
