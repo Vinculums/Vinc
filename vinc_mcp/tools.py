@@ -2044,8 +2044,9 @@ TOOLS.append({"name": "vinc_run_submit", "reference":
         "acting, never after. A waiting run's decision.kind says who answers: person_only only a "
         "signed-in person in the Vinc app (your answer is refused with person_answer_required), "
         "ask_first you as the person chose. A request expires after expires_in_s (default 3600, at "
-        "most 43200) and the run ends blocked. A claim that something ran is blocked. Only the "
-        "output's hash and length are stored."
+        "most 43200) and the run ends blocked. A claim that something ran is blocked, since no host "
+        "proof reaches this tool; the result names it as claim. Say what you attempted and where it "
+        "can be read instead. Only the output's hash and length are stored."
     )
     ),
     "inputSchema": {"type": "object", "properties": {

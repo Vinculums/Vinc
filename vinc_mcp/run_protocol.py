@@ -79,6 +79,12 @@ CAPABILITIES_MAX = 200
 #: 능력 감사의 표지. denied 는 역할이 막은 것, outside_allow 는 허용 목록 밖, unapproved 는 승인 없이 쓴 것.
 CAPABILITY_FLAGS = ("denied", "outside_allow", "unapproved")
 _RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
+#: 완료 주장 대신 통과하는 말. MCP 제출에는 호스트가 관측한 증거(ToolProof)가 닿는 통로가 없어서
+#: "했다"는 문장은 늘 막힌다. 실행 계약(next)과 막힌 결과가 같은 문구를 쓴다.
+RESTATE = ("what you attempted and where its result can be read (a PR, commit or graph id), not "
+           "as success: no host proof reaches this tool")
+#: 완료 주장을 보는 검사. 막힌 결과에 그 문장(claim)과 고쳐 쓰는 법을 싣는다.
+_CLAIM_CHECK = "side_effect_evidence"
 
 
 def episode_id(run_id: str) -> str:
@@ -240,7 +246,7 @@ def _view(props: dict, eid: str, policy: dict | None = None, **extra) -> dict:
     elif props["state"] == "working":
         out["next"] = ("Do this step, then call vinc_run_submit with output. Name an action in "
                        "person_only_requests before taking it when the role lists it as person "
-                       "only or asks first.")
+                       "only or asks first. Report done work as " + RESTATE + ".")
         if policy is not None:
             out["task"] = props.get("task", "")
             out["policy"] = {k: policy[k] for k in ("reads", "gates", "output_kind", "act_policy",
@@ -652,6 +658,25 @@ def person_answer(args: dict, bridge, owner: str, *, actor: str) -> dict:
                 "outcome": props["outcome"]}
 
 
+def _restate(policy: dict, output: str, failed) -> dict:
+    """완료 주장으로 막힌 단계에 그 문장과 고쳐 쓰는 법을 준다. 다른 이유로 막혔으면 빈 dict.
+
+    evidence_sentences 는 모든 검사의 문장이 섞이므로 주장 검사만 다시 돌려 그 문장을 집는다.
+    증거는 넘기지 않는다: 모델이 낸 인자는 증거가 아니다."""
+    ids = {g.get("id") for g in policy.get("gates") or []
+           if isinstance(g, dict) and isinstance(g.get("check"), dict)
+           and g["check"].get("type") == _CLAIM_CHECK}
+    if not (set(failed) & (ids | {"never_" + _CLAIM_CHECK})):
+        return {}
+    only = {**policy, "never_checks": [], "person_only": [],
+            "gates": [g for g in policy.get("gates") or []
+                      if (g.get("check") or {}).get("type") in role_output_gate._REQUIRED]}
+    said = role_output_gate.OutputGate(only).evaluate(output).evidence_sentences
+    if not said:
+        return {}
+    return {"claim": said[0], "next": "Restate claim as " + RESTATE + ". Then submit output again."}
+
+
 def _output(args, bridge, owner, eid, props, policy, flags=()) -> dict:
     output = args.get("output")
     if not isinstance(output, str) or not output.strip() or len(output) > OUTPUT_MAX:
@@ -687,9 +712,10 @@ def _output(args, bridge, owner, eid, props, policy, flags=()) -> dict:
     props["gate_results"] = {"verdict": result.verdict, "failed_checks": list(result.failed_checks)}
     if result.verdict == "block":
         failed = _saved(bridge, owner, eid, props)
-        return failed or _view(props, eid, policy, status="blocked",
-                               failed_checks=list(result.failed_checks),
-                               evidence_sentences=list(result.evidence_sentences))
+        return failed or {**_view(props, eid, policy, status="blocked",
+                                  failed_checks=list(result.failed_checks),
+                                  evidence_sentences=list(result.evidence_sentences)),
+                          **_restate(policy, output, result.failed_checks)}
     actions = list(dict.fromkeys(list(result.person_only_actions) + asks))
     if result.verdict == "interrupt" or actions:
         props["state"] = "waiting"
