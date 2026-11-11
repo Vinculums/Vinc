@@ -257,7 +257,7 @@ export function mountTopbar() {
     if (fl) fl.textContent = COPY.ui.topbar.findOpen;
     const fk = $("tb-find-kbd");
     if (fk) fk.textContent = /mac/i.test(navigator.platform) ? "⌘K" : "Ctrl K";
-    findOpen.setAttribute("aria-label", COPY.ui.topbar.searchPh);
+    findOpen.setAttribute("aria-label", COPY.ui.topbar.searchLabel);
     findOpen.setAttribute("aria-expanded", "false");
     // 접힌 LNB 띠에서는 이 단추(돋보기)만 보인다: 누르면 LNB 를 펴고 칸에 초점을 준다
     findOpen.addEventListener("click", () => { if (docked && $("shell")?.dataset.lnb !== "open") $("tb-shell-toggle")?.click(); window.setTimeout(() => expand(), 0); });
@@ -266,7 +266,6 @@ export function mountTopbar() {
     if (!findCard.contains(document.activeElement)) collapse();
   }, 140));
 
-  q.setAttribute("aria-label", COPY.ui.topbar.searchPh);
   if (caret) caret.innerHTML = icon("chevron-left", 12);
   // 표기는 플랫폼 관용구를 따른다(mac ⌘K · 그 외 Ctrl K) — 팔레트 단축키와 같은 키.
   if (kbd) kbd.textContent = /mac/i.test(navigator.platform) ? "⌘K" : "Ctrl K";
@@ -285,6 +284,8 @@ export function mountTopbar() {
     modeBtn?.setAttribute("aria-label",
       `${COPY.ui.topbar.modeLabel}: ${modeLabel?.textContent || ""}`);
     q.placeholder = m === "ask" ? COPY.ui.topbar.askPh : COPY.ui.topbar.searchPh;
+    // 자리표시는 한 낱말이라 접근 이름이 되지 못한다. 칸의 이름은 모드의 문장이다.
+    q.setAttribute("aria-label", m === "ask" ? COPY.ui.topbar.askLabel : COPY.ui.topbar.searchLabel);
     // 모드를 바꾸면 다른 모드의 패널은 반드시 닫는다 — 둘이 같은 앵커에 겹쳐 뜬다.
     close();
     if (m === "find") void closeChat();
