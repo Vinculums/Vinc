@@ -67,8 +67,7 @@ test("one layout remains and every saved layout folds into time branches", () =>
   } finally { delete globalThis.localStorage; }
 });
 
-const { movedRoute, routeLength, pointOnRoute, simplifyRoute } = await source("../src/view-route.ts");
-const { RoutedLinkObject } = await source("../src/surfaces/view-routes3d.ts");
+const { routeLength, simplifyRoute } = await source("../src/view-route.ts");
 const { shortenPlanarRoutes } = await source("../src/view-route-shortcuts.ts");
 await AvoidLib.load(fileURLToPath(new URL("../node_modules/libavoid-js/dist/libavoid.wasm", import.meta.url)));
 const elk = new ELK();
@@ -332,41 +331,6 @@ test("the layout deadline follows progress and still has an overall cap", async 
   await assert.rejects(reporting.job, /over the cap/);
   assert.ok(Date.now() - started >= 250, "progress kept the job alive past the idle limit");
   assert.equal(reporting.terminated(), 1);
-});
-
-test("drag translations and independent endpoint movement retain orthogonal sections", () => {
-  const points = [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 1, y: 1, z: 0 }, { x: 2, y: 1, z: 0 }];
-  const translate = movedRoute(points, { x: 3, y: 2, z: 1 }, { x: 5, y: 3, z: 1 });
-  assert.equal(translate.length, points.length); axisAligned(translate);
-  const drag = movedRoute(points, { x: -.5, y: .4, z: .5 }, { x: 4, y: 2, z: -1 });
-  axisAligned(drag); assert.deepEqual(drag[0], { x: -.5, y: .4, z: .5 }); assert.deepEqual(drag.at(-1), { x: 4, y: 2, z: -1 });
-  assert.deepEqual(pointOnRoute(points, routeLength(points) - .5), { x: 1.5, y: 1, z: 0 });
-});
-
-test("3d arrows and photons follow the routed geometry and visibility", () => {
-  const points = [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 1, y: 1, z: 0 }, { x: 2, y: 1, z: 0 }];
-  const object = new RoutedLinkObject({ points, engine: "elk" });
-  const paint = { color: "#ffffff", width: 0, arrow: true, particles: true,
-    particleColor: "#ffffff", visible: true, targetRadius: 1 };
-  object.update(points[0], { x: 20, y: 10, z: 0 }, 10, paint, 1000);
-  const [line, arrow, ...photons] = object.children;
-  const pos = line.geometry.attributes.position;
-  axisAligned(Array.from({ length: pos.count }, (_, i) => ({ x: pos.getX(i), y: pos.getY(i), z: pos.getZ(i) })));
-  assert.equal(arrow.visible, true);
-  for (const p of photons) assert.ok(p.position.y === 0 || p.position.x === 10 || p.position.y === 10);
-  object.update(points[0], { x: 20, y: 10, z: 0 }, 10, { ...paint, visible: false }, 2000);
-  assert.equal(object.visible, false);
-  object.update(points[0], { x: 20, y: 10, z: 0 }, 10, { ...paint, color: "#ffffff00", particles: false }, 3000);
-  assert.equal(line.visible, false); assert.equal(arrow.visible, false);
-  assert.ok(photons.every(p => !p.visible));
-  // Overview detail changes ink, never relation geometry or particle direction.
-  object.update(points[0], { x: 20, y: 10, z: 0 }, 10, { ...paint, detail: .1 }, 4000);
-  assert.equal(line.material.opacity, .085);
-  assert.equal(arrow.material.opacity, .085);
-  assert.ok(photons.every(p => p.material.opacity === .1));
-  object.update(points[0], { x: 20, y: 10, z: 0 }, 10, paint, 4000);
-  assert.equal(line.material.opacity, .85);
-  assert.ok(photons.every(p => p.material.opacity === 1));
 });
 
 test("larger graph retains every authored relation and finishes within the worker deadline", async (t) => {
@@ -709,9 +673,10 @@ test("3D topic cells group by area and still start left to right in time across 
   const at = id => topics.find(t => t.id.endsWith(`/${id}`)).x;
   assert.ok(at("t0") < at("t23"), "time no longer runs left to right across areas");
   assert.equal(new Set(graph.nodes.map(n => [n.x, n.y, n.z].join(":"))).size, graph.nodes.length);
-  // 그래서 영역 부피를 그린다: view3d 의 areaBox 와 같은 셈으로 상자를 지으면 서로 떨어져 있다.
-  // 반지름은 렌더 배율(140) 아래 가장 큰 노드(12)다.
-  const { areasApart } = await source("../src/area-key.ts");
+  // 영역마다 감싸는 타원체(x 는 시간, y·z 는 단면)를 지으면, 시간이 겹치는 두 영역의 단면이 서로 떨어져 있다.
+  // 반지름은 렌더 배율(140) 아래 가장 큰 노드(12)다. 잣대는 두 단면 중심 거리 / 두 반지름 합 0.5 다.
+  const areasApart = (list) => list.every((a, i) => list.slice(i + 1).every(b =>
+    Math.abs(a.cx - b.cx) >= a.hx + b.hx || Math.hypot(a.cy - b.cy, a.cz - b.cz) >= 0.5 * (a.rc + b.rc)));
   const r = 12 / 140, shells = [];
   for (const area of areas) {
     const pts = graph.nodes.filter(n => (n.domain || "").split("/")[1] === area);

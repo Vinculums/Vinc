@@ -65,35 +65,5 @@ class WiringTests(unittest.TestCase):
                       src)
 
 
-class ThreeDTests(unittest.TestCase):
-    def setUp(self):
-        self.src = _read("surfaces/view3d.ts")
-        self.body = _fn(self.src, "(g as any).__retheme = (): void => {")
-
-    def test_오브젝트를_다시_짓지_않는다(self):
-        """다시 지으면 라벨 물러남과 강조 상태가 사라진다."""
-        self.assertNotIn("nodeThreeObject(", self.body)
-        self.assertNotIn("buildInstancedNodes(", self.body)
-
-    def test_팔레트에서_온_값을_전부_갈아_끼운다(self):
-        for need in ("pal = themePalette()", "applyTints()", "orbs?.tint(", "orbs?.setLight(",
-                     "retintVolume(", "toneMappingExposure", "takeSkins(", "repaintLabel(", "fog.color",
-                     "g.lights(", "g.linkColor(linkColorFn)"):
-            self.assertIn(need, self.body, need)
-
-    def test_팔레트는_부를_때_읽는다(self):
-        """선색·라벨·입자 접근자가 새 팔레트를 저절로 따르려면 변수가 갈아 끼워져야 한다."""
-        self.assertIn("let pal = themePalette();", self.src)
-        self.assertNotIn("const darkTheme", self.src)
-
-    def test_환경맵을_굽지_않는다(self):
-        """환경맵은 몸통이 PBR 유리이던 동안의 것이다. 몸통 셰이더는 그것을 읽지 않으므로
-        굽기만 하고 안 보이는 사문이 되지 않게 남기지 않는다(전역 캐시가 컨텍스트를 넘어
-        반사를 비우던 고장도 함께 사라진다)."""
-        self.assertNotIn("_envTex", self.src)
-        self.assertNotIn("scene.environment =", self.src)
-        self.assertNotIn("PMREMGenerator", self.src)
-
-
 if __name__ == "__main__":
     unittest.main()

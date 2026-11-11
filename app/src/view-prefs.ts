@@ -44,8 +44,8 @@ export const EDGE_KINDS: EdgeKind[] = ["directed", "related", "cross", "bridge"]
 /** 끝이 원천(조상)을 가리키는 관계 — "a 가 b 에서 나왔다". 시간순 배치는 이 둘만
  *  뒤집어 조상을 앞에 세운다(`view-layout.ts` 의 `ancestry`). */
 export const ANCESTRY_RELS = ["DERIVES_FROM", "INHERITS_FROM"];
-/** 화살촉이 붙는 방향 3종. 렌더러(view2d·view3d·view)가 모두 이 목록을 읽는다. */
-export const DIRECTED_RELS = ["PREREQUISITE_OF", ...ANCESTRY_RELS];
+/** 화살촉이 붙는 방향 3종. `edgeKindOf` 가 읽는다. */
+const DIRECTED_RELS = ["PREREQUISITE_OF", ...ANCESTRY_RELS];
 export function edgeKindOf(e: { type: string; cross_domain?: boolean }): EdgeKind {
   if (DIRECTED_RELS.includes(e.type)) return "directed";
   if (e.type === "CONNECTS") return "bridge";
