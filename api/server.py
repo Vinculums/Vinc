@@ -166,7 +166,7 @@ def _encode_call(url: str, texts: list[str], kind: str, timeout: float, *,
 from store.config import load_config
 from store import config as store_config
 from store.location import (AccountLocation, DatabaseLocation, FolderLocation, LocationError,
-                            parse_database, parse_location, read_location)
+                            env_location, parse_database, parse_location, read_location)
 from store.neo4j_backend import BLOCKING_RISKS
 from store import migrate
 from store import httpbody
@@ -375,6 +375,12 @@ class VincApp:
         # 영구 타이머가 된다(배터리). 꺼짐 판정은 `SnapshotPolicy` 가 생성자에서 이미
         # 들고 있다 — `last_state == "off"` 가 곧 경로 미설정이다.
         self._snapshots = SnapshotPolicy()
+        if getattr(self.cfg, "backend", "") == "neo4j" and self._snapshots.last_state != "off":
+            # 데이터베이스 위치에는 복사할 작업본 폴더가 없다. 백업은 Neo4j 의 도구로 한다.
+            print("vinc: VINC_STORE_SNAPSHOT is set but the store is a database; "
+                  "snapshots are off (back it up with Neo4j's own tools)", file=sys.stderr, flush=True)
+            self._snapshots = SnapshotPolicy(every=0)
+            self._snapshots.last_state = "off"
         tick_s = (self._snapshots.every / 10.0
                   if self._snapshots.last_state != "off" else 0.0)
         # ACK 경계(VIN-82): `VINC_DURABLE_ACK` 이고 스냅샷 경로가 있을 때만 건다. 꺼져 있으면
@@ -2622,9 +2628,14 @@ class VincApp:
         pinned = self._data_pinned()
         want = store_config.resolve_data_dir(create=False)
         mode = conf.get("mode")
-        location, location_error = None, None
+        location, location_error, source = None, None, "settings"
         try:
-            location = read_location(conf)
+            # 환경이 데이터베이스를 말하면(셀프호스트 허브) 그것이 이 프로세스의 저장 위치다.
+            location = env_location()
+            if location is not None:
+                source = "environment"
+            else:
+                location = read_location(conf)
         except LocationError as exc:
             location_error = str(exc)
         opened_db = (getattr(self.cfg, "backend", "") == "neo4j"
@@ -2661,6 +2672,9 @@ class VincApp:
             # 설정이 틀렸으면 location 은 None 이고 location_error 가 사람용 문장이다.
             "location": location.to_dict() if location is not None else None,
             "location_error": location_error,
+            # 위치를 어디서 읽었나: 설정 파일(settings)이나 프로세스 환경(environment). 환경이면 화면에서
+            # 바꿔도 다음 기동에 환경이 이긴다.
+            "location_source": source,
             # 지금 연 스토어의 엔진(embedded·neo4j). 스토어가 없으면 None.
             "engine": getattr(self.store, "driver_name", None) if self.store is not None else None,
         }

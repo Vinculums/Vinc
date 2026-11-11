@@ -48,7 +48,21 @@ PERSIST_ROOT="${DATA_DIR%/*}"
 #   VINC_STORE_LOCAL=on  →  작업본 /var/lib/vinc/db · 영속 스냅샷 = 원래 DATA_DIR
 #   VINC_DURABLE_ACK=on  →  (위와 함께일 때만) 쓰기마다 `<스냅샷>.generations` 에 세대를
 #                           게시한 뒤 ACK 한다. 기본 꺼짐(store/persistence.py DurableAck)
-if [ "${VINC_STORE_LOCAL:-}" = "on" ]; then
+# ── 저장 위치: 볼륨의 폴더(기본) 또는 사용자의 Neo4j ─────────────────────────
+# `VINC_DATABASE_URI` 가 있으면 그래프는 그 Neo4j 에 산다(`store/location.py` env_location).
+# 사용자·이름은 `VINC_DATABASE_USER`·`VINC_DATABASE_NAME`(기본 neo4j), 비밀번호는
+# `VINC_DATABASE_SECRET` 이나 `VINC_DATABASE_SECRET_FILE`. 그때 아래의 폴더 전용 단계(작업본·
+# 스냅샷, 벡터 차원 재구축)는 건너뛰고 사이드카에 `--data` 를 주지 않는다. 백업은 Neo4j 의 도구다.
+STORE_IS_DATABASE=""
+if [ -n "${VINC_DATABASE_URI:-}" ]; then
+  STORE_IS_DATABASE=1
+  echo "[entrypoint] 그래프 스토어: Neo4j ${VINC_DATABASE_URI} (데이터베이스 ${VINC_DATABASE_NAME:-neo4j})" \
+       "— 폴더 작업본·스냅샷·차원 재구축은 건너뛴다"
+fi
+
+if [ -n "$STORE_IS_DATABASE" ] && [ "${VINC_STORE_LOCAL:-}" = "on" ]; then
+  echo "[entrypoint] VINC_STORE_LOCAL=on 은 폴더 스토어에만 뜻이 있다 — 데이터베이스 위치라 무시한다" >&2
+elif [ "${VINC_STORE_LOCAL:-}" = "on" ]; then
   : "${VINC_STORE_SNAPSHOT:=$DATA_DIR}"
   : "${VINC_STORE_WORK_DIR:=/var/lib/vinc}"
   mkdir -p "$VINC_STORE_WORK_DIR" 2>/dev/null \
@@ -144,8 +158,12 @@ exit_reason() {
 start_sidecar() {
   rm -f "$SIDECAR_PIDFILE"
   (
-    python -m api.cli serve --host 127.0.0.1 --port 8787 \
-      --token "$VINC_SIDECAR_TOKEN" --data "$DATA_DIR" &
+    if [ -n "$STORE_IS_DATABASE" ]; then
+      python -m api.cli serve --host 127.0.0.1 --port 8787 --token "$VINC_SIDECAR_TOKEN" &
+    else
+      python -m api.cli serve --host 127.0.0.1 --port 8787 \
+        --token "$VINC_SIDECAR_TOKEN" --data "$DATA_DIR" &
+    fi
     spid=$!
     echo "$spid" > "$SIDECAR_PIDFILE"
     src=0
@@ -269,6 +287,7 @@ fi
 # 전부 지운 뒤 새 폭의 벡터를 옛 열에 쓰다 막히는데, 그 상태보다 "벡터 그대로·의미 팔만
 # 죽음"이 낫고 되돌림(이전 이미지 재배포)도 그쪽이 쉽다.
 # 근거: [[decision:bge-m3-adoption]]
+# 데이터베이스 위치(`VINC_DATABASE_URI`)면 이 명령이 스스로 건너뛰고 0 으로 끝난다.
 rc=0
 python -m api.cli migrate-dim --data "$DATA_DIR" || rc=$?
 if [ "$rc" = "3" ]; then

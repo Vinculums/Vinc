@@ -888,6 +888,16 @@ def _main(argv: list[str] | None = None) -> int:
         # 판정이라 여기서 했으면 serve 는 `present` 를 본다. 종료코드: 0 할 일 없음/끝남 ·
         # 1 복원 실패(기동 중단, serve 와 같은 fail-closed) · 3 재구축 실패(옛 스토어는
         # 그대로다 — 엔트리포인트가 워커를 꺼서 벡터를 지우지 않게 하고 기동은 계속한다).
+        from store.location import LocationError, env_location
+        try:
+            env_db = env_location()
+        except LocationError:
+            env_db = None              # 틀린 환경은 serve 가 사유를 말하고 스토어를 열지 않는다
+        if env_db is not None or os.environ.get("VINC_DATABASE_URI"):
+            # 폴더 스토어 전용이다. 데이터베이스 위치의 벡터 폭은 어댑터가 열 때 대조한다.
+            print("vinc: migrate-dim skipped: the store is a database (VINC_DATABASE_URI)",
+                  file=sys.stderr, flush=True)
+            return 0
         from store import migrate, persistence
         from store.config import load_config, resolve_data_dir
         data_dir = resolve_data_dir(args.data)

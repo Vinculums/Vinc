@@ -298,7 +298,21 @@ def app_store_config(cli_value: str | None = None, *, secret: str | None = None,
     아니면 설정의 저장 위치를 읽는다: 데이터베이스면 Neo4j 어댑터 설정, 그 밖에는 `resolve_data_dir`
     의 폴더. 설정이 틀렸으면 아무것도 열지 않게 `extra["open_blocked"]` 에 사유를 싣는다 —
     기본 폴더로 물러서면 빈 그래프가 "데이터가 사라졌다"로 읽힌다."""
-    from .location import DatabaseLocation, LocationError, read_location
+    from .location import DatabaseLocation, LocationError, env_location, env_secret, read_location
+    # 환경이 데이터베이스를 말하면(셀프호스트 허브, `env_location`) 그것이 이긴다. 허브
+    # 엔트리포인트는 폴더를 `--data` 로 늘 박지만, 데이터베이스 환경을 준 것이 더 분명한 선택이다.
+    try:
+        env_db = env_location()
+        if env_db is not None:
+            secret = secret or env_secret()
+    except LocationError as exc:
+        cfg = load_config({"data_dir": None})
+        cfg.extra["open_blocked"] = f"storage environment: {exc}"
+        return cfg
+    if env_db is not None:
+        if home is None:
+            resolve_data_dir()
+        return database_config(env_db, secret=secret, home=home)
     if cli_value or os.environ.get("MEMORY_DATA_DIR"):
         return load_config({"data_dir": resolve_data_dir(cli_value)})
     try:

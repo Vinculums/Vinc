@@ -106,9 +106,16 @@ def _sidecar():
         from vinc_mcp.bridge import Bridge
         probe = Bridge()
         session = probe._read_session()
-        if not session or not session.get("token"):
+        if session and session.get("token"):
+            base, token = f"http://127.0.0.1:{session['port']}", session["token"]
+        elif os.environ.get("VINC_SIDECAR_TOKEN"):
+            # 허브 컨테이너 안(`docker exec`): 셸의 session.json 이 없고, 엔트리포인트가 띄운
+            # 사이드카가 루프백 8787 에서 같은 토큰으로 돈다. 스토어는 그 프로세스가 쥐고 있다.
+            port = os.environ.get("VINC_SIDECAR_PORT") or "8787"
+            base, token = f"http://127.0.0.1:{port}", os.environ["VINC_SIDECAR_TOKEN"]
+        else:
             return None
-        bridge = Bridge(base=f"http://127.0.0.1:{session['port']}", token=session["token"])
+        bridge = Bridge(base=base, token=token)
         return bridge if bridge.health() else None
     except Exception:   # noqa: BLE001
         return None
@@ -117,10 +124,13 @@ def _sidecar():
 def current_secret() -> str | None:
     """지금 저장 위치가 데이터베이스면 그 비밀번호: 환경 변수, 없으면 키링. 아니면 None."""
     from store.config import read_local_config
-    from store.location import SECRET_ENV, DatabaseLocation, LocationError, read_location
+    from store.location import (SECRET_ENV, DatabaseLocation, LocationError, env_location,
+                                env_secret, read_location)
     if os.environ.get(SECRET_ENV):
         return os.environ[SECRET_ENV]
     try:
+        if env_location() is not None:
+            return env_secret()          # 셀프호스트 허브: 비밀번호는 환경이나 비밀 파일에 있다
         loc = read_location(read_local_config())
     except LocationError:
         return None
