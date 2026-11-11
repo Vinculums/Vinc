@@ -26,21 +26,24 @@ test("search reads the trimmed MCP default text: a slim temporal block, no page 
     kind: "search", executed: true,
     rows: [
       { id: "doc.a#00000", score: 4.1, snippet: "chunk text", truncated: true, doc_id: "doc.a",
-        temporal: { valid_from: "2026-01" }, doc_title: "Doc A", cite_id: "concept:doc.doc.a" },
-      { id: "doc.b#00001", score: 2.0, snippet: "undated", truncated: true, doc_id: "doc.b", doc_title: "Doc B" },
+        temporal: { valid_from: "2026-01", updated_at: "2026-02-01T00:00:00Z" }, doc_title: "Doc A", cite_id: "concept:doc.doc.a" },
+      { id: "doc.b#00001", score: 2.0, snippet: "undated", truncated: true, doc_id: "doc.b", doc_title: "Doc B",
+        temporal: { updated_at: "2026-03-01T00:00:00Z" } },
+      { id: "doc.c#00002", score: 1.0, snippet: "no block", truncated: true, doc_id: "doc.c", doc_title: "Doc C" },
     ],
     node_hits: [{ id: "concept:a", title: "A", kind: "concept", domain: "vinc/x", rrf_score: 0.03,
-      temporal: { valid_from: "2026-01" }, cite_id: "concept:a" }],
+      temporal: { valid_from: "2026-01", updated_at: "2026-02-01T00:00:00Z" }, cite_id: "concept:a" }],
     arms: "fts+vector", total_count: 2, has_more: false, next_cursor: null, validity_filtered: 3,
-    omitted: "Empty, false and default fields are left out.",
+    omitted: "Omitted: empty, default, derived, duplicate, diagnostic keys, fixed notes, page, created_at. No validity: unknown if interval_invalid or no valid_from/until, else current. raw:true has all.",
   }));
   const out = await supplement.search({ query: "Marker" });
   assert.deepEqual(out.map((r) => [r.path, r.score]), [
-    ["vinc://doc/doc.a", 4.1], ["vinc://doc/doc.b", 2.0], ["vinc://node/concept:a", 0.03]]);
-  assert.deepEqual(out[0].temporal, { valid_from: "2026-01" });
-  assert.equal("temporal" in out[1], false);
-  assert.deepEqual(out[2].temporal, { valid_from: "2026-01" });
-  assert.equal(out[2].snippet, "A (concept, vinc/x)");
+    ["vinc://doc/doc.a", 4.1], ["vinc://doc/doc.b", 2.0], ["vinc://doc/doc.c", 1.0], ["vinc://node/concept:a", 0.03]]);
+  assert.deepEqual(out[0].temporal, { valid_from: "2026-01", updated_at: "2026-02-01T00:00:00Z" });
+  assert.deepEqual(out[1].temporal, { updated_at: "2026-03-01T00:00:00Z" });
+  assert.equal("temporal" in out[2], false);
+  assert.deepEqual(out[3].temporal, { valid_from: "2026-01", updated_at: "2026-02-01T00:00:00Z" });
+  assert.equal(out[3].snippet, "A (concept, vinc/x)");
 });
 
 test("document get preserves temporal metadata without changing canonical content", async () => {

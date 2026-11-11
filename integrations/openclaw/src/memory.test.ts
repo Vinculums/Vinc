@@ -95,17 +95,17 @@ test("recall reads a trimmed brief: a node without cite_id cites its id, and a s
   const slim = {
     kind: "brief", executed: true, status: "resolved",
     node: { id: "record:train-moved", title: "The train moved to Wednesday", kind: "record",
-      validity: "current", temporal: { valid_from: "2026-10-01" } },
+      validity: "current", temporal: { valid_from: "2026-10-01", updated_at: "2026-10-02T00:00:00Z" } },
     one_liner: "Releases leave on Wednesday.",
     quotes: [{ text: "The train leaves on Wednesday.", doc_id: "vinc.ops.release" }],
     grounds: ["record:train-moved"],
-    omitted: "Empty, false and default fields are left out.",
+    omitted: "Omitted: empty, default, derived, duplicate, diagnostic keys, fixed notes, page, created_at. No validity: unknown if interval_invalid or no valid_from/until, else current. raw:true has all.",
   };
   const { o } = hub((name) => (name === "vinc_brief" ? slim : { rows: [], node_hits: [] }));
   const [first] = await recall(o, "when do releases leave", 8);
   assert.equal(first.path, "vinc://node/record:train-moved");
   assert.equal(first.citation, "record:train-moved");
-  assert.deepEqual(first.temporal, { valid_from: "2026-10-01" });
+  assert.deepEqual(first.temporal, { valid_from: "2026-10-01", updated_at: "2026-10-02T00:00:00Z" });
   assert.match(first.snippet, /Wednesday/);
 });
 
