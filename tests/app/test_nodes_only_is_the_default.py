@@ -13,8 +13,7 @@
   ② 기본 크기 배율과 밀도(`cone`)가 0.7 이다.
   ③ 옛 기본(1)을 값으로 든 저장값은 판(`pv`)이 없으면 새 기본으로 읽는다 —
      저장이 늘 객체 통째라 손대지 않은 사람도 옛 기본을 들고 있다.
-  ④ 저장된 `bring` 은 `none` 으로 읽는다.
-  ⑤ 2D·3D 렌더러에 고리·비행 기계가 남지 않았다."""
+  ④ 저장된 `bring` 은 `none` 으로 읽는다."""
 from __future__ import annotations
 
 import re
@@ -63,20 +62,7 @@ class Prefs(unittest.TestCase):
         self.assertIn('p.edges == null || p.edges === "bring" ? DEFAULTS.edges', self.src)
 
 
-class Renderers(unittest.TestCase):
-    def test_고리_비행_기계가_없다(self):
-        for rel in ("surfaces/view3d.ts",):
-            src = _read(rel)
-            for word in ("bringOn", "gathered", "planFly", "ringSlots", "flyRaf"):
-                self.assertNotIn(word, src, f"{rel}: {word}")
-
-    def test_노드만이면_선을_그리지_않는다(self):
-        v3 = _read("surfaces/view3d.ts")
-        self.assertIn('let nodesOnly = prefs.edges === "none";', v3)
-        live_update = v3[v3.index('(g as any).__update ='):]
-        self.assertIn('nodesOnly = prefs.edges === "none";', live_update)
-        self.assertIn("if (nodesOnly) return pal.link.base + ALPHA0;", v3)
-
+class Names(unittest.TestCase):
     def test_노드만_이름이_남고_데려오기는_없다(self):
         # 보기 옵션 패널(견본 칩)은 3D 와 함께 걷었다. 노드만이라는 이름과 데려오기가 없다는 것은 그대로 잡는다
         v = _read("surfaces/view.ts")

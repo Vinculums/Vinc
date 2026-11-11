@@ -2,13 +2,13 @@
  "$meta": {
   "source": "figma",
   "file": "WUXLeDDNBqih2KTZOz9wCX",
-  "exported": "2026-11-04",
+  "exported": "2026-11-12",
   "how": "use_figma, the per-page JS in scripts/design/figma_inventory.py's docstring (the second block for 06 · Storyboards). One call per page: the Plugin API allows one page switch per call.",
   "scope": "Frame and component NAMES, plus variant values for the App / * sets, for 01 · Foundations, 02 · Components, 03 · App and 04 · Site (vinc.canon.design-system-operations §2). For 06 · Storyboards, each journey row with its step frame names. Boards inside sections are listed as page frames. 00 · Cover, 05 · Email and 90 · Archive carry nothing the gate counts.",
   "note": "Machine dump. Never patch it by hand: re-run the dump. A hand-patched inventory makes the gate agree with a file instead of with Figma.",
   "site_screens_note": "04 · Site boards are html-to-design captures (capture_site_figma.mjs) named Site · <Route>[ · <state>] / dark; children are not recorded.",
   "app_boards_note": "03 · App boards are html-to-design captures (capture_app_figma.mjs) named App · <Surface>[ · <state>] / <theme>; children are not recorded.",
-  "refreshed": "2026-10-24: whole file restructured to eight pages; 03 and 04 recaptured from the running app and the live site. 2026-10-30: 06 · Storyboards added (journeys); the other four pages were not re-dumped. 2026-11-04: all five pages re-dumped after 03 and 04 were recaptured (app 72 states, site 148 boards); old boards moved to 90 · Archive. Later on 2026-11-04: 02 · Components re-dumped after the retired sets and variants moved to 90 · Archive (Lens panel 2D · Timeline · Weave, App / PackCard, the old tab Settings sheet and the standalone Tools · Import · GRAPH.md sheets) and Overlay / Settings was rebuilt from the settings captures. Later again on 2026-11-04: 02 · Components and 03 · App re-dumped after the Lens panel 3D variants were rebuilt from captures, Overlay / Settings gained Tab=General and 03 gained the settings-general board; 04 · Site frame names were read again and match."
+  "refreshed": "2026-10-24: whole file restructured to eight pages; 03 and 04 recaptured from the running app and the live site. 2026-10-30: 06 · Storyboards added (journeys); the other four pages were not re-dumped. 2026-11-04: all five pages re-dumped after 03 and 04 were recaptured (app 72 states, site 148 boards); old boards moved to 90 · Archive. Later on 2026-11-04: 02 · Components re-dumped after the retired sets and variants moved to 90 · Archive (Lens panel 2D · Timeline · Weave, App / PackCard, the old tab Settings sheet and the standalone Tools · Import · GRAPH.md sheets) and Overlay / Settings was rebuilt from the settings captures. Later again on 2026-11-04: 02 · Components and 03 · App re-dumped after the Lens panel 3D variants were rebuilt from captures, Overlay / Settings gained Tab=General and 03 gained the settings-general board; 04 · Site frame names were read again and match. 2026-11-12: all five pages re-dumped after App / GraphNode (the 3D view's depth tiers) moved to 90 · Archive › 02 · Components; 02 · Components lost that set, 01 · Foundations now also holds Logo / Wordmark and Logo / Lockup and three more Logo · rules lines; 03 · App, 04 · Site and 06 · Storyboards read again and match."
  },
  "pages": {
   "01 · Foundations": {
@@ -32,6 +32,9 @@
       "Logo rules",
       "Clear space: 25% of mark width on all sides",
       "Size ladder: 128 · 96 · 64 · 40 · 24 · 18 · 16 (holds shape to 16px)",
+      "Optical sizes: micro ≤24px · text 25–63px · display ≥64px",
+      "Wordmark only at 24px and above; below that, the mark alone",
+      "Shaded D2 only for large uses (app icon, hero, ≥48px)",
       "Transparent ring only: black on light, white on dark",
       "Never rotate, distort the aspect, fill the ring's hole,",
       "detach the centre sphere, or outline the ring"
@@ -150,6 +153,8 @@
    ],
    "components": [
     "Logo / Mark",
+    "Logo / Wordmark",
+    "Logo / Lockup",
     "Icon / alert",
     "Icon / caret",
     "Icon / check",
@@ -198,6 +203,14 @@
      "Tone=White",
      "Tone=Foreground",
      "Tone=Primary"
+    ],
+    "Logo / Wordmark": [
+     "Tone=Black",
+     "Tone=White"
+    ],
+    "Logo / Lockup": [
+     "Tone=Black",
+     "Tone=White"
     ]
    }
   },
@@ -221,7 +234,6 @@
     "App / DocRow",
     "App / ListRow",
     "App / TreeMode",
-    "App / GraphNode",
     "App / StateMark",
     "App / ProgressBar",
     "App / ErrorBanner",
@@ -325,12 +337,6 @@
     "App / TreeMode": [
      "Mode=Documents",
      "Mode=Nodes"
-    ],
-    "App / GraphNode": [
-     "Tier=Focus",
-     "Tier=Near",
-     "Tier=Mid",
-     "Tier=Far"
     ],
     "App / StateMark": [
      "State=Filled",

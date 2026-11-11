@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""주제 색은 공홈 조형의 보석색이고 늘 켜져 있으며 영역이 보석 하나를 입는다. 2D 노드는 히어로와 같은 유리다.
+"""주제 색은 공홈 조형의 보석색이고 늘 켜져 있으며 영역이 보석 하나를 입는다.
 
 근거: [[decision:topics-wear-their-area-jewel-2026-10-28]] ·
 [[decision:app-nodes-wear-the-hero-glass-2026-09-26]]
@@ -8,9 +8,6 @@
 - 보석색은 토큰이고 모드마다 다섯이며, 평면 마크로 그려도 배경 위에서 읽힌다
   (다크 4.5:1 · 라이트 3:1 이상 — 좌측 트리 도트·타임라인·번들은 유리 음영 없이 칠한다).
 - 켜고 끄는 토글이 없다(기기별 저장값이 같은 그래프를 기기마다 다른 색으로 만들었다).
-- 3D 몸통은 Vinc orb 한 층(view-orbs3d)이 셰이더로 직접 칠한다(히어로 PBR 유리를 갈았다,
-  [[vinc.research.graph-vinc-orb-2026-10-28]] §10). 색은 여전히 주제 보석이다.
-- 2D 는 몸통 있는 종을 구운 유리 그림(그림 모드)으로, 겹껍질·관문은 마스크 마크로 그린다.
 
 앱에는 JS 테스트 러너가 없어 이 리포의 관례대로 소스를 대조한다(`test_view_url.py` 와
 같은 자리)."""
@@ -71,7 +68,7 @@ class JewelTokenTests(unittest.TestCase):
 
 class AlwaysOnTests(unittest.TestCase):
     def test_토글이_없다(self):
-        for rel in ("copy.ts", "surfaces/view.ts", "surfaces/view3d.ts", "lnb.ts"):
+        for rel in ("copy.ts", "surfaces/view.ts", "lnb.ts"):
             self.assertNotIn("domainTint", _read(rel), rel)
         self.assertNotIn("domainTint: boolean", _read("view-prefs.ts"))
 
@@ -89,18 +86,6 @@ class AlwaysOnTests(unittest.TestCase):
         self.assertIn("const TOPIC_TURN = [0, 4, -4, 8, -8, 12, -12];", tint)
         self.assertIn("export function tintMap(", tint)
         self.assertIn("return tintPlan(domains, mode).topics;", tint)
-
-
-class GlassTests(unittest.TestCase):
-    def test_3D_몸통은_orb_한_층이고_주제_보석을_입는다(self):
-        src = _read("surfaces/view3d.ts")
-        # 관문(윤곽선)만 빼고 전부 한 층이다 — 초점은 selected 상태, 주제는 점 껍질 종.
-        self.assertIn("const canInstance = (n: N3): boolean => !n.gateway;", src)
-        self.assertIn("new OrbLayer(members.length", src)
-        self.assertNotIn("MeshPhysicalMaterial", src)
-        # 색 규칙 한 벌: 초점색 > 주제 보석 > 잉크.
-        self.assertIn("n.focus ? pal.point : tint ? parseInt(tint.slice(1), 16) : pal.ink", src)
-        self.assertNotIn("new THREE.AmbientLight(", src)
 
 
 if __name__ == "__main__":
