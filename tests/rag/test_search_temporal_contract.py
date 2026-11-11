@@ -256,6 +256,69 @@ def test_current_relevance_before_same_claim_recency():
     assert [h["id"] for h in hits] == ["b", "a", "c"]
 
 
+def test_current_puts_a_known_interval_first_only_inside_the_window():
+    hits = [{"id": "concept:near", "kind": "concept", "score": 10},
+            {"id": "record:mid", "kind": "record", "score": 5, "valid_from": "2000"},
+            {"id": "concept:far", "kind": "concept", "score": 3},
+            {"id": "record:deep", "kind": "record", "score": 1, "valid_from": "2000"}]
+    for h in hits:
+        temporal.stamp(h)
+    ids = lambda rows: [h["id"] for h in rows]  # noqa: E731
+    whole = list(hits)
+    temporal.current_order(whole)
+    assert ids(whole) == ["record:mid", "record:deep", "concept:near", "concept:far"]
+    two = list(hits)
+    temporal.current_order(two, window=2)
+    assert ids(two) == ["record:mid", "concept:near", "concept:far", "record:deep"]
+    none = list(reversed(hits))
+    temporal.current_order(none, window=0)
+    assert ids(none) == ["concept:near", "record:mid", "concept:far", "record:deep"]
+
+
+def test_current_window_puts_an_evidenced_supersession_old_end_last():
+    hits = [{"id": "decision:old", "kind": "decision", "score": 10},
+            {"id": "decision:old2", "kind": "decision", "score": 9},
+            {"id": "concept:near", "kind": "concept", "score": 8},
+            {"id": "record:now", "kind": "record", "score": 5, "valid_from": "2000"},
+            {"id": "record:old-now", "kind": "record", "score": 4, "valid_from": "2000"},
+            {"id": "record:old-future", "kind": "record", "score": 3.5, "valid_from": "2000"},
+            {"id": "record:noproof", "kind": "record", "score": 3, "valid_from": "2000"},
+            {"id": "record:deep", "kind": "record", "score": 1, "valid_from": "2000"}]
+    for h in hits:
+        temporal.stamp(h)
+    by_id = {h["id"]: h for h in hits}
+    def replaced(old, new, status="uncomparable", evidence="replaced"):
+        by_id[old]["temporal"]["supersession"].append(
+            {"new": new, "old": old, "evidence": evidence, "status": status})
+    replaced("decision:old", "record:now")              # 구간 없음, 새 쪽 있음
+    replaced("decision:old2", "record:gone")            # 구간 없음, 새 쪽 없음
+    replaced("record:old-now", "record:now", "comparable")    # 둘 다 지금(닫히지 않은 옛 주장)
+    replaced("record:old-future", "record:future")      # 새 쪽이 미래라 이미 빠졌다
+    replaced("record:noproof", "record:now", "unsupported", evidence="")
+    cur = frozenset(h["id"] for h in hits if h["temporal"]["validity"] == "current")
+    assert temporal.superseded_old_end(by_id["decision:old"], cur)
+    assert temporal.superseded_old_end(by_id["decision:old2"], cur)
+    assert temporal.superseded_old_end(by_id["record:old-now"], cur)
+    assert not temporal.superseded_old_end(by_id["record:old-future"], cur)
+    assert not temporal.superseded_old_end(by_id["record:noproof"], cur)
+    ids = lambda rows: [h["id"] for h in rows]  # noqa: E731
+    page = list(hits)
+    temporal.current_order(page, window=7)
+    # 숨기지 않는다: 창 안 순서만 바뀌고 주장 상태도 그대로다.
+    assert ids(page) == ["record:now", "record:old-future", "record:noproof", "concept:near",
+                         "decision:old", "decision:old2", "record:old-now", "record:deep"]
+    assert all(h["temporal"]["claim_status"] != "superseded" for h in page)
+    arm = sorted(hits, key=lambda h: h["id"])
+    temporal.current_order(arm, window=0)
+    # 팔(window=0): 관련도 순, 내릴 행만 맨 뒤로. 구간 먼저는 하지 않는다.
+    assert ids(arm) == ["concept:near", "record:now", "record:old-future", "record:noproof",
+                        "record:deep", "decision:old", "decision:old2", "record:old-now"]
+    # 새 쪽이 같이 세우는 행에 없으면 지금인 옛 쪽은 내리지 않는다.
+    alone = [h for h in hits if h["id"] != "record:now"]
+    temporal.current_order(alone, window=0)
+    assert ids(alone)[-2:] == ["decision:old", "decision:old2"]
+
+
 def test_cursor_binds_modes_historical_known_asof_and_owner(st):
     for i in range(3):
         docstore.put_doc(st, owner=OWNER, doc_id=f"page{i}", text=f"Marker synthetic page{i}.", valid_from="2000")

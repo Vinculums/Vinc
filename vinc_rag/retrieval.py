@@ -1426,7 +1426,10 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
                                                    scope=None if mode == "current" else _scope,
                                                    doc_intervals=True, **_kw)
                 if mode == "current":
-                    temporal.finish_nodes(store, title_hits, owner=owner, scope=_scope, current=True, known_at=known_at, stats=_vstats)
+                    # 팔 안은 관련도 순, 근거 있게 대체된 행만 뒤로(window=0, `superseded_old_end`).
+                    # 구간 먼저는 융합 뒤 창에서만.
+                    temporal.finish_nodes(store, title_hits, owner=owner, scope=_scope, current=True, known_at=known_at, stats=_vstats,
+                                          window=0)
                     if _vstats.get("current_hidden"):
                         base["validity_filtered"] = len(_vstats["current_hidden"])
                     if known_at:
@@ -1864,8 +1867,10 @@ def _finish_search_temporal(res: dict, store, query: str, *, mode, known_at, kwa
     stats: dict = {}
     hits = res.get("node_hits") or []
     try:
+        # current 는 넓은 후보를 받는다. 구간 먼저 세우기는 내보낼 노드 창 안에서만 한다.
+        window = max(int(kwargs.get("top_k") or 5), int(kwargs.get("node_k") or 0))
         temporal.finish_nodes(store, hits, owner=owner, scope=scope, current=mode == "current",
-                              known_at=known_at, stats=stats)
+                              known_at=known_at, stats=stats, window=window)
         res["node_hits"] = hits
         hidden = len(stats.get("current_hidden", ()))
         if hidden:
