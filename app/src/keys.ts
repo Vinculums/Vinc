@@ -32,7 +32,7 @@ export function blocksSurfaceShortcuts(
   active: EventTarget | null,
   docEditorOpen: boolean,
 ): boolean {
-  return held > 0 || docEditorOpen || isTypingTarget(target) || isTypingTarget(active);
+  return heldNow() || docEditorOpen || isTypingTarget(target) || isTypingTarget(active);
 }
 
 /** 시트·다이얼로그가 떠 있는 동안 표면 단축키(1·2·3·f·?)는 쉰다.
@@ -40,15 +40,17 @@ export function blocksSurfaceShortcuts(
  *  초점이 시트 안 버튼이나 body 에 있으면 위 검사가 안 걸린다. 그러면 설정을 연 채로 숫자가
  *  뒤 화면을 바꾸고 `?` 가 시트를 하나 더 쌓는다. 시트를 여는 쪽(`components.ts`)이
  *  열 때 잡고 닫을 때 놓는다 — 부르는 쪽마다 따로 재지 않으므로 모든 호출부가 함께 쉰다.
- *  ⚠ DOM 을 읽지 않는다(수만 센다): `app/dev/keys-check.ts` 가 노드에서 이것을 돌린다.
+ *  `alive` 를 주면 그것이 거짓이 된 잡기는 놓은 것으로 센다: 시트가 닫기를 거치지 않고
+ *  지워져도(다른 화면이 걷어 가도) 단축키가 영영 막히지 않는다.
+ *  ⚠ DOM 을 읽지 않는다(받은 함수만 부른다): `app/dev/keys-check.ts` 가 노드에서 이것을 돌린다.
  *  돌려준 함수는 놓기다. 두 번 불러도 한 번만 놓는다. */
-let held = 0;
-export function holdSurfaceShortcuts(): () => void {
-  held += 1;
-  let done = false;
-  return () => {
-    if (done) return;
-    done = true;
-    held = Math.max(0, held - 1);
-  };
+const holds = new Set<() => boolean>();
+function heldNow(): boolean {
+  for (const alive of [...holds]) if (!alive()) holds.delete(alive);
+  return holds.size > 0;
+}
+export function holdSurfaceShortcuts(alive: () => boolean = () => true): () => void {
+  const entry = () => alive();
+  holds.add(entry);
+  return () => { holds.delete(entry); };
 }

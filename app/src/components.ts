@@ -6,6 +6,7 @@ import { temporalEntries } from "./search-temporal";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
 import { loaderTrack } from "./vinc-loaders.js";
 import { holdSurfaceShortcuts } from "./keys";
+import { LAYER_SELECTOR, topLayerOf } from "./layers";
 
 /** ── 바깥 클릭으로 닫기 ────────────────────────────────────────────────────
  *
@@ -107,8 +108,8 @@ export const esc = (s: unknown): string => String(s ?? "").replace(/[&<>"]/g, (c
 
 /** ── 겹친 층의 초점 ─────────────────────────────────────────────────────
  *
- *  시트와 작은 다이얼로그가 함께 쓴다. 맨 위 층은 마지막 `.sheet-scrim` 이다(Esc 와 같은
- *  규칙). 셋을 지킨다: 열 때 초점이 층 안으로 들어가고, Tab·Shift+Tab 은 맨 위 층 안을
+ *  시트와 작은 다이얼로그가 함께 쓴다. 맨 위 층은 `layers.ts` 가 정한다(Esc 와 같은 규칙):
+ *  마지막 딤, 또는 그 뒤에 뜬 딤 밖의 모달 화면. 셋을 지킨다: 열 때 초점이 층 안으로 들어가고, Tab·Shift+Tab 은 맨 위 층 안을
  *  돌며, 닫으면 연 자리로 돌아간다. 아래 층의 덫은 위 층이 떠 있는 동안 비켜선다.
  *  ⚠ `inert` 아래(문서 편집기가 삭제를 기다리는 동안의 본문)와 숨은 것은 고르지 않는다. */
 const FOCUSABLE = "a[href], button:not([disabled]), input:not([disabled]):not([type=\"hidden\"]), "
@@ -120,21 +121,30 @@ function focusablesIn(root: HTMLElement): HTMLElement[] {
     !el.closest("[inert]") && !el.closest("[hidden]") && el.getClientRects().length > 0);
 }
 
-const isTopLayer = (scrim: HTMLElement): boolean => {
-  const all = document.querySelectorAll(".sheet-scrim");
-  return all[all.length - 1] === scrim;
-};
+/** 이 딤이 맨 위 층인가. 딤 밖의 모달 화면(로그인 · 기기 그래프 알림)도 층으로 센다(layers.ts). */
+const isTopLayer = (scrim: HTMLElement): boolean =>
+  topLayerOf(document.querySelectorAll<HTMLElement>(LAYER_SELECTOR)) === scrim;
 
-/** Tab 을 층 안에 가둔다. 반환 = 배선 해제. */
+/** Tab 을 층 안에 가둔다. 반환 = 배선 해제.
+ *  딤 밖의 모달 화면(로그인 · 기기 그래프 알림)이 맨 위에 뜨면 시트는 비켜서고, 대신 맨 위 딤 하나가
+ *  Tab 을 그 화면 안에서 돌린다 — 그 화면들은 자기 덫이 없어서, 비켜서기만 하면 Shift+Tab 이 아래의
+ *  보이지 않는 시트로 샌다. 그 화면이 닫히면(문서에서 빠지면) 시트가 다시 맨 위다. */
 function trapFocus(scrim: HTMLElement, box: HTMLElement): () => void {
   const onKey = (e: KeyboardEvent) => {
-    if (e.key !== "Tab" || !isTopLayer(scrim)) return;
-    const items = focusablesIn(box);
+    if (e.key !== "Tab") return;
+    const top = topLayerOf(document.querySelectorAll<HTMLElement>(LAYER_SELECTOR));
+    let within = box;
+    if (top !== scrim) {
+      const scrims = document.querySelectorAll(".sheet-scrim");
+      if (!top || top.matches(".sheet-scrim") || scrims[scrims.length - 1] !== scrim) return;
+      within = top;
+    }
+    const items = focusablesIn(within);
     const at = document.activeElement as HTMLElement | null;
-    if (!items.length) { e.preventDefault(); box.focus(); return; }
+    if (!items.length) { if (within === box) { e.preventDefault(); box.focus(); } return; }
     const first = items[0], last = items[items.length - 1];
-    const inside = !!at && box.contains(at);
-    if (e.shiftKey && (!inside || at === first || at === box)) { e.preventDefault(); last.focus(); }
+    const inside = !!at && within.contains(at);
+    if (e.shiftKey && (!inside || at === first || at === within)) { e.preventDefault(); last.focus(); }
     else if (!e.shiftKey && (!inside || at === last)) { e.preventDefault(); first.focus(); }
   };
   document.addEventListener("keydown", onKey, true);
@@ -205,7 +215,8 @@ export function openSheet(opts: {
   // (설정은 고른 분류, 확인류는 기본 버튼) — 여기서 첫 버튼을 고르면 ✕ 가 잡힌다.
   sheetEl.focus({ preventScroll: true });
   const untrap = trapFocus(el, sheetEl);
-  const release = holdSurfaceShortcuts();
+  // 딤이 문서에서 빠지면(닫기를 거치지 않고 지워져도) 잡은 것이 저절로 풀린다.
+  const release = holdSurfaceShortcuts(() => el.isConnected);
   let closed = false;
   const close = () => {
     if (closed) return;            // 애니메이션 도중 두 번 눌려도 한 번만 닫는다
@@ -222,8 +233,9 @@ export function openSheet(opts: {
   };
   const onKey = (e: KeyboardEvent) => {
     if (e.key !== "Escape") return;
-    // 시트가 여럿 쌓여도 **맨 위 하나만** 닫는다(가장 최근 것이 마지막 자식).
-    if (document.querySelectorAll(".sheet-scrim")[document.querySelectorAll(".sheet-scrim").length - 1] !== el) return;
+    // 시트가 여럿 쌓여도 **맨 위 하나만** 닫는다. 로그인 화면처럼 딤 밖의 모달이 위에 있으면
+    // 그 아래 시트는 닫지 않는다(보이지 않는 층이 Esc 를 가져가지 않게).
+    if (!isTopLayer(el)) return;
     e.stopPropagation();
     close();
   };
@@ -382,7 +394,7 @@ function wireDialogMotion(el: HTMLElement, dismiss: () => void): (then: () => vo
   // 기본 버튼에 초점을 두는 것은 호출부다(이 함수 다음 줄). 여기서는 Tab 을 가두고 단축키를 쉬게 한다.
   sheetEl.tabIndex = -1;
   const untrap = trapFocus(el, sheetEl);
-  const release = holdSurfaceShortcuts();
+  const release = holdSurfaceShortcuts(() => el.isConnected);
   let closed = false;
   return (then) => {
     if (closed) return;            // 애니메이션 도중 두 번 눌려도 한 번만 닫는다

@@ -74,4 +74,16 @@ outer();
 assert.equal(blocksSurfaceShortcuts(null, null, false), false);
 ok("마지막 시트가 닫히면 단축키가 산다");
 
+// ── 7. 닫기를 거치지 않고 지워진 시트는 잡은 것을 남기지 않는다 ─────────────────
+// 시트가 넘기는 `alive`(딤이 문서에 붙어 있는가)가 거짓이 되면 놓은 것으로 센다.
+let attached = true;
+const orphan = holdSurfaceShortcuts(() => attached);
+assert.equal(blocksSurfaceShortcuts(null, null, false), true);
+attached = false;
+assert.equal(blocksSurfaceShortcuts(null, null, false), false);
+ok("딤이 문서에서 빠지면 놓기를 부르지 않아도 단축키가 산다");
+orphan();
+assert.equal(blocksSurfaceShortcuts(null, null, false), false);
+ok("늦게 온 놓기는 아무것도 바꾸지 않는다");
+
 console.log(`\nkeys: ${n}개 검사 통과`);
