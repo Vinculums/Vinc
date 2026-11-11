@@ -2654,7 +2654,7 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
 .a2-metric b { color: hsl(var(--foreground)); font-weight: 600; }
 
 /* Settings — 왼쪽 분류 레일 + 본문(2026-09-22). 딤·머리·✕ 는 시트의 것이다.
-   레일은 다섯 묶음(앱 · 계정 · 연결 · 정보 · 시스템)의 머리 아래 분류를 세운다.
+   레일은 다섯 묶음(앱 · 계정 · 연결 · 자료 · 시스템)의 머리 아래 분류를 세운다.
    본문은 카드와 줄 두 가지로만 짓는다(settings.ts `settingsCard` · `settingsRow`).
    ⚠ 본문 칸의 발(`.settings-foot`)은 본문 열 **안**에 있다. 시트의 발을 쓰면 저장·공유 줄이
    레일 밑까지 번져 레일이 짧아지고 버전 줄이 뛰었다 — 레일은 어느 분류에서나 같은 높이다. */
@@ -2665,6 +2665,8 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
   display: flex; flex: 1 1 auto; min-height: 0; width: 100%;
 }
 .settings-cats {
+  /* 기준 상자다: settings.ts `revealActive` 가 분류의 offsetTop 을 레일 안의 자리로 읽는다. */
+  position: relative;
   flex: 0 0 14rem; width: 14rem;
   display: flex; flex-direction: column; gap: var(--space-2);
   /* 낮은 창에서는 분류가 상자보다 길다. 스크롤을 안 주면 아래 분류와 버전 줄이

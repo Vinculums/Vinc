@@ -120,7 +120,7 @@ function connectedFixture(accountKey, keyIsOnDisk = () => false) {
     U: { acctConnected: () => "connected", acctDisconnect: "disconnect", acctDisconnectHint: "hint",
       acctOnDisk: "profile storage", acctKeyFailed: "failed", acctKeyRetry: "retry" },
     forgetAccount: () => { throw new Error("조회 실패는 계정을 지우면 안 된다"); },
-    renderAccount: () => {},
+    renderBody: () => {}, alive: () => true,
   };
   vm.createContext(state);
   // 그리기는 설정의 두 도우미(카드 · 줄)를 거친다. 합성하지 않고 그 소스를 그대로 싣는다.

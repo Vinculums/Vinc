@@ -15,7 +15,7 @@ import { shortcutList } from "../shortcuts";
 
 /** Settings — 왼쪽 분류 레일 + 본문(2026-09-22).
  *  레일 바닥의 설정 버튼이 예전 Settings · GRAPH.md · Tools(가져오기/공유)를 한 상자에 담는다.
- *  분류는 다섯 묶음(앱 · 계정 · 연결 · 정보 · 시스템) 아래에 서고, 보일 분류가 없는 묶음은
+ *  분류는 다섯 묶음(앱 · 계정 · 연결 · 자료 · 시스템) 아래에 서고, 보일 분류가 없는 묶음은
  *  머리째 그리지 않는다. 시트 머리의 ✕ 가 닫기이고, 여기 안에 닫기를 하나 더 두지 않는다.
  *  모든 본문은 아래 두 도우미(`settingsCard` · `settingsRow`)로 짓는다. */
 
@@ -169,6 +169,11 @@ async function renderSettings(
   let toolsTab: DataTab = active === "share" ? "share" : "import";
   let cleanup: (() => void) | null = null;
   let foot: HTMLElement = sheet.foot;
+  // ⚠ 본문 칸(`#settings-body`)은 시트만큼 산다. 그래서 `body.isConnected` 로는 "아직 그 분류의
+  // 본문인가"를 못 가른다. 늦게 끝나는 일(계정 연결 · 키 확인 · 등록 결과 · 모듈 불러오기)은 그린
+  // 때의 표(`paneToken`)를 들고 있다가, 분류가 바뀌었거나 시트가 닫혔으면 아무것도 그리지 않는다.
+  let paneGen = 0;
+  const paneToken = () => { const g = paneGen; return () => g === paneGen && !sheet.closed; };
 
   // 레일은 한 번만 그린다. 분류를 바꿀 때 레일까지 다시 그리면 방금 누른 버튼이 사라져
   // 초점이 body 로 떨어진다. 바뀌는 것은 고른 표시와 본문뿐이다.
@@ -201,9 +206,34 @@ async function renderSettings(
     void import("../conventions").then((m) => m.refreshBadge());
     renderBody();
     el.querySelector<HTMLElement>(".settings-cat.on")?.focus({ preventScroll: true });
+    revealActive();
+  }
+
+  /** 고른 분류가 레일 안에 보이게 레일만 굴린다(낮은 창에서는 레일이 상자보다 길다).
+   *  `scrollIntoView` 를 쓰지 않는다: 그것은 딤까지 굴리고, 시트가 커지는 동안(변형 중)의 상자로
+   *  잰다. 레일이 기준 상자(`position: relative`)라 `offsetTop` 이 레일 안의 자리다. */
+  function revealActive() {
+    const nav = el.querySelector<HTMLElement>(".settings-cats");
+    const on = nav?.querySelector<HTMLElement>(".settings-cat.on");
+    if (!nav || !on) return;
+    const pad = on.offsetHeight;
+    if (nav.scrollHeight > nav.clientHeight) {
+      const top = on.offsetTop, bottom = top + on.offsetHeight;
+      // 마지막 묶음이면 레일 끝까지 내린다: 그 아래의 버전 줄도 함께 보인다.
+      const lastGroup = !on.closest(".settings-group")?.nextElementSibling?.matches(".settings-group");
+      if (lastGroup) nav.scrollTop = nav.scrollHeight;
+      else if (top - pad < nav.scrollTop) nav.scrollTop = Math.max(0, top - pad);
+      else if (bottom + pad > nav.scrollTop + nav.clientHeight) nav.scrollTop = bottom + pad - nav.clientHeight;
+    }
+    if (nav.scrollWidth > nav.clientWidth) {          // 좁은 창: 레일이 가로 한 줄이다
+      const left = on.offsetLeft, right = left + on.offsetWidth;
+      if (left < nav.scrollLeft) nav.scrollLeft = left;
+      else if (right > nav.scrollLeft + nav.clientWidth) nav.scrollLeft = right - nav.clientWidth;
+    }
   }
 
   function renderBody() {
+    paneGen += 1;
     cleanup?.();
     cleanup = null;
     foot.innerHTML = "";
@@ -236,6 +266,7 @@ async function renderSettings(
       if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
     });
     renderBody();
+    revealActive();
   }
 
   // ── 앱 ────────────────────────────────────────────────────────────────────
@@ -373,12 +404,13 @@ async function renderSettings(
     body.innerHTML = paneHead(share ? U.navShare : T.import, share ? T.shareSub : T.importSub)
       + settingsCard([settingsRow({ wide: `<div id="settings-tools"></div>` })], { bare: !share });
     const pane = body.querySelector<HTMLElement>("#settings-tools")!;
+    const alive = paneToken();
     // 분류들은 본문 칸의 발(`foot`)을 함께 쓴다. 모듈이 오는 사이 다른 분류로
     // 옮겼으면 이 판은 이미 떨어져 나갔으므로 아무것도 안 그린다 — 그리면 그 발
     // 버튼이 지금 분류 밑에 선다. 판 안의 늦은 쓰기도 같은 규칙이다(tools.ts ·
     // conventions.ts 가 `isConnected` 로 본다).
     void import("../tools").then((m) => {
-      if (!pane.isConnected) return;
+      if (!alive() || !pane.isConnected) return;
       cleanup = m.mountTools(
         { el: sheet.el, body: pane, foot, close: sheet.close }, toolsTab);
     });
@@ -388,14 +420,16 @@ async function renderSettings(
     body.innerHTML = paneHead(U.navGraphmd, U.graphmdIntro)
       + settingsCard([settingsRow({ wide: `<div id="settings-conv"></div>` })]);
     const pane = body.querySelector<HTMLElement>("#settings-conv")!;
+    const alive = paneToken();
     void import("../conventions").then((m) => {
-      if (!pane.isConnected) return;       // 위 renderData 와 같은 이유
+      if (!alive() || !pane.isConnected) return;       // 위 renderData 와 같은 이유
       void m.mountConventions(pane, { body: pane, foot, close: sheet.close });
     });
   }
 
   // ── 계정 ──────────────────────────────────────────────────────────────────
   function renderAccount(body: HTMLElement) {
+    const alive = paneToken();
     // ⚠ 이 블록의 카피는 예전에 여기 EN/KO 사전으로 인라인돼 있었다. 덱 밖 카피는 언어
     // 프록시도 게이트도 타지 않는다(tests/design/test_copy_parity.py 가 이제 막는다).
     // 셀프호스트 허브: 계정·공간·팀으로 옮기기·알림이 없다. 이 허브의 로그인과 로그아웃만 둔다.
@@ -408,7 +442,7 @@ async function renderSettings(
       body.querySelector("#sh-signout")!.addEventListener("click", () => { void selfHostedSignOut(); });
       // 좌석·마지막 확인·유예 상태(S8). 허브가 하루 한 번 계정에 묻고 30일 동안 마지막 답을 쓴다.
       void selfHostedSeats().then((s) => {
-        const el = body.querySelector<HTMLElement>("#sh-seats");
+        const el = alive() ? body.querySelector<HTMLElement>("#sh-seats") : null;
         if (!el || !s) return;
         const day = (sec: unknown) => typeof sec === "number" ? new Date(sec * 1000).toLocaleDateString() : "";
         const used = Number(s.users_used) || 1, allowed = Number(s.users_allowed) || 1;
@@ -445,12 +479,13 @@ async function renderSettings(
       api.me()
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
+          if (!alive()) return;
           const u = d && d.user;
           if (!u) { box.textContent = U.webNotSignedIn; return; }
           const who = u.username ? "@" + u.username : u.email;
           box.innerHTML = `${esc(U.webSignedAs(who))} · <a href="/account/" target="_blank" rel="noopener">${esc(U.webManage)}</a>`;
         })
-        .catch(() => { if (box) box.textContent = ""; });
+        .catch(() => { if (alive()) box.textContent = ""; });
       return;
     }
 
@@ -487,8 +522,10 @@ async function renderSettings(
           failure.hidden = true;
           try {
             await accountKey();
+            if (!alive()) return;
             onDisk.hidden = !keyIsOnDisk();
           } catch {
+            if (!alive()) return;
             // 이행 저장 실패도 여기로 온다. 연결이나 기존 키를 지우지 않고 재시도를 열어 둔다.
             onDisk.hidden = true;
             failure.hidden = false;
@@ -501,7 +538,7 @@ async function renderSettings(
         retry.addEventListener("click", () => void checkKey());
         acctBox.querySelector("#acct-disc")!.addEventListener("click", () => {
           forgetAccount();
-          renderAccount(body);
+          renderBody();
         });
       } else {
         // 지금 상태를 먼저 말한다. 첫 실행이 선택을 요구하게 되면서(firstrun) 여기가
@@ -518,8 +555,10 @@ async function renderSettings(
 
     async function startConnect() {
       const acctResult = acctBox.querySelector<HTMLElement>("#acct-result")!;
-      const r = await connectAccount(() => { acctResult.textContent = U.acctConnecting; });
-      if (r === "connected") { renderAccount(body); return; }
+      const r = await connectAccount(() => { if (alive()) acctResult.textContent = U.acctConnecting; });
+      // 기다리는 사이 다른 분류로 옮겼거나 시트를 닫았으면 그리지 않는다(연결 자체는 끝났다).
+      if (!alive()) return;
+      if (r === "connected") { renderBody(); return; }
       if (r === "expired") { acctResult.textContent = U.acctExpired; return; }
       if (r === "failed") acctResult.textContent = U.acctFail;
     }
@@ -564,6 +603,7 @@ async function renderSettings(
   let paintConnections = () => {};
 
   function renderApps(body: HTMLElement) {
+    const alive = paneToken();
     // 호스트 하나 = 줄 하나(2026-08-05 재설계). `.seg` 는 **여럿 중 하나를 고르는** 컨트롤이라
     // 독립 동작 여덟 개를 담을 그릇이 아니다. 같은 호스트의 연결과 해제가 한 줄에 있다.
     const rows = MCP_HOSTS.map((h) => settingsRow({
@@ -599,7 +639,7 @@ async function renderSettings(
     mcpMode.textContent = accountMode() ? U.mcpModeAccount : U.mcpModeLocal;
     if (accountMode()) {
       void mcpKeyPresent().then((ok) => {
-        if (!mcpMode.isConnected) return;
+        if (!alive()) return;
         keyReady = !accountMode() || ok;
         paintConnections();
       });
@@ -620,8 +660,9 @@ async function renderSettings(
       const host = U.mcpHosts[client] || client;
       const say = (text: string) => {
         hostResults.set(client, text);
-        // 기다리는 사이 다른 분류로 옮겼으면 줄이 없다. 결과는 기억해 두고 돌아오면 그린다.
-        const line = body.isConnected ? body.querySelector<HTMLElement>(`#mcp-result-${client}`) : null;
+        // 결과는 기억해 두고, 지금 화면이 데스크톱 앱 분류일 때만 그 줄에 쓴다(다시 돌아와 그린
+        // 분류여도 같은 줄이다). 다른 분류나 닫힌 시트에는 쓰지 않는다.
+        const line = active === "apps" && !sheet.closed ? body.querySelector<HTMLElement>(`#mcp-result-${client}`) : null;
         if (line) line.textContent = text;
       };
       try {
@@ -655,7 +696,8 @@ async function renderSettings(
         say(`${U.mcpFail}: ${messageOf(e)}`);
       } finally {
         busyHosts.delete(client);
-        if (body.isConnected) paintConnections();
+        // `paintConnections` 는 가장 최근에 그린 데스크톱 앱 분류를 칠한다.
+        if (active === "apps" && !sheet.closed) paintConnections();
       }
     }
     for (const h of MCP_HOSTS) {
@@ -668,6 +710,7 @@ async function renderSettings(
   // 그래프에 붙으므로 계정이 있어야 한다(루프백은 구조적으로 원격에 노출할 수 없다).
   // 근거: [[decision:the-desktop-signs-in-and-shows-the-account-graph-live-and-local-mode-is-a-setting]]
   function renderAssistants(body: HTMLElement) {
+    const alive = paneToken();
     body.innerHTML = paneHead(U.mcpRemote, U.mcpRemoteHint) + settingsCard([
       settingsRow({ title: U.mcpRemoteHosts,
         extra: `<p class="set-row-desc break-all"><code>${esc(REMOTE_MCP_URL)}</code></p>
@@ -689,12 +732,14 @@ async function renderSettings(
     }
     body.querySelector("#mcp-remote-copy")!.addEventListener("click", async () => {
       // 복사가 막혀도 주소는 위에 그대로 떠 있다 — 실패를 오류로 키우지 않는다.
-      try { await navigator.clipboard.writeText(REMOTE_MCP_URL); remoteState.textContent = U.mcpRemoteCopied; }
-      catch { remoteState.textContent = U.mcpRemoteCopyFail; }
+      let copied = true;
+      try { await navigator.clipboard.writeText(REMOTE_MCP_URL); } catch { copied = false; }
+      if (alive()) remoteState.textContent = copied ? U.mcpRemoteCopied : U.mcpRemoteCopyFail;
     });
     remoteAcct.addEventListener("click", async () => {
       remoteState.textContent = U.acctConnecting;
       const r = await connectAccount();
+      if (!alive()) return;
       if (r === "connected") paintRemote();
       else remoteState.textContent = r === "expired" ? U.acctExpired : U.acctFail;
     });
@@ -715,13 +760,14 @@ async function renderSettings(
           <button class="btn" id="cli-add" type="button" hidden>${esc(U.cliInstallAct)}</button>` }),
     ])}</div>`;
     const box = body.querySelector<HTMLElement>("#cli-box")!;
+    const alive = paneToken();
     const cliState = body.querySelector<HTMLElement>("#cli-state")!;
     const cliNote = body.querySelector<HTMLElement>("#cli-note")!;
     const cliAdd = body.querySelector<HTMLButtonElement>("#cli-add")!;
     const cliRm = body.querySelector<HTMLButtonElement>("#cli-rm")!;
     type CliStatus = { supported: boolean; linked: boolean; path: string; dir: string; on_path: boolean };
     function paintCli(st: CliStatus | null, err?: string) {
-      if (!box.isConnected) return;
+      if (!alive()) return;
       if (err) { cliState.textContent = `${U.cliFail}: ${err}`; return; }
       if (!st || !st.supported) {
         // 못 누르는 버튼을 남기지 않는다. 대신 왜 할 일이 없는지 한 문장으로 말한다.
