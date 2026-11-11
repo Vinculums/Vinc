@@ -62,7 +62,7 @@
       },
       "settled": {
         "mentions_rule": "3:title-before-source",
-        "note": "engines.mentions_link.ensure_rule applied once, as a sidecar or the hub does at boot; the unsettled bytes (sha 71ce5eaa..., rule 2:title-window-12) sit beside it as hub.unsettled.db"
+        "note": "engines.mentions_link.ensure_rule applied once, as a sidecar or the hub does at boot; the unsettled bytes (sha 71ce5eaa..., rule 2:title-window-12) sit beside it as hub.unsettled.db. Not settled for code at or after rule 4:lossy-title-phrase (VIN-976): the in-process harness refuses it until a copy is settled with ensure_rule and locked under its new sha256. Measured on a copy of ko-main-2026-10-27, which holds the same chunks and nodes: the link set is unchanged (498 before and after), so settling moves only the marker."
       }
     },
     "full176-m3-2026-09-09": {
@@ -126,7 +126,7 @@
       },
       "settled": {
         "mentions_rule": "3:title-before-source",
-        "note": "engines.mentions_link.ensure_rule applied once at the end of the build, as for m3-ort130-2026-09-28"
+        "note": "engines.mentions_link.ensure_rule applied once at the end of the build, as for m3-ort130-2026-09-28. Not settled for code at or after rule 4:lossy-title-phrase (VIN-976): the in-process harness refuses it until a copy is settled with ensure_rule and locked under its new sha256. Measured on a copy of ko-main-2026-10-27, which holds the same chunks and nodes: the link set is unchanged (498 before and after), so settling moves only the marker."
       },
       "encoder_model": "dragonkue/BGE-m3-ko int8 (hub bake recipe, reduce_range), run under the bge-m3 model key: same architecture, dimension, pooling and no prefix; its own tokenizer.json sits beside the ONNX",
       "release": "vinc-rag-assets eval-2026-10-19 (TAG=eval-2026-10-19 bash fetch.sh): the store, and the encoder at _eval-stores/encoder-bge-m3-ko/bge-m3-ko-int8-rr.onnx with its tokenizer.json. The encoder bytes are the ones the hub runs since 2026-10-18"
@@ -161,7 +161,7 @@
       },
       "settled": {
         "mentions_rule": "3:title-before-source",
-        "note": "inherited from ko-ort130-2026-10-18; no relink was run"
+        "note": "inherited from ko-ort130-2026-10-18; no relink was run. Not settled for code at or after rule 4:lossy-title-phrase (VIN-976): the in-process harness refuses it until a copy is settled with ensure_rule and locked under its new sha256. Measured on a copy of ko-main-2026-10-27, which holds the same chunks and nodes: the link set is unchanged (498 before and after), so settling moves only the marker."
       },
       "encoder_model": "dragonkue/BGE-m3-ko int8 (hub bake recipe, reduce_range), run under the bge-m3 model key: same architecture, dimension, pooling and no prefix; its own tokenizer.json sits beside the ONNX",
       "note": "Why it exists: the mirror text rules changed after ko-ort130-2026-10-18 was built, so the current code on that pin sees stale mirror rows and drops them from the meaning arm (union 46 of 60 against 51). This store is the pin the current code is measured on; ko-ort130-2026-10-18 stays for the code of its day."

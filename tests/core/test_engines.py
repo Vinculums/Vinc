@@ -183,6 +183,63 @@ class MentionsLinkTests(unittest.TestCase):
         self.assertEqual([(l["concept_id"], l["method"]) for l in links],
                          [("c1", "stem")])
 
+    def _title_link(self, title: str, text: str) -> bool:
+        links = self.m.compute_links(
+            [{"chunk_id": "ch1", "source_file": "/a/x.md", "text": text}],
+            [{"concept_id": "c1", "title": title, "stem": "", "source_file": ""}])
+        return [l["method"] for l in links] == ["title"]
+
+    def test_lossy_title_links_only_where_the_page_names_it(self):
+        # 어구 가드(규칙 4): 토큰화가 기호·한 글자 토큰을 버려 낱말 하나로 준 제목은
+        # 그 낱말만 담은 청크에 걸리지 않는다. 커뮤니티 실측: "Q-learning" 이 learning
+        # 만 담은 93쪽에 걸렸다. 하이픈과 공백은 같은 구분자다.
+        for text in ("Q-learning is a model-free method.", "we tried q learning first",
+                     "Q‑learning (non-breaking hyphen)"):
+            self.assertTrue(self._title_link("Q-learning", text), text)
+        for text in ("Machine learning is broad.", "qlearning", "deep learning and Q values"):
+            self.assertFalse(self._title_link("Q-learning", text), text)
+
+    def test_lossy_two_word_title_needs_the_phrase(self):
+        self.assertTrue(self._title_link("A* search", "We use A* search on the grid."))
+        self.assertFalse(self._title_link("A* search", "Binary search runs in log n."))
+        self.assertFalse(self._title_link("A* search", "a search for the key"))
+
+    def test_dropped_number_still_discriminates(self):
+        # "GPT-4" 는 gpt 하나로 줄었다 — 4 가 빠지면 GPT-3 에도 걸렸다. 뒤에 숫자가
+        # 이어지면 다른 이름이고, 한국어 조사가 붙는 것은 같은 이름이다.
+        self.assertTrue(self._title_link("GPT-4", "GPT-4 is large."))
+        self.assertTrue(self._title_link("GPT-4", "GPT-4는 크다."))
+        self.assertFalse(self._title_link("GPT-4", "GPT-3 outperformed earlier models."))
+        self.assertFalse(self._title_link("GPT-4", "GPT-40 tokens"))
+        self.assertFalse(self._title_link("GPT-4", "the gpt family"))
+
+    def test_korean_title_with_a_symbol(self):
+        # "Q-러닝" 은 러닝 하나로 준다. 같은 가드가 한글 제목에도 선다.
+        self.assertTrue(self._title_link("Q-러닝", "Q-러닝 알고리즘은 오프폴리시다"))
+        self.assertFalse(self._title_link("Q-러닝", "딥 러닝 알고리즘은 크다"))
+
+    def test_zero_token_title_links_by_its_phrase(self):
+        # "C++" 는 토큰이 0개라 예전에는 title 로 영영 링크되지 않았다. 어구로 링크된다.
+        self.assertTrue(self._title_link("C++", "I write C++ daily."))
+        self.assertFalse(self._title_link("C++", "I write C daily."))
+        # 한 글자 제목은 어구로도 링크하지 않는다(홀로 선 r 마다 걸린다) — 예전과 같다.
+        self.assertFalse(self._title_link("R", "R is a language."))
+        self.assertFalse(self._title_link("R", "the r in the formula"))
+
+    def test_lossless_titles_keep_the_old_rule(self):
+        # 손실 없는 제목은 규칙 3 그대로다: 여러 낱말은 창 안 어순 무관, 한 낱말은 어디든.
+        self.assertTrue(self._title_link("Vinc Design Hub", "the design hub inside vinc"))
+        self.assertTrue(self._title_link("Transformer", "An electrical transformer."))
+        self.assertTrue(self._title_link("강화학습", "강화학습 은 보상을 최대화한다"))
+        self.assertFalse(self._title_link("강화학습", "강화학습은 보상을 최대화한다"))
+
+    def test_lossy_title_with_three_tokens_keeps_the_window_rule(self):
+        # 토큰이 셋 이상 남는 손실 제목은 창 조건이 이미 거른다 — 어구를 요구하지 않는다.
+        # (날짜·관사가 섞인 긴 제목까지 요구하면 개인 그래프 사본 링크의 2할이 빠졌다.)
+        self.assertTrue(self._title_link("QA session A progress, 2026-10-04",
+                                         "# QA session A progress 2026 10 04"))
+        self.assertTrue(self._title_link("A role is a node", "the role is a graph node"))
+
     def test_deterministic_sorted_output(self):
         chunks = [{"chunk_id": "ch2", "source_file": "/a/b.md", "text": "alpha beta"},
                   {"chunk_id": "ch1", "source_file": "/a/b.md", "text": "alpha beta"}]
