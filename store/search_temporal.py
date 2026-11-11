@@ -280,18 +280,43 @@ def _interval(t):
             instant(t["valid_until"]) or dt.datetime.max.replace(tzinfo=dt.timezone.utc))
 
 
-def superseded_old_end(row, current_ids=frozenset()):
+def _demoting(e):
+    return bool(e.get("evidence")) and e.get("status") in ("comparable", "uncomparable")
+
+
+def chain_moved_on(context):
+    """대체 계보가 이미 지나간 노드의 id: 구간이 끝났거나, 근거 있는 SUPERSEDES 를 새 쪽으로
+    따라가면 구간이 지금인 노드가 있다. `context` 는 :func:`finish_nodes` 가 이미 읽은 계보라
+    스토어를 다시 읽지 않는다(크기는 :data:`LINEAGE_CAP` 안팎, 간선마다 한 번 걷는다)."""
+    older = {}
+    for row in context:
+        for e in row["temporal"].get("supersession") or ():
+            if _demoting(e):
+                older.setdefault(e.get("new"), set()).add(row.get("id"))
+    todo = [r.get("id") for r in context if r["temporal"]["validity"] == "current"]
+    moved = {r.get("id") for r in context if r["temporal"]["validity"] == "historical"}
+    reached = set()
+    while todo:
+        for old in older.get(todo.pop(), ()):
+            if old not in reached:
+                reached.add(old)
+                todo.append(old)
+    return frozenset(moved | reached)
+
+
+def superseded_old_end(row, current_ids=frozenset(), moved_on=frozenset()):
     """근거 있는 SUPERSEDES 에서 대체된 쪽(비교 가능·불가 모두)을 내릴 것인가. 자기 구간이 오늘
-    성립하지 않거나, 그 간선의 새 쪽이 `current_ids`(같이 세우는 행 중 구간이 지금인 id)에 있으면
-    내린다. 새 쪽이 없으면(미래에 시작해 이미 빠졌다) 오늘 유효한 대체된 쪽은 그대로 둔다.
-    순환과 근거 없는 간선은 세지 않는다."""
+    성립하지 않거나, 그 간선의 새 쪽이 `current_ids`(같이 세우는 행 중 구간이 지금인 id)에 있거나,
+    새 쪽마저 계보가 지나갔으면(`moved_on`, :func:`chain_moved_on`) 내린다. 새 쪽이 지금인데 같이
+    세우는 행에 없거나 미래라 빠졌으면 오늘 유효한 대체된 쪽은 그대로 둔다.
+    순환과 근거 없는 간선은 세지 않는다.
+    근거: [[record:on-the-hosted-server-colbert-rescoring-decides-the-final-mode-current-order-and-the-window-ordering-only-picks-the-20-rows-2026-11-11]]"""
     own_current = row["temporal"]["validity"] == "current"
-    return any(e.get("evidence") and e.get("status") in ("comparable", "uncomparable")
-               and (not own_current or e.get("new") in current_ids)
+    return any(_demoting(e) and (not own_current or e.get("new") in current_ids or e.get("new") in moved_on)
                for e in row["temporal"].get("supersession") or ())
 
 
-def current_order(rows, sources=None, window=None):
+def current_order(rows, sources=None, window=None, moved_on=frozenset()):
     """Order by validity and relevance; use claim freshness only on ties, never update time.
 
     `window` 가 있으면 관련도 순 상위 `window` 행 안에서만 세 묶음으로 세운다(묶음 안은 관련도 순):
@@ -309,7 +334,7 @@ def current_order(rows, sources=None, window=None):
         rows.sort(key=lambda r: (r["temporal"]["validity"] != "current", tuple(-v for v in relevance(r))))
     else:
         current_ids = frozenset(r.get("id") for r in rows if r["temporal"]["validity"] == "current")
-        demote = lambda r: superseded_old_end(r, current_ids)  # noqa: E731
+        demote = lambda r: superseded_old_end(r, current_ids, moved_on)  # noqa: E731
         rows.sort(key=lambda r: tuple(-v for v in relevance(r)))
         rows[:window] = sorted(rows[:window], key=lambda r: 2 if demote(r)
                                else 0 if r["temporal"]["validity"] == "current" else 1)
@@ -378,7 +403,12 @@ def finish_nodes(store, hits, *, owner=None, scope=None, current=False, known_at
         if stats is not None:
             stats.setdefault("current_hidden", set()).update(h["id"] for h in hits if h["id"] in retired or h["temporal"]["validity"] in ("historical", "future"))
         hits[:] = [h for h in hits if h["id"] not in retired and h["temporal"]["validity"] not in ("historical", "future")]
-        current_order(hits, sources, window=window)
+        moved_on = chain_moved_on(context)
+        current_order(hits, sources, window=window, moved_on=moved_on)
+        if stats is not None and window is not None:
+            # 재채점이 다시 세운 뒤에도 같은 행을 내리도록 넘긴다(`vinc_rag.retrieval.search`).
+            ids = frozenset(h["id"] for h in hits if h["temporal"]["validity"] == "current")
+            stats["old_ends"] = {h["id"] for h in hits if superseded_old_end(h, ids, moved_on)}
     return hits
 
 

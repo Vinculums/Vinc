@@ -78,7 +78,13 @@ def _degraded(res: dict) -> str:
     if note:
         return note
     arms = str(res.get("arms") or "")
-    return f"arms={arms}" if arms and "vector" not in arms else ""
+    if arms and "vector" not in arms:
+        return f"arms={arms}"
+    # 재채점을 켜고 쟀는데 재채점이 안 돌았다(토큰 없음 등) — 켜지 않은 수를 켠 수로 읽게 된다.
+    rescore = res.get("node_rescore") or {}
+    if rescore and rescore.get("state") != "applied":
+        return f"node_rescore={rescore.get('state')}: {rescore.get('reason')}"
+    return ""
 
 
 def _title_reuse(query: str, title: str) -> float:
@@ -231,6 +237,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--baseline", help="같은 문항으로 짝지어 비교할 이전 result.json")
     ap.add_argument("--migrate-lex", action="store_true",
                     help="사본마다 v21 색인 이관(migrate_lex_index) 뒤 잰다 — 이관 전 스토어는 오늘 색인 그대로다")
+    ap.add_argument("--fill-colbert", action="store_true",
+                    help="inproc 사본의 노드 미러에 ColBERT 토큰을 채운 뒤 잰다(VINC_NODE_COLBERT 와 함께) — 핀은 토큰이 없다")
     a = ap.parse_args(argv)
 
     out = pathlib.Path(a.out)
@@ -311,6 +319,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     want = [x.strip() for x in a.transports.split(",") if x.strip()]
+    if a.fill_colbert and set(want) - {"inproc"}:
+        print("--fill-colbert 는 inproc 사본만 채운다 — --transports inproc 로 잰다", file=sys.stderr)
+        return 1
     runs: dict = {}
     owner, spec = entry["owner"], f"{entry['encoder']}={a.onnx}"
     titles: dict = {}
@@ -321,6 +332,13 @@ def main(argv: list[str] | None = None) -> int:
                 header.setdefault("migrate_lex", {})["inproc"] = _migrate_lex(copy, entry["encoder"])
             t = InProcess(copy, owner, spec)
             try:
+                if a.fill_colbert:
+                    if t.colbert is None:
+                        print("--fill-colbert 는 VINC_NODE_COLBERT 와 VINC_COLBERT_LINEAR·BOOKS 가 있어야 한다",
+                              file=sys.stderr)
+                        return 1
+                    from rag_eval.evalkit import colbert_fill   # noqa: PLC0415
+                    header["colbert_fill"] = colbert_fill.fill(t.store, t.enc, t.colbert)
                 titles, missing = gold_titles(t, rows)
                 if missing:
                     print(f"정답 노드 {len(missing)}건이 스토어에 없다 — 예: {missing[:3]}", file=sys.stderr)

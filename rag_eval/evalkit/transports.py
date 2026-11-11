@@ -26,6 +26,30 @@ class TransportError(RuntimeError):
     pass
 
 
+class _WithColbert:
+    """`api.query` 를 그대로 넘기되 search·brief 에 질의 ColBERT 토큰을 싣는다.
+
+    사이드카(`api/server.py`)와 같게 질의 임베딩이 있을 때만 싣는다. 하네스가 `t.q.search` 를
+    직접 부르는 곳(`rag_eval.kind_eval`)도 같은 길을 타게 하려고 모듈 자리에 둔다."""
+
+    def __init__(self, q, tokens):
+        self._q, self._tokens = q, tokens
+
+    def __getattr__(self, name):
+        return getattr(self._q, name)
+
+    def _kw(self, query, kw):
+        if kw.get("query_embedding") is not None and "query_colbert" not in kw:
+            kw["query_colbert"] = self._tokens(query)
+        return kw
+
+    def search(self, query, **kw):
+        return self._q.search(query, **self._kw(query, kw))
+
+    def brief(self, query, **kw):
+        return self._q.brief(query, **self._kw(query, kw))
+
+
 class InProcess:
     """기준 경로 — 옛 하네스와 같다. 질의 임베딩은 이 프로세스의 인코더가 한다."""
     name = "inproc"
@@ -34,10 +58,11 @@ class InProcess:
         sys.path.insert(0, str(ROOT))
         sys.path.insert(0, str(ROOT / "scripts"))
         from api import query as q                    # noqa: PLC0415
+        from vinc_rag import colbert                  # noqa: PLC0415
         from vinc_rag.embed.encoder import Encoder                   # noqa: PLC0415
         from store.backend import open_store          # noqa: PLC0415
         from store.config import load_config          # noqa: PLC0415
-        self.q, self.owner = q, owner
+        self.owner = owner
         store = open_store(load_config({"data_dir": data}))
         if store is None:
             raise TransportError(f"스토어를 못 열었다: {data}")
@@ -46,11 +71,26 @@ class InProcess:
         self.enc = Encoder(name, path)
         self.enc.encode(["warmup"], kind="query")
         self._qv: dict[str, list] = {}
+        self._qc: dict[str, str] = {}
+        # 재채점 스위치가 켜지고 투영·코드북이 있으면 사이드카처럼 질의 ColBERT 토큰을 싣는다.
+        # 켜졌는데 못 올리면 거부한다: 재채점 없이 잰 수를 켠 수로 읽게 된다.
+        self.colbert = colbert.cached() if colbert.rescore_on() else None
+        if colbert.rescore_on() and self.colbert is None:
+            raise TransportError("VINC_NODE_COLBERT 가 켜졌는데 VINC_COLBERT_LINEAR·BOOKS 를 못 올렸다")
+        self.q = _WithColbert(q, self._colbert) if self.colbert is not None else q
 
     def _vec(self, text: str):
         if text not in self._qv:
             self._qv[text] = self.enc.encode([text], kind="query")[0]
         return self._qv[text]
+
+    def _colbert(self, text: str) -> str:
+        """질의 토큰 — 워커 `_encode_colbert(query=True)` 와 같다(한 줄, 압축 없는 float32)."""
+        if text not in self._qc:
+            from vinc_rag.colbert import pack_query   # noqa: PLC0415
+            hidden = self.enc.hidden([text], kind="query")[0]
+            self._qc[text] = pack_query(self.colbert.project(hidden))
+        return self._qc[text]
 
     def brief(self, query: str) -> dict:
         return self.q.brief(query, owner=self.owner, store=self.store,

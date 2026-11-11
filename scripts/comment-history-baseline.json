@@ -310,7 +310,7 @@
     "store/procutil.py": 2,
     "store/querybase.py": 19,
     "store/scoped_topic_inventory.py": 1,
-    "store/search_temporal.py": 3,
+    "store/search_temporal.py": 4,
     "store/theme_store.py": 1,
     "store/topic_batch_manifest.py": 1,
     "store/topic_transfer.py": 10,
