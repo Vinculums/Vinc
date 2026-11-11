@@ -3332,14 +3332,6 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 .pick-hint { margin: .2rem 0 .5rem; }
 .pick-msg { margin: .35rem 0 0; }
 .pick-msg:empty { display: none; }
-.pick-hint + .pick-drag { margin: -.3rem 0 .5rem; }
-/* 끌어서 잇기(Alt 끌기, surfaces/drag-connect.ts) — 캔버스 위 SVG 한 장. 포인트색은 가는 선과
-   고리에만 쓴다(면을 칠하지 않는다). 전환·애니메이션이 없다 — 움직임 줄이기에서도 같은 그림이다. */
-.dc-layer { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 5; pointer-events: none; overflow: visible; }
-.dc-line { stroke: hsl(var(--point)); stroke-width: 1.5; stroke-linecap: round; }
-.dc-src { fill: none; stroke: hsl(var(--foreground) / .55); stroke-width: 1; }
-.dc-ring { fill: none; stroke: hsl(var(--point)); stroke-width: 2; }
-.dc-ring.dc-no { stroke: hsl(var(--muted-foreground)); stroke-dasharray: 3 3; }
 .cx-arrow {
   display: flex; align-items: center; flex-wrap: wrap; gap: .5rem;
   margin: 0 0 var(--space-3, .75rem); font-weight: 600;
@@ -3673,7 +3665,7 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 
 /* Agent 관계 그래프(surfaces/agent-map.ts) — 그래프는 왼쪽, 고른 항목(절차면 편집 칸)은 오른쪽 칸.
    값은 전부 디자인 토큰이다(글자 --fs-* · 간격 --space-* · 반경 --radius-* · 시간 --dur-* · 곡선 --ease-* · 글꼴 --font-*).
-   토큰이 없는 것은 둘뿐: 칸 폭(배치 치수)과 선의 굵기·불투명도·파선(그래프 보기 view3d 와 같은 값). */
+   토큰이 없는 것은 둘뿐: 칸 폭(배치 치수)과 선의 굵기·불투명도·파선. */
 .agent-map .am-stage { display: grid; grid-template-columns: minmax(0, 1fr) 24rem; gap: var(--space-4); align-items: start; }
 @media (max-width: 1180px) { .agent-map .am-stage { grid-template-columns: minmax(0, 1fr); }
   /* 쌓일 때 차례: 지도 → 옆 칸(고른 것의 편집) → 정책. 편집 칸이 정책 칸 아래로 밀려 내려가지 않게 */

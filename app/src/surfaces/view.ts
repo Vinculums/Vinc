@@ -3,7 +3,6 @@ import { api, cfg, WEB, teamsApi, isCommunitySpace, canWriteHere, viewScope, vie
 import { COPY } from "../copy";
 import { docTitle } from "../doc-title";
 import { absoluteViewUrl, formatViewUrl, parseViewUrl } from "../view-url";
-import type { N3 } from "./view3d";
 import { viewSessionCache } from "../view-session-cache";
 import { createGraphLoader } from "../view-graph-loader";
 import { retainedViews, restoreRetained } from "../view-retained";
@@ -36,8 +35,17 @@ import { bindTopicDescription, type TopicDraft } from "../topic-description";
 /** Surface 3 — View (spec: [[vinc.spec.viewpoints]] · as-built [[vinc.reference.view-controls]]).
  *
  *  그래프는 2D 나침반 하나다(view-compass.ts). 이 표면은 데이터를 읽어 나침반에 넘기고, 문서 열 · 노드 카드 ·
- *  상세 레일 · 주소를 맡는다. "어디"는 Level(trail)이 쥔다. 3D 렌더러(view3d.ts)는 커뮤니티 그래프 페이지만 쓴다.
+ *  상세 레일 · 주소를 맡는다. "어디"는 Level(trail)이 쥔다.
  *  근거: [[decision:the-graph-is-one-2d-compass-lens-2026-11-06]] */
+
+/** 카드 · 상세 레일 · 지도 초점이 주고받는 노드 한 개. `toN3` 가 그래프 응답에서 만든다. */
+type N3 = {
+  id: string; label: string; domain?: string; degree?: number;
+  kind?: string;              // concept | decision | episode | record | bridge | domain
+  gateway?: boolean; focus?: boolean;
+  ts?: string; historical?: boolean; conflict?: boolean;
+  x?: number; y?: number; z?: number;
+};
 
 // 2026-08-02 — **프레임 폐기(D34 개정)**. Grid(도메인별 미니 카드)·Matrix
 // (도메인×도메인 히트맵)는 발주자 지시로 제거했고, Compare(A ⇄ B)는 **Matrix 셀
@@ -253,7 +261,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   let addr = readRoute ? null : parseViewUrl(location.hash);
   if (!readRoute && bookmark?.domains.length)
     addr = parseViewUrl(formatViewUrl({ kind: "domains", domains: bookmark.domains }));
-  // 주소의 `/as/<관점>` 칸은 읽지 않는다 — 보기는 3D 하나다(view-prefs `VIEWPOINTS`).
+  // 주소의 `/as/<관점>` 칸은 읽지 않는다 — 보기는 나침반 하나다(view-prefs `VIEWPOINTS`).
   const curPrefs = (): ViewPrefs => loadPrefs();
 
   function setMsg(html: string) {
