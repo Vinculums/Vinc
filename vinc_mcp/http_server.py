@@ -312,6 +312,26 @@ _SPACE_PATH_RE = re.compile(r"\A/t/(" + _UUID + r")(/.*)?\Z")
 _ON_DEVICE: dict = {"ok": False, "on_device": True}
 
 
+def profile_query(query: str) -> tuple[str | None, bool]:
+    """MCP 주소의 `?profile=` → (프로파일, 잘못됨). 없으면 (None, False) 이고 목록은 `all` 그대로다.
+
+    값은 `tools.TOOL_PROFILES` 의 글자 그대로만 받는다. 모르는 값을 `all` 로 넘기면 조용히 전체 목록이
+    나가므로 거절한다. 주소로 받는 이유는 claude.ai 커넥터가 주소만 받기 때문이다(헤더를 못 넣는다)."""
+    vals = urllib.parse.parse_qs(query or "", keep_blank_values=True).get("profile")
+    if not vals:
+        return None, False
+    if len(vals) != 1 or vals[0] not in tools.TOOL_PROFILES:
+        return None, True
+    return vals[0], False
+
+
+def _with_profile(meta: dict, profile: str | None) -> dict:
+    """RFC 9728 문서의 `resource` 에 클라이언트가 쓴 `?profile=` 을 되비춘다. 없으면 문서 그대로다."""
+    if not profile:
+        return meta
+    return {**meta, "resource": meta["resource"] + "?profile=" + profile}
+
+
 def split_space(path: str) -> tuple[str | None, str]:
     """`/t/<uuid>/mcp` → (uuid, "/mcp"). 스페이스가 없으면 (None, path).
 
@@ -687,7 +707,11 @@ class MCPHTTPApp:
         불일치로 읽으면 이미 연결된 것들이 전부 끊긴다.
         """
         bound = (rec.get("resource") or "").strip()
-        return not bound or bound == self.oauth.issuer + presented_at
+        if not bound:
+            return True
+        want = self.oauth.issuer + presented_at
+        # `?profile=` 을 붙인 주소로 발급된 토큰도 같은 끝점이다(프로파일은 목록의 크기지 권한이 아니다).
+        return bound == want or bound in {f"{want}?profile={p}" for p in tools.TOOL_PROFILES}
 
     def _fresh_plan(self, owner: str | None, frozen: str | None) -> str | None:
         """OAuth 토큰에 **동결된** 등급을 주기적으로 계정에 되묻는다.
@@ -1328,7 +1352,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         return None
 
-    def _unauthorized(self, resource_path: str = "") -> None:
+    def _unauthorized(self, resource_path: str = "", profile: str | None = None) -> None:
         """401 + 이 자원의 메타데이터 주소.
 
         RFC 9728 의 **경로 삽입형**을 쓴다: 자원이 `/t/<uuid>/mcp` 면 메타데이터는
@@ -1342,6 +1366,9 @@ class _Handler(BaseHTTPRequestHandler):
         """
         base = f'{self._issuer()}/.well-known/oauth-protected-resource'
         meta = base + (resource_path if resource_path.startswith("/") else "")
+        if profile:
+            # 프로파일을 단 주소의 문서는 그 주소를 자원으로 말한다(GET 쪽 `_with_profile`).
+            meta += "?profile=" + profile
         self._json(401, {"error": "unauthorized"},
                    {"WWW-Authenticate": f'Bearer resource_metadata="{meta}"'})
 
@@ -1451,8 +1478,11 @@ class _Handler(BaseHTTPRequestHandler):
             if gate is None:
                 return self._json(404, {"error": "oauth disabled"})
             rest = url.path[len("/.well-known/oauth-protected-resource"):]
+            # `?profile=` 을 단 MCP 주소의 문서. RFC 9728 은 `resource` 가 클라이언트가 쓴 주소와 같기를
+            # 요구하므로 맞는 값만 되비춘다. 없거나 틀리면 프로파일 없는 문서와 같다.
+            prof = profile_query(url.query)[0]
             if not rest or rest == "/":
-                return self._json(200, gate.resource_metadata())
+                return self._json(200, _with_profile(gate.resource_metadata(), prof))
             rspace, rpath = split_space(rest)
             # 실재하는 자원만 문서를 준다. 아무 경로에나 답하면 이 엔드포인트가
             # "그 주소는 있다"를 확인해 주는 탐침이 된다 — 팀 주소의 404 규칙과
@@ -1462,8 +1492,8 @@ class _Handler(BaseHTTPRequestHandler):
             # 이라는 이 설계의 갈래 그대로다.
             if rpath != "/mcp":
                 return self._json(404, {"error": "no such resource"})
-            return self._json(200, gate.resource_metadata(
-                f"/t/{rspace}/mcp" if rspace else "/mcp"))
+            return self._json(200, _with_profile(gate.resource_metadata(
+                f"/t/{rspace}/mcp" if rspace else "/mcp"), prof))
         if url.path == "/.well-known/oauth-authorization-server":
             if gate is None:
                 return self._json(404, {"error": "oauth disabled"})
@@ -1617,6 +1647,11 @@ class _Handler(BaseHTTPRequestHandler):
             bad = self._protocol_version_rejected()
             if bad:
                 return self._json(400, bad)
+            # 연결의 도구 프로파일(`?profile=`). 없으면 None 이고 아래는 지금과 같다.
+            profile, bad_profile = profile_query(url.query)
+            if bad_profile:
+                return self._json(400, {"error": "unknown tool profile: use profile=read, "
+                                                 "profile=core or profile=all"})
             # 주소로 온 팀이다. 토큰은 **이 주소**에 묶여 있어야 한다.
             try:
                 auth = self._auth(space, presented_at=f"/t/{space}/mcp" if space else "/mcp")
@@ -1629,7 +1664,7 @@ class _Handler(BaseHTTPRequestHandler):
                 if space:
                     return self._json(404, {"error": "no such route: POST "
                                                      + url.path})
-                return self._unauthorized()
+                return self._unauthorized(profile=profile)
             msg = self._body()
             # JSON-RPC 배치. `PROTOCOL_VERSIONS` 가 2025-03-26 을 광고하는데 그 리비전은
             # 배치를 지원한다(2025-06-18 에서 제거됨) — 전에는 dict 가 아니면 400 이라
@@ -1748,7 +1783,7 @@ class _Handler(BaseHTTPRequestHandler):
                                  if self.app.community_write is not None else None,
                                  community_read=(lambda args: self.app.community_read(a, args))
                                  if self.app.community_read is not None else None,
-                                 events_auth=_events_auth(a))
+                                 events_auth=_events_auth(a), profile=profile)
                 if m.get("method") != "tools/call":
                     return reply
                 return _with_quota_meta(reply, self.app.quota_meta(spent))
