@@ -646,24 +646,9 @@ def _t_decide_paths(args, bridge):
 
 
 def _run_state_writes(nodes) -> list[str]:
-    """실행 기록의 프로토콜 상태 필드를 고치려는 노드 id 들.
-
-    대기·승인·답은 실행 프로토콜만 쓴다. 도구로 `state`·`approved`·`answer` 를 바꿀 수 있으면
-    에이전트 자격이 사람만 답하는 대기를 스스로 풀 수 있다. host·trace_ref 같은 나머지 필드는
-    그대로 `props_patch` 로 더한다."""
-    from . import run_protocol
-    blocked = []
-    for node in nodes if isinstance(nodes, list) else []:
-        nid = node.get("id") if isinstance(node, dict) else None
-        if not isinstance(nid, str) or not nid.startswith(run_protocol.RUN_PREFIX):
-            continue
-        keys = set()
-        for field in ("props", "props_patch"):
-            if isinstance(node.get(field), dict):
-                keys |= set(node[field])
-        if keys & set(run_protocol.STATE_KEYS):
-            blocked.append(nid)
-    return blocked
+    """실행 기록의 프로토콜 상태 필드를 고치려는 노드 id 들. 규칙은 `run_state.writes` 한 벌이다."""
+    from . import run_state
+    return run_state.writes(nodes)
 
 
 def _t_ingest(args, bridge):
