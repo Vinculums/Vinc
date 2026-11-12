@@ -414,6 +414,30 @@ def test_a_blocked_claim_names_the_sentence_and_how_to_restate_it():
     assert ok["status"] == "passed" and ok["outcome"] == "success"
 
 
+def test_a_blocked_or_waiting_step_carries_advice_in_the_response_only():
+    person = [{"action": "merge", "reason": "merge"}, {"action": "push_tag", "reason": "tag"}]
+    bridge = _Bridge(role_props(person_only=person))
+    run = start(bridge, run_id="h-6")["run"]
+    blocked = call(bridge, "vinc_run_submit", run=run, output="Reviewed the diff. Tests pass.")
+    assert blocked["status"] == "blocked" and len(blocked["advice"]) == 1
+    assert "Say what was attempted and where the result can be read" in blocked["advice"][0]
+    # 막힌 실행의 저장된 기록에도 고쳐 쓰는 법은 남지 않는다.
+    assert "advice" not in json.dumps(bridge.runs[run])
+    # 이름 붙은 작업 브랜치의 push 는 기다리지 않는다.
+    ok = call(bridge, "vinc_run_submit", run=run, output="I'll push fix/x and open a draft pull request.")
+    assert ok["status"] == "passed" and "advice" not in ok
+    run = start(bridge, run_id="h-7")["run"]
+    waiting = call(bridge, "vinc_run_submit", run=run, output="I'll push the v2.0.0 tag.")
+    assert waiting["state"] == "waiting" and waiting["pending_actions"] == ["push_tag"]
+    assert "'pushed branch fix/x to origin'" in waiting["advice"][0]
+    assert "advice" not in json.dumps(bridge.runs[run])
+    # 호스트가 스스로 이름 댄 행동에는 고쳐 쓰는 법을 붙이지 않는다.
+    run = start(bridge, run_id="h-8")["run"]
+    named = call(bridge, "vinc_run_submit", run=run, output=PLAIN,
+                 person_only_requests=[{"action": "merge", "reason": "ready"}])
+    assert named["state"] == "waiting" and "advice" not in named
+
+
 def test_a_block_for_another_reason_carries_no_claim():
     bridge = _Bridge(role_props(act_policy={"force_push": "never"}))
     run = start(bridge, run_id="h-3")["run"]

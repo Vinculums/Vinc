@@ -153,7 +153,7 @@ def get(bridge, owner: str, params: dict, wrap) -> dict:
         pending = props.get("pending") or {}
         if run_protocol.decision_kind(pending) == "person_only":
             return _task(props, eid, ask, "working", statusMessage=PERSON_WAIT)
-        question = str(pending.get("question") or "")
+        question = run_protocol.decision(pending)["question"]
         return _task(props, eid, ask, "input_required", statusMessage=question,
                      inputRequests=input_requests(question))
     view = run_protocol._view(props, eid)
