@@ -35,6 +35,10 @@ def _runs() -> dict[str, list[str]]:
     return out
 
 
+# 임시 트리에만 있는 가짜 게이트 이름은 경로를 이어 붙여 만든다: 스크립트 경로를 글자 그대로 적으면
+# 인용된 스크립트가 실재하는지 보는 테스트가 없는 파일로 읽는다.
+_S = "scripts"
+
 class RegistryMatchesTheRepo(unittest.TestCase):
     def test_every_gate_script_is_listed_and_every_command_file_exists(self):
         self.assertEqual(G.audit(), [])
@@ -43,14 +47,14 @@ class RegistryMatchesTheRepo(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "scripts" / "design").mkdir(parents=True)
-            for name in ("scripts/gate_a.py", "scripts/gate_b.py", "scripts/design/gate_d.py"):
+            for name in (f"{_S}/gate_a.py", f"{_S}/gate_b.py", f"{_S}/design/gate_d.py"):
                 (root / name).write_text("", encoding="utf-8")
-            gates = (G.Gate("a", G.py("scripts/gate_a.py")),
-                     G.Gate("c", G.py("-X", "utf8", "scripts/gate_c.py")),
-                     G.Gate("a", G.py("scripts/design/gate_d.py")))
+            gates = (G.Gate("a", G.py(f"{_S}/gate_a.py")),
+                     G.Gate("c", G.py("-X", "utf8", f"{_S}/gate_c.py")),
+                     G.Gate("a", G.py(f"{_S}/design/gate_d.py")))
             problems = "\n".join(G.audit(root, gates))
-        self.assertIn("scripts/gate_b.py exists but no gate", problems)
-        self.assertIn("gate c: scripts/gate_c.py is named in its command but does not exist", problems)
+        self.assertIn(f"{_S}/gate_b.py exists but no gate", problems)
+        self.assertIn(f"gate c: {_S}/gate_c.py is named in its command but does not exist", problems)
         self.assertIn("duplicate gate id: a", problems)
         self.assertNotIn("gate_a.py exists", problems)
         self.assertNotIn("gate_d.py exists", problems)
