@@ -28,6 +28,7 @@ from . import revstamp
 from . import syncmerge
 from . import query as q
 from store import pkns
+from store import run_state
 from store import embedded_schema as _es
 
 # 청크 상한 — 원격 `MAX_BODY`(4MB, vinc_mcp/http_server.py)보다 넉넉히 아래.
@@ -902,8 +903,14 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
     writes: list[dict] = []          # merge_fragment 로 쓸 노드(스탬프 포함)
     base_updates: list[tuple] = []   # (nid, label, base_fields, base_rev, base_ua)
     births: list[tuple] = []         # (label, pk, nid, remote_created) — 병합과 무관
+    protected: list[str] = []        # 받는 스토어의 프로토콜 상태를 남긴 실행 id
     for n in bundle.get("nodes") or []:
         nid, ntype = n.get("id"), n.get("type")
+        # 실행 기록은 스토어가 쓰는 id(앞뒤 공백을 벗긴 id)로 읽는다. 벗기지 않으면 저장된 행을
+        # 못 보고 처음 보는 실행으로 적용해, 같은 노드에 상태 없는 props 를 쓴다.
+        rid = run_state.run_id(nid)
+        if rid is not None:
+            nid = rid
         label = _SYNC_TYPES.get(ntype or "")
         if not nid or not label:
             out["warnings"].append(f"unsupported node — skipped ({nid or '?'})")
@@ -938,6 +945,13 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         births.append((label, pk, nid, n.get("_created") or ""))
 
         local = _local_snapshot(store, label, pk, nid, owner)
+        if rid is not None and "props" in n:
+            # 실행 기록의 대기·승인·답은 받는 스토어의 값을 남긴다(허브는 push, 기기는 pull 에서).
+            # 위에서 읽은 로컬 행을 쓰므로 읽기가 늘지 않고, 같은 쓰기 잡 안이라 그 사이에 든 답도 없다.
+            remote_snap["props"], differed = run_state.keep_own(
+                remote_snap.get("props"), (local or {}).get("props"))
+            if differed:
+                protected.append(rid)
 
         if local is None:                       # 신규 — 원격 그대로, 스탬프 보존
             for f in unstated:                  # 쓰지 않는다(fragment 의 기존 규칙에 맡긴다)
@@ -1087,6 +1101,9 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         revstamp.observe_hlc(store, t.get("deleted_at") or "")
 
     out["applied"] = len(writes)
+    if protected:
+        out[run_state.CODE] = sorted(set(protected))
+        out["warnings"].append(run_state.warning(out[run_state.CODE]))
     return out
 
 
@@ -1160,6 +1177,7 @@ def pull_apply(store, cfg, *, owner: str, remote) -> dict:
     since = get_cursor(store, "pull")
     applied = skipped = deleted = pages = 0
     warnings: list[str] = []
+    protected: set[str] = set()
     while pages < 1000:                       # 안전 상한(무한루프 방어)
         page = remote.pull(since)
         nodes = page.get("nodes") or []
@@ -1169,6 +1187,7 @@ def pull_apply(store, cfg, *, owner: str, remote) -> dict:
         skipped += r["skipped_stale"]
         deleted += r.get("deleted", 0)
         warnings += r.get("warnings") or []
+        protected.update(r.get(run_state.CODE) or [])
         pages += 1
         nxt = int(page.get("next_cursor", since))
         advanced = nxt > since
@@ -1177,8 +1196,11 @@ def pull_apply(store, cfg, *, owner: str, remote) -> dict:
             set_cursor(store, "pull", since)   # 페이지별 내구 전진
         if (not nodes and not tombs) or not advanced:
             break
-    return {"phase": "pull", "applied": applied, "skipped_stale": skipped,
-            "deleted": deleted, "pages": pages, "cursor": since, "warnings": warnings}
+    out = {"phase": "pull", "applied": applied, "skipped_stale": skipped,
+           "deleted": deleted, "pages": pages, "cursor": since, "warnings": warnings}
+    if protected:
+        out[run_state.CODE] = sorted(protected)
+    return out
 
 
 # ── 문서 정본 동기화 국면(D45 P3 배선) ────────────────────────────────────────

@@ -29,12 +29,15 @@ import threading
 import uuid
 import zlib
 
+from store import run_state as _run_rule
+
 from . import role_output_gate, run_notify
 from .capability_maps import capability_verdict
 from .roles import contract
 
 ROLE_PREFIX = "concept:agent-"
-RUN_PREFIX = "episode:run-"
+#: 실행 기록 id 의 접두사와 프로토콜 상태 필드는 `store/run_state.py` 한 벌을 쓴다.
+RUN_PREFIX = _run_rule.RUN_PREFIX
 #: 이 흐름의 실행 기록 토픽(D8). 도메인은 `vinc/` 아래 둔다.
 DOMAIN = "vinc/agent/harness"
 STATES = ("working", "waiting", "done")
@@ -56,9 +59,8 @@ EXPIRES_MAX_S = 43200
 REASON_MAX = 2000
 #: 사람만 답하는 대기를 에이전트가 답하려 할 때 알려 주는 사람의 길.
 PERSON_PATH = "the Approvals screen of the Vinc app (https://vincs.io/app/), signed in"
-#: 실행 기록의 프로토콜 상태 필드. 도구 쓰기(`vinc_ingest`)로는 바꾸지 못한다(tools.py).
-STATE_KEYS = ("state", "pending", "approved", "asks", "last_asked_at", "answer", "answered_at",
-              "answered_actions", "answered_by", "answer_via", "answer_text", "task_cancelled")
+#: 실행 기록의 프로토콜 상태 필드. 도구 쓰기(`vinc_ingest`)로는 바꾸지 못하고 동기화로는 건너가지 않는다.
+STATE_KEYS = _run_rule.STATE_KEYS
 TASK_MAX = 4000
 SUBJECT_MAX = 500
 #: 실행한 호스트 이름(예 "codex-cli 0.162.1"). 실행 기록의 host 가 된다.
