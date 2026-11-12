@@ -24,14 +24,18 @@ const { mountCompass, compassDataFrom } = await loadTs('surfaces/view-compass.ts
   '../copy': copyStub("{ ui: { compass: { rootTopic: 'All topics' } } }"),
   '../components': COMPONENTS_STUB,
   '../view-tint': tintUrl,
+  '../topic-tint-table': await tsUrl('topic-tint-table.ts', { './view-tint': tintUrl }),
   '../theme': THEME_STUB,
   './view-compass-state': await tsUrl('surfaces/view-compass-state.ts'),
   './view-compass-whole': await tsUrl('surfaces/view-compass-whole.ts'),
   '../keys': await tsUrl('keys.ts'),
 });
 
-/** [domain, 제목, 종류?] 목록 → 마운트. 허브가 주는 모양(kind·domain·ts·degree)으로 만든다. */
+/** [domain, 제목, 종류?] 목록 → 마운트. 허브가 주는 모양(kind·domain·ts·degree)으로 만든다.
+ *  마운트마다 다른 그래프라 스페이스도 따로 준다: 주제 색 표는 스페이스마다 하나라 같은 스페이스면 앞 그래프의 주제가 남는다. */
+let spaces = 0;
 function mount(spec, edges = [], ctx = {}) {
+  ctx = { store: `roots|${++spaces}`, ...ctx };
   const nodes = spec.map(([domain, t, kind = 'concept']) => ({ id: `${kind}:${t}`, kind, title: t, label: t, domain, ts: '2026-11-01', degree: 1 }));
   const host = document.createElement('div');
   document.body.append(host);

@@ -25,7 +25,7 @@ let js = transpile(await srcText('surfaces/view-compass.ts'));
 const HOOK = 'LZ = { hub: L.focus.hub, ...L };';
 assert.ok(js.includes(HOOK), 'render still keeps the last layout in LZ');
 js = js.replace(HOOK, 'LZ = globalThis.__cmpLZ = { hub: L.focus.hub, ...L };');
-for (const [spec, code] of Object.entries({ '../copy': copyStub("{ ui: { compass: { rootTopic: 'All topics' } } }"), '../components': COMPONENTS_STUB, '../view-tint': tintUrl, '../theme': THEME_STUB, './view-compass-state': await tsUrl('surfaces/view-compass-state.ts'), './view-compass-whole': await tsUrl('surfaces/view-compass-whole.ts'), '../keys': await tsUrl('keys.ts') }))
+for (const [spec, code] of Object.entries({ '../copy': copyStub("{ ui: { compass: { rootTopic: 'All topics' } } }"), '../components': COMPONENTS_STUB, '../view-tint': tintUrl, '../topic-tint-table': await tsUrl('topic-tint-table.ts', { './view-tint': tintUrl }), '../theme': THEME_STUB, './view-compass-state': await tsUrl('surfaces/view-compass-state.ts'), './view-compass-whole': await tsUrl('surfaces/view-compass-whole.ts'), '../keys': await tsUrl('keys.ts') }))
   js = js.split(JSON.stringify(spec)).join(JSON.stringify(code.startsWith('data:') ? code : dataUrl(code)));
 const { mountCompass, compassDataFrom } = await import(dataUrl(js));
 const LZ = () => globalThis.__cmpLZ;

@@ -53,7 +53,7 @@ async function main(): Promise<void> {
     onChange: () => { if (ready) setLnbGraphActive(cmp.centre()); } });
   ready = true;
   H.mountMs = Math.round(performance.now() - m0);
-  setLnbGraphSource({ groups: () => cmp.tree(), open: (id) => cmp.open(id), mark: (k) => cmp.mark(k), colour: (d) => cmp.colour(d), dock: cmp.side });
+  setLnbGraphSource({ groups: () => cmp.tree(), open: (id) => cmp.open(id), mark: (k) => cmp.mark(k), dock: cmp.side });
   setTopbarTools(cmp.tools);
   setLnbGraphActive(cmp.centre());
   setSearchFilter((q) => cmp.filter(q));

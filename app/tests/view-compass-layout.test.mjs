@@ -26,6 +26,7 @@ const { mountCompass, compassDataFrom } = await loadTs('surfaces/view-compass.ts
   '../copy': copyStub("{ ui: { compass: { rootTopic: 'All topics' } } }"),
   '../components': COMPONENTS_STUB,
   '../view-tint': tintUrl,
+  '../topic-tint-table': await tsUrl('topic-tint-table.ts', { './view-tint': tintUrl }),
   '../theme': THEME_STUB,
   './view-compass-state': await tsUrl('surfaces/view-compass-state.ts'),
   './view-compass-whole': await tsUrl('surfaces/view-compass-whole.ts'),

@@ -14,7 +14,7 @@
     "test:view-loading": "node --test tests/view-graph-loading.test.mjs",
     "test:view-layout": "node --test tests/view-layout.test.mjs",
     "test:view-marks": "node --test tests/view-marks.test.mjs",
-    "test:topic-tints": "node --test tests/topic-tint-contrast.test.mjs",
+    "test:topic-tints": "node --test tests/topic-tint-contrast.test.mjs tests/topic-tint-table.test.mjs",
     "test:view-compass-roots": "node --test tests/view-compass-roots.test.mjs",
     "test:view-compass-state": "node --test tests/view-compass-state.test.mjs",
     "test:view-compass-whole": "node --test tests/view-compass-whole.test.mjs",
