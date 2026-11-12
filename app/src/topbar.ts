@@ -4,6 +4,7 @@ import { partitionSearchResults } from "./search-relevance";
 import { docTitle } from "./doc-title";
 import { icon } from "./icons";
 import { esc, armsNotice, type ArmsNotice } from "./components";
+import { shortcutsRest } from "./keys";
 import { dayOf } from "./view-prefs";
 import { renderSearchError } from "./search-error";
 import { loaderInline } from "./vinc-loaders.js";
@@ -336,6 +337,14 @@ export function mountTopbar() {
     if (modeMenu?.contains(t) || modeBtn?.contains(t)) return;
     closeModeMenu();
   });
+  // Esc 는 열린 모드 메뉴만 닫고 초점을 모드 단추로 돌린다. 검색 칸의 Esc(결과 · 묻기 닫기, 칸 떠나기)와
+  // 뒤 화면의 Esc 까지 가지 않는다: 한 번의 Esc 는 맨 위 층 하나만 닫는다.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !modeMenu || modeMenu.hidden) return;
+    e.stopPropagation();
+    closeModeMenu();
+    modeBtn?.focus();
+  }, true);
 
   // ── 대화 패널(묻기) ──────────────────────────────────────────────────────
   // ask.ts 는 **눌릴 때 지연 로드**한다 — 찾기만 쓰는 사용자에게 대화 코드를
@@ -597,6 +606,8 @@ export function mountTopbar() {
   document.addEventListener("keydown", (e) => {
     if (!(e.key === "k" && (e.metaKey || e.ctrlKey))) return;
     e.preventDefault();
+    // 시트 · 메뉴 · 팔레트가 떠 있으면 쉰다: 보이지 않는 칸으로 초점이 가면 친 글자와 Enter 가 뒤 화면을 바꾼다.
+    if (shortcutsRest("command", e.target, document.activeElement)) return;
     // LNB 가 접혀 있으면 먼저 연다(칸이 거기 산다)
     if (docked && $("shell")?.dataset.lnb !== "open") $("tb-shell-toggle")?.click();
     expand();

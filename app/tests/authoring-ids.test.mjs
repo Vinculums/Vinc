@@ -43,6 +43,7 @@ const authoringUrl = await tsUrl('authoring.ts', {
   './node-composer': `export const openComposer = async () => null;`,
   './surfaces/settings': `export const openSettings = () => {};`,
   './doc-editor': `export const mountDocEditor = async () => ({});`,
+  './keys': `export const shortcutsRest = () => false;`,
 });
 const authoring = await import(authoringUrl);
 const composer = await loadTs('node-composer.ts', {

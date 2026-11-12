@@ -13,7 +13,7 @@ import { isHistorical, conflictIds } from "../node-validity";
 import { tintMap } from "../view-tint";
 import { esc, openContextMenu, confirmDestructive } from "../components";
 import { hostOf } from "../storage-mode";
-import { blocksSurfaceShortcuts } from "../keys";
+import { shortcutsRest } from "../keys";
 import { disposeEditorsIn, docEditorOpen, renderMarkdown } from "../doc-editor";
 import { hydrateRich } from "../rich-blocks";
 
@@ -486,15 +486,14 @@ export async function renderView(el: HTMLElement, resume = false) {
   // Esc 단계 후퇴(정본 §2) 1단계 — 레일이 열려 있으면 레일부터 닫는다. 보기 패널이
   // 열려 있을 땐 그쪽 핸들러가 먼저 잡으므로(패널에 포커스가 있다) 충돌하지 않는다.
   /** 정본 §2 조작 문법(V12) — 여태 규정만 있고 구현이 없던 키들.
-   *  Esc 는 **단계적 후퇴**다: 패널 → 레일 → 상위 층. 한 번에 다 닫지 않는다.
-   *  `f` = 지금 층을 화면에 맞춤. 입력 필드 안에서는 전부 무시(타이핑 보호). */
+   *  Esc 는 **단계적 후퇴**다: 패널 → 레일 → 상위 층. 한 번에 다 닫지 않는다. */
   const onKey = (e: KeyboardEvent) => {
     if (myGen !== liveGen) { document.removeEventListener("keydown", onKey); return; }
     // ⚠ **Esc 만은 통과시킨다.** 이 가드가 옳게 비켜서는 바람에, 편집기에 포커스가
     // 있으면 레일을 Esc 로 닫을 수 없었다 — 들어가는 문은 모든 마크에 달려 있는데
     // 나오는 문이 ✕ 하나로 줄었다. 이제 어느 문으로 나가도 대기 중 편집이 확정되므로
     // (doc-editor 의 dispose) 이 문을 되살려도 잃는 것이 없다.
-    if (blocksSurfaceShortcuts(e.target, document.activeElement, docEditorOpen())
+    if (shortcutsRest("surface", e.target, document.activeElement, docEditorOpen())
         && e.key !== "Escape") return;
     if (e.key === "Escape") {
       // 가장 나중에 뜬 것부터 접는다. 카드가 렌즈 패널보다 앞이다 — 카드는 방금
@@ -2171,7 +2170,7 @@ export async function renderView(el: HTMLElement, resume = false) {
         owner: cfg.owner, docId, initial: doc.text, title: doc.title,
         contentHash: doc.content_hash, hideTitle: !docWriting, onSaved,
         // 모드가 정한다(위 `docWriting`). 커서는 켜지 않는다 — 문서 열은 지도와
-        // 나란히 서므로, 열자마자 키보드를 가져가면 `f`(맞춤)·Esc 같은 지도 조작이
+        // 나란히 서므로, 열자마자 키보드를 가져가면 Esc 같은 지도 조작이
         // 글자로 들어간다.
         // ⚠ 읽기 모드에서는 CM 의 장식이 **더 완전하다**: 편집 가능일 때는 커서가
         //    놓인 줄의 소스를 되살려 보여 주는데(라이브 프리뷰의 규칙), 읽기에서는

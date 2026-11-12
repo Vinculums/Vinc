@@ -5,8 +5,12 @@ import { COPY } from "./copy";
 import { temporalEntries } from "./search-temporal";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
 import { loaderTrack } from "./vinc-loaders.js";
-import { holdSurfaceShortcuts } from "./keys";
-import { LAYER_SELECTOR, topLayerOf } from "./layers";
+import { holdShortcuts, restWhile } from "./keys";
+import { LAYER_SELECTOR, MENU_OPENER_SELECTOR, menuOpenIn, openLayerIn, topLayerOf } from "./layers";
+
+// 메뉴 · 팝오버 · 팔레트 · 딤 밖의 모달 화면이 떠 있는 동안 표의 단축키가 쉰다. 잡지 않고 키마다 화면을
+// 묻는다: 메뉴가 어느 길로 닫히든(지워지든 숨든) 다음 키에서 바로 풀리고, 놓기를 잊을 자리가 없다.
+restWhile(() => openLayerIn(document));
 
 /** ── 바깥 클릭으로 닫기 ────────────────────────────────────────────────────
  *
@@ -125,6 +129,18 @@ function focusablesIn(root: HTMLElement): HTMLElement[] {
 const isTopLayer = (scrim: HTMLElement): boolean =>
   topLayerOf(document.querySelectorAll<HTMLElement>(LAYER_SELECTOR)) === scrim;
 
+/** Esc 가 이 딤을 닫는가: 맨 위 층이고, 그 위에 메뉴가 떠 있지 않다. 메뉴는 시트가 열릴 때 닫히므로
+ *  (`closeMenus`) 떠 있는 메뉴는 늘 시트보다 위다: 그 Esc 는 메뉴가 받는다. */
+const escClosesHere = (scrim: HTMLElement): boolean => isTopLayer(scrim) && !menuOpenIn(document);
+
+/** 떠 있는 메뉴와 팝오버를 각자의 닫는 길로 닫는다. 시트와 다이얼로그가 열릴 때 부른다: 딤 위에 메뉴가
+ *  남으면 화살표 · Esc 가 보이는 층과 다른 층으로 간다. 연 단추를 한 번 더 누르는 것이 그 메뉴의 닫기다. */
+function closeMenus(): void {
+  closeContextMenu?.(true);
+  if (!menuOpenIn(document)) return;
+  document.querySelectorAll<HTMLElement>(MENU_OPENER_SELECTOR).forEach((b) => b.click());
+}
+
 /** Tab 을 층 안에 가둔다. 반환 = 배선 해제.
  *  딤 밖의 모달 화면(로그인 · 기기 그래프 알림)이 맨 위에 뜨면 시트는 비켜서고, 대신 맨 위 딤 하나가
  *  Tab 을 그 화면 안에서 돌린다 — 그 화면들은 자기 덫이 없어서, 비켜서기만 하면 Shift+Tab 이 아래의
@@ -186,7 +202,8 @@ export function openSheet(opts: {
    *  영영 못 빠져나온다. */
   mustChoose?: boolean;
 }): SheetHandle {
-  // 닫힐 때 초점을 돌려줄 자리. 시트를 붙이고 초점을 옮기기 **전에** 잡는다.
+  // 닫힐 때 초점을 돌려줄 자리. 시트를 붙이고 초점을 옮기기 **전에** 잡는다(떠 있던 메뉴를 닫은 뒤).
+  closeMenus();
   const opener = document.activeElement;
   const el = document.createElement("div");
   el.className = "sheet-scrim";
@@ -216,7 +233,7 @@ export function openSheet(opts: {
   sheetEl.focus({ preventScroll: true });
   const untrap = trapFocus(el, sheetEl);
   // 딤이 문서에서 빠지면(닫기를 거치지 않고 지워져도) 잡은 것이 저절로 풀린다.
-  const release = holdSurfaceShortcuts(() => el.isConnected);
+  const release = holdShortcuts(() => el.isConnected);
   let closed = false;
   const close = () => {
     if (closed) return;            // 애니메이션 도중 두 번 눌려도 한 번만 닫는다
@@ -234,8 +251,8 @@ export function openSheet(opts: {
   const onKey = (e: KeyboardEvent) => {
     if (e.key !== "Escape") return;
     // 시트가 여럿 쌓여도 **맨 위 하나만** 닫는다. 로그인 화면처럼 딤 밖의 모달이 위에 있으면
-    // 그 아래 시트는 닫지 않는다(보이지 않는 층이 Esc 를 가져가지 않게).
-    if (!isTopLayer(el)) return;
+    // 그 아래 시트는 닫지 않는다(보이지 않는 층이 Esc 를 가져가지 않게). 위에 뜬 메뉴가 먼저다.
+    if (!escClosesHere(el)) return;
     e.stopPropagation();
     close();
   };
@@ -347,8 +364,12 @@ export function sheetActions(primary: { id: string; label: string; danger?: bool
  *  사라짐. 화면 밖으로 나가지 않도록 좌표를 접어 넣는다. */
 type MenuItem = { label: string; run: () => void; danger?: boolean };
 
+/** 떠 있는 우클릭 메뉴의 닫기. `refocus` 면 연 자리로 초점을 돌린다. 하나만 뜬다. */
+let closeContextMenu: ((refocus: boolean) => void) | null = null;
+
 export function openContextMenu(x: number, y: number, items: MenuItem[]) {
-  document.querySelectorAll(".ctx-menu").forEach((m) => m.remove());
+  closeContextMenu?.(false);
+  const opener = document.activeElement;
   const el = document.createElement("div");
   el.className = "ctx-menu";
   el.setAttribute("role", "menu");
@@ -359,17 +380,25 @@ export function openContextMenu(x: number, y: number, items: MenuItem[]) {
   const r = el.getBoundingClientRect();
   el.style.left = `${Math.min(x, window.innerWidth - r.width - 8)}px`;
   el.style.top = `${Math.min(y, window.innerHeight - r.height - 8)}px`;
-  const close = () => {
+  // 바깥을 누르면 초점은 누른 자리로 가므로 돌리지 않는다. Esc 와 고르기는 연 자리로 돌린다:
+  // 고른 항목이 시트를 열면 그 시트가 닫힐 때 돌아갈 자리도 그곳이 된다.
+  const close = (refocus: boolean) => {
+    if (closeContextMenu !== close) return;
+    closeContextMenu = null;
+    const inside = el.contains(document.activeElement);
     el.remove();
     document.removeEventListener("mousedown", onOut, true);
     document.removeEventListener("keydown", onKey, true);
+    if (refocus && (inside || document.activeElement === document.body)
+        && opener instanceof HTMLElement && opener.isConnected) opener.focus({ preventScroll: true });
   };
-  const onOut = (e: MouseEvent) => { if (!el.contains(e.target as Node)) close(); };
-  const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+  closeContextMenu = close;
+  const onOut = (e: MouseEvent) => { if (!el.contains(e.target as Node)) close(false); };
+  const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); close(true); } };
   document.addEventListener("mousedown", onOut, true);
   document.addEventListener("keydown", onKey, true);
   el.querySelectorAll<HTMLElement>(".ctx-item").forEach((b) =>
-    b.addEventListener("click", () => { const it = items[Number(b.dataset.i)]; close(); it.run(); }));
+    b.addEventListener("click", () => { const it = items[Number(b.dataset.i)]; close(true); it.run(); }));
   el.querySelector<HTMLElement>(".ctx-item")?.focus();
 }
 
@@ -386,7 +415,8 @@ export function openContextMenu(x: number, y: number, items: MenuItem[]) {
  *  반환값은 "닫아라" — 퇴장이 끝난 뒤에 넘긴 콜백을 부른다. */
 function wireDialogMotion(el: HTMLElement, dismiss: () => void): (then: () => void) => void {
   const sheetEl = el.querySelector<HTMLElement>(".sheet")!;
-  // 이 다이얼로그를 연 버튼. 아래에서 자기 버튼으로 포커스를 옮기기 **전에** 잡는다.
+  // 이 다이얼로그를 연 버튼. 아래에서 자기 버튼으로 포커스를 옮기기 **전에** 잡는다(떠 있던 메뉴를 닫은 뒤).
+  closeMenus();
   const opener = document.activeElement;
   fadeIn(el);
   popIn(sheetEl);
@@ -394,7 +424,7 @@ function wireDialogMotion(el: HTMLElement, dismiss: () => void): (then: () => vo
   // 기본 버튼에 초점을 두는 것은 호출부다(이 함수 다음 줄). 여기서는 Tab 을 가두고 단축키를 쉬게 한다.
   sheetEl.tabIndex = -1;
   const untrap = trapFocus(el, sheetEl);
-  const release = holdSurfaceShortcuts(() => el.isConnected);
+  const release = holdShortcuts(() => el.isConnected);
   let closed = false;
   return (then) => {
     if (closed) return;            // 애니메이션 도중 두 번 눌려도 한 번만 닫는다
@@ -431,7 +461,7 @@ export function confirmDestructive(message: string, confirmLabel: string,
       document.removeEventListener("keydown", onKey);
       close(() => resolve(v));
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") done(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && escClosesHere(el)) done(false); };
     document.addEventListener("keydown", onKey);
     el.querySelector("#cd-no")!.addEventListener("click", () => done(false));
     el.querySelector("#cd-yes")!.addEventListener("click", () => done(true));
@@ -461,7 +491,7 @@ export function showNotice(message: string, okLabel: string): Promise<void> {
       document.removeEventListener("keydown", onKey);
       close(() => resolve());
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") done(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && escClosesHere(el)) done(); };
     document.addEventListener("keydown", onKey);
     el.querySelector("#nt-ok")!.addEventListener("click", () => done());
     (el.querySelector("#nt-ok") as HTMLButtonElement).focus();
@@ -498,7 +528,7 @@ export function promptText(title: string, initial: string, confirmLabel: string,
       close(() => resolve(v));
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") done(null);
+      if (e.key === "Escape" && escClosesHere(el)) done(null);
       if (e.key === "Enter" && document.activeElement === input) done(input.value.trim());
     };
     document.addEventListener("keydown", onKey);

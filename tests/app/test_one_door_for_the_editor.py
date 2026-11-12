@@ -61,9 +61,9 @@ class OneGuardTest(unittest.TestCase):
         head = MAIN.rindex('document.addEventListener("keydown"', 0,
                            MAIN.index("location.hash = `#${ORDER"))
         guard = body_of(MAIN[head:], 'document.addEventListener("keydown"')
-        self.assertIn("blocksSurfaceShortcuts(e.target", guard)
+        self.assertIn('shortcutsRest("surface", e.target', guard)
         # 그 판정이 실제로 표면 이동을 막는 자리 앞에 있어야 한다.
-        self.assertLess(guard.index("blocksSurfaceShortcuts"),
+        self.assertLess(guard.index("shortcutsRest(\"surface\""),
                         guard.index("location.hash = `#${ORDER"))
 
     def test_판정의_구현은_리포에_한_벌뿐이다(self):
@@ -88,7 +88,7 @@ class OneGuardTest(unittest.TestCase):
         # 가드가 두 줄로 접혀 있어 공백을 눌러 놓고 본다 — 잠그는 것은 줄바꿈이 아니라
         # "Esc 는 예외"라는 계약이다.
         onkey = re.sub(r"\s+", " ", body_of(VIEW, "const onKey = (e: KeyboardEvent)"))
-        self.assertIn('blocksSurfaceShortcuts(e.target, document.activeElement,'
+        self.assertIn('shortcutsRest("surface", e.target, document.activeElement,'
                       ' docEditorOpen()) && e.key !== "Escape"', onkey)
         self.assertIn("closeRail();", onkey)
 

@@ -17,7 +17,7 @@ import { mountLnb, refreshLnb, setLnbNavigator, repaintLnb } from "./lnb";
 import { mountSpaceSwitcher } from "./space-switcher";
 import { SELF_HOSTED_BUILD, selfHosted } from "./self-hosted";
 import { showNotice } from "./components";
-import { blocksSurfaceShortcuts } from "./keys";
+import { shortcutsRest } from "./keys";
 import { SURFACE_ORDER, shortcutList } from "./shortcuts";
 import { disposeEditorsIn, docEditorOpen } from "./doc-editor";
 import { mountAuthoringKeys, startNewDoc, startNewNode } from "./authoring";
@@ -232,7 +232,7 @@ function openPalette() {
         <span>${c.label}</span><span class="hint">${c.hint}</span>
       </div>`).join("") || `<div class="hint" style="padding:.5rem">${COPY.ui.palette.noCommands}</div>`;
     list.querySelectorAll(".palette-row").forEach((row) =>
-      row.addEventListener("click", () => { hits[Number((row as HTMLElement).dataset.i)].run(); close(); }));
+      row.addEventListener("click", () => { const c = hits[Number((row as HTMLElement).dataset.i)]; close(); c.run(); }));
     return hits;
   };
   let hits = draw();
@@ -242,10 +242,12 @@ function openPalette() {
   const close = closePalette;
   q.addEventListener("input", () => { sel = 0; hits = draw(); });
   q.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") close();
+    // Esc 는 팔레트 하나만 닫는다: 뒤 화면(레일 · 그래프)의 Esc 까지 가지 않는다.
+    if (e.key === "Escape") { e.stopPropagation(); close(); }
     if (e.key === "ArrowDown") { sel = Math.min(sel + 1, hits.length - 1); hits = draw(); }
     if (e.key === "ArrowUp") { sel = Math.max(sel - 1, 0); hits = draw(); }
-    if (e.key === "Enter" && hits[sel]) { hits[sel].run(); close(); }
+    // 닫고 나서 부른다: 명령이 연 시트 · 편집기가 받은 초점을 팔레트의 초점 돌려주기가 빼앗지 않게.
+    if (e.key === "Enter" && hits[sel]) { const c = hits[sel]; close(); c.run(); }
   });
   q.focus();
 }
@@ -267,11 +269,17 @@ document.addEventListener("keydown", (e) => {
   // 또 갈리고, 그 틈으로 지도 단축키가 문서 본문에 떨어진다(2026-09-07 실측).
   // ⌘/Ctrl+K 는 상단 바 검색이 가져갔다(D57 — 조회가 제1 동선). 팔레트는 같은 키에
   // Shift 를 더해 남긴다: 한 키에 두 동작이 붙으면 어느 쪽이 뜰지 예측할 수 없다.
+  // 팔레트도 층이다: 시트 · 메뉴 · 팔레트가 떠 있으면 열지 않는다(딤 밑에 열리지 않는다).
   if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "k") {
-    e.preventDefault(); openPalette(); return;
+    e.preventDefault();
+    if (!shortcutsRest("command", e.target, document.activeElement)) openPalette();
+    return;
   }
-  // 문서 열이 떠 있으면 표면 단축키는 쉰다 — 판정은 keys.ts, DOM 은 doc-editor.ts.
-  if (blocksSurfaceShortcuts(e.target, document.activeElement, docEditorOpen() || homeEditorOpen())) return;
+  // Esc 는 쉬는 키가 아니다: 여기까지 온 Esc 는 위의 시트 · 메뉴가 받지 않은 것이고, 팔레트가 맨 위면 닫는다.
+  // 같은 문서에 걸린 표면의 Esc(View 의 레일 닫기)보다 먼저 걸린 듣기라 그것까지 멈춘다.
+  if (e.key === "Escape" && !palette.hidden) { e.stopImmediatePropagation(); closePalette(); return; }
+  // 층이 떠 있거나 입력 칸 · 편집기에 있으면 표면 단축키는 쉰다 — 판정은 keys.ts, DOM 은 doc-editor.ts.
+  if (shortcutsRest("surface", e.target, document.activeElement, docEditorOpen() || homeEditorOpen())) return;
   // 표면 **수만큼만** 받는다. 여기 `"1"`~`"3"` 리터럴이 박혀 있었는데, 그것은 ORDER 가
   // 줄어드는 순간 조용히 틀리는 종류다 — 3 을 누르면 `#undefined` 로 간다. 타입은
   // 문자열 비교라 아무 말도 안 하고, 게이트도 이 자리를 안 본다.
@@ -279,7 +287,6 @@ document.addEventListener("keydown", (e) => {
   if (n >= 1 && n <= ORDER.length) location.hash = `#${ORDER[n - 1]}`;
   // `[`(레일 접기)는 레일과 함께 사라졌다(D56) — 상단 바는 접을 것이 없다.
   if (e.key === "?") void openCheatsheet();
-  if (e.key === "Escape") closePalette();
 });
 
 // ── Skin (Signal) — 웹 Vinc=web(Home·Signal), 데스크탑=desktop(Deep Signal) ──

@@ -5,17 +5,27 @@
  *  ⚠ **왜 이게 있어야 하나**: 이 판정은 여태 거울이 둘이었다 — `main.ts` 의 전역
  *  핸들러와 `view.ts` 의 표면 핸들러가 각자 구현했고, 한쪽만 `contenteditable` 을
  *  보게 고쳐져 있었다. CodeMirror 6 의 편집면이 `div.cm-content[contenteditable]`
- *  이라 나머지 한쪽은 절대 비켜서지 않았고, 편집기에 포커스가 있어도 `1`·`2`·`f`·`?`
+ *  이라 나머지 한쪽은 절대 비켜서지 않았고, 편집기에 포커스가 있어도 `1`·`2`·`?`
  *  가 새어 나갔다(2026-09-07 실측 — `1`·`2` 는 본문에 글자를 넣으면서 동시에 표면을
  *  갈아엎었다). 지금은 `src/keys.ts` 한 벌이고, 그것이 **실제로 무엇을 막는지**를
  *  여기서 돌려 본다. 소스에 그 이름이 적혀 있는지가 아니라 판정 자체를 건다.
  *
- *  `keys.ts` 가 DOM 을 안 쓰는 것(오리 타이핑)이 이 검사가 성립하는 조건이다. */
+ *  `keys.ts` 가 DOM 을 안 쓰는 것(오리 타이핑)이 이 검사가 성립하는 조건이다.
+ *  잡기와 물음은 모듈에 하나뿐인 상태라 순서대로 쌓고 걷는다: 끝마다 "아무것도 안 떠 있으면 다 돈다"를 본다. */
 import assert from "node:assert/strict";
-import { blocksSurfaceShortcuts, holdSurfaceShortcuts, isTypingTarget } from "../src/keys.ts";
+import { holdShortcuts, isTypingTarget, restWhile, shortcutsRest } from "../src/keys.ts";
 
 let n = 0;
 const ok = (label: string) => { n += 1; console.log("  ok", label); };
+const surface = (target: unknown = null, active: unknown = null, editor = false) =>
+  shortcutsRest("surface", target as EventTarget, active as EventTarget, editor);
+const command = (target: unknown = null, active: unknown = null) =>
+  shortcutsRest("command", target as EventTarget, active as EventTarget);
+/** 아무것도 안 떠 있고 입력 중도 아니면 표의 단축키가 전부 돈다. */
+const allLive = (label: string) => {
+  assert.equal(surface(), false, `${label}: 1·2·3·? 이 쉰다`);
+  assert.equal(command(), false, `${label}: ⌘/Ctrl 단축키가 쉰다`);
+};
 
 // ── 1. 이 결함 자체 — CM6 의 편집면은 DIV 다 ────────────────────────────────
 assert.equal(isTypingTarget({ tagName: "DIV", isContentEditable: true }), true);
@@ -43,47 +53,90 @@ assert.equal(isTypingTarget(null), false);
 assert.equal(isTypingTarget({} as EventTarget), false);
 ok("target 이 없거나 요소가 아니면 단축키가 산다");
 
-// ── 5. 문서 열이 열려 있으면 표면 단축키를 막는다(F-DOC-KB-01) ───────────────
-// 문서 열이 떠 있는지는 부르는 쪽이 재서 넘긴다(doc-editor.docEditorOpen) — 그래서
-// 이 검사가 그 갈래까지 **실제로** 돈다. keys.ts 가 DOM 을 직접 읽던 판본에서는
-// 첫 조건에서 단락될 때만 통과했고, 갈래 자체는 브라우저 없이는 못 밟았다.
-assert.equal(blocksSurfaceShortcuts({ tagName: "DIV", isContentEditable: true }, null, false), true);
+// ── 5. 층이 없을 때: 표면 키는 입력 칸 · 편집기에서 쉬고, ⌘/Ctrl 키는 어디서나 돈다 ──────
+const cm = { tagName: "DIV", isContentEditable: true }, field = { tagName: "INPUT" };
+assert.equal(surface(cm), true);
 ok("타이핑 중이면 표면 단축키를 막는다");
-
-assert.equal(blocksSurfaceShortcuts(null, { tagName: "TEXTAREA" }, false), true);
+assert.equal(surface(null, { tagName: "TEXTAREA" }), true);
 ok("포커스가 입력에 있으면 target 이 비어도 막는다");
-
-assert.equal(blocksSurfaceShortcuts(null, null, true), true);
+assert.equal(surface(null, null, true), true);
 ok("문서 열이 떠 있으면 포커스가 어디 있든 막는다");
-
-assert.equal(blocksSurfaceShortcuts(null, null, false), false);
+allLive("층도 입력도 없음");
 ok("문서 열이 닫혀 있고 타이핑도 아니면 단축키가 산다");
+assert.equal(command(cm), false);
+assert.equal(command(field, field), false);
+ok("⌘/Ctrl K · ⇧K · N · ⇧N 은 입력 칸 · 편집기 안에서도 돈다");
 
-// ── 6. 시트가 떠 있으면 표면 단축키를 막는다 ────────────────────────────────
-// 설정을 연 채 초점이 시트의 버튼이나 body 에 있으면 위의 어느 갈래도 안 걸린다.
+// ── 6. 시트가 떠 있으면 표의 단축키가 전부 쉰다 ──────────────────────────────
+// 설정을 연 채 초점이 시트의 버튼이나 body 에 있으면 입력 갈래가 안 걸린다.
 // 시트가 잡고 놓는 수로 가른다. 겹친 시트는 마지막 하나가 닫혀야 풀린다.
-const outer = holdSurfaceShortcuts();
-assert.equal(blocksSurfaceShortcuts(null, null, false), true);
-ok("시트가 떠 있으면 포커스가 어디 있든 막는다");
-const inner = holdSurfaceShortcuts();
+const outer = holdShortcuts();
+assert.equal(surface(), true);
+assert.equal(command(), true);
+assert.equal(command(field, field), true);
+ok("시트가 떠 있으면 포커스가 어디 있든 숫자 · ? · ⌘/Ctrl 키가 쉰다(시트 안 입력 칸에서도)");
+const inner = holdShortcuts();
 inner();
 inner();
-assert.equal(blocksSurfaceShortcuts(null, null, false), true);
+assert.equal(surface(), true);
 ok("겹친 시트 하나를 (두 번) 닫아도 아래 시트가 남아 있으면 막는다");
 outer();
-assert.equal(blocksSurfaceShortcuts(null, null, false), false);
+allLive("마지막 시트가 닫힘");
 ok("마지막 시트가 닫히면 단축키가 산다");
 
 // ── 7. 닫기를 거치지 않고 지워진 시트는 잡은 것을 남기지 않는다 ─────────────────
 // 시트가 넘기는 `alive`(딤이 문서에 붙어 있는가)가 거짓이 되면 놓은 것으로 센다.
 let attached = true;
-const orphan = holdSurfaceShortcuts(() => attached);
-assert.equal(blocksSurfaceShortcuts(null, null, false), true);
+const orphan = holdShortcuts(() => attached);
+assert.equal(surface(), true);
 attached = false;
-assert.equal(blocksSurfaceShortcuts(null, null, false), false);
+allLive("딤이 지워짐");
 ok("딤이 문서에서 빠지면 놓기를 부르지 않아도 단축키가 산다");
 orphan();
-assert.equal(blocksSurfaceShortcuts(null, null, false), false);
+allLive("늦은 놓기");
 ok("늦게 온 놓기는 아무것도 바꾸지 않는다");
+attached = true;
+allLive("지워졌던 딤의 함수가 다시 참");
+ok("한 번 풀린 잡기는 그 함수가 다시 참이 되어도 되살아나지 않는다");
+
+// ── 8. 메뉴 · 팝오버 · 팔레트: 잡지 않고 물어본다 ───────────────────────────
+// 앱은 `components.ts` 가 기동 때 한 번 건다(화면에 메뉴가 떠 있는가). 여기서는 그 답을 손으로 바꾼다.
+let menuOpen = false;
+const unprobe = restWhile(() => menuOpen);
+allLive("메뉴 없음");
+menuOpen = true;
+assert.equal(surface(), true);
+assert.equal(command(), true);
+assert.equal(surface(field, field), true);
+ok("메뉴가 떠 있으면 숫자 · ? · ⌘/Ctrl 키가 쉰다(메뉴의 찾기 칸에서도)");
+menuOpen = false;
+allLive("메뉴가 닫힘");
+ok("메뉴가 어느 길로든 사라지면 다음 키에서 바로 산다(놓을 것이 없다)");
+
+// ── 9. 새는 잡기가 없다: 여는 · 닫는 순서를 섞어 돌린 끝에 아무것도 안 떠 있으면 다 돈다 ──────
+// 닫는 길: 놓기 · 두 번 놓기 · 닫기 없이 지움 · 겹친 순서와 다른 순서로 닫기 · 빠른 여닫기.
+const order = [3, 0, 4, 1, 2];
+for (let round = 0; round < 50; round++) {
+  const alive = [true, true, true, true, true];
+  const rel = alive.map((_, i) => holdShortcuts(() => alive[i]));
+  menuOpen = round % 2 === 0;
+  assert.equal(surface(), true);
+  for (const i of order) {
+    if ((i + round) % 3 === 0) alive[i] = false;   // 다른 화면이 딤을 걷어 감
+    else rel[i]();                                 // 닫기
+    if (i % 2) rel[i]();                           // 두 번 닫기
+  }
+  menuOpen = false;
+  allLive(`섞어 닫기 ${round}`);
+}
+for (let i = 0; i < 200; i++) { const r = holdShortcuts(); r(); }
+allLive("빠른 여닫기 200번");
+ok("섞인 순서 · 두 번 닫기 · 닫기 없이 지움 · 빠른 여닫기 뒤에 아무것도 안 떠 있으면 단축키가 다 돈다");
+
+unprobe();
+unprobe();
+menuOpen = true;
+allLive("물음을 뗀 뒤");
+ok("뗀 물음은 다시 묻지 않는다(두 번 떼도 같다)");
 
 console.log(`\nkeys: ${n}개 검사 통과`);

@@ -10,6 +10,7 @@
 import { api, cfg, docMidWrite } from "./api";
 import { COPY } from "./copy";
 import { armsNotice, esc, openContextMenu } from "./components";
+import { shortcutsRest } from "./keys";
 import { viewHooks } from "./topbar";
 import type { DocEditorHandle } from "./doc-editor";
 
@@ -156,13 +157,13 @@ export function openCreateMenu(x: number, y: number, topic = contextTopic()): vo
 
 let keysMounted = false;
 /** Ctrl/Cmd+N = 새 문서, Ctrl/Cmd+Shift+N = 새 노드. 편집기 안에서도 받는다 — 쓰다가
- *  다음 것을 만드는 손이 가장 흔하다. 시트가 떠 있으면 그 시트의 일이 먼저라 쉰다. */
+ *  다음 것을 만드는 손이 가장 흔하다. 시트 · 메뉴 · 팔레트가 떠 있으면 그 층의 일이 먼저라 쉰다(keys.ts). */
 export function mountAuthoringKeys(): void {
   if (keysMounted) return;
   keysMounted = true;
   document.addEventListener("keydown", (e) => {
     if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== "n") return;
-    if (document.querySelector(".sheet-scrim")) return;
+    if (shortcutsRest("command", e.target, document.activeElement)) return;
     e.preventDefault();
     if (e.shiftKey) void startNewNode();
     else startNewDoc();
