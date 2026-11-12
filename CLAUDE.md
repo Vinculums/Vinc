@@ -218,6 +218,10 @@ env -u PYTHONHOME -u PYTHONPATH VINC_LBUG_EXT_DIR=packaging/lbug_extensions ./.v
 `uv pip install --python .venv/bin/python ladybug==0.21.2 neo4j==6.4.1 argon2-cffi pyyaml pytest pytest-split==0.11.0 pypdf`
 로 넣는다. 그 줄이 바뀌면 여기도 같이 바꾼다.
 
+**PR 전 게이트는 이 한 줄이다:** `python -X utf8 scripts/gates.py` 가 `origin/main` 대비 바뀐 파일이 닿는
+게이트를 돌고 게이트마다 PASS·FAIL·SKIP 과 이유를 한 줄로 찍는다(`--all` 은 전부, `--list` 는 목록).
+목록의 정본은 그 파일이고 CI 의 `changes`·`core` 잡도 같은 목록을 돈다. 게이트를 새로 만들면 거기 적는다.
+
 전역 `PYTHONHOME`/`PYTHONPATH` 가 시스템 파이썬을 가리켜서 그냥 부르면 venv 조차 깨진다.
 **정상은 938 passed · 4 skipped**(2026-08-09 기준. 늘어나는 값이니 중요한 건 skip=4).
 skip 이 135 면 인터프리터를 잘못 잡은 것이고, 그
