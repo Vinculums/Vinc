@@ -12,7 +12,8 @@ import { sayings, statedStart, decisionSteps, type ItemLink, type Step } from ".
 import { isHistorical, conflictIds } from "../node-validity";
 import { esc, openContextMenu, confirmDestructive } from "../components";
 import { hostOf } from "../storage-mode";
-import { pushLayer, shortcutsRest } from "../keys";
+import { shortcutsRest } from "../keys";
+import { wireAsk, type AskItem } from "./view-ask";
 import { disposeEditorsIn, docEditorOpen, renderMarkdown } from "../doc-editor";
 import { hydrateRich } from "../rich-blocks";
 
@@ -1760,17 +1761,6 @@ export async function renderView(el: HTMLElement, resume = false) {
                 aria-haspopup="menu">${V.cardAskCopy}${chev("down")}</button>
       </div>`;
   }
-  /** 그 줄에 동작을 매단다. 반환값으로 수치를 나중에 채운다(응답이 오면 부제가 산다).
-   *
-   *  메뉴는 **스크롤 컨테이너 밖**(body)에 뜬다. 카드는 `overflow:hidden`, 그 본문은
-   *  `overflow:auto` 라 안에 두면 세 항목 중 하나만 보였다(실측 2026-08-27). 레일도
-   *  같은 사정이라 한 벌로 두는 편이 맞다. 아래가 모자라면 위로 뒤집는다.
-   *
-   *  프롬프트 셋은 번호가 아니라 **이름**이다. 숫자(깊이 1/2/3)는 크기를 말해 주지 않아
-   *  늘 경고를 달고 다녀야 했는데, 이름은 무엇을 담아 가는지 스스로 말한다.
-   *  근거: 디자인 정본 `Vinc Node Card.dc.html` (2b). */
-  /** 메뉴 한 칸 — 이름·부제·담아 갈 프롬프트·따라갈 주소. */
-  type AskItem = { name: string; sub: string; body: string; url: string };
   /** 노드에서 여는 셋. **에이전트 역할이면 한 칸이 더 붙는다**(발주자 지시
    *  2026-09-10: "에이전트 노드 클릭 시 ask assistant 가 에이전트를 쓰게").
    *  그 노드는 개념이 아니라 시킬 일이라, 설명을 청하는 것이 아니라 그 역할을
@@ -1801,67 +1791,6 @@ export async function renderView(el: HTMLElement, resume = false) {
     ];
   }
 
-  function wireAsk(scope: HTMLElement, alive: () => boolean,
-                   build: (deg: number, docs: number) => AskItem[]):
-                   (deg: number, docs: number) => void {
-    const V = COPY.ui.viewx;
-    const trigger = scope.querySelector<HTMLButtonElement>(".js-ask");
-    if (!trigger) return () => {};
-    document.getElementById("ask-menu-live")?.remove();      // 한 번에 하나만 뜬다
-    const menu = document.createElement("div");
-    menu.id = "ask-menu-live";
-    menu.className = "card-menu";
-    menu.setAttribute("role", "menu");
-    menu.hidden = true;
-    document.body.appendChild(menu);
-
-    const label = (s: string) => {
-      if (trigger.firstChild) trigger.replaceChild(document.createTextNode(s), trigger.firstChild);
-    };
-    // 열린 메뉴는 층의 쌓임에 오른다: 맨 위일 때 Esc 는 메뉴만 닫고(레일은 남는다) 초점을 단추로 돌린다.
-    let layer: (() => void) | null = null;
-    const close = () => { menu.hidden = true; trigger.setAttribute("aria-expanded", "false"); layer?.(); layer = null; };
-    const place = () => {
-      const r = trigger.getBoundingClientRect();
-      const w = 246, gap = 6;
-      menu.style.left = `${Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8))}px`;
-      const below = window.innerHeight - r.bottom;
-      menu.style.top = below > 160 || r.top < 170
-        ? `${r.bottom + gap}px` : `${Math.max(8, r.top - gap - menu.offsetHeight)}px`;
-    };
-    trigger.addEventListener("click", () => {
-      if (!menu.hidden) { close(); return; }
-      menu.hidden = false;
-      place();
-      trigger.setAttribute("aria-expanded", "true");
-      layer ??= pushLayer({ menu: true, alive: () => menu.isConnected && !menu.hidden && trigger.isConnected,
-        escape: () => { close(); trigger.focus(); } });
-    });
-    document.addEventListener("click", (e) => {
-      // 붙어 있던 표면이 사라졌으면 메뉴도 데려간다 — body 에 있으니 저절로 안 없어진다.
-      if (!alive()) { menu.remove(); return; }
-      if (!(e.target as HTMLElement).closest(".js-ask,#ask-menu-live")) close();
-    });
-
-    return (deg: number, docs: number) => {
-      const items = build(deg, docs);
-      menu.innerHTML = items.map((it, i) => `
-        <button type="button" role="menuitem" class="menu-item" data-i="${i}">
-          <span class="menu-name">${esc(it.name)}</span>
-          <span class="menu-sub">${esc(it.sub)}</span>
-        </button>`).join("");
-      menu.querySelectorAll<HTMLElement>(".menu-item").forEach((b) =>
-        b.addEventListener("click", () => {
-          const it = items[Number(b.dataset.i)];
-          // 되먹임은 트리거 버튼에 뜨고 메뉴는 닫힌다(디자인 2b 주석).
-          label(V.copyLinkDone);
-          window.setTimeout(() => label(V.cardAskCopy), 1400);
-          close();
-          void navigator.clipboard.writeText(`${it.body} ${it.url}`)
-            .catch(() => label(V.copyLinkFail));
-        }));
-    };
-  }
   /** 연결 목록 — 방향 화살표 · 상대 이름 · 관계 이름.
    *
    *  관계 이름은 `COPY.ui.ask.relTag` 가 이미 사람 말로 갖고 있다("derives from").

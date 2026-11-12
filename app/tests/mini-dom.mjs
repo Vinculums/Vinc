@@ -41,6 +41,7 @@ export class El {
     };
   }
   get id() { return this.attrs.get('id') || ''; }
+  set id(v) { this.attrs.set('id', String(v)); }
   get className() { return this.attrs.get('class') || ''; }
   set className(v) { this.attrs.set('class', v); }
   get hidden() { return this.attrs.has('hidden'); }
