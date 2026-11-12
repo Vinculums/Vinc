@@ -1,0 +1,1664 @@
+{
+ "account:read:400": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "error": {
+     "code": "account_code",
+     "message": "Account message.",
+     "request_id": "r1"
+    },
+    "executed": false,
+    "isError": true,
+    "status": 400
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"agent_detail\",\"payload\":{\"shareId\":\"0191f0aa-7777-7abc-8def-0123456789ab\",\"version\":1,\"format\":\"claude\"}}",
+    "claims": {
+     "aud": "account",
+     "bh": "JRvBRWuMzc_Rjdzbm69oOOgD8o5azReIyvHtJkkTEJg",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-read"
+    },
+    "path": "/internal/mcp/community-read",
+    "timeout": 4
+   }
+  ]
+ },
+ "account:read:404": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "error": {
+     "code": "account_code",
+     "message": "Account message.",
+     "request_id": "r1"
+    },
+    "executed": false,
+    "isError": true,
+    "status": 404
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"agent_detail\",\"payload\":{\"shareId\":\"0191f0aa-7777-7abc-8def-0123456789ab\",\"version\":1,\"format\":\"claude\"}}",
+    "claims": {
+     "aud": "account",
+     "bh": "JRvBRWuMzc_Rjdzbm69oOOgD8o5azReIyvHtJkkTEJg",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-read"
+    },
+    "path": "/internal/mcp/community-read",
+    "timeout": 4
+   }
+  ]
+ },
+ "account:read:409": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "error": {
+     "code": "account_code",
+     "message": "Account message.",
+     "request_id": "r1"
+    },
+    "executed": false,
+    "isError": true,
+    "status": 409
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"agent_detail\",\"payload\":{\"shareId\":\"0191f0aa-7777-7abc-8def-0123456789ab\",\"version\":1,\"format\":\"claude\"}}",
+    "claims": {
+     "aud": "account",
+     "bh": "JRvBRWuMzc_Rjdzbm69oOOgD8o5azReIyvHtJkkTEJg",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-read"
+    },
+    "path": "/internal/mcp/community-read",
+    "timeout": 4
+   }
+  ]
+ },
+ "account:read:429": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "error": {
+     "code": "account_code",
+     "message": "Account message.",
+     "request_id": "r1"
+    },
+    "executed": false,
+    "isError": true,
+    "status": 429
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"agent_detail\",\"payload\":{\"shareId\":\"0191f0aa-7777-7abc-8def-0123456789ab\",\"version\":1,\"format\":\"claude\"}}",
+    "claims": {
+     "aud": "account",
+     "bh": "JRvBRWuMzc_Rjdzbm69oOOgD8o5azReIyvHtJkkTEJg",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-read"
+    },
+    "path": "/internal/mcp/community-read",
+    "timeout": 4
+   }
+  ]
+ },
+ "account:read:500": {
+  "outcome": {
+   "error": {
+    "raise": "VerificationUnavailable",
+    "text": "Account verification is temporarily unavailable."
+   },
+   "kind": "error",
+   "message": "",
+   "result": {
+    "content": [
+     {
+      "text": "VerificationUnavailable: Account verification is temporarily unavailable.",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"agent_detail\",\"payload\":{\"shareId\":\"0191f0aa-7777-7abc-8def-0123456789ab\",\"version\":1,\"format\":\"claude\"}}",
+    "claims": {
+     "aud": "account",
+     "bh": "JRvBRWuMzc_Rjdzbm69oOOgD8o5azReIyvHtJkkTEJg",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-read"
+    },
+    "path": "/internal/mcp/community-read",
+    "timeout": 4
+   }
+  ]
+ },
+ "account:write:400": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "error": {
+     "code": "account_code",
+     "message": "Account message.",
+     "request_id": "r1"
+    },
+    "executed": false,
+    "isError": true,
+    "status": 400
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"page_save\",\"payload\":{\"slug\":\"same\",\"body\":\"x\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "QeDzfN10HpU2zzE0nFfWf6kRff2Bp5NUnqDNyUVeLcQ",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "account:write:401": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "error": {
+     "code": "account_code",
+     "message": "Account message.",
+     "request_id": "r1"
+    },
+    "executed": false,
+    "isError": true,
+    "status": 401
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"page_save\",\"payload\":{\"slug\":\"same\",\"body\":\"x\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "QeDzfN10HpU2zzE0nFfWf6kRff2Bp5NUnqDNyUVeLcQ",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "account:write:403": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "error": {
+     "code": "account_code",
+     "message": "Account message.",
+     "request_id": "r1"
+    },
+    "executed": false,
+    "isError": true,
+    "status": 403
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"page_save\",\"payload\":{\"slug\":\"same\",\"body\":\"x\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "QeDzfN10HpU2zzE0nFfWf6kRff2Bp5NUnqDNyUVeLcQ",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "account:write:404": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "error": {
+     "code": "account_code",
+     "message": "Account message.",
+     "request_id": "r1"
+    },
+    "executed": false,
+    "isError": true,
+    "status": 404
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"page_save\",\"payload\":{\"slug\":\"same\",\"body\":\"x\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "QeDzfN10HpU2zzE0nFfWf6kRff2Bp5NUnqDNyUVeLcQ",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "account:write:409": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "error": {
+     "code": "account_code",
+     "message": "Account message.",
+     "request_id": "r1"
+    },
+    "executed": false,
+    "isError": true,
+    "status": 409
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"page_save\",\"payload\":{\"slug\":\"same\",\"body\":\"x\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "QeDzfN10HpU2zzE0nFfWf6kRff2Bp5NUnqDNyUVeLcQ",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "account:write:410": {
+  "outcome": {
+   "error": {
+    "raise": "WriteUnconfirmed",
+    "text": "Community write outcome is not confirmed. Keep the mutationId and read history before retrying."
+   },
+   "kind": "error",
+   "message": "",
+   "result": {
+    "content": [
+     {
+      "text": "WriteUnconfirmed: Community write outcome is not confirmed. Keep the mutationId and read history before retrying.",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"page_save\",\"payload\":{\"slug\":\"same\",\"body\":\"x\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "QeDzfN10HpU2zzE0nFfWf6kRff2Bp5NUnqDNyUVeLcQ",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "account:write:429": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "error": {
+     "code": "account_code",
+     "message": "Account message.",
+     "request_id": "r1"
+    },
+    "executed": false,
+    "isError": true,
+    "status": 429
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"page_save\",\"payload\":{\"slug\":\"same\",\"body\":\"x\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "QeDzfN10HpU2zzE0nFfWf6kRff2Bp5NUnqDNyUVeLcQ",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "account:write:500": {
+  "outcome": {
+   "error": {
+    "raise": "WriteUnconfirmed",
+    "text": "Community write outcome is not confirmed. Keep the mutationId and read history before retrying."
+   },
+   "kind": "error",
+   "message": "",
+   "result": {
+    "content": [
+     {
+      "text": "WriteUnconfirmed: Community write outcome is not confirmed. Keep the mutationId and read history before retrying.",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"page_save\",\"payload\":{\"slug\":\"same\",\"body\":\"x\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "QeDzfN10HpU2zzE0nFfWf6kRff2Bp5NUnqDNyUVeLcQ",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "account:write:503": {
+  "outcome": {
+   "error": {
+    "raise": "WriteUnconfirmed",
+    "text": "Community write outcome is not confirmed. Keep the mutationId and read history before retrying."
+   },
+   "kind": "error",
+   "message": "",
+   "result": {
+    "content": [
+     {
+      "text": "WriteUnconfirmed: Community write outcome is not confirmed. Keep the mutationId and read history before retrying.",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"page_save\",\"payload\":{\"slug\":\"same\",\"body\":\"x\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "QeDzfN10HpU2zzE0nFfWf6kRff2Bp5NUnqDNyUVeLcQ",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "read:agent_detail": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "executed": true,
+    "share": {
+     "id": "s"
+    }
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"agent_detail\",\"payload\":{\"shareId\":\"0191f0aa-7777-7abc-8def-0123456789ab\",\"version\":1,\"format\":\"claude\"}}",
+    "claims": {
+     "aud": "account",
+     "bh": "JRvBRWuMzc_Rjdzbm69oOOgD8o5azReIyvHtJkkTEJg",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-read"
+    },
+    "path": "/internal/mcp/community-read",
+    "timeout": 4
+   }
+  ]
+ },
+ "read:agent_export": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "executed": true,
+    "share": {
+     "id": "s"
+    }
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"agent_export\",\"payload\":{\"shareId\":\"0191f0aa-7777-7abc-8def-0123456789ab\",\"version\":1,\"format\":\"claude\"}}",
+    "claims": {
+     "aud": "account",
+     "bh": "RKZ94qjdJF3d5-v1Yd82VKQtwmSXYXi9JwgsHb8RMfM",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-read"
+    },
+    "path": "/internal/mcp/community-read",
+    "timeout": 4
+   }
+  ]
+ },
+ "read:agent_take_preview": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "executed": true,
+    "share": {
+     "id": "s"
+    }
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"agent_take_preview\",\"payload\":{\"shareId\":\"0191f0aa-7777-7abc-8def-0123456789ab\",\"version\":1,\"format\":\"claude\"}}",
+    "claims": {
+     "aud": "account",
+     "bh": "xecBuF9OAB5RigtD3g1L9njlTZp4gkhic9yL7Oztlik",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-read"
+    },
+    "path": "/internal/mcp/community-read",
+    "timeout": 4
+   }
+  ]
+ },
+ "read:agent_take_result": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "executed": true,
+    "share": {
+     "id": "s"
+    }
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"agent_take_result\",\"payload\":{\"shareId\":\"0191f0aa-7777-7abc-8def-0123456789ab\",\"version\":1,\"format\":\"claude\"}}",
+    "claims": {
+     "aud": "account",
+     "bh": "w24ndcJurxysqDyl-GsPcdnYdSqxmVaSXkY_D4NPNTk",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-read"
+    },
+    "path": "/internal/mcp/community-read",
+    "timeout": 4
+   }
+  ]
+ },
+ "refuse:direct:create_from_community": {
+  "outcome": {
+   "raise": "PermissionError",
+   "text": "Community creation requires personal identity; other writes require a community space."
+  },
+  "sent": []
+ },
+ "refuse:direct:read_no_member": {
+  "outcome": {
+   "raise": "PermissionError",
+   "text": "Community share reads require an authenticated explicit community space."
+  },
+  "sent": []
+ },
+ "refuse:direct:read_personal_owner": {
+  "outcome": {
+   "raise": "PermissionError",
+   "text": "Community share reads require an authenticated explicit community space."
+  },
+  "sent": []
+ },
+ "refuse:direct:read_unknown_action": {
+  "outcome": {
+   "raise": "PermissionError",
+   "text": "Community share reads require an authenticated explicit community space."
+  },
+  "sent": []
+ },
+ "refuse:direct:unavailable_read": {
+  "outcome": {
+   "raise": "PermissionError",
+   "text": "Community share reads require an authenticated account connector."
+  },
+  "sent": []
+ },
+ "refuse:direct:unavailable_write": {
+  "outcome": {
+   "raise": "PermissionError",
+   "text": "Community writes require an authenticated account connector."
+  },
+  "sent": []
+ },
+ "refuse:direct:write_no_member": {
+  "outcome": {
+   "raise": "PermissionError",
+   "text": "A full-access authenticated community request is required."
+  },
+  "sent": []
+ },
+ "refuse:direct:write_personal_owner": {
+  "outcome": {
+   "raise": "PermissionError",
+   "text": "Community creation requires personal identity; other writes require a community space."
+  },
+  "sent": []
+ },
+ "refuse:direct:write_read_scope": {
+  "outcome": {
+   "raise": "PermissionError",
+   "text": "A full-access authenticated community request is required."
+  },
+  "sent": []
+ },
+ "refuse:preflight:create_in_community": {
+  "outcome": {
+   "error": null,
+   "kind": "role_denied",
+   "message": "Community creation uses personal identity; all other actions require community:<uuid> space.",
+   "result": null
+  },
+  "sent": []
+ },
+ "refuse:preflight:generic_write_in_community": {
+  "outcome": {
+   "error": null,
+   "kind": "role_denied",
+   "message": "Community mutations require vinc_community_write and an explicit community space.",
+   "result": null
+  },
+  "sent": []
+ },
+ "refuse:preflight:read_only_key": {
+  "outcome": {
+   "error": null,
+   "kind": "read_only",
+   "message": "this key is read-only: vinc_community_write writes to the graph. Mint a full-access key at https://vincs.io/account",
+   "result": null
+  },
+  "sent": []
+ },
+ "refuse:preflight:read_personal": {
+  "outcome": {
+   "error": null,
+   "kind": "role_denied",
+   "message": "Community Agent reads require an explicit community:<uuid> space.",
+   "result": null
+  },
+  "sent": []
+ },
+ "refuse:preflight:write_personal": {
+  "outcome": {
+   "error": null,
+   "kind": "role_denied",
+   "message": "Community creation uses personal identity; all other actions require community:<uuid> space.",
+   "result": null
+  },
+  "sent": []
+ },
+ "refuse:read:action_missing": {
+  "outcome": {
+   "error": {
+    "raise": "InvalidArgument",
+    "text": "Invalid argument: action is required for vinc_community_read and was not given. Nothing was run. Retry with action set."
+   },
+   "kind": "invalid_argument",
+   "message": "",
+   "result": {
+    "_meta": {
+     "vinc_invalid_argument": {
+      "argument": "action",
+      "reason": "missing required argument",
+      "tool": "vinc_community_read"
+     }
+    },
+    "content": [
+     {
+      "text": "Invalid argument: action is required for vinc_community_read and was not given. Nothing was run. Retry with action set.",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "sent": []
+ },
+ "refuse:read:action_unknown": {
+  "outcome": {
+   "error": {
+    "raise": "InvalidArgument",
+    "text": "Invalid argument: action='agent_list' is not accepted by vinc_community_read. Nothing was run. Retry with action set to one of: agent_detail, agent_export, agent_take_preview, agent_take_result."
+   },
+   "kind": "invalid_argument",
+   "message": "",
+   "result": {
+    "_meta": {
+     "vinc_invalid_argument": {
+      "argument": "action",
+      "reason": "must be one of: agent_detail, agent_export, agent_take_preview, agent_take_result",
+      "tool": "vinc_community_read"
+     }
+    },
+    "content": [
+     {
+      "text": "Invalid argument: action='agent_list' is not accepted by vinc_community_read. Nothing was run. Retry with action set to one of: agent_detail, agent_export, agent_take_preview, agent_take_result.",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "sent": []
+ },
+ "refuse:read:action_write_name": {
+  "outcome": {
+   "error": {
+    "raise": "InvalidArgument",
+    "text": "Invalid argument: action='page_save' is not accepted by vinc_community_read. Nothing was run. Retry with action set to one of: agent_detail, agent_export, agent_take_preview, agent_take_result."
+   },
+   "kind": "invalid_argument",
+   "message": "",
+   "result": {
+    "_meta": {
+     "vinc_invalid_argument": {
+      "argument": "action",
+      "reason": "must be one of: agent_detail, agent_export, agent_take_preview, agent_take_result",
+      "tool": "vinc_community_read"
+     }
+    },
+    "content": [
+     {
+      "text": "Invalid argument: action='page_save' is not accepted by vinc_community_read. Nothing was run. Retry with action set to one of: agent_detail, agent_export, agent_take_preview, agent_take_result.",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "sent": []
+ },
+ "refuse:read:payload_list": {
+  "outcome": {
+   "error": {
+    "raise": "InvalidArgument",
+    "text": "Invalid argument: payload must be a JSON object."
+   },
+   "kind": "invalid_argument",
+   "message": "",
+   "result": {
+    "_meta": {
+     "vinc_invalid_argument": {
+      "argument": "payload",
+      "reason": "expected an object",
+      "tool": "vinc_community_read"
+     }
+    },
+    "content": [
+     {
+      "text": "Invalid argument: payload must be a JSON object.",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "sent": []
+ },
+ "refuse:read:space_missing": {
+  "outcome": {
+   "error": {
+    "raise": "InvalidArgument",
+    "text": "Invalid argument: an explicit community:<uuid> space is required."
+   },
+   "kind": "invalid_argument",
+   "message": "",
+   "result": {
+    "_meta": {
+     "vinc_invalid_argument": {
+      "argument": "space",
+      "reason": "expected community:<uuid>",
+      "tool": "vinc_community_read"
+     }
+    },
+    "content": [
+     {
+      "text": "Invalid argument: an explicit community:<uuid> space is required.",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "sent": []
+ },
+ "refuse:read:space_personal": {
+  "outcome": {
+   "error": {
+    "raise": "InvalidArgument",
+    "text": "Invalid argument: an explicit community:<uuid> space is required."
+   },
+   "kind": "invalid_argument",
+   "message": "",
+   "result": {
+    "_meta": {
+     "vinc_invalid_argument": {
+      "argument": "space",
+      "reason": "expected community:<uuid>",
+      "tool": "vinc_community_read"
+     }
+    },
+    "content": [
+     {
+      "text": "Invalid argument: an explicit community:<uuid> space is required.",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "sent": []
+ },
+ "refuse:write:action_missing": {
+  "outcome": {
+   "error": {
+    "raise": "InvalidArgument",
+    "text": "Invalid argument: action is required for vinc_community_write and was not given. Nothing was run. Retry with action set."
+   },
+   "kind": "invalid_argument",
+   "message": "",
+   "result": {
+    "_meta": {
+     "vinc_invalid_argument": {
+      "argument": "action",
+      "reason": "missing required argument",
+      "tool": "vinc_community_write"
+     }
+    },
+    "content": [
+     {
+      "text": "Invalid argument: action is required for vinc_community_write and was not given. Nothing was run. Retry with action set.",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "sent": []
+ },
+ "refuse:write:action_read_name": {
+  "outcome": {
+   "error": {
+    "raise": "InvalidArgument",
+    "text": "Invalid argument: action='agent_detail' is not accepted by vinc_community_write. Nothing was run. Retry with action set to one of: page_save, page_revert, talk_create, talk_comment, lounge_create, lounge_comment, react, report, moderate, appoint_operator, resolve_report, social_edit, community_join, community_leave, community_create, community_edit, share_create, share_version, share_withdraw, share_moderate, pack_share, agent_take."
+   },
+   "kind": "invalid_argument",
+   "message": "",
+   "result": {
+    "_meta": {
+     "vinc_invalid_argument": {
+      "argument": "action",
+      "reason": "must be one of: page_save, page_revert, talk_create, talk_comment, lounge_create, lounge_comment, react, report, moderate, appoint_operator, resolve_report, social_edit, community_join, community_leave, community_create, community_edit, share_create, share_version, share_withdraw, share_moderate, pack_share, agent_take",
+      "tool": "vinc_community_write"
+     }
+    },
+    "content": [
+     {
+      "text": "Invalid argument: action='agent_detail' is not accepted by vinc_community_write. Nothing was run. Retry with action set to one of: page_save, page_revert, talk_create, talk_comment, lounge_create, lounge_comment, react, report, moderate, appoint_operator, resolve_report, social_edit, community_join, community_leave, community_create, community_edit, share_create, share_version, share_withdraw, share_moderate, pack_share, agent_take.",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "sent": []
+ },
+ "refuse:write:action_unknown": {
+  "outcome": {
+   "error": {
+    "raise": "InvalidArgument",
+    "text": "Invalid argument: action='share_agent' is not accepted by vinc_community_write. Nothing was run. Retry with action set to one of: page_save, page_revert, talk_create, talk_comment, lounge_create, lounge_comment, react, report, moderate, appoint_operator, resolve_report, social_edit, community_join, community_leave, community_create, community_edit, share_create, share_version, share_withdraw, share_moderate, pack_share, agent_take."
+   },
+   "kind": "invalid_argument",
+   "message": "",
+   "result": {
+    "_meta": {
+     "vinc_invalid_argument": {
+      "argument": "action",
+      "reason": "must be one of: page_save, page_revert, talk_create, talk_comment, lounge_create, lounge_comment, react, report, moderate, appoint_operator, resolve_report, social_edit, community_join, community_leave, community_create, community_edit, share_create, share_version, share_withdraw, share_moderate, pack_share, agent_take",
+      "tool": "vinc_community_write"
+     }
+    },
+    "content": [
+     {
+      "text": "Invalid argument: action='share_agent' is not accepted by vinc_community_write. Nothing was run. Retry with action set to one of: page_save, page_revert, talk_create, talk_comment, lounge_create, lounge_comment, react, report, moderate, appoint_operator, resolve_report, social_edit, community_join, community_leave, community_create, community_edit, share_create, share_version, share_withdraw, share_moderate, pack_share, agent_take.",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "sent": []
+ },
+ "refuse:write:client_name_control": {
+  "outcome": {
+   "error": {
+    "raise": "InvalidArgument",
+    "text": "Invalid argument: client_name must be 1..120 printable characters."
+   },
+   "kind": "invalid_argument",
+   "message": "",
+   "result": {
+    "_meta": {
+     "vinc_invalid_argument": {
+      "argument": "client_name",
+      "reason": "expected 1..120 printable characters",
+      "tool": "vinc_community_write"
+     }
+    },
+    "content": [
+     {
+      "text": "Invalid argument: client_name must be 1..120 printable characters.",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "sent": []
+ },
+ "refuse:write:client_name_empty": {
+  "outcome": {
+   "error": {
+    "raise": "InvalidArgument",
+    "text": "Invalid argument: client_name must be 1..120 printable characters."
+   },
+   "kind": "invalid_argument",
+   "message": "",
+   "result": {
+    "_meta": {
+     "vinc_invalid_argument": {
+      "argument": "client_name",
+      "reason": "expected 1..120 printable characters",
+      "tool": "vinc_community_write"
+     }
+    },
+    "content": [
+     {
+      "text": "Invalid argument: client_name must be 1..120 printable characters.",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "sent": []
+ },
+ "refuse:write:client_name_long": {
+  "outcome": {
+   "error": {
+    "raise": "InvalidArgument",
+    "text": "Invalid argument: client_name must be 1..120 printable characters."
+   },
+   "kind": "invalid_argument",
+   "message": "",
+   "result": {
+    "_meta": {
+     "vinc_invalid_argument": {
+      "argument": "client_name",
+      "reason": "expected 1..120 printable characters",
+      "tool": "vinc_community_write"
+     }
+    },
+    "content": [
+     {
+      "text": "Invalid argument: client_name must be 1..120 printable characters.",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "sent": []
+ },
+ "refuse:write:client_name_missing": {
+  "outcome": {
+   "error": {
+    "raise": "InvalidArgument",
+    "text": "Invalid argument: client_name must be 1..120 printable characters."
+   },
+   "kind": "invalid_argument",
+   "message": "",
+   "result": {
+    "_meta": {
+     "vinc_invalid_argument": {
+      "argument": "client_name",
+      "reason": "expected 1..120 printable characters",
+      "tool": "vinc_community_write"
+     }
+    },
+    "content": [
+     {
+      "text": "Invalid argument: client_name must be 1..120 printable characters.",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "sent": []
+ },
+ "refuse:write:payload_list": {
+  "outcome": {
+   "error": {
+    "raise": "InvalidArgument",
+    "text": "Invalid argument: payload must be a JSON object."
+   },
+   "kind": "invalid_argument",
+   "message": "",
+   "result": {
+    "_meta": {
+     "vinc_invalid_argument": {
+      "argument": "payload",
+      "reason": "expected an object",
+      "tool": "vinc_community_write"
+     }
+    },
+    "content": [
+     {
+      "text": "Invalid argument: payload must be a JSON object.",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "sent": []
+ },
+ "refuse:write:payload_missing": {
+  "outcome": {
+   "error": {
+    "raise": "InvalidArgument",
+    "text": "Invalid argument: payload must be a JSON object."
+   },
+   "kind": "invalid_argument",
+   "message": "",
+   "result": {
+    "_meta": {
+     "vinc_invalid_argument": {
+      "argument": "payload",
+      "reason": "expected an object",
+      "tool": "vinc_community_write"
+     }
+    },
+    "content": [
+     {
+      "text": "Invalid argument: payload must be a JSON object.",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "sent": []
+ },
+ "refuse:write:payload_nan": {
+  "outcome": {
+   "error": {
+    "raise": "InvalidArgument",
+    "text": "Invalid argument: payload must contain finite JSON values."
+   },
+   "kind": "invalid_argument",
+   "message": "",
+   "result": {
+    "_meta": {
+     "vinc_invalid_argument": {
+      "argument": "payload",
+      "reason": "expected finite JSON values",
+      "tool": "vinc_community_write"
+     }
+    },
+    "content": [
+     {
+      "text": "Invalid argument: payload must contain finite JSON values.",
+      "type": "text"
+     }
+    ],
+    "isError": true
+   }
+  },
+  "sent": []
+ },
+ "write:agent_take": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"agent_take\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "WHVp28hynWfh_vGf-N-Dc5COMRVsOp5t2DuiR0-Jq6Y",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:appoint_operator": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"appoint_operator\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "HFyKRV1muBmB6oozW0g9fw178nTn2CglGYqmLnehfgg",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:community_create": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":null,\"action\":\"community_create\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "LOE2Qk3s9dXIG914bZ7dZ7myTk4lAEM1WXeylpW8yc8",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:community_edit": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"community_edit\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "ihvDVkNDu9feQrY7KMf8CknXH9pmoBJH9Yfuo8yHHF8",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:community_join": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"community_join\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "v3yC7ALM39NciILunpzPnZf_gmFKTqdNwQ7hkUjFPSs",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:community_leave": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"community_leave\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "djFdlFF2o69MUa3YXDdtatIIzKTRS0uJezsfSD5Ni58",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:lounge_comment": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"lounge_comment\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "m5r3iZsIihpw6Eu3T2cmrV5Pyrfy5VktsZ2bDRdHh0c",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:lounge_create": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"lounge_create\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "UUndkorhnry69Pxdex8xgUZVEilW3erCRGDeJqj8iMU",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:moderate": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"moderate\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "OLoRBA_Pwv3-wuegreQWKG59m06noHpM3vpTawhaY4g",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:pack_share": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"pack_share\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "fHGSymNMEsQXlZICr99yGuzBNUimfMIiSUlQsmP1pXM",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:page_revert": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"page_revert\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "o8ADJESmqPbYGFFjVucJ18Dgd-lViNFK4nZ597fy0ng",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:page_save": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"page_save\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "R_Xd9_isFFufiIjmiNCH68qXF_Wf-bbLCQpvQmhG1yM",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:react": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"react\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "3n9Z7PbkXtOLBZ776zjZOPoWsISn-DDgD3_O6dhoopk",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:report": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"report\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "Gv6N1tBZISmy0T8w6NBDS2Gx5qp9wu61e7GMfESlHjY",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:resolve_report": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"resolve_report\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "XK7R8uVwVQ5FRElFArJLBjGkIU1Eg4r6ZT94zvv39J4",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:share_create": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"share_create\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "6qGbAudLrZ0a-A40tCTb-xCXTYjgp17AaWkp6sUt3Xw",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:share_moderate": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"share_moderate\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "VzVARxPSu3gL3l9yiVjiliXZJGj865G3nv4APe0hMZA",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:share_version": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"share_version\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "mQE46crZPMQk1teXAdRHmzF6YFJmpE3nGYt8aPb9Vn0",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:share_withdraw": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"share_withdraw\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "cEzNo7GCIBsSR8ExgWpXCNgvc82HA_M6B6qZ2NW3Gvg",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:social_edit": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"social_edit\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "hHiv7UPYRk80LsqKw7aAkdozmovpmFaINhFD6SkhK-k",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:talk_comment": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"talk_comment\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "wZeK3yrNcp3V2v06FocPIZ2QRn621GxqWex4DZ1R7Dc",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ },
+ "write:talk_create": {
+  "outcome": {
+   "error": null,
+   "kind": "ok",
+   "message": "",
+   "result": {
+    "graph": "pending",
+    "revision": 1,
+    "saved": true
+   }
+  },
+  "sent": [
+   {
+    "body": "{\"sub\":\"0191f0aa-3333-7abc-8def-0123456789ab\",\"community\":\"0191f0aa-1111-7abc-8def-0123456789ab\",\"action\":\"talk_create\",\"payload\":{\"slug\":\"same\",\"title\":\"Same\",\"body\":\"Text\",\"summary\":\"Edit\",\"baseRevision\":null,\"mutationId\":\"0191f0aa-9999-7abc-8def-0123456789ab\",\"channel\":\"web\",\"editor\":\"someone\"},\"client_name\":\"Codex\",\"channel\":\"mcp\",\"scope\":\"full\"}",
+    "claims": {
+     "aud": "account",
+     "bh": "W173YtVFc-SR8dlk1SuLe1QC26cj8-oIrRlgPBt5u5E",
+     "iss": "mcp",
+     "sub": "0191f0aa-3333-7abc-8def-0123456789ab",
+     "typ": "community-write"
+    },
+    "path": "/internal/mcp/community",
+    "timeout": 30
+   }
+  ]
+ }
+}
