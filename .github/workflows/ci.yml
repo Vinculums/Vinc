@@ -107,6 +107,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       app: ${{ steps.f.outputs.app }}
+      app_smoke: ${{ steps.f.outputs.app_smoke }}
       rust: ${{ steps.f.outputs.rust }}
     steps:
       - uses: actions/checkout@v4
@@ -218,7 +219,7 @@ jobs:
           # 검증이 조용히 사라지므로, 실패 방향은 언제나 "더 돌리는 쪽"이다.
           if ! files=$(git diff --name-only "$BASE" "$HEAD" 2>/dev/null) || [ -z "$files" ]; then
             echo "::warning::변경 목록을 못 구했다($BASE..$HEAD) — 전량 실행으로 붙는다"
-            { echo "app=true"; echo "rust=true"; } >> "$GITHUB_OUTPUT"
+            { echo "app=true"; echo "app_smoke=true"; echo "rust=true"; } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "── 변경 파일"; echo "$files"
@@ -226,16 +227,19 @@ jobs:
           # 이 워크플로 자신이 바뀌면 전부 돈다 — 조건을 고친 사람이 그 조건이 실제로
           # 무엇을 켜고 끄는지 한 번은 봐야 한다.
           if has '^\.github/workflows/ci\.yml$'; then
-            { echo "app=true"; echo "rust=true"; } >> "$GITHUB_OUTPUT"
+            { echo "app=true"; echo "app_smoke=true"; echo "rust=true"; } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # ⚠ **파이썬 경로 필터는 없다.** 여기 있었고, 그것이 전량 pytest 를 끄는
           # 스위치였다 — 경위와 실측은 `core-pkns` 잡의 주석에 있다. 다시 만들지 말 것:
-          # `core`·`core-pkns` 는 둘 다 무조건이고 이 잡이 거르는 것은 `app`·`rust` 뿐이다.
+          # `core`·`core-pkns` 는 둘 다 무조건이고 이 잡이 거르는 것은 `app`·`app_smoke`·`rust` 뿐이다.
           # app 잡은 tsc 와 dev/*-check.ts 뿐이다. app/ 밖에서 읽는 것은 사이드카 계약
           # (api/contract/) 하나라 그것만 바뀌어도 돈다(dev/sidecar-contract-check.ts).
           has '^app/|^api/contract/' \
             && echo "app=true" >> "$GITHUB_OUTPUT" || echo "app=false" >> "$GITHUB_OUTPUT"
+          # 브라우저 스모크(`app-smoke`)는 앱과 그 앱이 부르는 사이드카(api/)가 바뀔 때 돈다.
+          has '^app/|^api/' \
+            && echo "app_smoke=true" >> "$GITHUB_OUTPUT" || echo "app_smoke=false" >> "$GITHUB_OUTPUT"
           # 러스트 셸. `app/src-tauri/` 밖의 변경이 컴파일을 깨뜨릴 길은 없다.
           has '^app/src-tauri/' \
             && echo "rust=true" >> "$GITHUB_OUTPUT" || echo "rust=false" >> "$GITHUB_OUTPUT"
@@ -936,6 +940,66 @@ jobs:
             echo "── $f"
             node --experimental-strip-types --disable-warning=ExperimentalWarning "$f"
           done
+
+  # ── 앱 브라우저 스모크 ─────────────────────────────────────────────────────
+  # 빌드한 앱을 리포의 사이드카(빈 임베디드 스토어에 문서 하나를 심는다)에 붙여 헤드리스
+  # Chromium 으로 다섯 걸음을 본다: 셸 마운트 · 문서 홈 목록 · 문서 열기 · 그래프 나침반 ·
+  # 검색. 걸음마다 잡히지 않은 예외와 콘솔 오류가 없어야 한다. 무엇을 보는지는
+  # `app/dev/browser-smoke.mjs` 머리에 있고, 로컬에서는 `cd app && npm run smoke` 한 줄이다.
+  #
+  # ⚠ 아직 필수 체크가 아니다(룰셋에 없다). 실패하면 빨갛게 보이지만 머지를 막지 않는다.
+  # 필수로 올릴 때는 룰셋에 이 잡 이름(`app-smoke`)을 더한다. 경로 조건으로 건너뛴 잡은
+  # 통과로 센다(`app (typecheck)` 와 같은 방식이다), 그래서 필수가 되어도 대기로 남지 않는다.
+  # PR 에서만 돈다: 머지 큐와 main push 에서는 건너뛴다.
+  app-smoke:
+    name: app-smoke
+    needs: changes
+    if: needs.changes.outputs.app_smoke == 'true' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    # 평소 3분 안팎이다. 행(hang)을 잡는 상한이다.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      # 사이드카는 임베디드 엔진 하나만 있으면 뜬다. 판은 `core` 잡과 같게 고정한다.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        working-directory: app
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          python -m pip install ladybug==0.21.2
+          echo "PLAYWRIGHT_VERSION=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_ENV"
+      # 브라우저 내려받기는 Playwright 판마다 캐시한다. 시스템 라이브러리(apt)는 캐시가
+      # 맞아도 매번 확인한다: 러너 이미지가 바뀌면 빠질 수 있다.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}-headless-shell
+      - name: Install Chromium (headless shell)
+        working-directory: app
+        run: npx playwright install --with-deps --only-shell chromium
+      - name: Browser smoke
+        working-directory: app
+        env:
+          VINC_PYTHON: python
+          VINC_SMOKE_OUT: ${{ runner.temp }}/app-smoke
+        run: npm run smoke
+      # 실패한 걸음의 스크린숏과 Playwright 트레이스(`npx playwright show-trace trace.zip`).
+      - name: Keep the smoke screenshot and trace
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-smoke
+          path: ${{ runner.temp }}/app-smoke
+          if-no-files-found: ignore
+          retention-days: 14
 
   # ── 러스트 셸 ────────────────────────────────────────────────────────────────
   # 왜 생겼나: **CI 가 러스트를 한 번도 짓지 않았다.** 그래서 컴파일 오류가 처음 드러나는

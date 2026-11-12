@@ -7,6 +7,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "smoke": "node dev/browser-smoke.mjs",
     "test:search-temporal": "node --test tests/search-temporal.test.mjs",
     "build": "npm run typecheck && npm run test:search-temporal && npm run test:view-links && npm run test:view-layout && npm run test:view-marks && npm run test:topic-tints && npm run test:view-compass-roots && npm run test:view-compass-state && npm run test:view-compass-whole && npm run test:view-compass-lens && npm run test:view-ask && npm run test:view-loading && npm run test:view-session && npm run test:view-graph-read && npm run test:view-retained && npm run test:layout-service && npm run test:topic-conversion && npm run test:topic-detail && npm run test:role-fields && npm run test:space-picker && npm run test:role-eval && npm run test:agent-ontology && npm run test:acceptance && npm run test:credential-scope && npm run test:approvals && npm run test:web-push && vite build",
     "test:view-links": "node --test tests/view-link-performance.test.mjs",
@@ -54,6 +55,7 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.4",
+    "playwright": "1.65.0",
     "typescript": "^5.6.0",
     "vite": "^6.4.5"
   }
