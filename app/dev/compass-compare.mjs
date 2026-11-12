@@ -62,6 +62,9 @@ async function settle(p, min = 700) {
 const neutral = (p) => p.mouse.move(3, 3);
 async function capture(p, dir, idx, label) {
   const sel = (await p.locator('#host').count()) ? '#host' : (await p.locator('#view-canvas').count()) ? '#view-canvas' : null;
+  // 칸을 한 번 따로 그렸다 되돌려 통째로 다시 칠한다: 부분 다시 칠하기의 안티에일리어싱이 애니메이션 이력을 따라가지 않게(포인터가 닿는 자리는 그대로다)
+  await p.evaluate(async (q) => { const el = q && document.querySelector(q); if (!el) return; const two = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    el.style.willChange = 'transform'; await two(); el.style.willChange = ''; await two(); }, sel);
   const png = sel ? await p.locator(sel).screenshot() : await p.screenshot();
   const data = await p.evaluate(() => { const g = document.querySelector('#cmp-g'), pop = document.querySelector('.cmp-pop'), tip = document.querySelector('#cmp-tip');
     return { svg: g ? g.outerHTML : null, viewBox: g ? g.getAttribute('viewBox') : null, cls: g ? g.getAttribute('class') : null,
@@ -188,7 +191,7 @@ async function runSession(b, base, s, out) {
     const LS = { 'vinc.sidecar.token': tok, 'vinc.sidecar.base': process.env.SIDECAR || 'http://127.0.0.1:8797', 'vinc.lang': 'en', 'vinc.theme': 'dark', 'vinc.firstrun.seen': '1', 'vinc.view.coach.seen': '1', 'vinc.owner': 'tenant:local', 'vinc.mode': 'local', 'vinc.sync.linked': '1', 'vinc.sync.username': 'demo', ...s.ls };
     await ctx.addInitScript((kv) => { if (!sessionStorage.getItem('__seeded')) { for (const [k, v] of Object.entries(kv)) localStorage.setItem(k, v); sessionStorage.setItem('__seeded', '1'); } }, LS);
   } else await ctx.addInitScript(() => { if (!sessionStorage.getItem('__seeded')) { localStorage.clear(); sessionStorage.setItem('__seeded', '1'); } });
-  const p = await ctx.newPage(); const errs = []; p.on('pageerror', (e) => errs.push(String(e.message).split('\n')[0]));
+  const p = await ctx.newPage(); p.setDefaultTimeout(8000); const errs = []; p.on('pageerror', (e) => errs.push(String(e.message).split('\n')[0]));
   const url = s.kind === 'app' ? base.replace('127.0.0.1', 'tauri.localhost') + `/${s.q}#view` : `${base}/dev/compass-lens.html?${s.params}`;
   await p.goto(url); await p.evaluate(() => document.fonts.ready);
   if (s.kind === 'app') await p.waitForSelector('#cmp-g #cmp-nodes .node', { timeout: 60000, state: 'attached' });
@@ -231,6 +234,8 @@ async function compare(A, B, outFile) {
     for (const f of files) { const n = f.slice(0, -5); rep.steps++;
       if (!existsSync(`${B}/${s}/${f}`)) { ses.steps.push({ n, missing: true }); rep.differing++; continue; }
       const ja = JSON.parse(await readFile(`${A}/${s}/${f}`, 'utf8')), jb = JSON.parse(await readFile(`${B}/${s}/${f}`, 'utf8'));
+      // 숨은 풍선의 글은 움직이는 노드가 멈춘 포인터 밑을 지나간 순서를 따른다(보이지 않는다): 보일 때만 견준다
+      for (const j of [ja, jb]) if (j.tip && j.tip.display === 'none') j.tip = { display: 'none' };
       const keys = ['svg', 'viewBox', 'cls', 'snap', 'hash', 'live', 'side', 'pop', 'tip', 'tools', 'log', 'cnt'].filter((k) => JSON.stringify(ja[k]) !== JSON.stringify(jb[k]));
       const pix = await px(await readFile(`${A}/${s}/${n}.png`), await readFile(`${B}/${s}/${n}.png`));
       const bad = keys.length || pix.diff !== 0;
