@@ -223,9 +223,13 @@ fn b64(bytes: &[u8]) -> String {
 //
 // 정본은 그래프의 `vinc.plan.vinc-command-on-path`.
 
-/// 사이드카 CLI 의 최상위 하위 명령 — `api/cli.py` 의 `sub.add_parser(...)` 와 1:1.
-/// ⚠ 여기에 없는 첫 인자는 **전부 창을 여는 쪽**으로 간다. 새 하위 명령을 CLI 에
-/// 추가하면 이 배열도 같이 늘려야 한다(안 늘리면 그 명령만 창이 뜬다).
+/// 앱 바이너리가 번들 CLI 로 넘기는 최상위 동사. `api/cli.py` 가 조립한 파서의 최상위
+/// 동사 전부가 아니라 일부다. 나머지는 `tests/app/test_cli_verbs_match.py` 의
+/// `UNDECIDED_DESKTOP_OR_HUB_ONLY`(데스크톱으로 보낼지 허브 전용으로 둘지 정하지 않은 동사)에
+/// 적혀 있고, 그 시험이 실제 파서와 대조한다: 파이썬 동사가 두 곳 어디에도 없거나, 이 배열에
+/// 파서에 없는 동사가 있거나, 한 동사가 두 곳에 다 있으면 실패한다.
+/// ⚠ 여기에 없는 첫 인자는 **전부 창을 여는 쪽**으로 간다. 미정 집합의 동사도 앱 바이너리로
+/// 부르면 창이 뜬다. 동사를 이 배열에 넣을 때는 그 집합에서 같이 뺀다.
 /// `--help`·`-h`·`--version`·`-V` 도 창 없이 번들 CLI 가 직접 출력한다.
 const CLI_VERBS: [&str; 39] = [
     "activate", "backup", "brief", "call", "conventions", "decide", "delete", "diagnose",
