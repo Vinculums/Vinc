@@ -566,7 +566,6 @@ jobs:
   # 계약이다 — 새 테스트는 두 모드 모두에서 초록이어야 하고, 한쪽만 초록인 것은
   # 픽스처가 층을 헷갈린 것이다(스토어에 직접 심는 시드는 물리 키를 써야 한다).
   core-pkns:
-    name: core (VINC_PK_NAMESPACED=on)
     # ⚠ **조건이 없다 — 전량 pytest 를 도는 자리가 여기 하나뿐이기 때문이다.**
     #
     # `core` 가 부르는 `verify.py` 는 `unittest.TestLoader().discover` 로 수집하는데,

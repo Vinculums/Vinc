@@ -99,6 +99,10 @@ class CorePknsShards(unittest.TestCase):
 
     def test_게이트는_하나이고_켠_모드_잡을_전부_기다린다(self):
         self.assertEqual(len(self.gates), 1, f"{_GATE_NAME!r} 잡: {sorted(self.gates)}")
+        # yaml 은 한 잡 안의 겹친 키를 조용히 마지막 값으로 읽지만, GitHub 는 그 워크플로를 통째로
+        # 거절해 체크가 하나도 뜨지 않는다. 이름 줄이 원문에 한 번만 있는지를 글자로 센다.
+        raw = _CI.read_text(encoding="utf-8")
+        self.assertEqual(raw.count(f"name: {_GATE_NAME}"), 1, "게이트 이름 줄이 원문에 한 번이어야 한다")
         (gkey, gate), = self.gates.items()
         self.assertEqual(str(gate.get("if", "")).replace("${{", "").replace("}}", "").strip(),
                          "always()",
