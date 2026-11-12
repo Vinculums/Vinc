@@ -25,6 +25,7 @@ const { mountCompass, compassDataFrom } = await loadTs('surfaces/view-compass.ts
   '../components': COMPONENTS_STUB,
   '../view-tint': tintUrl,
   '../theme': THEME_STUB,
+  './view-compass-state': await tsUrl('surfaces/view-compass-state.ts'),
 });
 
 const node = (id, kind, domain) => ({ id, kind, title: id.split(':')[1], label: id.split(':')[1], domain, ts: '2026-11-01', degree: 1 });

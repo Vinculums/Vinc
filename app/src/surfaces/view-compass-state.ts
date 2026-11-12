@@ -1,9 +1,9 @@
 /** 나침반 렌즈의 상태 한 벌과 그 상태를 바꾸는 순수한 전이들. DOM 을 읽지도 쓰지도 않는다.
  *
- *  상태를 바꾸는 길은 이 파일의 전이뿐이다: `(state, …) → state` 로 새 상태를 돌려주고 옛 상태는 건드리지 않는다.
+ *  상태를 바꾸는 길은 이 파일의 전이뿐이다: `(state, …) → state` 로 새 상태를 돌려주고 받은 상태는 건드리지 않는다.
  *  나침반(view-compass.ts)은 이벤트를 전이로 바꾸고, 그 이벤트에 맞는 그리기 한 번을 부른다. 측정이 필요한 값(그래프 칸의
  *  크기, 지금 시각, 포인터 자리)은 이벤트가 재서 인자로 넘긴다. 파생 값(맞춘 카메라, 확대 단계, 기간 안인지)은 상태의
- *  함수이고 따로 저장하지 않는다. 스냅숏은 `snapshotOf` 한 모양으로 나가고 `restoreFrom` 이 옛 모양까지 받아들인다. */
+ *  함수이고 따로 저장하지 않는다. 스냅숏은 `snapshotOf` 한 모양으로 나가고 `restoreFrom` 이 앞선 모양까지 받아들인다. */
 
 export type ThemeMode = "dark" | "light";
 export interface Box { x: number; y: number; w: number; h: number }
@@ -34,7 +34,7 @@ export interface LensState {
   camera: Camera;
   /** 포인터 아래의 노드(엿보기 · P 고정의 대상). */
   hover: string | null;
-  /** 끌어서 옮기는 중: 누른 자리와 그때의 viewBox. */
+  /** 끌어서 옮기는 중: 누른 자리와 누를 때의 viewBox. */
   pan: { x: number; y: number; v: Box } | null;
   /** 찾기 글(소문자로 고른 것). */
   query: string;
@@ -63,7 +63,7 @@ export interface LensState {
 /** 다시 그릴 때 이어 받는 나침반의 자리(`CompassHandle.snapshot`). 이 모양 그대로 나가고 그대로 받는다. */
 export interface CompassState { path: string[]; hist: string[][]; hi: number; mode: string; filt: [string, string[]][]; more: [string, number][];
   koff: string[]; tsel: [string, string] | null; view: Box | null; query: string }
-/** `restoreFrom` 이 받아들이는 모양: 지금 모양과, 칸이 빠졌거나 `mode: 'all'` · `filt` 를 가진 옛 모양. 모르는 칸은 읽지 않는다. */
+/** `restoreFrom` 이 받아들이는 모양: 지금 모양과, 칸이 빠졌거나 `mode: 'all'` · `filt` 를 가진 앞선 모양. 모르는 칸은 읽지 않는다. */
 export type SavedLens = Partial<CompassState> & { path: string[] };
 
 // ── 작은 도움: 넣은 순서를 지키는 집합과 표(배열로 들고 다닌다) ───────────────────────
@@ -152,9 +152,10 @@ export function zoomAt(s: LensState, fx: number, fy: number, deltaY: number, wid
   return withCamera(s, { fly: null, view: { x: px - (px - v.x) * f, y: py - (py - v.y) * f, w: v.w * f, h: v.h * f }, lodW: width });
 }
 export const panStart = (s: LensState, x: number, y: number): LensState => ({ ...s, pan: { x, y, v: { ...(s.camera.view as Box) } } });
-/** 끄는 중이면 누른 자리에서 움직인 만큼 viewBox 를 민다(칸 폭 width 로 화면 px 를 그림 단위로 바꾼다). */
-export function panMove(s: LensState, x: number, y: number, width: number): LensState {
-  const p = s.pan; if (!p) return s; const k = p.v.w / width;
+/** 끄는 중이면 누른 자리에서 움직인 만큼 viewBox 를 민다. rw 는 칸의 그려진 폭(화면 px 를 그림 단위로 바꾼다),
+ *  width 는 칸의 정수 폭(확대 단계에 쓴다). */
+export function panMove(s: LensState, x: number, y: number, rw: number, width: number): LensState {
+  const p = s.pan; if (!p) return s; const k = p.v.w / rw;
   return withCamera(s, { view: { ...p.v, x: p.v.x - (x - p.x) * k, y: p.v.y - (y - p.y) * k }, lodW: width });
 }
 export const panEnd = (s: LensState): LensState => ({ ...s, pan: null });
@@ -201,6 +202,8 @@ export function togglePin(s: LensState, id: string): LensState {
   const on = s.pins.includes(id);
   return keepCamera({ ...s, pins: on ? without(s.pins, id) : withAdded(s.pins, id), lastPin: on ? s.lastPin.filter(([x]) => x !== id) : s.lastPin });
 }
+/** 이 기기에 저장된 고정 목록으로 시작한다(`pinsFrom` 으로 고른 것). */
+export const loadPins = (s: LensState, pins: string[]): LensState => ({ ...s, pins: pins.slice() });
 /** 그린 배치에 고정 노드가 놓인 자리를 기억한다(다음 배치가 그 노드를 못 놓으면 이 자리에 둔다). */
 export function pinsPlaced(s: LensState, at: [string, Point][]): LensState {
   if (!at.length) return s; let lastPin = s.lastPin; for (const [id, p] of at) lastPin = entrySet(lastPin, id, { x: p.x, y: p.y });
@@ -227,7 +230,7 @@ export const armsSettled = (s: LensState): LensState => (s.armsMeasured ? s : { 
 export const snapshotOf = (s: LensState): CompassState => ({ path: s.path.slice(), hist: s.hist, hi: s.hi, mode: "path", filt: [], more: s.more.map(([k, v]) => [k, v]),
   koff: s.koff.slice(), tsel: s.tsel, view: s.camera.view, query: s.query });
 /** 저장된 자리로 되돌린다. `known` 은 이 데이터의 정본 id(없으면 null). 길에 아는 노드가 하나도 없으면 null 을 돌려준다
- *  (그때는 시작 길에서 연다). 옛 모양의 mode · filt 는 읽지 않는다: 저장된 'all' 도 한 층씩 연다.
+ *  (받은 쪽은 시작 길에서 연다). 앞선 모양의 mode · filt 는 읽지 않는다: 저장된 'all' 도 한 층씩 연다.
  *  기록이 있으면 그 기록을 그대로 두고(지금 자리는 hi, 끝을 넘지 않게), 없으면 이 길이 첫 기록이다. viewBox 가 있으면
  *  카메라는 그 자리를 지킨다(`view` 는 그린 뒤에 `setView` 로 놓는다). */
 export function restoreFrom(s: LensState, R: SavedLens, known: (id: string) => string | null): LensState | null {

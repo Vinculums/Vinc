@@ -89,8 +89,8 @@ test('the wheel zooms about the pointer and stops a flight; dragging moves the v
   assert.ok(Math.abs(z.camera.view.w - 2000) < 1e-9 && Math.abs(z.camera.view.h - 1000) < 1e-9);
   assert.ok(Math.abs(z.camera.view.x + 250) < 1e-9 && Math.abs(z.camera.view.y + 250) < 1e-9, 'the point under the pointer stays put');
   let p = S.panStart(S.setView(base(), { x: 0, y: 0, w: 2000, h: 1000 }, 1000), 100, 100);
-  p = S.panMove(p, 150, 90, 1000); assert.deepEqual(p.camera.view, { x: -100, y: 20, w: 2000, h: 1000 });
-  p = S.panEnd(p); assert.equal(p.pan, null); assert.equal(S.panMove(p, 0, 0, 1000), p, 'moving without a press changes nothing');
+  p = S.panMove(p, 150, 90, 1000, 1000); assert.deepEqual(p.camera.view, { x: -100, y: 20, w: 2000, h: 1000 });
+  p = S.panEnd(p); assert.equal(p.pan, null); assert.equal(S.panMove(p, 0, 0, 1000, 1000), p, 'moving without a press changes nothing');
 });
 
 test('a size change keeps the camera where it was and the detail level until the camera moves', () => {
@@ -140,6 +140,7 @@ test('pins: toggling keeps the order, unpinning forgets the last place, stored v
   s = S.togglePin(s, 'a'); assert.deepEqual(s.pins, ['b']); assert.deepEqual(s.lastPin, [['b', { x: 3, y: 4 }]]);
   assert.equal(S.pinsPlaced(s, []), s);
   assert.deepEqual(S.pinsFrom(['a', 3, 'zz', 'a', null, 'b'], (id) => id !== 'zz'), ['a', 'b']);
+  assert.deepEqual(S.loadPins(base(), ['x', 'y']).pins, ['x', 'y']);
   assert.deepEqual(S.pinsFrom({ a: 1 }, () => true), []); assert.deepEqual(S.pinsFrom(null, () => true), []);
 });
 
