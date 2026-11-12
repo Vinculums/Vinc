@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import sys
 import urllib.request
 from pathlib import Path
@@ -59,6 +60,27 @@ SHAPES = {
     "true": True, "empty-list": [], "text-list": ["x"], "empty-dict": {}, "dict": {"a": 1},
     "nested-list": _nested(6), "json-object-text": '{"a": 1}', "long-text": "A" * 100_000,
 }
+#: 기본으로 도는 모양. 전체(`SHAPES`)는 `VINC_RUN_PROPERTY_FULL=1` 일 때 돈다: 전체는 키 모드마다 몇 분이 든다.
+#: 모든 이름에 도는 넷은 읽는 쪽이 예외를 내던 모양을 모두 덮는다(없음, null, 글자, 유한하지 않은 수).
+#: 나머지는 그 모양이 결함을 낸 이름에만 돈다: dict 는 역할·실행 id·승인·대기·사용량에, 무한대는 사용량에,
+#: 결과 상한을 넘는 글은 제목이 되는 run_id 에.
+_EVERY = ("missing", "null", "text", "nan")
+_ONLY = {
+    "dict": ("role", "run_id", "approved", "answered_actions", "pending", "used"),
+    "inf": ("used",), "-inf": ("used",), "long-text": ("run_id",),
+}
+FULL = os.environ.get("VINC_RUN_PROPERTY_FULL") == "1"
+
+
+def _shapes(path: str) -> list[str]:
+    """이 이름에 쓸 모양들. 전체 실행이면 모두, 아니면 기본 부분집합."""
+    if FULL:
+        return list(SHAPES)
+    head = path.split(".")[0]
+    return [name for name in SHAPES
+            if name in _EVERY or path in _ONLY.get(name, ()) or head in _ONLY.get(name, ())]
+
+
 PATHS = (list(run_state.PROPS) + [f"pending.{k}" for k in run_state.PENDING_PROPS]
          + [f"used.{k}" for k in run_protocol.USAGE_KEYS])
 #: (ii) 의 길로 쓸 수 있는 이름. 프로토콜 상태 키는 도구 쓰기가 거절한다(`run_state.writes`).
@@ -167,7 +189,8 @@ def _snapshot(hub: Hub, eids) -> dict:
 
 
 def _waits(props: dict) -> bool:
-    return run_state.readable(props).get("state") == "waiting"
+    # 만료가 지난 질문은 대기가 아니다: 프로토콜이 읽는 대로(`as_read`) 본다.
+    return run_protocol.as_read(run_state.readable(props)).get("state") == "waiting"
 
 
 def _unanswered(case, props: dict) -> None:
@@ -341,7 +364,7 @@ def test_every_wrong_shape_of_a_run_prop_leaves_every_run_readable_and_answerabl
     template = _snapshot(hub, goods[:1])[goods[0]]
     hows = ("unseen", "patch") if path in HELD_PATHS else ("unseen",)
     cases, n = [], 0
-    for shape in SHAPES:
+    for shape in _shapes(path):
         for how in hows:
             if how == "patch" and shape == "missing":
                 # 병합 패치의 null 이 키를 지운다: 이 길의 missing 은 null 과 같은 쓰기다.

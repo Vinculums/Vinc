@@ -67,8 +67,8 @@ TASK_MAX = 4000
 SUBJECT_MAX = 500
 #: 실행한 호스트 이름(예 "codex-cli 0.162.1"). 실행 기록의 host 가 된다.
 HOST_MAX = 120
-#: 실행 기록 제목의 최대 길이. 정상 기록의 제목은 이보다 훨씬 짧다.
-TITLE_CHARS = 300
+#: 실행 기록 제목의 최대 길이. 가장 긴 정상 제목(실행 id 128자와 긴 역할 이름)이 잘리지 않게 넉넉히 둔다.
+TITLE_CHARS = 1024
 OUTPUT_MAX = 131072
 CITED_MAX = 200
 #: 역할 props.cites 가 이 값이면 출력 단계마다 그래프에 실재하는 근거 id 가 있어야 한다.
