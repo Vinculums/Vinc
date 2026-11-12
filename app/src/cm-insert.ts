@@ -6,6 +6,7 @@
 // 카피는 이 파일이 들지 않는다 — 호출부(doc-editor)가 항목과 라벨을 준다(슬래시와 같은 규율).
 import { EditorView } from "@codemirror/view";
 import { esc } from "./components";
+import { pushLayer } from "./keys";
 
 export type InsertBlock = {
   key: string;
@@ -156,6 +157,8 @@ export class InsertMenu {
   // 닫힌다. 사람이 메뉴 밖에서 휠을 굴릴 때만 닫는다.
   private onWheel = (e: Event) => { if (!this.dom.contains(e.target as Node)) this.hide(); };
   open = false;
+  // 열린 동안 층의 쌓임에 오른다: 표의 단축키가 쉬고, 맨 위일 때 Esc 는 메뉴만 닫고 편집기로 돌아간다.
+  private layer: (() => void) | null = null;
 
   constructor(private view: EditorView, private opts: InsertOpts) {
     this.dom = document.createElement("div");
@@ -210,6 +213,7 @@ export class InsertMenu {
     this.wire();
     this.dom.hidden = false;
     this.open = true;
+    this.layer ??= pushLayer({ menu: true, alive: () => this.open && this.dom.isConnected, escape: () => this.hide(true) });
     this.place(at);
     this.focusRow(0);
     document.addEventListener("mousedown", this.onAway, true);
@@ -223,6 +227,8 @@ export class InsertMenu {
     if (!this.open) return;
     this.open = false;
     this.dom.hidden = true;
+    this.layer?.();
+    this.layer = null;
     document.removeEventListener("mousedown", this.onAway, true);
     window.removeEventListener("wheel", this.onWheel, true);
     window.removeEventListener("resize", this.hideNow);

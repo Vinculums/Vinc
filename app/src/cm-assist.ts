@@ -8,6 +8,7 @@
 //   D — 글을 고르면 그 위에 작은 줄(개념 · 기록 · 결정). 누르면 부르는 쪽이 컴포저를 연다.
 import type { EditorView } from "@codemirror/view";
 import { esc } from "./components";
+import { pushLayer } from "./keys";
 
 type MentionHit = { id: string; title: string; domain: string };
 export type MentionOpts = {
@@ -37,6 +38,8 @@ export class MentionMenu {
   private sel = 0;
   private seq = 0;
   private timer = 0;
+  // 열린 동안 층의 쌓임에 오른다: 표의 ⌘/Ctrl 단축키가 쉬고, 맨 위일 때 Esc 는 목록만 닫는다.
+  private layer: (() => void) | null = null;
   constructor(private view: EditorView, private o: MentionOpts) {
     this.dom = document.createElement("div");
     this.dom.className = "cm-assist-menu";
@@ -78,6 +81,7 @@ export class MentionMenu {
     this.dom.style.top = `${Math.round(c.bottom + 4)}px`;
     this.render();
     this.dom.hidden = false;
+    this.layer ??= pushLayer({ menu: true, alive: () => this.open && this.dom.isConnected, escape: () => this.hide() });
   }
   private render() {
     const rows = this.rows();
@@ -99,7 +103,10 @@ export class MentionMenu {
     this.sel = (this.sel + d + n) % n;
     this.render();
   }
-  hide() { this.open = false; this.q = ""; this.hits = []; this.note = ""; this.dom.hidden = true; }
+  hide() {
+    this.open = false; this.q = ""; this.hits = []; this.note = ""; this.dom.hidden = true;
+    this.layer?.(); this.layer = null;
+  }
   /** 고른 것을 넣는다. 만들기는 왕복이 있으므로, 돌아왔을 때 그 자리가 아직 `[[질의`
    *  그대로일 때만 바꾼다 — 그 사이 사람이 다른 곳을 고쳤으면 엉뚱한 글자를 덮지 않는다. */
   async choose(i = this.sel) {

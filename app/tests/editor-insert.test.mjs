@@ -8,9 +8,11 @@ import { installDom, settle } from './mini-dom.mjs';
 import { loadTs, tsUrl, srcText, copyStub, copyBlock, COMPONENTS_STUB } from './ts-load.mjs';
 
 installDom();
-const cmInsertUrl = await tsUrl('cm-insert.ts', { './components': COMPONENTS_STUB });
+// 메뉴가 여닫힐 때 층의 쌓임에 오르내린다. 이 테스트는 그 쌓임을 보지 않는다(dev/shortcut-rest-check.ts 가 본다).
+const KEYS_STUB = 'export const pushLayer = () => () => {};';
+const cmInsertUrl = await tsUrl('cm-insert.ts', { './components': COMPONENTS_STUB, './keys': KEYS_STUB });
 const cmi = await import(cmInsertUrl);
-const assist = await loadTs('cm-assist.ts', { './components': COMPONENTS_STUB });
+const assist = await loadTs('cm-assist.ts', { './components': COMPONENTS_STUB, './keys': KEYS_STUB });
 const COPY = copyStub(`{ ui: { viewx: { slash: ${await copyBlock('slash')}, ins: ${await copyBlock('ins')} } } }`);
 const editor = await loadTs('doc-editor.ts', {
   './api': `export const api = {}; export const cfg = { owner: 'u' }; export const docMidWrite = () => false;

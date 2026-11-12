@@ -16,6 +16,7 @@
 import { COPY } from "./copy";
 import { dataMode, storage, type DataMode } from "./api";
 import { esc } from "./components";
+import { pushLayer } from "./keys";
 
 /** 확인을 받을 때까지 기다린다. 늘 로컬 모드를 돌려준다. 닫을 문은 확인 하나다: 설정에
  *  적기 전에 닫으면 다음 기동이 같은 알림을 다시 띄워야 하는데, 그걸 막을 길이 없다. */
@@ -40,6 +41,8 @@ export function tellAboutDeviceGraph(): Promise<DataMode> {
       </div>`;
     shell?.setAttribute("inert", "");
     document.body.append(screen);
+    // 층의 쌓임에 오른다: 확인 하나가 문이라 Esc 는 삼킨다(뒤의 화면도 듣지 않는다). 빠지면 저절로 내려간다.
+    pushLayer({ alive: () => screen.isConnected });
     const ok = screen.querySelector<HTMLButtonElement>("#dg-ok")!;
     const state = screen.querySelector<HTMLElement>("#dg-state")!;
     ok.focus();

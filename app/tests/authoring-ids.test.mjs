@@ -28,6 +28,7 @@ const SHEET = COMPONENTS_STUB + `
 export const armsNotice = () => null;
 export const openContextMenu = () => {};
 export const showNotice = async () => {};
+export const layerWhileShown = () => {};
 export const sheetActions = (...acts) => acts.filter(Boolean).map((a) => '<button id="' + a.id + '">' + a.label + '</button>').join('');
 export function openSheet(o) {
   const el = document.createElement('div');
@@ -43,6 +44,7 @@ const authoringUrl = await tsUrl('authoring.ts', {
   './node-composer': `export const openComposer = async () => null;`,
   './surfaces/settings': `export const openSettings = () => {};`,
   './doc-editor': `export const mountDocEditor = async () => ({});`,
+  './keys': `export const shortcutsRest = () => false;`,
 });
 const authoring = await import(authoringUrl);
 const composer = await loadTs('node-composer.ts', {

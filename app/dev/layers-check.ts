@@ -6,7 +6,7 @@
  *  모달 화면(로그인 · 기기 그래프 알림)이 위에 떠도 아래 시트가 Tab 을 끌어가므로, 그 판정을
  *  여기서 가짜 요소로 돌려 본다. `src/layers.ts` 가 DOM 을 직접 부르지 않는 것이 조건이다. */
 import assert from "node:assert/strict";
-import { topLayerOf } from "../src/layers.ts";
+import { menuOpenIn, MENU_SELECTOR, openLayerIn, topLayerOf } from "../src/layers.ts";
 
 let n = 0;
 const ok = (label: string) => { n += 1; console.log("  ok", label); };
@@ -46,5 +46,42 @@ ok("로그인 화면 뒤에 연 시트는 그 위에 선다(문서 순서)");
 
 assert.equal(topLayerOf([]), null);
 ok("층이 없으면 null");
+
+// ── 단축키를 쉬게 하는 층: 메뉴 · 팝오버 · 팔레트 · 딤 밖의 모달 화면 ───────────────────────
+// 가짜 뿌리는 선택자의 쉼표 갈래마다 그 갈래를 가진 요소를 돌려준다. 요소는 숨긴 조상 · 상자 · 딤 안을 말한다.
+type Box = { sel: string; hiddenAbove?: boolean; boxes?: number; inScrim?: boolean };
+const rootOf = (els: Box[]) => ({
+  querySelectorAll: (s: string) => {
+    const parts = s.split(",").map((t) => t.trim());
+    return els.filter((e) => parts.includes(e.sel)).map((e) => ({
+      closest: (q: string) => (q === "[hidden]" && e.hiddenAbove) || (q === ".sheet-scrim" && e.inScrim) ? {} : null,
+      getClientRects: () => ({ length: e.boxes ?? 1 }),
+    }));
+  },
+});
+
+for (const sel of MENU_SELECTOR.split(",").map((t) => t.trim())) {
+  assert.equal(menuOpenIn(rootOf([{ sel }])), true, sel);
+  assert.equal(openLayerIn(rootOf([{ sel }])), true, sel);
+}
+ok("우클릭 · 공간 전환 · 검색 모드 메뉴와 시간 · 범례 창이 떠 있으면 층이다");
+
+for (const sel of [".space-menu", "#tb-modemenu", ".cmp-pop"]) {
+  assert.equal(openLayerIn(rootOf([{ sel, hiddenAbove: true }])), false, sel);
+  assert.equal(openLayerIn(rootOf([{ sel, boxes: 0 }])), false, sel);
+}
+ok("숨긴 메뉴(숨긴 조상 · CSS 로 상자가 없음)는 층이 아니다: 숨겨 닫는 메뉴가 단축키를 붙들지 않는다");
+
+assert.equal(openLayerIn(rootOf([{ sel: "#palette" }])), true);
+assert.equal(openLayerIn(rootOf([{ sel: "#palette", hiddenAbove: true }])), false);
+ok("팔레트는 열려 있을 때만 층이다");
+
+assert.equal(openLayerIn(rootOf([{ sel: '[aria-modal="true"]' }])), true);
+assert.equal(openLayerIn(rootOf([{ sel: '[aria-modal="true"]', inScrim: true }])), false);
+assert.equal(menuOpenIn(rootOf([{ sel: '[aria-modal="true"]' }, { sel: "#palette" }])), false);
+ok("딤 밖의 모달 화면은 층이고, 시트 상자의 aria-modal 은 여기서 세지 않는다(시트는 잡기로 센다)");
+
+assert.equal(openLayerIn(rootOf([])), false);
+ok("아무것도 없으면 층이 없다");
 
 console.log(`\nlayers: ${n}개 검사 통과`);

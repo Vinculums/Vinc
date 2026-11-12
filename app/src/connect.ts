@@ -11,7 +11,7 @@
  *  때만 뜨는 제안 · Tools 의 문서 잇기). 종류를 고를 길도, 지울 길도 없었다. */
 import { api, cfg, messageOf } from "./api";
 import { COPY } from "./copy";
-import { esc, openSheet, sheetActions } from "./components";
+import { esc, layerWhileShown, openSheet, sheetActions } from "./components";
 import { viewHooks } from "./topbar";
 import { RELS, edgeRefusal, findNodes, nodeHitsHtml, relRefusal, relSentence, relStored,
          type Rel } from "./authoring";
@@ -71,6 +71,8 @@ export function startConnect(a: End): void {
       if (mine !== seq || !bar) return;
       list.innerHTML = nodeHitsHtml(hits, note);
       list.hidden = false;
+      // 목록이 떠 있는 동안 Esc 는 목록만 닫는다(띠는 남고, 다음 Esc 가 띠를 닫는다).
+      layerWhileShown(list, () => { list.hidden = true; input.focus(); });
     })(), 200);
   });
   list.addEventListener("mousedown", (e) => {
