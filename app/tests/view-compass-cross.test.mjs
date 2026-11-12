@@ -27,6 +27,8 @@ const { mountCompass, compassDataFrom } = await loadTs('surfaces/view-compass.ts
   '../view-tint': tintUrl,
   '../theme': THEME_STUB,
   './view-compass-state': await tsUrl('surfaces/view-compass-state.ts'),
+  './view-compass-whole': await tsUrl('surfaces/view-compass-whole.ts'),
+  '../keys': await tsUrl('keys.ts'),
 });
 
 // 맨 위 주제 하나 아래 여섯 영역, 영역마다 하위 주제 셋, 주제마다 개념 열둘과 기록 몇 개
