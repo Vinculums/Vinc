@@ -4,7 +4,7 @@
 실행 기록은 Episode `episode:run-*` 이다. 대기·승인·답(`store/run_state.py` `STATE_KEYS`)은 그 실행을
 가진 스토어의 실행 프로토콜만 쓴다. 허브의 push 적용과 기기의 pull 적용이 같은 함수를 지나므로 규칙도
 하나다: 들어온 상태 키는 버리고, 받는 스토어에 저장된 상태 키를 남긴다. 처음 보는 실행은 보낸 쪽을
-믿는가(`trusted_run_state`, 기기의 pull 만 True)에 따라 그대로 받거나 질문만 받고 답은 버린다.
+믿는가(`trusted_sender`, 기기의 pull 만 True)에 따라 그대로 받거나 질문만 받고 답은 버린다.
 
 `apply_delta` 는 모든 기기의 동기화 경로다. 그래서 실행 기록이 없는 묶음에는 이 규칙이 아무것도 바꾸지
 않아야 한다: 규칙을 끈 적용과 저장된 행이 한 글자도 다르지 않고, 스토어 조회 수도 같다.
@@ -33,6 +33,13 @@ OWN_STATE = {"state": "waiting", "approved": ["merge"], "answer": "approve", "an
 #: 다른 쪽이 보낸 상태: 승인을 지우고 다른 답을 꾸몄다.
 FORGED_STATE = {"state": "working", "approved": ["merge", "deploy"], "answer": "approve",
                 "answer_via": "person", "answered_by": "user:someone", "asks": 9}
+
+
+@pytest.fixture(autouse=True)
+def _wall(monkeypatch):
+    """벽시계를 2099-01-01T00:00:00Z 의 1분 전에 둔다. 이 파일의 고정 스탬프(2026-11-13·2099-01-01)가 실제
+    날짜와 무관하게 허용 스큐 안에 들고, 2099 스탬프는 로컬 쓰기보다 1분 새것으로 남는다."""
+    monkeypatch.setattr(revstamp, "_wall_ms", lambda: 4_070_908_800_000 - 60_000)
 
 
 @pytest.fixture
@@ -200,7 +207,7 @@ def test_a_trusted_sender_hands_over_a_run_the_store_never_saw_as_it_is(open_sto
     store = open_store("receiver")
     incoming = {"run_id": "sync-rule", "role": "concept:agent-x", **OWN_STATE}
     out = sync.apply_delta(owner=OWNER, bundle=_bundle(_run_node(incoming)), store=store,
-                           trusted_run_state=True)
+                           trusted_sender=True)
     assert out["applied"] == 1 and run_state.CODE not in out, out
     assert _stored_props(store) == incoming
 
@@ -210,7 +217,7 @@ def test_trust_does_not_reach_a_run_the_store_already_holds(open_store):
     own = _own_run(store)
     out = sync.apply_delta(owner=OWNER, bundle=_bundle(_run_node(
         {"run_id": "sync-rule", "role": "concept:agent-x", **FORGED_STATE},
-        ua="2099-01-01T00:00:00.000Z")), store=store, trusted_run_state=True)
+        ua="2099-01-01T00:00:00.000Z")), store=store, trusted_sender=True)
     assert out[run_state.CODE] == [RUN], out
     assert _state(_stored_props(store)) == _state(own)
 

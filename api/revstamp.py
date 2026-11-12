@@ -95,9 +95,15 @@ def _meta_set(store, key: str, value) -> None:
     store.run("MERGE (m:_SyncMeta {key: $k}) SET m.value = $v", {"k": key, "v": str(value)})
 
 
-#: 바깥에서 온 스탬프가 받는 쪽 벽시계보다 앞설 수 있는 한도(밀리초). 시계가 몇 분 빠른 기기는
-#: 그대로 동기화되고, 그보다 먼 스탬프는 이 한도로 잘린다. 시계(`last_hlc`)도 이 한도를 넘지 않는다.
+#: 믿지 않는 보낸 쪽(허브가 받는 기기 업로드)의 스탬프가 받는 쪽 벽시계보다 앞설 수 있는 한도(밀리초).
+#: 시계가 몇 분 빠른 기기는 그대로 동기화되고, 그보다 먼 항목은 받지 않는다(`beyond_ceiling`).
 MAX_SKEW_MS = 5 * 60 * 1000
+
+#: 저장된 시계(`last_hlc`)가 벽시계보다 이만큼 넘게 앞서면 오염된 값으로 보고 벽시계로 되돌린다(`_last`).
+#: ⚠ 지키는 것 둘: 먼 스탬프에 이미 오염된 스토어는 다음 쓰기에서 돌아온다. 몇 시간 앞선 허브를 따라간
+#: 기기의 시계는 되돌리지 않는다(되돌리면 그 기기의 다음 편집이 방금 받은 허브 편집보다 앞에 찍혀 진다).
+#: 벽시계가 이 폭 안에서 뒤로 가도 로컬 스탬프 순서는 지켜진다.
+RESET_AHEAD_MS = 24 * 60 * 60 * 1000
 
 
 def _fmt(ms: int) -> str:
@@ -111,25 +117,35 @@ def _wall_ms() -> int:
 
 
 def ceiling_ms() -> int:
-    """바깥 스탬프가 시계와 병합에 닿을 수 있는 상한: 받는 쪽 벽시계 + `MAX_SKEW_MS`."""
+    """믿지 않는 보낸 쪽의 스탬프가 받아들여지는 상한: 받는 쪽 벽시계 + `MAX_SKEW_MS`."""
     return _wall_ms() + MAX_SKEW_MS
 
 
-def bound_stamp(stamp: str) -> str:
-    """바깥에서 온 updated_at 을 상한으로 자른 값. 병합은 스탬프를 문자열로 비교하므로 자르기도
-    문자열 비교로 한다(형식이 깨진 값도 상한보다 뒤로 정렬되면 잘린다). 빈 값은 그대로다."""
-    if not stamp:
-        return stamp
-    top = _fmt(ceiling_ms())
-    return top if stamp > top else stamp
+def beyond_ceiling(stamp) -> bool:
+    """믿지 않는 보낸 쪽의 스탬프를 받지 않는가. 병합은 스탬프를 문자열로 비교하므로 상한도 문자열로
+    비교한다(형식이 깨진 값도 상한보다 뒤로 정렬되면 받지 않는다). 문자열이 아닌 값도 받지 않는다.
+    빈 값(None·"")은 받는다: 스탬프가 없는 항목은 지금까지처럼 가장 오래된 것으로 읽힌다."""
+    if stamp is None or stamp == "":
+        return False
+    if not isinstance(stamp, str):
+        return True
+    return stamp > _fmt(ceiling_ms())
+
+
+#: 믿지 않는 보낸 쪽에서 받지 않은 항목을 적는 결과 필드(노드·문서 적용이 같이 쓴다).
+CLOCK_SKEW = "clock_skew"
+
+
+def clock_skew_warning(count: int) -> str:
+    """`CLOCK_SKEW` 와 함께 나가는 경고 한 줄. 갱신하지 않은 앱도 결과의 `warnings` 로 이것을 받는다."""
+    return (f"{count} item(s) not stored: the sender's clock is more than "
+            f"{MAX_SKEW_MS // 60000} minutes ahead of this store's clock")
 
 
 def _last(store, phys: int) -> int:
-    """저장된 시계값. 상한을 한참 넘은 값(바깥 스탬프에 오염된 시계)은 0 으로 읽어 벽시계로 되돌린다.
-    ⚠ 되돌림 문턱은 상한보다 `MAX_SKEW_MS` 만큼 위다: 상한에 붙은 시계가 같은 밀리초 안의 쓰기로
-    상한을 조금 넘는 것은 정상이고, 그것까지 되돌리면 스탬프가 뒤로 간다."""
+    """저장된 시계값. 벽시계보다 `RESET_AHEAD_MS` 넘게 앞선 값은 0 으로 읽어 벽시계로 되돌린다."""
     last = int(_meta_get(store, "last_hlc", "0"))
-    return 0 if last > phys + 2 * MAX_SKEW_MS else last
+    return 0 if last > phys + RESET_AHEAD_MS else last
 
 
 def hlc_now(store) -> str:
@@ -141,9 +157,11 @@ def hlc_now(store) -> str:
     return _fmt(cur)
 
 
-def observe_hlc(store, remote_updated_at: str) -> None:
-    """원격에서 받은 updated_at 로 last_hlc 전진(pull apply 시). 파싱 실패는 무시.
-    전진은 `ceiling_ms()` 까지다: 그보다 먼 스탬프가 시계를 끌고 가지 못한다."""
+def observe_hlc(store, remote_updated_at: str, *, trusted: bool = False) -> None:
+    """원격에서 받은 updated_at 로 last_hlc 전진(apply 시). 파싱 실패는 무시.
+    믿지 않는 보낸 쪽이면 전진은 `ceiling_ms()` 까지다. 상한을 넘은 항목은 apply 가 이미 받지 않으므로
+    이것은 둘째 줄이다(문자열로는 낮게 정렬되지만 읽으면 먼 값). 믿는 보낸 쪽(기기가 받는 자기 허브)은
+    받은 값까지 그대로 따라간다."""
     if not remote_updated_at:
         return
     try:
@@ -155,7 +173,8 @@ def observe_hlc(store, remote_updated_at: str) -> None:
     except Exception:
         return
     phys = _wall_ms()
-    val = min(val, phys + MAX_SKEW_MS)
+    if not trusted:
+        val = min(val, phys + MAX_SKEW_MS)
     last = _last(store, phys)
     if val > last:
         _meta_set(store, "last_hlc", val)
