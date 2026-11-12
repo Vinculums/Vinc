@@ -1170,8 +1170,8 @@ class MCPHTTPApp:
             # 이 평면은 멤버 키도 지난다. 실행 기록의 대기·승인·답은 `run-answer` 로만 바꾼다.
             pack = args.get("pack") if isinstance(args.get("pack"), dict) else {}
             frag = pack.get("fragment") if isinstance(pack.get("fragment"), dict) else {}
-            blocked = tools._run_state_writes(args.get("nodes")) + tools._run_state_writes(
-                frag.get("nodes"))
+            from . import run_state
+            blocked = run_state.writes(args.get("nodes")) + run_state.writes(frag.get("nodes"))
             if blocked:
                 return {"kind": "ingest", "executed": False, "error": "run_state_protected",
                         "nodes": blocked, "note": "Refused: a run record's protocol state changes "
@@ -2018,8 +2018,10 @@ class _Handler(BaseHTTPRequestHandler):
                 out = self.app.bridge.request("POST", "/sync/docs-apply", body={
                     "owner": owner, "payload": body.get("payload") or {}})
             else:
-                out = self.app.bridge.request("POST", "/sync/apply-delta", body={
-                    "owner": owner, "bundle": body.get("bundle") or {}})
+                # 실행 기록의 대기·승인·답은 허브가 저장한 값을 남기고, 처음 보는 실행은 질문만
+                # 받는다(묶음을 거절하지 않는다). 기기를 믿게 하는 값은 이 요청에서 읽지 않는다.
+                from . import run_state
+                out = run_state.push(self.app.bridge, owner, body.get("bundle") or {})
         except Exception as e:
             return self._json(502, {"error": f"sidecar unreachable: {type(e).__name__}"})
         return self._json(200, out)
