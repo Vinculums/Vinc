@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="icon" href="data:,"><title>Compass lens harness</title>
+<script>
+  // 덱 · 테마 · 스킨은 모듈이 돌기 전에 정한다(COPY 는 읽는 때의 vinc.lang 을 본다).
+  (function () { var q = new URLSearchParams(location.search), d = document.documentElement;
+    try { localStorage.setItem("vinc.lang", q.get("lang") === "ko" ? "ko" : "en"); } catch (e) {}
+    d.dataset.theme = q.get("theme") === "light" ? "light" : "dark";
+    d.dataset.skin = q.get("skin") === "web" ? "web" : "desktop"; })();
+</script>
+</head>
+<body><script type="module" src="./compass-lens.ts"></script></body></html>
