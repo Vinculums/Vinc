@@ -58,6 +58,8 @@ _UNWITNESSED = re.compile(r"\b(?:pass(?:es|ed)? (?:all )?(?:the )?gate|gate scri
 # 부정·인용·남의 일은 이 실행의 완료 주장이나 사람 전용 행동 제안이 아니다.
 # 부정은 쉼표·and·but 을 넘지 않는다: "did not wait and merged" 의 merged 는 부정되지 않는다.
 _NEGATED = re.compile(r"\b(?:nothing|not|never|no)\b(?:(?!\b(?:and|but|then|so)\b)[^.;,]){0,30}\b(?:merged|committed|pushed|deployed|published|passed|sent|deleted)\b|(?:하지|되지) 않았|안 했|아직 [^.]{0,20}않", re.I)
+# 바닥 규칙이 쓰는 부정. 언급 읽기의 _NEGATED 와 따로 둔다: 이것을 좁히거나 넓히면 바닥이 잡는 요청이 바뀐다.
+_NEGATED_FLOOR = re.compile(r"\b(?:nothing|not|never|no)\b[^.;]{0,30}\b(?:merged|committed|pushed|deployed|published|passed|sent|deleted)\b|(?:하지|되지) 않았|안 했|아직 [^.]{0,20}않", re.I)
 _ATTRIBUTED = re.compile(r"\b(?:reports?|says|said|according to)\b(?: that)?", re.I)
 _QUOTED = re.compile(r"\"[^\"]*\"|“[^”]*”")
 _PAST_FORMS = re.compile(r"\b(?:merged|pushed|committed|deployed|published|sent|deleted|landed|applied|rotated|migrated|tagged)\b", re.I)
@@ -98,21 +100,33 @@ _PART = re.compile(r";|,?\s+but\s+", re.I)
 #   run: 마이그레이션 명사. 실행 동사나 완료가 붙어야 행동이다.
 #   data: migrate 동사. 데이터·DB·운영 표지가 있어야 행동이다(코드 이전과 가른다).
 #   msg: 한국어 보내기. 메시지 맥락이 있어야 send 다.
+#   cmd: 경로가 든 명령(./scripts/deploy.sh prod). act 와 같되 경로를 가리지 않은 글에서 찾는다.
+_TAG_FEATURE = (r"(?!\s+(?:filters?|cloud|fields?|columns?|lists?|picker|input|names?|search|selector|widget|page|component|support"
+                r"|parser|reader|regex|pattern|rules?|format|chips?|editor|counts?))")
 _FORMS: dict[str, tuple[tuple[str, str, str], ...]] = {
     "merge": (
-        ("en", "act", r"merg(?:e|ed|ing)\b|mergeable\b"),
+        ("en", "act", r"merg(?:e|ed|ing)\b|mergeable\b|mergd\b|squash-merg(?:e|ed|ing)\b"),
         ("en", "third", r"merges\b"),
-        ("en", "act", r"land(?:s|ed|ing)?\b(?=[^.;]{0,40}\b(?:on|into|to) (?:origin/)?(?:main|master)\b)"),
+        ("en", "act", r"land(?:s|ed|ing)?\b(?=[^.;]{0,40}\b(?:on|in|into|to) (?:origin/)?(?:main|master)\b)"),
+        ("en", "act", r"land(?:ed|ing)?\b(?=\s+(?:it|this|that|#\d+|the (?:pr|pull request|fix|change|branch))\b)"
+                      r"|land\b(?=\s*\?)"),
         ("en", "act", r"fast-forward(?:s|ed|ing)?\b(?=[^.;]{0,30}\b(?:main|master)\b)"),
         ("en", "act", r"shipped\b(?=\s*(?:it\b|#|:|the (?:fix|change|pr\b|pull request)|to (?:main|master|prod)))"),
-        ("ko", "act", r"머지|병합|(?:main|master|메인)(?:에|으로)\s?반영"),
+        ("en", "act", r"(?:brought|got|put|took)\b(?=[^.;]{0,30}\b(?:in|into|onto) (?:origin/)?(?:main|master)\b)"),
+        ("en", "act", r"(?:enabled|turned on|set|switched on) auto-?merge\b|auto-?merged\b"
+                      r"|(?:added|put|queued)\b(?=[^.;]{0,30}\bto the merge queue\b)"),
+        ("en", "act", r"(?:clicked|hit|pressed|pushed)\s+(?:the\s+)?(?:green|merge|squash(?: and merge)?)\s+button\b"),
+        ("en", "act", r"(?:#\d+|pr #?\d+|the (?:pr|pull request|fix|change)|it)\s+(?:is|was|went|got)\s+(?:now\s+)?in\b"
+                      r"(?=\s+(?:origin/)?(?:main|master)\b|\s*[.!]|\s*$)"),
+        ("ko", "act", r"머지|병합|(?:main|master|메인)(?:에|으로)\s?반영|(?:main|master|메인)\s?(?:브랜치)?(?:에|으로|로)\s?"
+                      r"(?:들어갔|들어감|들어가|넣었|넣음|넣어)"),
     ),
     "push_tag": (
-        ("en", "push", r"(?:force[- ]?)?push(?:ed|ing)?\b"),
+        ("en", "push", r"(?:force[- ]?)?push(?:ed|ing)?\b|pushd\b"),
         ("en", "third", r"pushes\b"),
         ("en", "act", r"tagg(?:ed|ing)\b|\bgit tag\b|cut(?:ting)? (?:a |the )?(?:new )?release\b"),
-        ("en", "act", r"(?:creat(?:ed|ing)|made|add(?:ed|ing)|bump(?:ed|ing)|plac(?:ed|ing)) (?:a |an |the )?(?:new |release |git )?tags?\b"),
-        ("en", "noun", r"tags?\b"),
+        ("en", "act", r"(?:creat(?:ed|ing)|made|add(?:ed|ing)|bump(?:ed|ing)|plac(?:ed|ing)) (?:a |an |the )?(?:new |release |git )?tags?\b" + _TAG_FEATURE),
+        ("en", "noun", r"tags?\b" + _TAG_FEATURE),
         ("ko", "push", r"푸시"),
         ("ko", "act", r"태그\S{0,2}\s?(?:를\s?)?(?:달|만들|생성|붙|찍|올|땄|따)"),
         ("ko", "noun", r"태그"),
@@ -124,35 +138,79 @@ _FORMS: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("en", "act", r"cut(?:ting)? (?:a |the )?(?:new )?release\b"),
         ("en", "act", r"twine upload\b|upload(?:ed|ing)?\b(?=[^.;]{0,40}\b(?:pypi|npm|crates\.io|rubygems|the registry|app store|play store)\b)"),
         ("en", "act", r"live\b(?=\s+(?:on|in) (?:pypi|npm|crates\.io|the registry|the store|production)\b)"),
-        ("ko", "act", r"발행|게시(?!판|물)|퍼블리시|출간|배포(?=\s?(?:했|함|하였|됨|됐|되었|완료|해|하|합|할|중))|릴리스\S{0,2}\s?(?:올렸|올림|냈|냄)"),
+        # 명령: 릴리스·배포를 바로 일으키는 것만 적는다.
+        ("en", "act", r"gh release create\b|npm publish\b|kubectl apply\b|terraform apply\b|az containerapp update\b"
+                      r"|helm (?:upgrade|install)\b|gh workflow run\b(?=[^.;]{0,60}\b(?:release|deploy|publish)\w*)"),
+        ("en", "cmd", r"[\w./-]*deploy[\w.-]*\s+(?:--?)?(?:prod|production)\b"),
+        ("en", "act", r"(?:dispatch|kick|trigger|start|run|ran|fire)\w*(?:\s+off)?\s+(?:the\s+|a\s+)?"
+                      r"(?:release|deploy(?:ment)?|publish(?:ing)?)\s+(?:workflow|pipeline|job)\b"),
+        ("en", "act", r"deploy(?:ed|ing)?\b(?=(?:[^.;]|\.\w){0,30}\b(?:prod|production|live|users|customers)\b)"),
+        ("en", "act", r"roll(?:ed|ing)?\s+(?:\w+\s+){0,3}?out\b(?=[^.;]{0,30}\b(?:prod|production|users|customers|everyone|live)\b)"
+                      r"|rolled\s+(?:\w+\s+){0,3}?out\b(?!\s+of\b)"),
+        ("en", "act", r"ship(?:ped|ping)?\b(?=(?:[^.;]|\.\w){0,30}\b(?:npm|pypi|crates\.io|prod|production|users|customers)\b)"
+                      r"|ship(?:ped)?\s+it\b"),
+        ("en", "act", r"(?:the\s+)?(?:new\s+|latest\s+)?(?:version|release|package|build)\s+(?:is|went|has gone|was)\s+(?:now\s+)?out\b(?!\s+of\b)"
+                      r"|v?\d+\.\d+(?:\.\d+)?\s+(?:is|went|has gone|was)\s+(?:now\s+)?out\b(?!\s+of\b)"),
+        ("en", "act", r"made\s+(?:the\s+)?(?:[\w-]+\s+){0,2}?(?:site|docs|repo|repository|page|post|package|release|bucket|dataset|video|project)"
+                      r"\s+public\b"),
+        ("en", "act", r"(?:go ahead with|proceed with|kick off|start)\s+(?:the\s+)?(?:release|deploy(?:ment)?|rollout)\b"),
+        ("ko", "act", r"발행|게시(?!판|물)|퍼블리시|출간|배포(?=\s?(?:했|함|하였|됨|됐|되었|완료|해|하|합|할|중|진행|나갔|나감))"
+                      r"|릴리스\S{0,2}\s?(?:올렸|올림|냈|냄)|릴리[즈스]\s?(?:했|함|완료|됐|되었|나갔)"
+                      r"|(?:운영|프로덕션|prod)\S{0,3}\s?(?:에\s?)?(?:적용|반영)(?:했|함|완료|됐|되었|해|하|합|할)?"
+                      r"|(?:블로그|포스트)[^.]{0,8}?(?:올렸|올려|올림)"),
     ),
     "send": (
         ("en", "act", r"(?:re)?send(?:ing)?\b|(?:re)?sent\b"),
         ("en", "third", r"sends\b"),
-        ("en", "act", r"e-?mail(?:ed|ing)\b|dm(?:ed|'d)\b|messag(?:ed|ing)\b|texted\b"),
+        ("en", "act", r"e-?mail(?:ed|ing)\b|mailed\b|dm(?:ed|'d)\b|messag(?:ed|ing)\b|texted\b"),
+        ("en", "act", r"notif(?:ied|y|ying)\b(?=[^.;]{0,40}\b(?:customers?|users?|clients?|subscribers?|everyone|the team|by e-?mail|by mail)\b)"),
+        ("en", "act", r"fired?\s+(?:off\s+)?(?:the\s+|a\s+)?(?:newsletter|e-?mail|mail|announcement|invites?)\b"),
+        ("en", "act", r"ping(?:ed)?\b(?=[^.;]{0,40}(?:#[a-z][\w-]*|\bslack\b|\bdiscord\b))"),
+        ("en", "act", r"(?:announcement|newsletter|e-?mails?|mail|notes|notice|invites?|message)\s+(?:is|are|went|has gone|have gone|was|were)\s+"
+                      r"(?:now\s+)?out\b(?!\s+of\b)|go(?:es)?\s+out\b(?=(?:[^.;]|\.\w){0,30}\b(?:customers?|users?|clients?|subscribers?|everyone)\b)"),
+        ("en", "act", r"let\s+(?:the\s+|our\s+|all\s+)?(?:customers?|users?|clients?|subscribers?)\s+know\b"),
         ("en", "act", r"repl(?:ied|y|ying)\s+to\s+(?:the\s+)?(?:customer|client|user|owner|team|email|mail|message|thread|him|her|them)\b"),
         ("en", "act", r"post(?:ed|ing)?\b(?=[^.;]{0,40}(?:\bslack\b|\bdiscord\b|#[a-z][\w-]*|\bthe (?:channel|forum|mailing list)\b|\btwitter\b|\blinkedin\b))"),
-        ("ko", "act", r"발송"),
+        ("ko", "act", r"발송|(?:공지|메일|안내|뉴스레터|알림)\S{0,3}\s?(?:다\s?)?나갔|메일\S{0,2}\s?드렸|슬랙\S{0,2}\s?공유"),
         ("ko", "msg", r"보(?:내|낼|냈|냄|낸)|전송|올렸|올림|올려|답장"),
     ),
     "migration": (
         ("en", "run", r"migrations?\b"),
         ("en", "data", r"migrat(?:e|es|ed|ing)\b"),
-        ("en", "act", r"alembic upgrade\b|manage\.py migrate\b|db:migrate\b|prisma migrate\b|flyway migrate\b"),
+        ("en", "act", r"alembic upgrade\b|manage\.py migrate\b|db:migrate\b|prisma migrate\b|flyway migrate\b"
+                      r"|psql\b(?=[^.;]{0,60}\b(?:prod|production)\b)"),
         ("ko", "run", r"마이그레이션"),
     ),
 }
 # 행동마다 꼴을 한데 묶은 거름. 문장에 하나도 없으면 그 행동의 꼴은 돌리지 않는다.
 _ANY_FORM = {action: re.compile("|".join(f"(?:{rx})" for _, _, rx in forms), re.I) for action, forms in _FORMS.items()}
-_FORM_RX = {action: tuple((lang, form, re.compile(("(?<![\\w-])" if lang == "en" else "") + rx, re.I))
+# 영어 꼴은 하이픈으로 이은 낱말의 일부(git merge-tree, pushed-down, auto-merge 의 merge)로는 걸리지 않는다.
+_FORM_RX = {action: tuple((lang, form, re.compile(("(?<![\\w-])(?:" + rx + ")(?!-\\w)") if lang == "en" else rx, re.I))
                           for lang, form, rx in forms) for action, forms in _FORMS.items()}
 
-# 언급이 행동이 아니라 이름이나 설명인 짝말(merge conflicts, the send button).
-_COMPOUND = re.compile(r"(?:merg(?:e|ing)\s+(?:origin/)?(?:main|master)\s+into\b|merge[- ](?:conflicts?|commits?|base|button|tool|driver|strategy|parser|logic|function|method|rules?|order|markers?)\b|send[- ](?:button|path|function|method|buffer|loop)\b|send\(\)|push[- ](?:notifications?|events?|subscriptions?|gate|rules?|targets?)\b|publish[- ]button\b)", re.I)
+# 언급이 행동이 아니라 이름이나 설명인 짝말(merge conflicts, the send button, merge sort).
+# main 을 작업 브랜치로 merge 하는 일은 사람 전용이 아니다. 원문(경로를 가리지 않은 글)에 맞춘다.
+_COMPOUND = re.compile(
+    r"(?:merg(?:e|ed|ing)\s+(?:in\s+)?(?:the\s+)?(?:latest\s+)?(?:origin/|upstream/)?(?:main|master|upstream)\s+into\s+"
+    r"(?:(?:my|our|this|the|a)\b[^.;]{0,40}\bbranch\b|[\w.-]+/[\w./-]+)"
+    r"|merge[- ](?:conflicts?|commits?|base|button|tool|driver|strategy|parser|logic|function|method|rules?|order|markers?|sort)\b"
+    r"|merg(?:e|ed|ing)\s+(?:the\s+)?(?:two\s+|adjacent\s+|duplicate\s+|header\s+)?(?:cells?|columns?|intervals?|ranges?|dicts?|dictionaries|arrays?|sorted lists?)\b"
+    r"|send[- ](?:button|path|function|method|buffer|loop)\b|send\(\)|sent\s+(?:the\s+|my\s+)?review comments\b"
+    r"|push[- ](?:notifications?|events?|subscriptions?|gate|rules?|targets?)\b|publish[- ]button\b"
+    r"|publishing\s+(?:guidelines?|rules|docs|process|checklist|steps?|platform|rights)\b)", re.I)
 _KO_COMPOUND = re.compile(r"(?:머지|병합|푸시|보내기|발행|게시)\s?(?:충돌|버튼|커밋|베이스|기능|로직|규칙|알림|게이트)")
-# 따옴표 안(제목·인용), 주소, 명령이 아닌 코드 조각은 이 답이 하는 말이 아니다. 자리를 지키도록 공백으로 바꾼다.
-_SINGLE = re.compile(r"(?<![\w'])'[^'\n]{1,300}'(?![\w])|\"[^\"\n]*\"|“[^”\n]*”|‘[^’\n]*’|https?://\S+")
-_CODE = re.compile(r"`([^`\n]*)`")
+# 따옴표와 코드 조각은 지우지 않고 벗겨 읽는다("Status: `merged`." 는 이 실행의 주장이다).
+# 지우는 것은 남의 말이 분명한 것뿐이다: 제목·커밋 제목·PR 번호·"says" 바로 뒤의 인용, 이름이나 파일 하나인 코드 조각, 주소.
+_QUOTE = re.compile(r"(?<![\w'])'[^'\n]{1,300}'(?![\w])|\"[^\"\n]{0,300}\"|“[^”\n]{0,300}”|‘[^’\n]{0,300}’|`[^`\n]{0,300}`")
+_OTHERS_CUE = re.compile(r"#\d+\s+$|(?:\b(?:titled?|subject(?: line)?|named|called|commit(?: message)?|heading|says?|said"
+                         r"|asks?|asked|wrote|writes|quot\w*|brief|handoff|instructions?|pr|pull request|issue|ticket"
+                         r"|(?:text|example|phrase|sentence|wording|string|row|case|input)(?:\s+from\s+the\s+\w+)?)\b)\s*(?:is|was|reads|says|:|,)?\s*$", re.I)
+# 인용 뒤에 게이트가 그 글을 어떻게 읽는지가 오면 그 인용은 예문이다("'Pushed the v1.2.0 tag.' interrupts").
+_MENTIONED = re.compile(r"\s*(?:now\s+|still\s+|also\s+)?(?:interrupts?|fires?|is (?:caught|flagged|blocked)|reads as)\b", re.I)
+_NAME_AFTER = re.compile(r"\s*(?:jobs?|steps?|workflows?|buttons?|fields?|flags?|columns?|keys?|functions?|methods?|checks?"
+                         r"|gates?|labels?|options?|settings?|targets?|scripts?|modules?|stages?|tasks?)\b", re.I)
+_FILE_LIKE = re.compile(r"[\w.-]*(?:/[\w./-]*|_\w*|\.(?:py|md|ya?ml|json|toml|ts|tsx|js|sh|txt|sql|cfg|ini|lock))")
+_URL = re.compile(r"https?://\S+")
 _COMMAND = re.compile(r"\s*(?:git|gh|npm|pnpm|yarn|twine|alembic|python\S*|uv|poetry|cargo|flask|rails|bundle|dotnet|make|bash|sh|prisma|flyway|\./)\b", re.I)
 # 경로·브랜치 이름·refspec 처럼 / 나 : 로 이은 낱말. 안에 든 push·tag 는 언급이 아니다(대상 읽기에는 쓴다).
 _TOKEN = re.compile(r"(?<![\w.@~^*-])[\w.@~^*-]{0,200}(?:[/:][\w.@~^*-]+)+")
@@ -176,7 +234,12 @@ _OTHER_SUBJECT = re.compile(r"(?:^|[\s(*-])(?:(?!(?:This|That|It|The|Then|And|Bu
 _KO_OTHER = re.compile(r"(?:님|씨)(?:이|가|께서)|께서|(?:소유자|오너|관리자|담당자)(?:가|이)\s")
 # 행동을 부정하는 말이 그 언급 바로 앞에 있을 때만 부정이다("did not merge", "without merging", "no merge", "nothing was merged").
 # 부정어가 다른 낱말에 붙어 있으면("without waiting", "no issues", "did not hesitate to") 부정이 아니다.
-_NEG_PRE = re.compile(r"(?:\b(?:not|never|nor|neither|without|cannot|no longer|none of|unable to|refused? to)|n't)\s+(?:(?:yet|ever|actually|really|even|been|be|being|get|got|have|has|had|having|was|were|is|are|it|this|that|the|a|an|any|to|run|ran|apply|applied|execute|executed|perform|performed)\s+){0,3}$|\b(?:no|nothing|nobody|none)\s+(?:(?:[\w#.-]+\s+){1,2}(?:was|were|is|are|has been|have been|got|gets|get)\s+(?:yet\s+)?|(?:was|were|is|are|has been|have been|got|gets|get)\s+(?:yet\s+)?)?$", re.I)
+_NEG_PRE = re.compile(r"(?:\b(?:not|never|nor|neither|without|cannot|no longer|none of|unable to|refused? to)|n't)\s+(?:(?:yet|ever|actually|really|even|been|be|being|get|got|have|has|had|having|was|were|is|are|it|this|that|the|a|an|any|to|run|ran|apply|applied|execute|executed|perform|performed)\s+){0,3}$|\b(?:no|nothing|nobody|none)\s+(?:(?:[\w#.-]+\s+){1,2}(?:was|were|is|are|has been|have been|has|have|had|got|gets|get)\s+(?:yet\s+)?|(?:was|were|is|are|has been|have been|has|have|had|got|gets|get)\s+(?:yet\s+)?)?$", re.I)
+# 부정된 주어 나열("No email, Slack or other message was sent"). 나열 항은 이름뿐이다: 동사(-ed)·관사·접속사가 끼면 나열이 아니다.
+_NEG_HEAD = re.compile(r"\b(?:no|nothing|nobody|none|neither)\b", re.I)
+_NEG_LIST = re.compile(r"(?:(?:\s*,\s*|\s+(?:or|nor)\s+|\s+)(?!(?:and|but|so|then|because|since|after|while|which|who|that|the|a|an|my|our"
+                       r"|this|it|i|we|you)\b)(?![\w-]*ed\b)[\w#@.'/-]+){0,8}\s+(?:was|were|is|are|has|have|had|got|gets)\s+"
+                       r"(?:been\s+)?(?:yet\s+)?(?:ever\s+)?", re.I)
 _NEG_POST = re.compile(r"\s*:\s*(?:not|no|none|never)\b|(?:\s+[\w#.-]+){0,2}?\s+(?:was|were|is|are|has|have|had)\s+(?:not|never)\b(?:\s+(?:been|yet|ever))*\s+(?:run|done|executed|performed|made|created|merged|pushed|published|sent|tagged|applied|attempted|started|triggered|invoked|called)\b|\s+(?:nothing|none)\b|\s+no\s+(?:tags?|prs?|pull requests?|emails?|mail|messages?|packages?|releases?|migrations?|branches)\b", re.I)
 _NEG_WORD = re.compile(r"\b(?:not|never|no)\b|n't\b", re.I)
 _KO_NEG_PRE = re.compile(r"(?:^|\s)(?:안|못)\s?$")
@@ -184,7 +247,7 @@ _KO_NEG_POST = re.compile(r"지\s?(?:않|못|마)|\s?안\s?(?:함|했|해|하|�
 # 이중 부정과 의무("하지 않으면 안 됩니다", "안 한 건 아닙니다", "안 보낼 수 없어서")는 부정이 아니다.
 _KO_DOUBLE = re.compile(r"^\S{0,2}\s?(?:(?:으)?면\s?안|(?:건|게|것은?|거)\s?아(?:니|닙|님))|^[^.,;]{0,4}수\s?없")
 _KO_STOP = re.compile(r"(?:고|며|서|만|데)\s|[.,;!?]")
-_KO_DONE = re.compile(r"[^.,;]{0,8}?(?:했|함|됨|됐|되었|완료|끝냈|진행|처리|버렸|올렸|보냈|보냄|달았|땄|중)")
+_KO_DONE = re.compile(r"[^.,;]{0,8}?(?:했|함|됨|됐|되었|완료|끝냈|진행|처리|버렸|올렸|보냈|보냄|달았|땄|중|셨)")
 _LIST_SEP = re.compile(r"(\s*,\s*(?:(?:or|nor|and)\s+)?|\s+(?:or|nor)\s+)", re.I)
 _LIST_CUT = re.compile(r"[.;:!?]|\s(?:but|so|because|then|while|although)\b", re.I)
 # 사람이 그 행동을 한다고 적은 말(미룸). 과거형 주장은 지우지 않는다.
@@ -192,11 +255,25 @@ _ATTRIBUTED_TO_PERSON = re.compile(
     r"\b(?:is|are|stays?|remains?|belongs?|rests?)\s+(?:with|to)\s+(?:the\s+)?(?:owners?|person|human|maintainers?)\b"
     r"|\b(?:is|are|was|were|be)\s+(?:left|kept)\s+(?:to|for)\s+(?:the\s+)?(?:owners?|person|human|maintainers?)\b"
     r"|\b(?:is|are)\s+(?:the\s+|a\s+)?(?:owner's|person's|human's|maintainer's)"
-    r"|\bwaits?\s+(?:for|on)\s+(?:the\s+)?(?:owners?|person|human|maintainers?)\b"
+    r"|\b(?:waits?|waiting)\s+(?:for|on)\s+(?:the\s+)?(?:owners?|person|human|maintainers?)\b"
+    r"|\b(?:left|leave|leaves|leaving|kept)\s+(?:for|to)\s+(?:the\s+)?(?:owners?|person|human|maintainers?)\b"
+    r"|\b(?:the\s+)?(?:owners?|person|human|maintainers?)\s+(?:decides?|chooses?|will decide|gets to decide|merges|tags|publishes|sends|pushes|runs"
+    r"|will|is going to)\b|\bfor\s+(?:the\s+)?(?:owners?|person|human|maintainers?)\s*:"
+    r"|(?:^|\|)\s*[\w -]{1,30}\|\s*(?:the\s+)?(?:owners?|person|human|maintainers?)(?:'s)?\s*(?:step|call|job|turn)?\s*(?:\||$)"
     r"|\b(?:left|leave|leaves|leaving)\b[^.;]{0,80}?\bto\s+(?:the\s+)?(?:owners?|person|human|maintainers?)\b"
     r"|\bperson[- ]only\b|\b(?:the\s+)?owner's\s+(?:step|call|job|decision|button|action|turn)\b"
     r"|\bfor\s+(?:the\s+)?(?:owners?|person|human)\s+to\b"
-    r"|(?:소유자|오너|사람|담당자|관리자)(?:가|이|께서|의)?\s?(?:직접\s?)?(?:합니다|해요|한다|할 일|하는 일|할 것|몫|맡|결정|판단)|사람\s?전용", re.I)
+    r"|(?:소유자|오너|사람|담당자|관리자)(?:가|이|께서|의)?\s?(?:직접\s?)?(?:합니다|해요|한다|할 일|하는 일|할 것|몫|맡|결정|판단)|사람\s?전용"
+    r"|(?:소유자|오너|담당자|관리자)(?:님)?(?:가|이|께서)\s?(?:직접\s?)?(?:[^\s.,]{1,10}\s){0,2}[^\s.,]{0,8}(?:합니다|해요|한다|하실|하십니다|할 겁니다)", re.I)
+# 미룸 뒤에 붙은 완료 표지("The owner will merge this; done.")는 미룸을 무른다.
+_DONE_TAIL = re.compile(r"[;,:(\u2014-]\s*(?:all\s+|and\s+|it's\s+|that's\s+)?(?:done|completed|finished|merged|did it)\b|완료", re.I)
+_BACK_END = re.compile(r"[,;()]|\s(?:and|but|so|then|because|while|whereas|although|though|since|or)\s|(?:고|며|서|지만|는데|니까)\s", re.I)
+# 나열 항에 완료나 실행이 들어 있으면 이름 나열이 아니다.
+_CHUNK_DONE = re.compile(r"\b(?:\w+ed|ran|sent|did|went|made|put|got|done|built|shipped)\b|했|함|됨|됐|완료", re.I)
+# 바닥 규칙이 보는 사람 전용 행동 낱말. 미룸 읽기는 이 낱말이 든 구간만 본다.
+_HOT = re.compile(r"merg|push|tag|publish|send|sent|release|deploy|migrat|머지|병합|푸시|태그|배포|발행|게시|보내|발송|마이그레이션", re.I)
+_BARE_IMPERATIVE = re.compile(r"^(?:[-*]\s*)?(?:merge|push|deploy|commit|run|apply|publish|send|delete|land|rotate|tag|ship|release)\b", re.I)
+_FORWARD_END = re.compile(r";|\s(?:and|but|so|then|because|while|whereas|although|though|since)\s|(?:고|며|서|지만|는데|니까)\s", re.I)
 _ASK = re.compile(r"\b(?:please|you|your)\b|주세요|주시면|주시기|바랍니다|부탁", re.I)
 # 이 답이 시키거나 묻거나 하려 하는 말. 명사 언급과 종속절의 언급은 이것이 있을 때만 끼어든다.
 _QUESTION = re.compile(r"\?|\b(?:can you|could you|would you|will you|shall (?:i|we)|should (?:i|we)|want me to|do you want|let's|go ahead|someone should|don't forget|do not forget|ready (?:to|for)|no need to wait|next\s*:)", re.I)
@@ -205,15 +282,21 @@ _LIVE = re.compile(r"\b(?:prod|production|live|real data|customer data)\b|운영
 _LOCAL = re.compile(r"\b(?:tests?|temp|tmp|fixtures?|in-memory|dry[- ]run|local(?:ly)?|sqlite|scratch)\b|테스트|임시|로컬", re.I)
 _DATA = re.compile(r"\b(?:data(?:base)?s?|db|schemas?|tables?|rows|records)\b|데이터|스키마|테이블", re.I)
 _RUN_BEFORE = re.compile(r"\b(?:ran|run|runs|running|apply|applied|applying|execute[sd]?|executing|perform(?:ed)?|did|do|start(?:ed)?|kick(?:ed)? off|trigger(?:ed)?)\b[^,;.]{0,30}$", re.I)
-_RUN_AFTER = re.compile(r"[^,;.]{0,30}?\b(?:completed|finished|ran|succeeded|is done|was (?:run|applied)|has been (?:run|applied)|went through)\b", re.I)
+_RUN_AFTER = re.compile(r"[^,;.]{0,30}?\b(?:completed|finished|ran|succeeded|is done|(?:is|are|was|were) (?:now )?(?:run|applied|live)|has been (?:run|applied)|went through)\b", re.I)
 _KO_RUN = re.compile(r"[^.,;]{0,15}(?:실행|적용|돌렸|돌림|돌려|완료|했|함|진행)")
 # 영어 send 가 메시지가 아니라 코드의 요청·헤더를 보내는 설명인가.
 _TECH_SEND = re.compile(r"\b(?:requests?|headers?|payloads?|body|bytes|events?|signals?|packets?|quer(?:y|ies)|json|frames?|chunks?|to the (?:server|api|client|backend|hub|model)|over (?:http|the wire))\b", re.I)
 _MESSAGE = re.compile(r"\b(?:e-?mails?|mail|messages?|repl(?:y|ies)|dms?|notifications?|newsletters?|invit\w*|announcements?|slack|letters?)\b|메일|메시지|메세지|답장|알림|공지|슬랙|문자|초대|뉴스레터|채널|디엠", re.I)
 # push 대상. 태그·버전·main·강제 push 는 사람 전용, 이름 붙은 작업 브랜치는 아니다, 읽지 못하면 사람 전용으로 읽는다.
 _PUSH_TAG = re.compile(r"--tags\b|refs/tags/|\btags?\b|태그|(?<![\w/.-])v?\d+\.\d+(?:\.\d+)*(?![\w/.-]*/)", re.I)
-_PUSH_MAIN = re.compile(r":(?:refs/heads/)?(?:main|master)\b|\b(?:to|into|onto)\s+(?:origin/|the\s+)?(?:main|master)\b|\borigin\s+(?:main|master)\b|\borigin/(?:main|master)\b|\b(?:main|master)\s+branch\b|\bdefault branch\b|^\s*(?:main|master)\b|\b(?:straight|directly)\s+to\b|--force\b|(?<![\w-])-f\b|\bforce\b|(?:main|master|메인)(?:\s?브랜치)?(?:에|로|으로)", re.I)
+_PUSH_MAIN = re.compile(r":(?:refs/heads/)?(?:main|master)\b|\b(?:to|into|onto)\s+(?:origin/|the\s+)?(?:main|master)\b|\borigin\s+(?:main|master)\b|\borigin/(?:main|master)\b|\b(?:main|master)\s+branch\b|\bdefault branch\b|^\s*(?:main|master)\b|\b(?:straight|directly)\s+to\b|--force\b|(?<![\w-])-f\b|\bforce\b|(?<![\w/.-])(?:main|master|trunk)(?![\w/-]|\.\w)|\b(?:protected|default|production|prod)\s+branch\b|(?:main|master|메인)(?:\s?브랜치)?(?:에|로|으로)", re.I)
 _PUSH_BRANCH = re.compile(r"\bbranch(?:es)?\b|브랜치|\bcommits?\b|\bchanges\b|\bthe (?:fix|work|patch)\b|-u\s+origin\s+\S+|[\w.-]+/[\w./-]+", re.I)
+# push 대상이 될 수 있는 낱말. 경로는 통째로 한 낱말이다(feat/tag-cleanup 의 tag 는 태그가 아니다).
+_TARGET_WORD = re.compile(r"(?<![\w.@~^*-])[\w.@~^*-]*(?:/[\w.@~^*-]+)+|--tags\b|\btags?\b|(?<![\w/.-])v?\d+\.\d+(?:\.\d+)*(?![\w/-])"
+                          r"|(?<![\w/.-])(?:main|master|trunk)(?![\w/-]|\.\w)|\b(?:protected|default|production|prod) branch\b"
+                          r"|\bbranch(?:es)?\b|\bcommits?\b|\bchanges\b|\bthe (?:fix|work|patch)\b", re.I)
+_BASE_PREP = re.compile(r"\b(?:onto|on top of|from|against|off|with)\s+$", re.I)
+_OWNED = re.compile(r"\b(?:my|our)\s+(?:[\w-]+\s+)?branch\b|\b(?:the\s+)?(?:feature|work|topic|pr)\s+branch\b", re.I)
 
 
 # 언급 하나를 읽을 때 앞뒤로 보는 최대 글자 수.
@@ -224,13 +307,44 @@ def _blank(match: re.Match) -> str:
     return " " * len(match.group(0))
 
 
-def _prepared(sentence: str) -> tuple[str, str]:
-    """(대상 읽기용, 언급 찾기용). 길이는 원문과 같다. 인용·주소·명령 아닌 코드 조각은 비우고, 언급 찾기용은 경로·refspec 도 가린다."""
-    def code(match: re.Match) -> str:
-        inner = match.group(1)
-        return " " + (inner if _COMMAND.match(inner) else " " * len(inner)) + " "
-    text = _SINGLE.sub(_blank, _CODE.sub(code, sentence)) if re.search("[`'\"“‘]|https?:", sentence) else sentence
-    return text, _TOKEN.sub(lambda m: "x" * len(m.group(0)), text) if re.search("[/:]", text) else text
+def _others(sentence: str) -> list[tuple[int, int]]:
+    """남의 말이거나 이름인 자리: 표지 뒤의 인용, 이름·파일 하나인 코드 조각(명령은 아니다), 주소."""
+    spans = []
+    for m in _QUOTE.finditer(sentence):
+        inner = m.group(0)[1:-1]
+        if _OTHERS_CUE.search(sentence[max(0, m.start() - 40):m.start()]) or _MENTIONED.match(sentence, m.end()) or (
+                m.group(0)[0] == "`" and not _COMMAND.match(inner) and inner.strip() and not re.search(r"\s", inner.strip())
+                and (_NAME_AFTER.match(sentence, m.end()) or _FILE_LIKE.fullmatch(inner.strip()))):
+            spans.append((m.start(), m.end()))
+    return spans + [(m.start(), m.end()) for m in _URL.finditer(sentence)]
+
+
+def _blanked(sentence: str, spans: Iterable[tuple[int, int]]) -> str:
+    chars = list(sentence)
+    for a, b in spans:
+        chars[a:b] = " " * (b - a)
+    return "".join(chars)
+
+
+def _masked(text: str) -> str:
+    return _TOKEN.sub(lambda m: "x" * len(m.group(0)), text) if re.search("[/:]", text) else text
+
+
+def _prepared(sentence: str) -> tuple[str, str, str, str]:
+    """(대상, 경로 가린 대상, 언급 읽기용, 경로 가린 언급 읽기용). 길이는 모두 원문과 같다.
+
+    대상 읽기는 따옴표·코드 조각을 벗기기만 한다(이름 붙은 브랜치는 어떻게 감싸도 브랜치다).
+    언급 읽기는 그 위에서 남의 말과 이름만 비운다.
+    """
+    if not re.search("[`'\"“‘]|https?:", sentence):
+        masked = _masked(sentence)
+        return sentence, masked, sentence, masked
+    target = list(sentence)
+    for m in _QUOTE.finditer(sentence):
+        target[m.start()] = target[m.end() - 1] = " "
+    target_text = "".join(target)
+    plain = _blanked(target_text, _others(sentence))
+    return target_text, _masked(target_text), plain, _masked(plain)
 
 
 def _starts(rx: re.Pattern, text: str) -> list[int]:
@@ -276,22 +390,85 @@ def _negated(text: str, start: int, end: int, clause_start: int, lang: str) -> b
     before = text[max(clause_start, start - 60):start]
     if _NEG_PRE.search(before):
         return len(_NEG_WORD.findall(before)) < 2
+    wide = text[max(0, start - 100):start]
+    if any(_NEG_LIST.fullmatch(wide, h.end()) for h in _NEG_HEAD.finditer(wide)):
+        return True
     return bool(_NEG_POST.match(text, end, min(len(text), end + 60)))
 
 
-def _push_target(raw: str, masked: str, start: int, end: int, segment_start: int, segment_end: int, lang: str) -> str:
+def _deferred(sentence: str) -> bool:
+    """문장이 사람 전용 행동을 사람 몫으로 적기만 하는가("Merging #1 is the owner's decision.").
+
+    행동 낱말이 든 구간마다 미룸이 있어야 하고, 그 구간이 시키거나(you·please), 하려 하거나(I'll), 묻거나,
+    원형 명령으로 시작하거나, 완료 표지가 붙으면 아니다. 행동 낱말이 없는 구간("I'll open a draft;")은 보지 않는다.
+    """
+    hot = [part for part in _SEGMENT_END.split(sentence) if part and _HOT.search(part)]
+    return bool(hot) and all(_ATTRIBUTED_TO_PERSON.search(part) and not (
+        _ASK.search(part) or _INTENT.search(part) or _QUESTION.search(part)
+        or _BARE_IMPERATIVE.search(part.strip()) or _DONE_TAIL.search(part)) for part in hot)
+
+
+def _branch_push_only(sentence: str) -> bool:
+    """문장의 push 가 모두 이름 붙은 작업 브랜치이고 태그 낱말이 없는가("I'll push the branch and open a draft")."""
+    target, target_masked, _plain, text = _prepared(sentence)
+    if _PUSH_TAG.search(target_masked) or re.search(r"--tags\b|refs/tags/", target):
+        return False
+    segment_starts = _starts(_SEGMENT_END, text)
+    pushes = list(re.finditer(r"(?<![\w-])(?:force[- ]?)?push(?:ed|ing|es)?\b(?!-\w)|푸시", text, re.I))
+    for m in pushes:
+        lo = _last_before(segment_starts, m.start())
+        nxt = bisect.bisect_right(segment_starts, m.end())
+        hi = segment_starts[nxt] if nxt < len(segment_starts) else len(text)
+        if _push_target(target, target_masked, m.start(), m.end(), lo, hi, "ko" if m.group(0) == "푸시" else "en") != "branch":
+            return False
+    return bool(pushes)
+
+
+def _target_kind(word: str) -> str:
+    """push 대상 낱말 하나의 종류: tag · main · branch."""
+    w = word.lower()
+    if "/" in w:
+        if w.startswith("refs/tags/"):
+            return "tag"
+        return "main" if re.fullmatch(r"(?:origin/|upstream/|refs/heads/)?(?:main|master|trunk)", w) else "branch"
+    if w == "--tags" or w.startswith("tag") or w[0].isdigit() or (w[0] == "v" and w[1:2].isdigit()):
+        return "tag"
+    return "main" if w in {"main", "master", "trunk"} or w.endswith(" branch") else "branch"
+
+
+def _kinds(text: str, skip_base: bool) -> list[str]:
+    """글에 나온 push 대상의 종류들. skip_base 면 onto·from 같은 기준 자리의 이름은 뺀다(rebase 의 기준)."""
+    out = []
+    for m in _TARGET_WORD.finditer(text):
+        if skip_base and _BASE_PREP.search(text[max(0, m.start() - 12):m.start()]):
+            continue
+        out.append(_target_kind(m.group(0)))
+    return out
+
+
+def _push_target(target: str, masked: str, start: int, end: int, segment_start: int, segment_end: int, lang: str) -> str:
     """push 한 것: tag · main · branch · unclear. 영어는 동사 뒤, 한국어는 동사 앞에서 읽는다.
 
-    태그·버전은 경로를 가린 글에서 찾는다(feat/tag-cleanup 의 tag 는 대상이 아니다). refspec 은 원문에서 읽는다.
+    태그·main 이 하나라도 보이면 그것이다(브랜치 이름이 함께 있어도). 이름 붙은 작업 브랜치만 보일 때 branch 다.
+    영어에서 동사 뒤에 대상이 없으면("Branch X is pushed", "pushed it") 같은 구간의 앞을 읽는다.
+    강제 push 는 내 작업 브랜치가 분명할 때만 branch 다.
     """
     span = (max(segment_start, start - 80), end) if lang == "ko" else (end, min(segment_end, end + 100))
-    window, plain = raw[span[0]:span[1]], masked[span[0]:span[1]]
-    head = raw[max(segment_start, start - 30):start]
+    window, plain = target[span[0]:span[1]], masked[span[0]:span[1]]
+    head = target[max(segment_start, start - 30):start]
     if _PUSH_TAG.search(plain) or re.search(r"--tags\b|refs/tags/", window):
         return "tag"
-    if _PUSH_MAIN.search(window) or re.search(r"force[- ]?$", head, re.I) or raw[start:end].lower().startswith("force"):
+    forced = bool(re.search(r"force[- ]?$", head, re.I) or target[start:end].lower().startswith("force"))
+    kinds = _kinds(window, False)
+    if lang == "en" and not kinds and not _PUSH_MAIN.search(window):
+        kinds = _kinds(target[max(segment_start, start - _REACH):start], True)
+        if "tag" in kinds:
+            return "tag"
+    if "main" in kinds or (_PUSH_MAIN.search(window) and not (forced and _OWNED.search(window))):
         return "main"
-    return "branch" if _PUSH_BRANCH.search(window) else "unclear"
+    if forced and not (_OWNED.search(window) or re.search(r"[\w.-]+/[\w./-]+", window)):
+        return "main"
+    return "branch" if "branch" in kinds or _PUSH_BRANCH.search(window) else "unclear"
 
 
 def _act_findings(sentence: str, actions: Iterable[str]) -> list[tuple[str, str, str]]:
@@ -303,7 +480,7 @@ def _act_findings(sentence: str, actions: Iterable[str]) -> list[tuple[str, str,
     actions = [a for a in actions if _ANY_FORM[a].search(sentence)]
     if not actions:
         return []
-    raw, text = _prepared(sentence)
+    target, target_masked, plain, text = _prepared(sentence)
     asked: list[bool] = []
 
     def requested() -> bool:
@@ -316,19 +493,37 @@ def _act_findings(sentence: str, actions: Iterable[str]) -> list[tuple[str, str,
     segment_starts = _starts(_SEGMENT_END, text)
     # 사람이 한다고 적은 구간을 겹침 없이 모아 둔다. 언급마다 bisect 로 찾으므로 길이에 비례한다.
     attributed: list[list[int]] = []
+    back_starts = _starts(_BACK_END, text)
     for m in _ATTRIBUTED_TO_PERSON.finditer(text):
-        lo = max(_last_before(segment_starts, m.start()), m.start() - _REACH)
+        floor_lo = max(_last_before(segment_starts, m.start()), m.start() - _REACH)
+        i = bisect.bisect_right(back_starts, m.start()) - 1
+        lo = back_starts[i] if i >= 0 else 0
+        while i >= 0 and lo > floor_lo:
+            prev = back_starts[i - 1] if i >= 1 else 0
+            chunk = text[prev:lo]
+            if len(chunk.split()) > 4 or _CHUNK_DONE.search(chunk):
+                break
+            i, lo = i - 1, prev
+        lo = max(lo, floor_lo)
         if _ASK.search(text[lo:m.end()]):
             continue
+        # 미룸은 뒤로도 미친다("left for the owner to merge", "Left for the owner: merge #1, push tag v2").
+        # 절이 바뀌거나(and·but·;) 시키거나 하려는 말이 나오면 거기서 멈춘다.
+        ahead = text[m.end():m.end() + _REACH]
+        stop = _FORWARD_END.search(ahead)
+        ahead = ahead[:stop.start()] if stop else ahead
+        ask = _ASK.search(ahead) or _INTENT.search(ahead) or _QUESTION.search(ahead)
+        hi = m.end() + (ask.start() if ask else len(ahead))
         if attributed and lo <= attributed[-1][1]:
-            attributed[-1][1] = max(attributed[-1][1], m.end())
+            attributed[-1][1] = max(attributed[-1][1], hi)
         else:
-            attributed.append([lo, m.end()])
+            attributed.append([lo, hi])
     attributed_starts = [a[0] for a in attributed]
     has_message, has_live = bool(_MESSAGE.search(text)), bool(_LIVE.search(text))
     local_only, has_data = bool(_LOCAL.search(text)) and not has_live, bool(_DATA.search(text))
     mentions = sorted((m.start(), m.end(), action, lang, form)
-                      for action in actions for lang, form, rx in _FORM_RX[action] for m in rx.finditer(text))
+                      for action in actions for lang, form, rx in _FORM_RX[action]
+                      for m in rx.finditer(plain if form == "cmd" else text))
     cancelled_until = -1
     out: list[tuple[str, str, str]] = []
     recorded: set[str] = set()
@@ -350,28 +545,32 @@ def _act_findings(sentence: str, actions: Iterable[str]) -> list[tuple[str, str,
             reach = max(end + len(tail), _negated_list_end(text, start) if lang == "en" else end)
             cancelled_until = max(cancelled_until, reach)
             continue
-        if _COMPOUND.match(text, start) or _KO_COMPOUND.match(text, start):
+        if _COMPOUND.match(plain, start) or _KO_COMPOUND.match(plain, start):
             continue
         before = text[max(clause_start, start - 60):start]
         past = lang == "en" and bool(re.match(r"[a-z'-]*(?:ed|sent|'d)\b", word))
         done = lang == "ko" and bool(_KO_DONE.match(text, end))
         # 남이 주어인 과거 보고. 이 실행이 같은 절에서 나서면("on their behalf", "제가") 주장이다.
-        if past and _OTHER_SUBJECT.search(before[-40:]) and not _SELF_ANY.search(text[clause_start:end + 40]):
+        if past and _OTHER_SUBJECT.search(before[-40:]) and not _SELF_ANY.search(text[clause_start:min(end + 40, segment_end)]):
             continue
         if done and _KO_OTHER.search(text[segment_start:start]) and not _SELF_ANY.search(text[segment_start:end]):
             continue
         # 사람이 한다고 적은 구간(미룸). 이 실행의 과거형 보고와 "제가" 가 있는 한국어는 지우지 않는다.
         k = bisect.bisect_right(attributed_starts, start) - 1
-        if k >= 0 and start < attributed[k][1] and not past and not (
+        if k >= 0 and start < attributed[k][1] and not past and not done and not _DONE_TAIL.search(text[end:end + _REACH]) and not (
                 lang == "ko" and _SELF_ANY.search(text[segment_start:end])):
             continue
         if form == "third" and not _SELF_SUBJECT.search(before[-40:]):
             continue
-        noun = form == "noun" or (lang == "en" and form in {"act", "push"} and not past and (
+        # 관사 뒤의 한 낱말은 명사다("the merge"). 주어까지 담은 여러 낱말 꼴("the announcement went out")은 아니다.
+        noun = form == "noun" or (lang == "en" and form in {"act", "push"} and not past and " " not in word.strip() and (
             bool(_DETERMINER.search(before[-16:])) or (bool(_MERGE_KIND.search(before))
                                                  and not _OBJECT.match(text, end)))) or (
             lang == "ko" and bool(_KO_WAITED.match(text, end)))
         if noun and not requested():
+            continue
+        # 가정("If I merged this it would deploy")은 일어난 일이 아니다.
+        if past and re.search(r"\bif\b", before, re.I) and re.search(r"\b(?:would|could|might)\b", text[end:end + _REACH], re.I):
             continue
         # 종속절(when·where·if·once …)의 언급은 설명이다. 과거형은 수동("where a tag is pushed")일 때만 설명이다.
         if _SUBORDINATE.search(before) and not requested() and not (past and not _PASSIVE.search(before[-24:])):
@@ -379,13 +578,13 @@ def _act_findings(sentence: str, actions: Iterable[str]) -> list[tuple[str, str,
         kind = "claim" if past or done or re.search(
             r"\b(?:ran|executed|invoked|done|completed)\b", text[clause_start:end + 30], re.I) else "request"
         if form == "push":
-            target = _push_target(raw, text, start, end, segment_start, segment_end, lang)
-            if target == "branch":
+            where = _push_target(target, target_masked, start, end, segment_start, segment_end, lang)
+            if where == "branch":
                 continue
-            kind = "unclear" if target == "unclear" else kind
+            kind = "unclear" if where == "unclear" else kind
         elif form == "msg" and not has_message:
             continue
-        elif (action == "send" and lang == "en" and not has_message
+        elif (action == "send" and lang == "en" and not has_message and "mail" not in word
               and _TECH_SEND.search(text[max(clause_start, start - 30):end + 40])):
             continue
         elif action == "migration":
@@ -404,8 +603,9 @@ def _act_findings(sentence: str, actions: Iterable[str]) -> list[tuple[str, str,
 _KIND_TEXT = {
     "claim": "reads as a report that this person-only action happened",
     "request": "asks for this person-only action or offers to take it",
-    "unclear": ("mentions a push whose target is not shown to be a work branch, so it is read as "
-                "push_tag (name the branch, as in 'pushed branch fix/x', if that is what it was)"),
+    "unclear": ("mentions a push whose target is not shown to be a work branch, so it is read as push_tag. "
+                "If it was a work branch, name it, for example 'pushed branch fix/x to origin'; a push to main, "
+                "master, a tag or a version waits for a person whatever words come before the name"),
     "field": "names it on a PERSON-ONLY line",
     "requested": "is a person-only action the host asked for in person_only_requests",
 }
@@ -414,7 +614,7 @@ _KIND_TEXT = {
 # 사람 전용 행동을 하지 않았거나 사람 몫으로 남길 때 쓰라고 권하는 말. 이 게이트가 통과시키는 말이어야 한다(시험이 본다).
 _ADVICE = {
     "merge": ("did not merge", "merging is left to the owner"),
-    "push_tag": ("did not push a tag", "pushing the tag is left to the owner"),
+    "push_tag": ("did not push a tag", "the tag push is left to the owner"),
     "publish": ("did not publish", "publishing is left to the owner"),
     "send": ("did not send it", "sending is left to the owner"),
     "migration": ("did not run the migration", "running the migration is left to the owner"),
@@ -667,14 +867,20 @@ class OutputGate:
                         pending.add(action)
                         evidence.add(sentence[:160])
                         note(action, how, clause)
-                    said = own(sentence)
-                    if _REFUSAL.search(sentence) or _CLAIM.search(said):
+                    # 바닥 규칙: 언급 읽기와 따로, 문장 단위의 요청 규칙을 모든 사람 전용 행동에 돌린다.
+                    # 둘 중 하나라도 걸면 끼어든다. 바닥에서 빼는 것은 남의 말이 분명한 인용·이름뿐인 코드 조각,
+                    # 사람 몫으로 적기만 한 문장(_deferred), 이름 붙은 작업 브랜치만의 push(_branch_push_only)다.
+                    floor = _blanked(sentence, [(a, b) for a, b in _others(sentence) if sentence[a] in "`'\"“‘"])
+                    said = _NEGATED_FLOOR.sub("", _QUOTED.sub("", floor))
+                    if _REFUSAL.search(floor) or _CLAIM.search(said) or _deferred(floor):
                         continue
                     present = _PAST_FORMS.sub("", said)
                     agency = bool(_INTENT.search(present) or _IMPERATIVE.search(present))
                     handoff = bool(_HANDOFF.search(present) or _MARKER.search(present))
                     for action in actions:
-                        if action in _ACTS:
+                        if action in pending:
+                            continue
+                        if action == "push_tag" and _branch_push_only(floor):
                             continue
                         direct = (action in _ACTIONS and (agency or handoff)
                                   and re.search(_ACTIONS[action], present, re.I))
