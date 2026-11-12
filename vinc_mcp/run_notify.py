@@ -26,6 +26,8 @@ import threading
 import time
 import uuid
 
+from store import run_state as _run_rule
+
 from . import edverify, hubhttp
 
 PATH = "/internal/mcp/run-waiting"
@@ -38,11 +40,12 @@ _log = logging.getLogger("vinc.mcp.run_notify")
 
 def payload(owner: str, eid: str, props: dict) -> dict | None:
     """알림 본문. 대기 중인 실행이 아니면 None. 여기 없는 키는 계정에 가지 않는다."""
+    props = _run_rule.readable(props)
     pending = props.get("pending") if isinstance(props.get("pending"), dict) else {}
     if props.get("state") != "waiting" or not owner.startswith(("user:", "team:")):
         return None
     from .run_protocol import _title, expires_at
-    return {"owner": owner, "run": eid, "ask": int(props.get("asks") or 0),
+    return {"owner": owner, "run": eid, "ask": props["asks"],
             "title": _title(props)[:TITLE_MAX], "expires_at": expires_at(pending)}
 
 

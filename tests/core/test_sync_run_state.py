@@ -174,7 +174,7 @@ def test_a_run_the_store_never_saw_shows_exactly_the_actions_an_answer_would_app
         open_store, pending, actions, reasons):
     store = open_store("receiver")
     incoming = {"run_id": "sync-rule", "role": "concept:agent-x", "state": "waiting",
-                "pending": {**pending, "kind": "ask_first", "asked_at": "2026-11-13T00:00:00Z"}}
+                "pending": {**pending, "kind": "ask_first", "asked_at": "2026-11-01T00:00:00Z"}}
     sync.apply_delta(owner=OWNER, bundle=_bundle(_run_node(incoming)), store=store)
     after = _stored_props(store)["pending"]
     # 답이 승인하는 것은 `actions` 이고 사람에게 보이는 것은 `requests` 다. 둘이 같아야 한다.
@@ -182,18 +182,21 @@ def test_a_run_the_store_never_saw_shows_exactly_the_actions_an_answer_would_app
     assert [r["action"] for r in after["requests"]] == actions
     assert [r["reason"] for r in after["requests"]] == reasons
     assert all(r["kind"] == "person_only" for r in after["requests"])
-    assert "question" not in after and after["asked_at"] == "2026-11-13T00:00:00Z"
+    assert "question" not in after and after["asked_at"] == "2026-11-01T00:00:00Z"
 
 
 @pytest.mark.parametrize("pending", ["Merge?", ["merge"], None], ids=["string", "list", "null"])
-def test_a_pending_that_is_not_a_question_is_dropped_from_a_run_the_store_never_saw(
+def test_a_pending_that_is_not_a_question_becomes_a_person_only_wait_on_nothing(
         open_store, pending):
     store = open_store("receiver")
     incoming = {"run_id": "sync-rule", "role": "concept:agent-x", "state": "waiting",
                 "pending": pending}
     sync.apply_delta(owner=OWNER, bundle=_bundle(_run_node(incoming)), store=store)
     after = _stored_props(store)
-    assert "pending" not in after and after["state"] == "waiting" and after["approved"] == []
+    # 대기 중인 실행은 사람이 보고 닫을 수 있게 행동이 없는 사람만의 대기로 남는다.
+    assert after["state"] == "waiting" and after["approved"] == []
+    assert after["pending"]["actions"] == [] and after["pending"]["requests"] == []
+    assert after["pending"]["kind"] == "person_only" and "question" not in after["pending"]
 
 
 def test_a_trusted_sender_hands_over_a_run_the_store_never_saw_as_it_is(open_store):

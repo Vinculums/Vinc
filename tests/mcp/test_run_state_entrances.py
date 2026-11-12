@@ -473,11 +473,19 @@ def _device_run(device: "Device", run_id: str) -> tuple[str, dict]:
              "answer": "approve", "answer_via": "person", "answered_at": _stamp(0),
              "answered_actions": ["merge"], "answered_by": OWNER,
              "pending": {"actions": ["deploy"], "kind": "person_only", "question": "Deploy?",
-                         "asked_at": _stamp(0)}}
+                         **_asked_now()}}
     wrote = frag.merge_fragment({"owner": OWNER, "nodes": [{
         **_episode(eid, local), "date": "2026-11-13"}]}, store=device.store)
     assert wrote.get("executed"), wrote
     return eid, local
+
+
+def _asked_now() -> dict:
+    """실행 프로토콜이 대기에 적는 모양의 물은 때와 만료(초 단위, 기본 수명)."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    until = now + datetime.timedelta(seconds=run_protocol.EXPIRES_DEFAULT_S)
+    return {"asked_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "expires_at": until.strftime("%Y-%m-%dT%H:%M:%SZ")}
 
 
 def _question_of(local: dict) -> dict:

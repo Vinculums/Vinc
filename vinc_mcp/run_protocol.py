@@ -54,7 +54,7 @@ ANSWER_VIA = ("person", "agent")
 #: 사람에게 묻는 요청의 수명(초). 호스트가 `expires_in_s` 로 고르고, 안 주면 기본값이다.
 EXPIRES_DEFAULT_S = 3600
 EXPIRES_MIN_S = 60
-EXPIRES_MAX_S = 43200
+EXPIRES_MAX_S = _run_rule.EXPIRES_MAX_S
 #: 호스트가 적은 행동 설명(person_only_requests 의 reason)을 요청에 남기는 상한.
 REASON_MAX = 2000
 #: 사람만 답하는 대기를 에이전트가 답하려 할 때 알려 주는 사람의 길.
@@ -158,15 +158,27 @@ def decision_kind(pending: dict, policy: dict | None = None) -> str:
     return "person_only" if any(a in person for a in actions) else "ask_first"
 
 
+#: 행동도 검사도 없는 대기의 질문. 승인해도 승인되는 행동이 없다.
+NO_QUESTION = ("This run waits for a person, but its record names no action or check. Approving "
+               "approves nothing; declining ends the run.")
+
+
 def decision(pending: dict, policy: dict | None = None) -> dict:
-    """사람에게 보이는 대기 하나: 종류, 질문, 행동마다 호스트가 적은 설명, 물은 때와 만료."""
-    actions = [a for a in pending.get("actions") or [] if isinstance(a, str)]
+    """사람에게 보이는 대기 하나: 종류, 질문, 행동마다 호스트가 적은 설명, 물은 때와 만료.
+
+    저장된 질문 문장이 없으면(동기화로 온 대기는 보낸 쪽의 문장을 버린다) 저장된 행동과 검사로
+    `_question` 이 만든다. 보낸 쪽이 쓴 글은 질문이 되지 않는다."""
+    pending = _run_rule.readable({"pending": pending if isinstance(pending, dict) else {}})["pending"]
+    actions = pending.get("actions") or []
+    checks = pending.get("checks") or []
     kind = decision_kind(pending, policy)
-    requests = [r for r in pending.get("requests") or [] if isinstance(r, dict)]
+    requests = pending.get("requests") or []
     if not requests:
         requests = [{"action": a, "reason": "", "kind": kind} for a in actions]
-    return {"kind": kind, "question": str(pending.get("question") or ""), "actions": actions,
-            "requests": requests, "checks": list(pending.get("checks") or []),
+    question = pending.get("question") or (
+        _question(actions, policy or {}, checks) if actions or checks else NO_QUESTION)
+    return {"kind": kind, "question": question, "actions": actions,
+            "requests": requests, "checks": checks,
             "asked_at": str(pending.get("asked_at") or ""), "expires_at": expires_at(pending)}
 
 
@@ -181,6 +193,12 @@ def _lock(eid: str) -> threading.RLock:
 
 def _failure(error: str, note: str, **extra) -> dict:
     return {"kind": "run", "executed": False, "error": error, "note": note, **extra}
+
+
+def _no_state() -> dict:
+    """실행 상태(state)가 없거나 모르는 값인 실행 기록. 이어 갈 수 없으므로 아무것도 바꾸지 않는다."""
+    return _failure("invalid_run_state", "Invalid: this run record has no run state, so it cannot "
+                    "go on and nothing changed. Start a new run with another run_id.")
 
 
 def _resolve(run) -> str | None:
@@ -199,7 +217,8 @@ def _load(bridge, owner: str, eid: str) -> dict | None:
         return {"_error": got}
     for item in got.get("runs") or []:
         if item.get("id") == eid:
-            return dict(item.get("props") or {})
+            # 잘못된 모양의 값(수가 아닌 step·asks 등)은 읽는 한 벌로 고쳐 읽는다. 다음 저장이 고친 값을 쓴다.
+            return _run_rule.readable(item.get("props"))
     return None
 
 
@@ -241,7 +260,7 @@ def _budget_left(policy: dict, props: dict) -> dict:
 def _view(props: dict, eid: str, policy: dict | None = None, **extra) -> dict:
     out = {"kind": "run", "executed": True, "run": eid, "run_id": props["run_id"],
            "role": props["role"], "state": props["state"], "outcome": props["outcome"],
-           "step": props["step"], **extra}
+           "step": _run_rule.count(props.get("step")), **extra}
     if props.get("capability_flags"):
         out["capability_flags"] = list(props["capability_flags"])
     if props.get("answer") and props["state"] != "waiting":
@@ -253,12 +272,12 @@ def _view(props: dict, eid: str, policy: dict | None = None, **extra) -> dict:
         out["last_answer"] = last
     if props["state"] == "waiting":
         pending = props.get("pending") or {}
-        out["question"] = pending.get("question", "")
-        out["pending_actions"] = list(pending.get("actions") or [])
-        #: 몇 번째 질문인가. MCP Tasks 의 작업 id 가 이 번호를 쓴다(`run_tasks.py`).
-        out["ask"] = int(props.get("asks") or 0)
-        out["asked_at"] = pending.get("asked_at", "")
         out["decision"] = decision(pending, policy)
+        out["question"] = out["decision"]["question"]
+        out["pending_actions"] = list(out["decision"]["actions"])
+        #: 몇 번째 질문인가. MCP Tasks 의 작업 id 가 이 번호를 쓴다(`run_tasks.py`).
+        out["ask"] = _run_rule.count(props.get("asks"))
+        out["asked_at"] = out["decision"]["asked_at"]
         out["expires_at"] = out["decision"]["expires_at"]
         if out["decision"]["kind"] == "person_only":
             out["next"] = ("Only a person answers this, in " + PERSON_PATH + ". An agent's answer "
@@ -330,6 +349,8 @@ def start(args: dict, bridge, owner: str) -> dict:
     if existing:
         if existing.get("role") != got["id"]:
             return _failure("run_id_in_use", "Invalid: this run_id belongs to another role.")
+        if existing.get("state") not in STATES:
+            return _no_state()
         return _view(as_read(existing), eid, got["props"], resumed=True)
     props = {"run_id": run_id, "role": got["id"], "outcome": OPEN_OUTCOME, "state": "working",
              "step": 0, "task": task, "started_at": _stamp(_now()), "role_rev": got.get("rev"),
@@ -361,9 +382,9 @@ def _over_budget(policy: dict, props: dict) -> str:
     if "cost_usd" in budget and used.get("cost_usd", 0) > budget["cost_usd"]:
         return "budget_cost_usd"
     if "wall_seconds" in budget:
-        started = datetime.datetime.strptime(props["started_at"], "%Y-%m-%dT%H:%M:%SZ").replace(
-            tzinfo=datetime.timezone.utc)
-        if (_now() - started).total_seconds() > budget["wall_seconds"]:
+        started = _parse_stamp(props.get("started_at"))
+        # 시작 시각을 못 읽는 실행은 예산 안에 있다고 볼 수 없다.
+        if started is None or (_now() - started).total_seconds() > budget["wall_seconds"]:
             return "budget_wall_seconds"
     return ""
 
@@ -551,6 +572,8 @@ def _submit(args: dict, bridge, owner: str, eid: str, mode: str) -> dict:
                 "note": "Unknown run: start one with vinc_run_start."}
     if "_error" in props:
         return {**props["_error"], "kind": "run"}
+    if props.get("state") not in STATES:
+        return _no_state()
     if props.get("state") == "done":
         return _view(props, eid)
     got = _fresh_role(bridge, owner, props["role"])

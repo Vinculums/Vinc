@@ -9,7 +9,7 @@
 """
 from __future__ import annotations
 
-from store import pkns
+from store import pkns, run_state
 
 from . import events, query as q
 
@@ -128,7 +128,8 @@ def list_runs(store, *, owner: str, cited: str | None = None, role: str | None =
         return {**base, "error": str(exc)}
     runs = []
     for row in rows:
-        props = events._props(row.get("props"))
+        # 잘못된 모양의 기록 하나가 목록 전체를 멈추지 않게 읽는 한 벌(`store/run_state.py`)을 지난다.
+        props = run_state.readable(row.get("props"))
         title = events._title(row.get("title"))
         if not stored:
             read = rp.as_read(props, now)
@@ -140,14 +141,14 @@ def list_runs(store, *, owner: str, cited: str | None = None, role: str | None =
         run_role = events.role_id(props.get("role")) or ""
         if want_role and run_role != want_role:
             continue
-        ids = [c for c in props.get("cited_ids") or [] if isinstance(c, str)]
+        ids = list(props.get("cited_ids") or [])
         matched = [c for c in dict.fromkeys(ids) if c in wanted]
         if cited and not matched:
             continue
         if run and run not in (pkns.strip(row["id"]), str(props.get("run_id") or "")):
             continue
         # 능력 감사 표지(vinc_mcp/run_protocol.py). 역할이 허락하지 않은 능력을 쓴 실행이다.
-        flags = [f for f in props.get("capability_flags") or [] if isinstance(f, dict)]
+        flags = list(props.get("capability_flags") or [])
         if flagged and not flags:
             continue
         item = {"id": pkns.strip(row["id"]), "run_id": str(props.get("run_id") or ""),
@@ -194,9 +195,11 @@ def waiting_runs(store, *, owner: str, limit: int = DEFAULT_LIMIT, now=None) -> 
     shown_after = moment - datetime.timedelta(seconds=EXPIRED_SHOWN_S)
     items = []
     for row in rows:
-        props = events._props(row.get("props"))
+        # 대기 중인 실행은 늘 dict 인 대기와 1 이상의 질문 번호로 읽힌다(`run_state.readable`). 값이
+        # 잘못된 기록도 목록에 남아 사람이 보고 닫을 수 있고, 다른 기록의 목록을 막지 않는다.
+        props = run_state.readable(row.get("props"))
         pending = props.get("pending")
-        if props.get("state") != "waiting" or not isinstance(pending, dict):
+        if props.get("state") != "waiting":
             continue
         view = rp.decision(pending)
         if rp.expired(pending, shown_after):
@@ -206,7 +209,7 @@ def waiting_runs(store, *, owner: str, limit: int = DEFAULT_LIMIT, now=None) -> 
             "role": events.role_id(props.get("role")) or "", "space": owner,
             "title": events._title(row.get("title")), "task": str(props.get("task") or ""),
             "subject": str(props.get("subject") or ""), "host": str(props.get("host") or ""),
-            "step": int(props.get("step") or 0), "ask": int(props.get("asks") or 0),
+            "step": props.get("step", 0), "ask": props["asks"],
             "started_at": str(props.get("started_at") or ""),
             "asked_at": view["asked_at"], "expires_at": view["expires_at"],
             "expired": rp.expired(pending, moment), "decision": view})

@@ -15,7 +15,7 @@ import hashlib
 import json
 import re
 
-from store import pkns
+from store import pkns, run_state
 
 from . import query as q, role_contract
 
@@ -214,7 +214,7 @@ def _runs(store, owner: str) -> list[tuple[str, dict]]:
         "events_runs", "MATCH (e:Episode) WHERE e.owner_id = $owner AND "
         "e.episode_id STARTS WITH $prefix RETURN e.episode_id AS id, e.props AS props",
         {"owner": owner, "prefix": pkns.key(owner, RUN_PREFIX)}), store)
-    return [(pkns.strip(r["id"]), _props(r.get("props"))) for r in rows]
+    return [(pkns.strip(r["id"]), run_state.readable(r.get("props"))) for r in rows]
 
 
 def scan(store, *, owner: str, since: tuple[int, int] | None, limit: int = DEFAULT_LIMIT,
@@ -373,12 +373,12 @@ def _waiting(runs: list[dict], owner: str, emit) -> None:
     """실행이 사람 앞에서 대기에 들어선 순간. 알림(푸시)이 읽으므로 행동 설명·질문·작업은 싣지 않고
     id·스페이스·제목·만료만 싣는다. id 는 (실행, 질문 번호, 물은 때)에 묶인다."""
     for row in runs:
-        props = _props(row.get("props"))
+        props = run_state.readable(row.get("props"))
         pending = props.get("pending") if isinstance(props.get("pending"), dict) else {}
         at, role = str(pending.get("asked_at") or ""), role_id(props.get("role"))
         if props.get("state") != "waiting" or not at or not role:
             continue
-        run_id, ask = pkns.strip(row["id"]), int(props.get("asks") or 0)
+        run_id, ask = pkns.strip(row["id"]), props["asks"]
         emit("run.waiting", (run_id, ask, at),
              {"run": run_id, "role": role, "space": owner, "title": _title(row.get("title")),
               "ask": ask, "asked_at": at, "expires_at": str(pending.get("expires_at") or "")},
@@ -391,13 +391,13 @@ def _answered(runs: list[dict], owner: str, emit) -> None:
     `via` 는 답이 온 길이다(person 은 서명된 세션, agent 는 도구 호출). 글 답(reply)의 본문은 싣지
     않는다."""
     for row in runs:
-        props = _props(row.get("props"))
+        props = run_state.readable(row.get("props"))
         answer, at = props.get("answer"), str(props.get("answered_at") or "")
         role = role_id(props.get("role"))
         if answer not in ("approve", "decline", "reply") or not at or not role:
             continue
         run_id = pkns.strip(row["id"])
-        actions = [a for a in props.get("answered_actions") or [] if isinstance(a, str)]
+        actions = list(props.get("answered_actions") or [])
         emit("run.answered", (run_id, at, answer),
              {"run": run_id, "role": role, "answer": answer, "answered_at": at,
               "actions": actions, "via": str(props.get("answer_via") or "agent"),
