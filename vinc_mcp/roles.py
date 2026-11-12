@@ -47,6 +47,7 @@ def is_role_id(rid: str) -> bool:
 #: rung → 하네스가 아는 모델 이름. 정본은 [[decision:agent-model-ladder]] 이고 여기는
 #: 그 **실행 사본**이다. 역할 노드에 모델 이름을 박지 않는 이유가 이 표다 — 모델이
 #: 바뀌면 열여섯 노드가 아니라 여기 한 줄이 움직인다.
+#: 결정의 리포 사본(`agents/model-ladder.json`)과 같은지는 tests/platform/test_agents_sync.py 가 본다.
 RUNG_TO_MODEL = {
     "strongest": "fable",
     "strong": "opus",
@@ -168,6 +169,46 @@ def _policy_sections(props: dict) -> list[tuple[str, list[str]]]:
             for key in POLICY_KEYS if key in props]
 
 
+#: 역할 budget 의 키 → 하위 에이전트 정의에서 하네스가 집행하는 프런트매터 칸. 여기 없는 키(cost_usd·
+#: wall_seconds 등)는 하네스에 칸이 없어 껍데기 본문에 "집행되지 않는 한도"로만 적힌다.
+#: maxTurns 는 에이전트 턴(모델 응답 한 번과 그 도구 호출) 수의 상한이다. 하네스 문서: https://code.claude.com/docs/en/sub-agents
+HOST_BUDGET_FIELDS = {"model_calls": "maxTurns"}
+
+
+def _enforced_budget(props: dict) -> dict[str, str]:
+    """budget 중 하네스가 집행할 수 있는 (키 → 프런트매터 칸). 양의 정수만 낸다 — 0·음수·문자열·bool 을
+    내면 하네스가 모르는 값을 읽거나 첫 턴에 멈춘다."""
+    budget = props.get("budget")
+    if not isinstance(budget, dict):
+        return {}
+    return {key: field for key, field in HOST_BUDGET_FIELDS.items()
+            if type(budget.get(key)) is int and budget[key] > 0}
+
+
+def _budget_lines(props: dict) -> list[str]:
+    """껍데기 본문의 Budget 칸. 각 값이 하네스가 집행하는 것인지, 역할이 말만 하는 한도인지 붙여 적는다."""
+    budget = props["budget"]
+    if not isinstance(budget, dict) or not budget:
+        return [f"- {budget}"]
+    enforced = _enforced_budget(props)
+    return [f"- {k}: {v} (the host enforces this as {enforced[k]} in the front matter)" if k in enforced
+            else f"- {k}: {v} (stated limit the host does not enforce; stop and report on reaching it)"
+            for k, v in budget.items()]
+
+
+#: 역할이 리포도 경로도 적지 않았을 때의 표면 한 줄. Maker·Checker 의 표면은 그 일에 실린 절차가 정한다.
+SURFACE_FROM_PROCEDURE = ("Repositories and paths: set by the procedure the task loads; read its repos "
+                          "and paths with `vinc_node` before the first edit.")
+
+
+def _surface_lines(props: dict) -> list[str]:
+    """Surface 칸. 리포나 경로가 있으면 그것을 두 덩이로, 둘 다 없으면 어디서 오는지 한 줄로 적는다."""
+    repos, paths = props.get("repos") or [], props.get("paths") or []
+    if not repos and not paths:
+        return [SURFACE_FROM_PROCEDURE]
+    return [f"Repositories: {', '.join(repos) or '(none)'}", "", _bullets(paths)]
+
+
 def _procedure_lines(role: dict) -> list[str]:
     """The agent's procedures as an index, one line each; the body is read by address when the task needs it.
     A policy that governs a procedure is a Decision with an about edge to it; its rule joins the procedure's lists.
@@ -228,6 +269,9 @@ def render_shell(role: dict, *, compact: bool = False) -> str:
     # 정본: [[record:worktree-isolation-makes-one-branch-per-package-physical]]
     if props.get("isolation"):
         front.append(f"isolation: {props['isolation']}")
+    # 예산 중 하네스가 집행하는 칸만 프런트매터에 낸다. 값은 역할 노드의 budget 에서만 온다 — 없으면 줄도 없다.
+    for key, field in _enforced_budget(props).items():
+        front.append(f"{field}: {props['budget'][key]}")
     # 능력이 막는 도구(기본 지도가 아는 것)를 역할의 disallowed_tools 뒤에 더한다. 하네스가 직접 막는 칸이다.
     disallowed = capability_maps.claude_code_disallowed(props)
     if disallowed:
@@ -266,9 +310,7 @@ def render_shell(role: dict, *, compact: bool = False) -> str:
         "",
         "## Surface",
         "",
-        f"Repositories: {', '.join(props.get('repos') or []) or '(none)'}",
-        "",
-        _bullets(props.get("paths")),
+        *_surface_lines(props),
         "",
         "## Read before the first edit, in this order",
         "",
@@ -315,7 +357,7 @@ def render_shell(role: dict, *, compact: bool = False) -> str:
     if "never_checks" in props:
         body += ["", "## Machine checks for never", "", _gate_bullets(props["never_checks"])]
     for head, bullets in _policy_sections(props):
-        body += ["", f"## {head}", "", *bullets]
+        body += ["", f"## {head}", "", *(_budget_lines(props) if head == "Budget" else bullets)]
     # `pre_merge_check` 가 맨 앞인 이유: 이것만 서술이 아니라 **행위 직전에 돌릴
     # 명령**이다. 적어 두는 것은 함정을 막지 못하고 그 자리의 검사가 막는다
     # ([[record:writing-a-trap-down-does-not-stop-it-a-check-does]]).
