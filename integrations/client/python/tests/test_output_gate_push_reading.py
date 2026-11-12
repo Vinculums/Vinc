@@ -381,3 +381,72 @@ def test_one_inserted_unknown_token_does_what_main_does():
             still_withdrawn += 1
             assert _closed(token) or (glued and _closed(glued)), (token, text)
     assert still_withdrawn >= 1000, still_withdrawn
+
+
+# ---- 다른 덩어리가 지키는 대상을 싣는 글. 거두는 문장 하나만 보면 안 된다: 글의 나머지가 조용해야 한다.
+_LATER_BLOCK_TEXTS = [
+    "I'll push fix/x.\n\n```\ngit push --tags\n```",
+    "I'll push fix/x.\n\n```\ngit push origin main\n```",
+    "I'll push fix/x.\n\n```\ngit push origin v1.2.3\n```",
+    "I'll push fix/x.\n\n```bash\ngit tag v1.2.3 && git push --tags\n```",
+    "I'll push fix/x.\n\n`git push origin main`",
+    "I'll push fix/x.\n\n    git push origin main",
+    "I'll push fix/x.\n## Then\n    git push origin main",
+    "- I'll push fix/x.\n- Then tag it v1.2.3.",
+    "I'll push fix/x.\n\nThen tag it v1.2.3.",
+    "I'll push fix/x.\n\nIt goes to main.",
+    "- I'll push fix/x.\n- to main.",
+    "I'll push fix/x.\n- 태그 v1.2.3 도 같이.",
+    "I'll push fix/x.\n\n- 메인에도.",
+    "I'll push fix/x.\n\n- with --tags",
+]
+
+
+@pytest.mark.parametrize("text", _LATER_BLOCK_TEXTS)
+def test_a_later_block_with_a_guarded_target_keeps_what_main_does(text):
+    mine, main = _verdicts(text)
+    assert "push_tag" in main, text
+    assert mine == main, text
+
+
+_PUSH_FIRST = ["I'll push fix/x.", "I will push the branch fix/login-form.", "Please push feat/feed-home.",
+               "I'll push the working branch fix/x.", "I'll push `docs/readme-typo`.",
+               "Let me push fix/x to origin."]
+_SEPARATORS = ["\n\n", "\n- ", "\n\n- ", "\n## Then\n", "\n\n```\n", "\n\n    "]
+_SECOND = ["git push --tags", "git push origin main", "git push origin v1.2.3", "Then tag it v1.2.3.",
+           "It goes to main.", "to main.", "with --tags", "태그 v1.2.3 도 같이.", "메인에도.", "운영에 배포.",
+           "and the release branch.", "also master.", "HEAD too.", "then gh-pages.", "push it to production.",
+           "refs/tags/v2 as well.", "@ as well."]
+_QUIET_SECOND = ["The tests are green.", "Draft pull request #12 is open.", "테스트는 통과했습니다.",
+                 "Nothing else changed."]
+
+
+def test_two_blocks_keep_what_main_does_and_a_quiet_second_block_is_still_withdrawn():
+    kept = withdrawn = 0
+    for first in _PUSH_FIRST:
+        alone_mine, alone_main = _verdicts(first)
+        assert "push_tag" in alone_main and "push_tag" not in alone_mine, first
+        for separator in _SEPARATORS:
+            for second in _SECOND:
+                text = first + separator + second + ("\n```" if "```" in separator else "")
+                mine, main = _verdicts(text)
+                # 새로 거는 것은 없다(P1). main 이 건 push_tag 는 그대로 걸린다.
+                assert mine <= main, text
+                assert ("push_tag" in main) == ("push_tag" in mine), text
+                kept += "push_tag" in mine
+            for second in _QUIET_SECOND:
+                text = first + separator + second + ("\n```" if "```" in separator else "")
+                mine, main = _verdicts(text)
+                assert mine <= main, text
+                withdrawn += "push_tag" in main and "push_tag" not in mine
+    assert kept >= 500, kept
+    # 조용한 둘째 덩어리는 거두는 것을 막지 않는다(빈 줄이나 새 목록 줄로 나뉜 경우).
+    assert withdrawn >= 20, withdrawn
+
+
+def test_many_withdrawable_push_paragraphs_take_linear_time():
+    import time
+    text = "\n\n".join(f"I'll push fix/x{i}." for i in range(4000))
+    started = time.perf_counter()
+    GATE.evaluate(text)
+    assert time.perf_counter() - started < 5.0

@@ -290,6 +290,35 @@ def _bounded(before: str, sentence: str, after: str) -> bool:
     return ended and bool(_BLANK_LINE.search(gap) or ("\n" in gap and _UNIT_START.match(tail)))
 
 
+# 거둔 문장 밖의 글이 조용한가를 보는 표지. push·태그 낱말, git, 지키는 이름(낱말째), 버전 꼴, @ 가운데
+# 하나라도 문장 밖에 있으면 그 글이 다른 대상을 더할 수 있다.
+_REST_TRIGGER = re.compile(
+    r"push|푸시|(?<![A-Za-z0-9_])tags?(?![A-Za-z0-9_])|--tags|태그|(?<![A-Za-z0-9_])git(?![A-Za-z0-9_])|@"
+    r"|(?<![A-Za-z0-9_])(?:" + "|".join(re.escape(name) for name in _GUARDED_NAMES) + r")(?![A-Za-z0-9_])"
+    r"|메인|마스터|운영|프로덕션|릴리스|릴리즈|배포|기본\s*브랜치", re.I)
+
+
+def _trigger_bounds(body: str) -> tuple[int, int] | None:
+    """body 에서 표지가 처음 시작하는 자리와 마지막으로 끝나는 자리. 표지가 없으면 None.
+
+    글 전체를 한 번만 훑는다. 문장마다 다시 훑으면 push 문장이 많은 긴 글에서 시간이 제곱으로 든다.
+    """
+    first = last = None
+    for pattern in (_REST_TRIGGER, _VERSIONISH):
+        for match in pattern.finditer(body):
+            first = match.start() if first is None else min(first, match.start())
+            last = match.end() if last is None else max(last, match.end())
+    return None if first is None or last is None else (first, last)
+
+
+def _rest_is_quiet(bounds: tuple[int, int] | None, span: tuple[int, int]) -> bool:
+    """문장 밖에 표지가 하나도 없는가. 모든 표지가 이 문장의 자리 안에 있어야 한다.
+
+    ⚠ 문장 하나만 보고 거두면, 빈 줄이나 새 목록 줄 뒤의 다른 덩어리가 지키는 대상을 실어도 질문이 사라진다.
+    """
+    return bounds is None or (bounds[0] >= span[0] and bounds[1] <= span[1])
+
+
 def _branch_push_only(sentence: str, before: str = "", after: str = "") -> bool:
     """문장의 낱말이 모두 닫힌 목록에 있고, push 하나의 대상이 모두 작업 브랜치이며, 문장 경계가 분명한가.
 
@@ -470,6 +499,8 @@ class OutputGate:
             kind = check["type"]
             if kind == "person_only":
                 spans: list[tuple[int, int]] | None = None
+                bounds: tuple[int, int] | None = None
+                scanned = False
                 for index, sentence in enumerate(sentences):
                     said = own(sentence)
                     if _REFUSAL.search(sentence) or _CLAIM.search(said):
@@ -488,7 +519,10 @@ class OutputGate:
                             if spans and _branch_push_only(sentence, body[max(0, spans[index][0] - _PUSH_CONTEXT):
                                                                            spans[index][0]],
                                                            body[spans[index][1]:spans[index][1] + _PUSH_CONTEXT]):
-                                decision = False
+                                if not scanned:
+                                    bounds, scanned = _trigger_bounds(body), True
+                                if _rest_is_quiet(bounds, spans[index]):
+                                    decision = False
                         if direct or decision:
                             pending.add(action)
                             evidence.add(sentence[:160])
