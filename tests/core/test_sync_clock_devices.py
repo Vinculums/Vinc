@@ -41,13 +41,15 @@ SKEW = "clock_skew"
 
 class _Clocks:
     """허브의 벽시계와 기기의 어긋남. 허브 끝점 안에서는 허브 시각, 밖에서는 기기 시각이다.
-    `declares` 가 False 면 업로드에서 `clock_skew` 를 안다는 표시를 뺀다(데스크톱 0.9.x 가 보내는 모양)."""
+    `declares` 가 False 면 업로드에서 `clock_skew` 를 안다는 표시를 뺀다(데스크톱 0.9.x 가 보내는 모양).
+    `reply_clock` 이 있으면 pull 답의 `clock` 을 그 값으로 바꾼다(틀린 시계를 보내는 허브)."""
 
     def __init__(self):
         self.hub = T0
         self.offset = 0
         self.side = "device"
         self.declares = True
+        self.reply_clock = None
 
     def __call__(self) -> int:
         return self.hub + (0 if self.side == "hub" else self.offset)
@@ -96,6 +98,8 @@ def world(tmp_path, monkeypatch):
                 out = revstamp.with_clock(docsync.export_docs(hub, owner=A, since=int(body["since"])))
             else:
                 raise AssertionError(path)
+        if clocks.reply_clock is not None and path in ("/sync/pull", "/sync/docs-pull"):
+            out = {**out, "clock": clocks.reply_clock}
         return json.loads(json.dumps(out, default=str))
 
     monkeypatch.setattr(syncclient, "_post", post)
@@ -497,3 +501,53 @@ def test_a_client_that_does_not_declare_clock_skew_keeps_its_document_cursor(wor
     assert second["docs_push"]["executed"] is True, second
     assert _doc_ua(hub, did) == _doc_ua(dev, did)
 
+
+
+# ── 먼 시계나 먼 항목을 보내는 허브: 기기는 붙잡히지 않는다 ─────────────────────────
+Y2999 = "2999-01-01T00:00:00.000Z"
+
+
+@pytest.mark.parametrize("reply_clock, item", [
+    (Y2999, Y2999),
+    ("9999-12-31T23:59:59.999Z", "9999-12-31T23:59:59.900Z"),
+    (None, Y2999),
+], ids=["clock-and-item-2999", "clock-and-item-9999", "honest-clock-and-a-2999-item"])
+def test_a_far_hub_reply_does_not_hold_the_device(world, reply_clock, item):
+    """허브가 기기가 가진 노드를 먼 시각에 고치고, pull 답의 `clock` 도 그 시각이다(`None` 이면 맞는 시계).
+    기기의 다음 쓰기 150 번은 모두 되고 기기 벽시계 + `MAX_SKEW_MS` 안에 찍힌다. 허브가 계속 같은 답을 보내도
+    다음 동기화에서 모두 허브에 닿는다."""
+    hub, dev, clocks, remote = world
+    _hub_write(hub, clocks, "v0")
+    clocks.hub += SECOND
+    _run(dev, remote)
+    honest = int(revstamp._meta_get(dev, revstamp.TRUSTED_CLOCK, "0"))
+    assert honest == clocks.hub
+    now = clocks.hub
+    clocks.hub = _ms(item)
+    _hub_write(hub, clocks, "far")
+    clocks.hub = now + SECOND
+    assert _row(hub)["ua"] >= item
+    clocks.reply_clock = reply_clock
+    _run(dev, remote)
+    assert _row(dev)["title"] == "far"
+    clocks.hub += SECOND
+    top = revstamp._fmt(clocks() + revstamp.MAX_SKEW_MS)
+    late = []
+    for i in range(150):
+        _write(dev, f"w{i}", nid=f"concept:w{i}")
+        if _row(dev, f"concept:w{i}")["ua"] > top:
+            late.append(i)
+    assert late == []
+    clocks.hub += SECOND
+    out = _run(dev, remote)
+    assert SKEW not in out["push"], out
+    assert [i for i in range(150) if (_row(hub, f"concept:w{i}") or {}).get("title") != f"w{i}"] == []
+    assert int(revstamp._meta_get(dev, revstamp.TRUSTED_CLOCK, "0")) <= clocks.hub
+
+
+@pytest.mark.parametrize("kind", KINDS)
+@pytest.mark.parametrize("behind", [DAY, 365 * DAY, (3 * 365 + 1) * DAY], ids=["1d", "1y", "3y"])
+def test_a_device_a_day_a_year_or_three_years_slow_still_follows_its_hub(world, behind, kind):
+    """허브 시계를 적는 폭(`revstamp.TRUSTED_AHEAD_MS`) 안이면 위의 느린 기기 시나리오가 그대로 선다."""
+    test_a_device_more_than_a_day_slow_keeps_every_change_it_makes_after_following_its_hub(
+        world, behind, kind)

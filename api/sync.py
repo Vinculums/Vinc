@@ -900,8 +900,10 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
       - 실행 기록: 처음 보는 실행의 대기·승인·답을 보낸 쪽 그대로 받는가(`store/run_state.py` `keep_own`).
       - 시계: 믿지 않으면 스탬프가 `revstamp.ceiling_ms()` 뒤인 노드·노드 삭제·엣지 삭제는 저장하지 않고
         결과 `clock_skew` 에 이름을 남긴다(자르지 않는다: 자르면 보낸 쪽과 다른 스탬프의 사본이 생긴다).
-        나머지는 적용한다. 믿으면 스탬프를 그대로 받고 시계도 거기까지 따라간다. 믿으면 묶음의 `clock`(보낸
-        허브의 벽시계)도 적는다: 기기 시계가 그 시계 근처에 있는 동안은 되돌리지 않는다(`revstamp._last`).
+        나머지는 적용한다. 믿으면 스탬프를 그대로 받는다. 믿으면 묶음의 `clock`(보낸 허브의 벽시계)을 적용 전에
+        적는다(기기 벽시계 + `revstamp.TRUSTED_AHEAD_MS` 까지). 시계는 max(기기 벽시계, 그 허브 시계) +
+        `revstamp.MAX_SKEW_MS` 까지의 스탬프를 따라가고(`revstamp.observe_hlc`), 그 근처에 있는 동안은 되돌리지
+        않는다(`revstamp._last`).
     """
     out = {"executed": False, "applied": 0, "skipped_stale": 0, "merged": 0,
            "edges": 0, "deleted": 0, "resurrected": 0, "kept_deleted": 0, "warnings": []}

@@ -106,6 +106,14 @@ MAX_SKEW_MS = 5 * 60 * 1000
 #: 진다). 벽시계가 뒤로 가도, 마지막으로 허브를 본 뒤 이 폭 안이면 로컬 스탬프 순서는 지켜진다.
 RESET_AHEAD_MS = 24 * 60 * 60 * 1000
 
+#: 믿는 출처(기기가 받는 자기 허브)의 시계를 적고 따라가는 한도: 기기 벽시계 + 이 값. 세 해를 모두 366일로 센 1098일이다.
+#: ⚠ 벽시계가 몇 해까지 틀린 기기도 자기 허브를 따라가야 한다(테스트는 하루·400일·세 해 느린 기기를 쓴다). 그보다
+#: 먼 허브 시계는 틀린 값으로 보고 적지 않는다: 지금까지 본 오염 값(2999·9999년)은 몇 세기 앞이다.
+TRUSTED_AHEAD_MS = 3 * 366 * 24 * 60 * 60 * 1000
+
+#: 스탬프 형식(`_fmt`)이 나타내는 가장 늦은 값(9999-12-31T23:59:59.999Z). 그 다음 밀리초는 날짜가 아니다.
+_LATEST_MS = 253402300799999
+
 
 def _fmt(ms: int) -> str:
     """epoch-ms → 정렬가능·가독 ISO(밀리초, UTC). 고정폭이라 사전순=시간순."""
@@ -181,10 +189,17 @@ def with_clock(reply):
 
 def note_trusted_clock(store, stamp) -> None:
     """믿는 출처가 답에 실은 벽시계를 적는다. 가장 최근 값으로 바꾼다(가장 큰 값이 아니다: 한 번 틀린 허브
-    시계가 기기 시계를 영영 붙잡지 않게). 믿는 pull 만 부른다. 읽지 못하는 값은 무시한다."""
+    시계가 기기 시계를 영영 붙잡지 않게). 믿는 pull 만 부른다. 읽지 못하는 값과 기기 벽시계 +
+    `TRUSTED_AHEAD_MS` 뒤의 값은 무시하고 앞서 적은 값을 둔다."""
     ms = _parse_ms(stamp)
-    if ms is not None:
+    if ms is not None and ms <= _wall_ms() + TRUSTED_AHEAD_MS:
         _meta_set(store, TRUSTED_CLOCK, ms)
+
+
+def _trusted_clock(store, phys: int) -> int:
+    """적힌 믿는 출처의 시계. 없거나 벽시계 + `TRUSTED_AHEAD_MS` 뒤면 0(적힌 시계 없음)으로 읽는다."""
+    got = int(_meta_get(store, TRUSTED_CLOCK, "0"))
+    return got if got <= phys + TRUSTED_AHEAD_MS else 0
 
 
 def _last(store, phys: int) -> int:
@@ -194,15 +209,18 @@ def _last(store, phys: int) -> int:
     last = int(_meta_get(store, "last_hlc", "0"))
     if last <= phys + RESET_AHEAD_MS:
         return last
-    trusted = int(_meta_get(store, TRUSTED_CLOCK, "0"))
-    return 0 if last > max(phys, trusted) + RESET_AHEAD_MS else last
+    return 0 if last > max(phys, _trusted_clock(store, phys)) + RESET_AHEAD_MS else last
 
 
 def hlc_now(store) -> str:
-    """스토어 내 단조 HLC 타임스탬프(ISO 밀리초). 벽시계 후퇴/동시쓰기에도 전진."""
+    """스토어 내 단조 HLC 타임스탬프(ISO 밀리초). 벽시계 후퇴/동시쓰기에도 전진.
+    다음 값이 스탬프 형식을 넘으면(9999년 뒤) 벽시계로 되돌린다: 순서 하나를 잃는 쪽이 모든 쓰기가 예외로
+    끝나는 쪽보다 낫다."""
     phys = _wall_ms()
     last = _last(store, phys)
     cur = phys if phys > last else last + 1
+    if cur > _LATEST_MS:
+        cur = phys
     _meta_set(store, "last_hlc", cur)
     return _fmt(cur)
 
@@ -210,14 +228,21 @@ def hlc_now(store) -> str:
 def observe_hlc(store, remote_updated_at: str, *, trusted: bool = False) -> None:
     """원격에서 받은 updated_at 로 last_hlc 전진(apply 시). 파싱 실패는 무시.
     믿지 않는 보낸 쪽이면 전진은 `ceiling_ms()` 까지다. 상한을 넘은 항목은 apply 가 이미 받지 않으므로
-    이것은 둘째 줄이다(문자열로는 낮게 정렬되지만 읽으면 먼 값). 믿는 보낸 쪽(기기가 받는 자기 허브)은
-    받은 값까지 그대로 따라간다."""
+    이것은 둘째 줄이다(문자열로는 낮게 정렬되지만 읽으면 먼 값).
+    믿는 보낸 쪽(기기가 받는 자기 허브)은 max(벽시계, 적힌 허브 시계) + `MAX_SKEW_MS` 까지의 스탬프를 따라가고,
+    그 뒤의 스탬프는 따라가지 않는다(상한까지 잘라 따라가면 기기가 허브가 받는 폭의 끝에서 찍기 시작한다). 허브
+    시계는 같은 답의 적용 전에 적힌다(`sync.apply_delta`·`docsync.import_docs`). 적힌 허브 시계가 없으면(시계를
+    보내지 않는 허브) 받은 값을 그대로 따라가고, 하루 넘게 앞선 값은 다음 쓰기에서 `_last` 가 되돌린다."""
     val = _parse_ms(remote_updated_at)
     if val is None:
         return
     phys = _wall_ms()
     if not trusted:
         val = min(val, phys + MAX_SKEW_MS)
+    else:
+        hub = _trusted_clock(store, phys)
+        if hub and val > max(phys, hub) + MAX_SKEW_MS:
+            return
     last = _last(store, phys)
     if val > last:
         _meta_set(store, "last_hlc", val)

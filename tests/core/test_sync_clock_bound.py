@@ -553,3 +553,131 @@ def test_a_bundle_with_no_stamp_beyond_the_ceiling_applies_the_same_on_both_path
         dumps.append(_dump(st))
     assert results[0] == results[1]
     assert dumps[0] == dumps[1]
+
+
+# ── 8. 믿는 출처가 기기 시계를 끌고 갈 수 있는 폭 ─────────────────────────────────
+class _MetaOnly:
+    """`_SyncMeta` 키만 아는 가짜 스토어. 시계 함수만 부르는 테스트가 쓴다."""
+
+    def __init__(self, **meta):
+        self.meta = {k: str(v) for k, v in meta.items()}
+
+    def run(self, cypher, params=None):
+        if "SET" in cypher:
+            self.meta[params["k"]] = params["v"]
+            return []
+        v = self.meta.get(params["k"])
+        return [] if v is None else [{"v": v}]
+
+
+def _trusted_clock(st):
+    rows = st.run("MATCH (m:_SyncMeta) WHERE m.key = $k RETURN m.value AS v", {"k": revstamp.TRUSTED_CLOCK})
+    return int(rows[0]["v"]) if rows and rows[0]["v"] not in (None, "") else None
+
+
+def _writes_never_fail(st, count):
+    """`count` 번 쓰고, 실패한 쓰기와 상한(벽시계 + `MAX_SKEW_MS`) 뒤에 찍힌 스탬프를 돌려준다."""
+    failed, late = [], []
+    for i in range(count):
+        try:
+            _write(st, A, f"concept:w{i}")
+        except Exception as exc:          # 9999년 다음 해는 날짜가 아니라 쓰기가 예외로 끝난다
+            failed.append((i, repr(exc)[:80]))
+            continue
+        if _ua(st, A, f"concept:w{i}") > _top():
+            late.append(i)
+    return failed, late
+
+
+@pytest.mark.parametrize("earlier", [None, T0], ids=["no-earlier-hub-clock", "earlier-hub-clock"])
+def test_a_hub_reply_at_year_9999_never_stops_the_device_writing(store, earlier):
+    """허브 답의 `clock` 과 항목 스탬프가 9999년 끝이다. 기기의 150 번 쓰기가 모두 되고 벽시계 근처에 찍힌다."""
+    st = store()
+    _write(st, A, "concept:n", title="Device copy")
+    if earlier is not None:
+        assert _trusted_pull(st, A, _at(earlier))["executed"]
+    out = _trusted_pull(st, A, Y9999, _pushed("concept:n", "9999-12-31T23:59:59.900Z", title="Far"))
+    assert out["executed"], out
+    assert _writes_never_fail(st, 150) == ([], [])
+    assert _trusted_clock(st) == earlier
+
+
+def test_stored_clocks_left_at_year_9999_never_stop_the_device_writing(store):
+    """저장된 시계와 허브 시계가 이미 9999년 끝에 있는 스토어도 다음 쓰기에서 벽시계로 돌아온다."""
+    st = store()
+    _poison(st, Y9999_MS - 98)
+    st.run("MERGE (m:_SyncMeta {key: $k}) SET m.value = $v",
+           {"k": revstamp.TRUSTED_CLOCK, "v": str(Y9999_MS)})
+    assert _writes_never_fail(st, 150) == ([], [])
+
+
+def test_the_next_stamp_resets_to_the_wall_clock_instead_of_passing_year_9999(wall):
+    """다음 값이 형식으로 나타낼 수 없으면(9999년 뒤) 벽시계로 되돌린다. 그 앞까지는 순서를 지킨다."""
+    wall.ms = Y9999_MS - HOUR
+    meta = _MetaOnly(last_hlc=Y9999_MS - 1)
+    assert revstamp.hlc_now(meta) == Y9999
+    assert revstamp.hlc_now(meta) == _at(Y9999_MS - HOUR)
+    assert revstamp.hlc_now(meta) == _at(Y9999_MS - HOUR + 1)
+
+
+def test_a_hub_clock_more_than_the_trusted_bound_ahead_is_not_recorded(store):
+    """허브 시계는 기기 벽시계 + `TRUSTED_AHEAD_MS` 까지 적는다. 그 뒤의 값은 무시하고 앞서 적은 값을 둔다."""
+    st = store()
+    edge = T0 + revstamp.TRUSTED_AHEAD_MS
+    assert _trusted_pull(st, A, _at(edge))["executed"]
+    assert _trusted_clock(st) == edge
+    assert _trusted_pull(st, A, _at(T0 + HOUR))["executed"]
+    assert _trusted_clock(st) == T0 + HOUR
+    for far in (_at(edge + 1), Y2999, Y9999):
+        assert _trusted_pull(st, A, far)["executed"]
+        assert _trusted_clock(st) == T0 + HOUR
+    docsync.import_docs(st, owner=A, payload={"docs": [], "tombstones": [], "clock": Y2999},
+                        trusted_sender=True)
+    assert _trusted_clock(st) == T0 + HOUR
+
+
+def test_the_trusted_bound_covers_a_device_three_years_slow():
+    """세 해(윤일 하나를 포함한 1096일) 느린 기기도 자기 허브를 따라간다."""
+    assert revstamp.TRUSTED_AHEAD_MS >= (3 * 365 + 1) * DAY
+
+
+@pytest.mark.parametrize("hub", [None, T0 + DAY], ids=["hub-at-the-wall", "hub-a-day-ahead"])
+def test_a_trusted_stamp_is_followed_up_to_the_hub_clock_plus_the_skew_and_no_further(wall, hub):
+    """믿는 길에서 시계가 따라가는 스탬프는 max(벽시계, 적힌 허브 시계) + `MAX_SKEW_MS` 까지다. 그 뒤의 스탬프는
+    따라가지 않는다(잘라서 따라가면 기기가 상한 끝에서 찍기 시작해 다음 편집이 허브에서 거절될 수 있다)."""
+    top = max(T0, hub or T0) + revstamp.MAX_SKEW_MS
+    meta = _MetaOnly(last_hlc=T0, trusted_clock=hub or T0)
+    revstamp.observe_hlc(meta, _at(top), trusted=True)
+    assert int(meta.meta["last_hlc"]) == top
+    meta = _MetaOnly(last_hlc=T0, trusted_clock=hub or T0)
+    for far in (_at(top + 1), Y2999, Y9999):
+        revstamp.observe_hlc(meta, far, trusted=True)
+        assert int(meta.meta["last_hlc"]) == T0, far
+
+
+def test_the_hub_clock_is_recorded_before_the_pull_applies_nodes(store):
+    """한 번 허브 시계를 적은 기기가 400일 앞선 허브의 편집을 받는다. 같은 답의 `clock` 을 적용 전에 적어야 그 편집을
+    따라가고, 기기의 다음 편집이 그 뒤에 찍힌다."""
+    st = store()
+    _write(st, A, "concept:n", title="Device copy")
+    assert _trusted_pull(st, A, _at(T0))["executed"]
+    ahead = T0 + 400 * DAY
+    out = _trusted_pull(st, A, _at(ahead), _pushed("concept:n", _at(ahead), title="From hub"))
+    assert out["merged"] == 1 and _last(st) >= ahead, out
+    _write(st, A, "concept:n", title="Device edit")
+    assert _ua(st, A, "concept:n") > _at(ahead)
+
+
+def test_the_hub_clock_is_recorded_before_the_pull_applies_documents(store):
+    st = store()
+    did = ds.doc_id_for_origin(A, "order-note")
+    assert ds.put_doc(st, owner=A, text="device", doc_id=did, title="Note",
+                      origin="order-note").get("executed")
+    assert _trusted_pull(st, A, _at(T0))["executed"]
+    ahead = T0 + 400 * DAY
+    res = docsync.import_docs(st, owner=A, trusted_sender=True, payload={
+        **_docs_payload((did, _at(ahead), "from hub")), "clock": _at(ahead)})
+    assert res["updated"] == 1 and _last(st) >= ahead, res
+    assert ds.put_doc(st, owner=A, text="device edit", doc_id=did, title="Note",
+                      origin="order-note").get("executed")
+    assert _doc(st, did)["ua"] > _at(ahead)
