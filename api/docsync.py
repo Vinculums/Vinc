@@ -112,6 +112,7 @@ def import_docs(store, *, owner: str, payload: dict) -> dict:
                 "applied": 0, "updated": 0, "skipped": 0, "deleted": 0,
                 "error": "ownership_moved", "moved_ids": moved}
     applied = updated = skipped = deleted = 0
+    clamped: list[str] = []      # 스탬프가 상한을 넘어 잘린 문서 id(응답 `clamped_stamps`)
     for d in payload.get("docs", []) or []:
         doc_id = d.get("doc_id")
         if not doc_id:
@@ -122,6 +123,11 @@ def import_docs(store, *, owner: str, payload: dict) -> dict:
             skipped += 1
             continue
         remote_ua = d.get("updated_at") or ""
+        # 노드 동기화와 같은 상한으로 자른다. 자르지 않으면 그 문서가 이후 모든 LWW 를 이긴다.
+        bounded = revstamp.bound_stamp(remote_ua)
+        if bounded != remote_ua:
+            remote_ua = bounded
+            clamped.append(doc_id)
         tombs = store.run("MATCH (t:_DocTombstone) WHERE t.doc_id=$id "
                          "RETURN t.owner_id AS owner_id, t.deleted_at AS deleted_at", {"id": doc_id})
         # 오래된 사본이 보존한 삭제 표식을 지우며 문서를 부활시키지 못하게 한다.
@@ -185,8 +191,11 @@ def import_docs(store, *, owner: str, payload: dict) -> dict:
         r = ds.delete_doc(store, doc_id, owner=owner, tombstone=False)
         if r.get("executed") and (r.get("deleted_meta") or r.get("deleted_chunks")):
             deleted += 1
-    return {"kind": "docsync.import", "owner": owner, "applied": applied,
-            "updated": updated, "skipped": skipped, "deleted": deleted}
+    out = {"kind": "docsync.import", "owner": owner, "applied": applied,
+           "updated": updated, "skipped": skipped, "deleted": deleted}
+    if clamped:
+        out["clamped_stamps"] = clamped
+    return out
 
 
 def _newer(a: str, b: str) -> bool:

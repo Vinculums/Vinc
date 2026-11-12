@@ -860,7 +860,8 @@ def _merged_fragment_node(label: str, nid: str, ntype: str, merged: dict) -> dic
 
 def _edges_after_deletions(store, owner, bundle):
     """끝점의 새 편집 증거가 없는 관계 재전송은 기존 삭제를 이기지 못한다."""
-    times = {n.get("id"): n.get("_updated_at") or "" for n in bundle.get("nodes") or []}
+    times = {n.get("id"): revstamp.bound_stamp(n.get("_updated_at") or "")
+             for n in bundle.get("nodes") or []}
     carriers = {fragment: rel for rel, fragment in _REL_TO_FRAGMENT.items()}
     kept = []
     for edge in bundle.get("edges") or []:
@@ -902,6 +903,7 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
     writes: list[dict] = []          # merge_fragment 로 쓸 노드(스탬프 포함)
     base_updates: list[tuple] = []   # (nid, label, base_fields, base_rev, base_ua)
     births: list[tuple] = []         # (label, pk, nid, remote_created) — 병합과 무관
+    clamped: list[str] = []          # 스탬프가 상한을 넘어 잘린 노드 id(응답 `clamped_stamps`)
     for n in bundle.get("nodes") or []:
         nid, ntype = n.get("id"), n.get("type")
         label = _SYNC_TYPES.get(ntype or "")
@@ -918,6 +920,13 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         # 구버전 클라이언트가 모르는 필드는 키가 없다. 비운 것이 아니라 말하지 않은 것이다.
         unstated = [f for f in _LATE_SYNC_FIELDS.get(label, ()) if f not in n]
         r_rev, r_ua = int(n.get("_rev") or 0), n.get("_updated_at") or ""
+        # 받는 쪽 벽시계 + 허용 스큐보다 먼 스탬프는 상한으로 잘라 적용한다(노드 툼스톤과 같은 처리).
+        # 아래의 부활 가드·병합 승자·저장 스탬프·base·시계가 모두 잘린 값을 본다. 자르지 않으면
+        # 그 노드가 이후 모든 병합과 삭제를 이긴다.
+        bounded = revstamp.bound_stamp(r_ua)
+        if bounded != r_ua:
+            r_ua = bounded
+            clamped.append(nid)
 
         # 부활 가드(S4): 로컬 tombstone 이 인바운드 편집보다 **새롭거나 같으면** 삭제가
         # 이긴다 → upsert 무시(지운 노드가 옛 편집으로 되살아나지 않게). 인바운드가 더
@@ -1087,6 +1096,10 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         revstamp.observe_hlc(store, t.get("deleted_at") or "")
 
     out["applied"] = len(writes)
+    if clamped:
+        out["clamped_stamps"] = clamped
+        out["warnings"].append(f"{len(clamped)} node stamp(s) ahead of this clock were "
+                               "cut back to it")
     return out
 
 

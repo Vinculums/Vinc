@@ -95,23 +95,55 @@ def _meta_set(store, key: str, value) -> None:
     store.run("MERGE (m:_SyncMeta {key: $k}) SET m.value = $v", {"k": key, "v": str(value)})
 
 
+#: 바깥에서 온 스탬프가 받는 쪽 벽시계보다 앞설 수 있는 한도(밀리초). 시계가 몇 분 빠른 기기는
+#: 그대로 동기화되고, 그보다 먼 스탬프는 이 한도로 잘린다. 시계(`last_hlc`)도 이 한도를 넘지 않는다.
+MAX_SKEW_MS = 5 * 60 * 1000
+
+
 def _fmt(ms: int) -> str:
     """epoch-ms → 정렬가능·가독 ISO(밀리초, UTC). 고정폭이라 사전순=시간순."""
     dt = datetime.datetime.fromtimestamp(ms / 1000, datetime.timezone.utc)
     return dt.strftime("%Y-%m-%dT%H:%M:%S") + f".{ms % 1000:03d}Z"
 
 
+def _wall_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def ceiling_ms() -> int:
+    """바깥 스탬프가 시계와 병합에 닿을 수 있는 상한: 받는 쪽 벽시계 + `MAX_SKEW_MS`."""
+    return _wall_ms() + MAX_SKEW_MS
+
+
+def bound_stamp(stamp: str) -> str:
+    """바깥에서 온 updated_at 을 상한으로 자른 값. 병합은 스탬프를 문자열로 비교하므로 자르기도
+    문자열 비교로 한다(형식이 깨진 값도 상한보다 뒤로 정렬되면 잘린다). 빈 값은 그대로다."""
+    if not stamp:
+        return stamp
+    top = _fmt(ceiling_ms())
+    return top if stamp > top else stamp
+
+
+def _last(store, phys: int) -> int:
+    """저장된 시계값. 상한을 한참 넘은 값(바깥 스탬프에 오염된 시계)은 0 으로 읽어 벽시계로 되돌린다.
+    ⚠ 되돌림 문턱은 상한보다 `MAX_SKEW_MS` 만큼 위다: 상한에 붙은 시계가 같은 밀리초 안의 쓰기로
+    상한을 조금 넘는 것은 정상이고, 그것까지 되돌리면 스탬프가 뒤로 간다."""
+    last = int(_meta_get(store, "last_hlc", "0"))
+    return 0 if last > phys + 2 * MAX_SKEW_MS else last
+
+
 def hlc_now(store) -> str:
     """스토어 내 단조 HLC 타임스탬프(ISO 밀리초). 벽시계 후퇴/동시쓰기에도 전진."""
-    phys = int(time.time() * 1000)
-    last = int(_meta_get(store, "last_hlc", "0"))
+    phys = _wall_ms()
+    last = _last(store, phys)
     cur = phys if phys > last else last + 1
     _meta_set(store, "last_hlc", cur)
     return _fmt(cur)
 
 
 def observe_hlc(store, remote_updated_at: str) -> None:
-    """원격에서 받은 updated_at 로 last_hlc 전진(pull apply 시). 파싱 실패는 무시."""
+    """원격에서 받은 updated_at 로 last_hlc 전진(pull apply 시). 파싱 실패는 무시.
+    전진은 `ceiling_ms()` 까지다: 그보다 먼 스탬프가 시계를 끌고 가지 못한다."""
     if not remote_updated_at:
         return
     try:
@@ -122,7 +154,9 @@ def observe_hlc(store, remote_updated_at: str) -> None:
         val = int(dt.timestamp() * 1000) + (int(ms) if ms.isdigit() else 0)
     except Exception:
         return
-    last = int(_meta_get(store, "last_hlc", "0"))
+    phys = _wall_ms()
+    val = min(val, phys + MAX_SKEW_MS)
+    last = _last(store, phys)
     if val > last:
         _meta_set(store, "last_hlc", val)
 
