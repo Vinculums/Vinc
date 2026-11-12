@@ -8,6 +8,9 @@
   그런 쓰기를 찾아 거절한다(`vinc_mcp/tools.py`, `vinc_mcp/http_server.py`).
 - 동기화 적용(`api/sync.py` `apply_delta`)은 묶음을 거절하지 않고 `keep_own` 으로 받는 스토어의
   값을 남긴다. 허브는 push 에서, 기기는 pull 에서 같은 함수를 지난다.
+- 받는 스토어가 처음 보는 실행은 믿음이 한쪽으로만 간다. 기기는 자기 허브를 믿어 허브의 상태를
+  그대로 받고(`trusted=True`, 기기의 pull 만), 허브는 기기를 믿지 않아 질문(`QUESTION_KEYS`)만
+  받고 답(`ANSWER_KEYS`)은 버린다(기본값).
 
 ``store/`` 는 맨 아래 층이라(``scripts/gate_ownership.py`` 의 ``LAYER_BANS``) ``api`` 와
 ``vinc_mcp`` 가 둘 다 이것을 가져다 쓴다.
@@ -17,9 +20,16 @@ from __future__ import annotations
 import json
 
 RUN_PREFIX = "episode:run-"
-#: 실행 기록의 프로토콜 상태 필드. 도구 쓰기로는 바꾸지 못하고, 동기화로는 건너가지 않는다.
-STATE_KEYS = ("state", "pending", "approved", "asks", "last_asked_at", "answer", "answered_at",
-              "answered_actions", "answered_by", "answer_via", "answer_text", "task_cancelled")
+#: 질문 쪽 상태: 실행이 지금 무엇을 묻는가. 실행 프로토콜의 출력 단계(`_output`)와 작업 닫기
+#: (`run_tasks.cancel`)가 쓴다. 닫힌 작업 표시는 답을 막기만 하고 승인을 만들지 않는다.
+QUESTION_KEYS = ("state", "pending", "asks", "last_asked_at", "task_cancelled")
+#: 답 쪽 상태: 누가 무엇에 답했고 무엇이 승인됐는가. 실행 프로토콜의 `_answer` 가 채운다.
+ANSWER_KEYS = ("approved", "answer", "answered_at", "answered_actions", "answered_by", "answer_via",
+               "answer_text")
+#: 실행 기록의 프로토콜 상태 필드. 도구 쓰기로는 바꾸지 못하고, 가진 실행에는 동기화로 건너가지 않는다.
+STATE_KEYS = QUESTION_KEYS + ANSWER_KEYS
+#: 믿지 않는 쪽에서 온 질문의 대기 종류. 누가 답해도 되는지는 보낸 쪽의 말을 따르지 않는다.
+_PERSON_ONLY = "person_only"
 #: 막힌 쓰기의 오류 코드이자 동기화 결과가 남긴 실행을 싣는 필드 이름.
 CODE = "run_state_protected"
 #: 경고 문장에 이름을 싣는 실행 수의 상한. 전체 목록은 결과의 같은 이름 필드에 있다.
@@ -66,25 +76,52 @@ def writes(nodes) -> list[str]:
     return blocked
 
 
-def keep_own(incoming, own) -> tuple[dict, bool]:
+def keep_own(incoming, own, *, trusted: bool = False) -> tuple[dict, bool]:
     """동기화로 들어온 실행 기록의 props 에서 프로토콜 상태만 받는 스토어의 값으로 바꾼다.
 
-    `own` 은 받는 스토어에 저장된 props(처음 보는 실행이면 None)다. 들어온 상태 키는 버리고
-    저장된 상태 키를 그대로 싣는다: props 는 쓸 때 통째로 바뀌므로 빼기만 하면 저장된 상태가
-    지워진다. 처음 보는 실행은 상태 키 없이 간다. 나머지 키는 보통의 동기화 규칙을 따른다.
+    `own` 은 받는 스토어에 저장된 props 이고, 받는 스토어가 처음 보는 실행이면 None 이다.
+    가진 실행은 들어온 상태 키를 버리고 저장된 상태 키를 그대로 싣는다(props 는 쓸 때 통째로
+    바뀌므로 빼기만 하면 저장된 상태가 지워진다). 처음 보는 실행은 `trusted` 가 가른다:
+    믿는 쪽(기기가 자기 허브에서 받을 때)이면 그대로, 아니면 `questions_only` 로 간다.
+    나머지 키는 보통의 동기화 규칙을 따른다.
     돌려주는 것은 (바꾼 props, 들어온 상태가 남긴 상태와 달랐는가)."""
-    incoming, own = props_of(incoming), props_of(own)
-    kept = {k: v for k, v in own.items() if k in STATE_KEYS}
+    incoming = props_of(incoming)
+    if own is None:
+        if trusted:
+            return incoming, False
+        kept = questions_only(incoming)
+    else:
+        kept = {k: v for k, v in props_of(own).items() if k in STATE_KEYS}
     props = {k: v for k, v in incoming.items() if k not in STATE_KEYS}
     props.update(kept)
     differed = any(incoming.get(k, _MISSING) != kept.get(k, _MISSING) for k in STATE_KEYS)
     return props, differed
 
 
+def questions_only(props) -> dict:
+    """믿지 않는 쪽이 보낸 실행 상태에서 질문만 남긴다: 답 키는 없고 승인은 빈 목록이다.
+
+    대기(`pending`)는 dict 일 때만 남기고, 그 종류와 행동마다의 종류를 사람만 답하는 것으로
+    바꾼다. 보낸 쪽이 `ask_first` 라고 적어 두면 에이전트 자격의 답이 그 대기를 승인할 수 있다."""
+    props = props_of(props)
+    kept = {k: v for k, v in props.items() if k in QUESTION_KEYS}
+    pending = kept.pop("pending", None)
+    if isinstance(pending, dict):
+        requests = pending.get("requests")
+        kept["pending"] = {**pending, "kind": _PERSON_ONLY}
+        if isinstance(requests, list):
+            kept["pending"]["requests"] = [{**r, "kind": _PERSON_ONLY} if isinstance(r, dict) else r
+                                           for r in requests]
+    kept["approved"] = []
+    return kept
+
+
 def warning(ids: list[str]) -> str:
     """상태를 남긴 실행들을 알리는 경고 한 줄. 결과의 `CODE` 필드에 전체 목록이 함께 간다."""
     named = ", ".join(ids[:_NAMED_MAX])
     more = f" and {len(ids) - _NAMED_MAX} more" if len(ids) > _NAMED_MAX else ""
-    return (f"{CODE}: kept this store's protocol state ({', '.join(STATE_KEYS[:3])}, ...) "
-            f"on {len(ids)} run record(s): {named}{more}. A run's waiting, approval and answer "
-            f"change only through the run protocol of the store that records them.")
+    return (f"{CODE}: kept this store's protocol state ({STATE_KEYS[0]}, "
+            f"{', '.join(ANSWER_KEYS[:2])}, ...) on {len(ids)} run record(s): {named}{more}. "
+            f"A run this store never saw keeps its question but no approval or answer. A run's "
+            f"waiting, approval and answer change only through the run protocol of the store "
+            f"that records them.")

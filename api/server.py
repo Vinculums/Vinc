@@ -2528,7 +2528,10 @@ class VincApp:
             cfg=self.cfg, store=r))
 
     def write_sync_apply_delta(self, body):
-        """delta 번들 적용(쓰기 → 잡 큐 직렬화, R4)."""
+        """delta 번들 적용(쓰기 → 잡 큐 직렬화, R4).
+
+        허브가 기기의 push 를 받는 길이다. 처음 보는 실행 기록의 상태를 믿을지는 본문의 어떤
+        필드로도 정하지 않는다: `trusted_run_state` 를 넘기지 않아 늘 믿지 않는다."""
         owner = _req(body, "owner")
         bundle = body.get("bundle") or {}
         res = self.jobs.run_sync("sync:apply", lambda: sync.apply_delta(

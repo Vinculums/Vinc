@@ -2018,7 +2018,8 @@ class _Handler(BaseHTTPRequestHandler):
                 out = self.app.bridge.request("POST", "/sync/docs-apply", body={
                     "owner": owner, "payload": body.get("payload") or {}})
             else:
-                # 실행 기록의 대기·승인·답은 허브가 저장한 값을 남긴다(묶음을 거절하지 않는다).
+                # 실행 기록의 대기·승인·답은 허브가 저장한 값을 남기고, 처음 보는 실행은 질문만
+                # 받는다(묶음을 거절하지 않는다). 기기를 믿게 하는 값은 이 요청에서 읽지 않는다.
                 from . import run_state
                 out = run_state.push(self.app.bridge, owner, body.get("bundle") or {})
         except Exception as e:

@@ -3,7 +3,8 @@
 
 실행 기록은 Episode `episode:run-*` 이다. 대기·승인·답(`store/run_state.py` `STATE_KEYS`)은 그 실행을
 가진 스토어의 실행 프로토콜만 쓴다. 허브의 push 적용과 기기의 pull 적용이 같은 함수를 지나므로 규칙도
-하나다: 들어온 상태 키는 버리고, 받는 스토어에 저장된 상태 키를 남긴다. 처음 보는 실행은 상태 없이 둔다.
+하나다: 들어온 상태 키는 버리고, 받는 스토어에 저장된 상태 키를 남긴다. 처음 보는 실행은 보낸 쪽을
+믿는가(`trusted_run_state`, 기기의 pull 만 True)에 따라 그대로 받거나 질문만 받고 답은 버린다.
 
 `apply_delta` 는 모든 기기의 동기화 경로다. 그래서 실행 기록이 없는 묶음에는 이 규칙이 아무것도 바꾸지
 않아야 한다: 규칙을 끈 적용과 저장된 행이 한 글자도 다르지 않고, 스토어 조회 수도 같다.
@@ -123,13 +124,62 @@ def test_a_bundle_that_carries_the_same_state_reports_nothing(open_store):
     assert _stored_props(store)["host"] == "device"
 
 
-def test_a_run_the_store_never_saw_is_stored_without_state(open_store):
+def test_a_run_the_store_never_saw_keeps_its_questions_and_drops_its_answers(open_store):
     store = open_store("receiver")
-    incoming = {"run_id": "sync-rule", "role": "concept:agent-x", **FORGED_STATE}
+    pending = {"actions": ["merge"], "kind": "ask_first", "question": "Merge?",
+               "requests": [{"action": "merge", "reason": "r", "kind": "ask_first"}]}
+    incoming = {"run_id": "sync-rule", "role": "concept:agent-x", **FORGED_STATE,
+                "state": "waiting", "pending": pending, "last_asked_at": "2026-11-13T00:00:00Z",
+                "answered_actions": ["merge"], "answer_text": "ok"}
     out = sync.apply_delta(owner=OWNER, bundle=_bundle(_run_node(incoming)), store=store)
     assert out["applied"] == 1 and out[run_state.CODE] == [RUN], out
     after = _stored_props(store)
-    assert _state(after) == {} and after["role"] == "concept:agent-x"
+    # 질문은 남는다: 상태 값, 몇 번째 질문인가, 물은 때, 대기의 질문과 행동.
+    assert after["state"] == "waiting" and after["asks"] == 9
+    assert after["last_asked_at"] == "2026-11-13T00:00:00Z"
+    assert after["pending"]["question"] == "Merge?" and after["pending"]["actions"] == ["merge"]
+    # 답은 없다: 승인은 빈 목록이고 답 키는 하나도 없다. 대기는 사람만 답한다.
+    assert after["approved"] == []
+    assert not set(after) & (set(run_state.ANSWER_KEYS) - {"approved"}), after
+    assert after["pending"]["kind"] == "person_only"
+    assert [r["kind"] for r in after["pending"]["requests"]] == ["person_only"]
+    assert after["role"] == "concept:agent-x"
+
+
+@pytest.mark.parametrize("pending", ["Merge?", ["merge"], None], ids=["string", "list", "null"])
+def test_a_pending_that_is_not_a_question_is_dropped_from_a_run_the_store_never_saw(
+        open_store, pending):
+    store = open_store("receiver")
+    incoming = {"run_id": "sync-rule", "role": "concept:agent-x", "state": "waiting",
+                "pending": pending}
+    sync.apply_delta(owner=OWNER, bundle=_bundle(_run_node(incoming)), store=store)
+    after = _stored_props(store)
+    assert "pending" not in after and after["state"] == "waiting" and after["approved"] == []
+
+
+def test_a_trusted_sender_hands_over_a_run_the_store_never_saw_as_it_is(open_store):
+    store = open_store("receiver")
+    incoming = {"run_id": "sync-rule", "role": "concept:agent-x", **OWN_STATE}
+    out = sync.apply_delta(owner=OWNER, bundle=_bundle(_run_node(incoming)), store=store,
+                           trusted_run_state=True)
+    assert out["applied"] == 1 and run_state.CODE not in out, out
+    assert _stored_props(store) == incoming
+
+
+def test_trust_does_not_reach_a_run_the_store_already_holds(open_store):
+    store = open_store("receiver")
+    own = _own_run(store)
+    out = sync.apply_delta(owner=OWNER, bundle=_bundle(_run_node(
+        {"run_id": "sync-rule", "role": "concept:agent-x", **FORGED_STATE},
+        ua="2099-01-01T00:00:00.000Z")), store=store, trusted_run_state=True)
+    assert out[run_state.CODE] == [RUN], out
+    assert _state(_stored_props(store)) == _state(own)
+
+
+def test_the_question_and_answer_keys_split_the_protocol_state_without_overlap():
+    assert set(run_state.QUESTION_KEYS) | set(run_state.ANSWER_KEYS) == set(run_state.STATE_KEYS)
+    assert not set(run_state.QUESTION_KEYS) & set(run_state.ANSWER_KEYS)
+    assert len(run_state.STATE_KEYS) == len(set(run_state.STATE_KEYS))
 
 
 def test_a_run_without_props_in_the_bundle_leaves_the_stored_props_alone(open_store):

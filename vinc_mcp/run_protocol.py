@@ -61,6 +61,8 @@ REASON_MAX = 2000
 PERSON_PATH = "the Approvals screen of the Vinc app (https://vincs.io/app/), signed in"
 #: 실행 기록의 프로토콜 상태 필드. 도구 쓰기(`vinc_ingest`)로는 바꾸지 못하고 동기화로는 건너가지 않는다.
 STATE_KEYS = _run_rule.STATE_KEYS
+#: 그중 답 쪽(`_answer` 가 채우는 키). 믿지 않는 동기화는 처음 보는 실행에서 이것을 버린다.
+ANSWER_KEYS = _run_rule.ANSWER_KEYS
 TASK_MAX = 4000
 SUBJECT_MAX = 500
 #: 실행한 호스트 이름(예 "codex-cli 0.162.1"). 실행 기록의 host 가 된다.
