@@ -1,11 +1,12 @@
-import { api, cfg, isCommunitySpace, remote } from "./api";
+import { api, cfg, isCommunitySpace, remote, spaceKey } from "./api";
 import type { GraphEdge, GraphNode, NavGroup, NavTreeRes } from "./api";
 import { COPY } from "./copy";
 import { docTitle } from "./doc-title";
 import { icon } from "./icons";
 import { applyDefaults, bridgeKey, foldsOwnRows, ownKey } from "./lnb-tree";
 import type { ThemeMode } from "./theme";
-import { tintPlan, topicRingIcon } from "./view-tint";
+import { topicRingIcon } from "./view-tint";
+import { addTopics, topicTint, TOPIC_TINTS_EVENT } from "./topic-tint-table";
 import { esc } from "./components";
 import { loaderRows } from "./vinc-loaders.js";
 
@@ -62,49 +63,31 @@ let picked = new Set<string>();
 let expanded = new Set<string>();
 const seenDefault = new Set<string>();
 
-/** 주제 색(보석색, 늘 켜짐) — 지도와 같은 `tintPlan` 으로, 주제 경로의 조상까지 넣어 만든다(`planTints`). paint 마다 한 번 만들어 줄마다 조회한다.
- *
- *  ⚠ **색을 배정하는 배열은 이 트리의 것이다**(지도의 것을 받아 오지 않는다).
- *  `tintPlan` 은 넘긴 주제 집합을 정렬해 순위로 색을 주므로, 지도의 배열을 따라가면
- *  (1) 스코프를 옮길 때마다 왼쪽 트리의 색이 함께 흔들리고 (2) 지금 지도에 없는
- *  주제의 줄은 색을 잃으며 (3) 지도가 없는 표면에서는 색이 통째로 사라진다. 트리는
- *  자기 주제 전량을 늘 갖고 있어 집합이 안정적이라 이쪽을 정본으로 뒀다.
- *  대가는 **같은 주제가 지도와 다른 색으로 보일 수 있다**는 것이다(색은 영역을 말한다:
- *  [[decision:topics-wear-their-area-jewel-2026-10-28]]). */
-let tints: Map<string, string> | null = null;
+/** 주제 색(보석색, 늘 켜짐)은 앱 전체의 표 하나(`topic-tint-table`)에서 읽는다. 트리는 자기가 그리는 주제를 그 표에 더하고,
+ *  표가 바뀌면(다른 표면이 주제를 더함) 다시 그린다. 그래서 같은 주제가 트리 · 홈 목록 · 그래프에서 같은 색이다. */
 const themeMode = (): ThemeMode =>
   document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+/** 트리가 표에 주제를 더하거나 알림을 내는 동안에는 그 알림으로 다시 paint 하지 않는다(트리는 곧 새 표로 그린다). */
+let painting = false;
+/** 지금 가진 트리 · 로스터를 읽어 온 스페이스. 다른 스페이스에서 읽은 주제는 지금 스페이스의 표에 넣지 않는다. */
+let dataSpace = "";
+/** 트리의 주제를 표에 더한다(지금 스페이스에서 읽은 것만). */
+function feedTints(domains: string[]): void {
+  if (dataSpace !== spaceKey()) return;
+  painting = true;
+  try { addTopics(dataSpace, domains); } finally { painting = false; }
+}
 /** 줄의 style 에 얹을 조각. ⚠ 깊이 잉크는 CSS 가 **부분문자열**로 읽는다
  *  (app.css 의 `[style*="--ink:0"]`) — `--ink:N` 리터럴을 깨지 않도록 **뒤에** 붙인다. */
-/** 주제 하나의 색. 그래프에서는 나침반이 쓰는 색 그대로(gsrc.colour), 문서에서는 같은 규칙으로 만든 표에서
- *  가장 가까운 조상의 색을 쓴다. 뿌리(최상위 주제가 하나뿐일 때 그 주제)는 어느 영역도 아니라 색이 없다(중립 잉크).
- *  그래프에서는 뿌리인지도 나침반의 `colour` 가 가린다(빈 문자열). 문서에서는 `planTints` 가 정한 `tintRoot` 다. */
-const tintOf = (domain: string): string => {
-  const d = domain.trim();
-  if (!d) return "";
-  if (gsrc?.colour) return gsrc.colour(d);
-  if (d === tintRoot) return "";
-  const segs = d.split("/");
-  for (let i = segs.length; i >= 1; i--) { const c = tints?.get(segs.slice(0, i).join("/")); if (c) return c; }
-  return "";
-};
 const tintStyle = (domain: string): string => {
-  const c = tintOf(domain);
+  const c = topicTint(domain, themeMode());
   return c ? `;--tint:${c}` : "";
 };
-/** 사이드바가 지금 칠하는 주제 색(그 주제 줄의 고리 · 점과 같은 값, 뿌리와 표에 없는 주제는 ""). 홈 문서 목록이
- *  자기 집합으로 표를 따로 지으면 순위가 갈려 한 주제가 목록과 사이드바에서 두 색이 된다 — 그래서 이 표를 읽는다.
- *  표가 바뀌면(트리를 다시 그림 · 테마 전환) `vinc:lnb-tints` 를 낸다. */
-export function lnbTopicTint(domain: string): string { return tintOf(domain); }
-/** 문서 트리의 색 표: 나침반과 같게 주제 경로의 모든 조상까지 넣어 tintPlan 을 돌린다(넣는 집합이 같아야 같은 색이 나온다). */
-function planTints(domains: string[]): Map<string, string> {
-  const all = new Set<string>(), tops = new Set<string>();
-  for (const d of domains) { const segs = (d || "").split("/").filter(Boolean); if (segs.length) tops.add(segs[0]); segs.forEach((_, i) => all.add(segs.slice(0, i + 1).join("/"))); }
-  tintRoot = tops.size === 1 ? [...tops][0] : "";   // 최상위가 둘 이상이면 뿌리는 이름 없는 가상 뿌리라 색을 뺄 주제가 없다
-  return tintPlan([...all], themeMode()).topics;
-}
-/** 문서 트리의 뿌리 주제(`planTints` 가 정한다). `tints` 와 같은 때 같은 집합에서 만들어진다. */
-let tintRoot = "";
+/** 사이드바가 지금 칠하는 주제 색(그 주제 줄의 고리 · 점과 같은 값, 뿌리와 표에 없는 주제는 ""). 홈 문서 목록이 읽는다.
+ *  표가 바뀌거나 트리를 다시 그리면(테마 전환 포함) `vinc:lnb-tints` 가 난다. */
+export function lnbTopicTint(domain: string): string { return topicTint(domain, themeMode()); }
+// 다른 표면이 표에 주제를 더하면 트리를 다시 칠한다(그 주제들 때문에 순위가 옮겨 간 색이 있을 수 있다).
+window.addEventListener(TOPIC_TINTS_EVENT, () => { if (!painting) paint(); });
 
 /** 새 역할의 기본 주제와 기존 호환 주제. 목록 발견은 이 주제로 제한하지 않는다. */
 export const AGENT_TOPICS = ["agent", "vinc/agent"] as const;
@@ -399,7 +382,7 @@ let refreshSeq = 0;
  *  있던 트리를 그대로 둔다: 사람이 누르지 않은 갱신이 트리를 깜빡이거나 "못 불러왔다"로
  *  바꾸면 그것이 곧 고장으로 읽힌다. */
 export async function refreshLnb(opts: { quiet?: boolean } = {}): Promise<void> {
-  const seq = ++refreshSeq;
+  const seq = ++refreshSeq, space = spaceKey();
   const stale = () => seq !== refreshSeq;
   if (!opts.quiet) {
     loading = true; failed = false;
@@ -411,6 +394,7 @@ export async function refreshLnb(opts: { quiet?: boolean } = {}): Promise<void> 
       const roster = await api.roleRoster(cfg.owner);
       if (stale()) return;
       tree = { executed: true, domains: [], unfiled: [] };
+      dataSpace = space;
       agentRoster = buildAgentRoster(roster);
       failed = false;
       window.dispatchEvent(new CustomEvent("vinc:agents-changed"));
@@ -428,6 +412,9 @@ export async function refreshLnb(opts: { quiet?: boolean } = {}): Promise<void> 
       const next = await api.navTree(cfg.owner);
       if (stale()) return;
       tree = next;
+      dataSpace = space;
+      // 문서의 주제는 받는 대로 앱 전체의 색 표에 더한다(그래프에 있어 문서 트리를 안 그려도 그래프가 같은 표로 칠한다)
+      feedTints((tree?.domains || []).map((g) => g.domain));
       failed = !tree?.executed;
       if (tree?.domains?.length) lastDomains = tree.domains.map((g) => g.domain);
       agentRoster = null;
@@ -686,7 +673,6 @@ export type LnbGraphSource = {
   groups: () => { domain: string; rows: LnbGraphRow[] }[];
   open: (id: string) => void;
   mark: (kind: string, domain: string) => string;
-  colour?: (domain: string) => string;
   dock?: HTMLElement;
 };
 let gsrc: LnbGraphSource | null = null;
@@ -748,7 +734,7 @@ function paint() {
   if (isAgent() && agentRoster) {
     if (agentMapLoading) { paintHead(); body.innerHTML = loaderRows(COPY.ui.lnb.loading, { count: 3, compact: true }); return; }
     const doms = lastDomains.length ? lastDomains : agentMap ? [...agentMap.agents, ...agentMap.procedures, ...agentMap.policies].map((x) => x.domain) : agentRoster.map((r) => r.domain);
-    tints = planTints(doms);   // 주제 색은 문서 트리와 같은 표로(같은 주제 = 같은 색)
+    feedTints(doms);   // 역할 주제도 앱 전체의 색 표에 든다
     colourAgents?.();
     paintHead(agentMap ? agentMap.agents.length : agentRoster.length, COPY.ui.lnb.agents);
     body.innerHTML = paintAgentTree();
@@ -756,10 +742,9 @@ function paint() {
   }
   const groups = tree?.domains || [];
   const unfiled = tree?.unfiled || [];
-  // 색은 paint 마다 한 번 만든다(줄마다 만들면 같은 답을 n 번 낸다). 토글이 꺼져
-  // 있으면 null 이고, 그때 줄에는 --tint 가 아예 안 실려 CSS 의 잉크가 그대로 쓰인다.
-  tints = planTints(groups.map((g) => g.domain));
-  window.dispatchEvent(new Event("vinc:lnb-tints"));
+  // 트리를 다시 그렸다는 알림(홈 목록이 점을 다시 칠한다). 테마 전환도 이 길로 온다.
+  painting = true;
+  try { window.dispatchEvent(new Event(TOPIC_TINTS_EVENT)); } finally { painting = false; }
   paintHead((tree?.domains || []).length);
   let html = "";
   // ③ 고른 것이 있으면 **말한다**. 켜진 배경만으로는 몇 개인지도, 어떻게 푸는지도
@@ -798,7 +783,6 @@ function paintGraphTree(body: HTMLElement): void {
   const gs = src.groups();
   const groups: NavGroup[] = gs.map((g) => ({ domain: g.domain,
     docs: g.rows.map((r) => ({ doc_id: r.id, title: r.title, node_id: r.id, depth: r.depth, kind: r.kind })) } as unknown as NavGroup));
-  tints = planTints(groups.map((g) => g.domain));
   paintHead(groups.length, COPY.ui.lnb.documents);
   const tops = nestGroups(groups);
   applyDefaults(tops, gExpanded, gSeen);   // 문서 트리와 같은 기본: 맨 위 주제 아래 영역(가장 상위 도메인)까지만 보인다

@@ -1388,6 +1388,9 @@ export function spaceName(): string {
   return cfg.team || "personal";
 }
 
+/** 지금 그래프의 정체(계정과 스페이스). 나침반의 저장 키와 주제 색 표가 이 값으로 스페이스를 가른다. */
+export const spaceKey = (): string => `${cfg.owner}|${cfg.team || ""}`;
+
 // 주소창의 `?space=` 가 **우리가 쓴 것인지** 가리는 표식. 스페이스 전환·모드 전환·
 // 로그아웃은 상태를 바꾼 뒤 새로고침하는데, 주소창에는 옛 `?space=` 가 남아 있다.
 // 그걸 밖에서 온 링크로 읽으면 방금 바꾼 스페이스를 도로 되돌린다. 탭마다 따로인

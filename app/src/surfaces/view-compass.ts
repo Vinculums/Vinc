@@ -8,7 +8,8 @@
  *  SVG 하나라 GPU 가 없어도 된다. 한 번에 그리는 것은 펼친 층의 이웃뿐이다. */
 import { COPY } from "../copy";
 import { esc } from "../components";
-import { tintPlan, topicRing } from "../view-tint";
+import { topicRing } from "../view-tint";
+import { addTopics, rootTopicOf, topicTint, topicTintPlan, TOPIC_TINTS_EVENT } from "../topic-tint-table";
 import { topicJewels } from "../theme";
 import * as LS from "./view-compass-state";
 import type { LensState, CompassState, Box, Point } from "./view-compass-state";
@@ -158,9 +159,8 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   const ATTACH = new Set(['ABOUT', 'ATTACHES_TO', 'MENTIONS']);
   // 뿌리: 이 그래프의 최상위 주제가 하나뿐이면 그 주제가 뿌리다('vinc' 만 쓰는 그래프는 예전과 같다). 둘 이상이거나 하나도 없으면
   // 이름 없는 가상 뿌리('')가 모든 최상위 주제를 품는다. 주제 없는 노드는 뿌리에 직접 서고, 이름을 지어 붙이지 않는다.
-  // RD 는 뿌리가 경로에서 차지하는 칸 수다(영역 = 뿌리 다음 칸을 자를 때 쓴다). ⚠ 코드 어디에도 최상위 이름을 박지 말 것.
-  const tops = new Set(W0.nodes.map((n) => String(n.d || '').split('/')[0]).filter(Boolean));
-  const ROOT = tops.size === 1 ? [...tops][0] : '', RD = ROOT ? 1 : 0;
+  // RD 는 뿌리가 경로에서 차지하는 칸 수다(영역 = 뿌리 다음 칸을 자를 때 쓴다). 규칙은 색 표와 같은 `rootTopicOf` 하나다.
+  const ROOT = rootTopicOf(W0.nodes.map((n) => n.d)), RD = ROOT ? 1 : 0;
   const nodes: DNode[] = W0.nodes.map((n) => (n.d ? n : { ...n, d: ROOT })), byId = new Map(nodes.map((n) => [n.id, n]));
   const edges = W0.edges.map(([a, b, t]) => ({ a: byId.get(a), b: byId.get(b), t })).filter((e) => e.a && e.b) as Edge[];
   const adj = new Map<string, Edge[]>(nodes.map((n) => [n.id, []])); for (const e of edges) { adj.get(e.a.id)!.push(e); adj.get(e.b.id)!.push(e); }
@@ -182,12 +182,10 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   for (const n of nodes) { const ch = chainOf(n.d);
     ch.forEach((p, i) => { const t = tget(p); t.count++; if ((n.ts || '') > (t.ts || '')) t.ts = n.ts; if (i < ch.length - 1) t.sub.add(ch[i + 1]); });
     tget(ch[ch.length - 1]).direct.push(n); }
-  // ── 주제 색: 그래프 보기와 같은 규칙(tintPlan)이다. 영역마다 보석색 하나, 그 안의 주제는 색상각을 조금씩 돌린다 ─────────────
-  // 주제 색 표는 테마의 함수다(tintPlan). 테마마다 한 번 짓고, 그리기는 지금 상태의 테마로 읽는다
-  const TINTS = new Map<string, ReturnType<typeof tintPlan>>();
-  const tints = () => { let t = TINTS.get(st.theme); if (!t) { t = tintPlan([...topics.keys()], st.theme); TINTS.set(st.theme, t); } return t; };
-  const topicColour = (p: string | undefined) => { if (!p || p === ROOT) return 'hsl(var(--muted-foreground))';   // 뿌리는 어느 영역도 아니라 중립색
-    const s = p.split('/'); for (let i = s.length; i >= 1; i--) { const c = tints().topics.get(s.slice(0, i).join('/')); if (c) return c; } return 'hsl(var(--muted-foreground))'; };
+  // ── 주제 색: 앱 전체의 표 하나(topic-tint-table)에서 읽는다. 이 그래프의 주제를 그 표에 더하고, 그리기는 지금 상태의 테마로 읽는다 ──
+  // 표가 바뀌면(문서 트리가 주제를 더함) 아래의 TOPIC_TINTS_EVENT 구독이 다시 그린다. 문서 트리와 같은 주제는 같은 색이다
+  addTopics(ctx.store ?? '', topics.keys());
+  const topicColour = (p: string | undefined) => topicTint(p, st.theme) || 'hsl(var(--muted-foreground))';   // 뿌리와 표에 없는 주제는 중립색
   const topicOf = (n: LNode) => (n.k === 'topic' ? n.path : n.d);
   // 섞기: 주제 색을 카드색 쪽으로 바랜다. 라이트는 카드가 거의 흰색이고 보석 토큰의 대비 바닥도 3:1(다크 5.5:1)이라
   // 같은 비율로 바래면 빛살 끝이 배경 대비 1.3 안팎으로 사라진다. 그래서 라이트에서는 바래는 몫을 45%만 쓴다(30% → 69%, 55% → 80%)
@@ -1318,7 +1316,9 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
     const kinds = ["concept", "doc", "decision", "record", "episode", "bridge"].map((k) => `<button class="cmp-lk${s.koff.includes(k) ? " off" : ""}" type="button" data-cmp-k="${k}" aria-pressed="${!s.koff.includes(k)}">${mark(k)}<span>${KIND[k]}</span><em>${c[k] || 0}</em></button>`).join("");
     return `<div class="cmp-kinds">${kinds}</div>`; };
   const legendHTML2 = () => {
-    const areas = [...tints().areas].map(([a, col]) => `<span class="cmp-sw"><i style="background:${col}"></i>${a.split("/").pop()}</span>`).join("");
+    // 범례는 이 그래프에 있는 영역만 든다(색 표에는 문서에만 있는 영역도 있다)
+    const plan = topicTintPlan(st.theme), mine = new Set([...topics.keys()].map((t) => plan.areaOf.get(t)));
+    const areas = [...plan.areas].filter(([a]) => mine.has(a)).map(([a, col]) => `<span class="cmp-sw"><i style="background:${col}"></i>${a.split("/").pop()}</span>`).join("");
     const row: (art: string, name: string, extra?: string) => string = (art, name) => `<div class="cmp-lr"><svg viewBox="0 0 44 16" aria-hidden="true">${art}</svg><span>${name}</span></div>`;
     return `${row(mark("topic").replace('class="cmp-mk"', 'x="14" width="16"'), esc(KIND.topic), "")}
       ${row(`<path d="M2 6.6L42 7.6L42 8.4L2 9.4Z" fill="currentColor"/>`, esc(C.legendRows.meaning), "")}
@@ -1438,5 +1438,6 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   const snapshot = () => LS.snapshotOf(st);
   // 밝기 테마가 바뀌면 그 테마의 주제 색 표로 다시 그린다(글자 폭도 다시 잰다)
   const retheme = () => restyle(LS.fontsSettled(LS.themeChanged(st, themeMode())), true);
-  return { destroy, side, tools, filter: setQuery, open: goTo, tree: () => treeGroups(st), mark: treeMark, colour: (p: string) => (!p || p === ROOT ? '' : topicColour(p)), centre, snapshot, retheme };   // 뿌리는 색을 입지 않는다(LNB 줄은 잉크 그대로)
+  onWin(TOPIC_TINTS_EVENT, () => restyle(st, true));   // 다른 표면이 색 표에 주제를 더하면 같은 상태로 다시 칠한다
+  return { destroy, side, tools, filter: setQuery, open: goTo, tree: () => treeGroups(st), mark: treeMark, colour: (p: string) => topicTint(p, st.theme), centre, snapshot, retheme };   // 뿌리와 표에 없는 주제는 ""(잉크 그대로)
 }
