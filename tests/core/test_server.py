@@ -2139,16 +2139,22 @@ class SyncFlagTests(unittest.TestCase):
         return hold
 
     def _wait(self, app, accepted):
+        # 받은 잡은 테스트가 끝나기 전에 반드시 기다린다. 남긴 잡은 `sync.run` 을 모듈에서
+        # 찾으므로, 늦게 돌면 다음 테스트가 건 패치를 부른다.
         job = app.jobs.get(accepted[1]["job_id"])
         self.assertTrue(job._done.wait(5), "sync 잡이 끝나지 않았다")
         return job
 
     def test_overlapping_presses_make_exactly_one_job(self):
         from unittest.mock import patch
-        app = _app(store=_EmptyStore())
+        store = _EmptyStore()
+        app = _app(store=store)
         calls, entered, release = [], threading.Event(), threading.Event()
 
-        def fake_run(*a, **k):
+        def fake_run(st, *a, **k):
+            # 이 앱의 잡만 센다. 다른 앱이 남긴 잡이 패치를 불러도 숫자가 흔들리지 않는다.
+            if st is not store:
+                return {"executed": True}
             calls.append(1)
             entered.set()
             release.wait(5)
@@ -2195,7 +2201,10 @@ class SyncFlagTests(unittest.TestCase):
             first = app.submit_sync({"token": "k"})
             self.assertEqual(first[0], 202)
             self.assertEqual(self._wait(app, first).status, "error")
-            self.assertEqual(app.submit_sync({"token": "k"})[0], 202)
+            second = app.submit_sync({"token": "k"})
+            self.assertEqual(second[0], 202)
+            # 패치가 걸린 동안 끝까지 기다린다(위 `_wait` 설명).
+            self.assertEqual(self._wait(app, second).status, "error")
 
     def test_a_job_refused_before_it_runs_still_clears_the_flag(self):
         # 실행 전 가드(on_before_run)가 거절하면 잡 함수는 불리지 않는다.
@@ -2208,4 +2217,6 @@ class SyncFlagTests(unittest.TestCase):
                       jobs=JobQueue(on_before_run=refuse))
         first = app.submit_sync({"token": "k"})
         self.assertEqual(self._wait(app, first).status, "error")
-        self.assertEqual(app.submit_sync({"token": "k"})[0], 202)
+        second = app.submit_sync({"token": "k"})
+        self.assertEqual(second[0], 202)
+        self.assertEqual(self._wait(app, second).status, "error")
