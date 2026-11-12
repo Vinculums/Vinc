@@ -7,7 +7,7 @@
  *  길·찾기·기간·종류·고정·읽는 법은 LNB 의 칸(side)에 선다(기간 밖은 흐리게, 끈 종류는 뺀다). 고정은 이 기기에만 저장한다.
  *  SVG 하나라 GPU 가 없어도 된다. 한 번에 그리는 것은 펼친 층의 이웃뿐이다. */
 import { COPY } from "../copy";
-import { esc as escHtml } from "../components";
+import { esc } from "../components";
 import { tintPlan, topicRing } from "../view-tint";
 import { topicJewels } from "../theme";
 import * as LS from "./view-compass-state";
@@ -104,14 +104,14 @@ export function compassDataFrom(nodes: readonly GraphNodeIn[], edges: readonly G
 /** 고정 핀(압정). 45° 기운 머리 · 목 · 깃 · 바늘. 채움은 currentColor 라 놓인 자리의 색을 따른다. */
 const PIN_PATHS = `<g transform="rotate(45 12 12)"><rect x="7.2" y="1.6" width="9.6" height="4" rx="2" fill="currentColor"/><path d="M9.3 5.4h5.4v3.9l3.4 3.9H5.9l3.4-3.9z" fill="currentColor"/><path d="M12 13.2V21.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></g>`;
 const pinIcon = (s: number = 14) => `<svg class="pin-ic" viewBox="0 0 24 24" width="${s}" height="${s}" aria-hidden="true">${PIN_PATHS}</svg>`;
-const CMP_HTML = () => `<div class="cmp-stage"><svg class="g" id="cmp-g" role="group" aria-label="${escHtml(COPY.ui.compass.lens)}"></svg></div><div id="cmp-tip"></div>`;
+const CMP_HTML = () => `<div class="cmp-stage"><svg class="g" id="cmp-g" role="group" aria-label="${esc(COPY.ui.compass.lens)}"></svg></div><div id="cmp-tip"></div>`;
 /** LNB 맨 위의 검색 칸(topbar.ts, setSearchFilter) · 시간 · 범례의 종류가 한 거르개다: 함께 건 결과가 나침반과 LNB 트리(lnb.ts
  *  setLnbGraphSource)에 같이 나온다. LNB 에는 고정 판만 서고, 시간과 범례는 머리의 "그래프" 글자 오른쪽 버튼이 여는 창이다. */
 const SIDE_HTML = `<div class="cmp-sec" id="cmp-sum"></div><div class="cmp-sec" id="cmp-dock" hidden></div>`;
 /** 머리의 전체 보기 단추: 둘레에 주제 허브 넷을 단 가운데 고리. 머리가 좁으면 이름을 접고 이 표만 남는다(app.css) */
 const WHOLE_ICON = `<svg class="cmp-tic" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="2.4" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="2.8" cy="3" r="1.5" fill="currentColor"/><circle cx="13.2" cy="3" r="1.5" fill="currentColor"/><circle cx="2.8" cy="13" r="1.5" fill="currentColor"/><circle cx="13.2" cy="13" r="1.5" fill="currentColor"/><path d="M4.1 4.2L6.2 6.3M11.9 4.2L9.8 6.3M4.1 11.8L6.2 9.7M11.9 11.8L9.8 9.7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>`;
-const TOOLS_HTML = () => `<button class="cmp-tbtn" type="button" data-pop="time" aria-haspopup="dialog" aria-expanded="false">${escHtml(COPY.ui.compass.time)}</button><button class="cmp-tbtn" type="button" data-pop="legend" aria-haspopup="dialog" aria-expanded="false">${escHtml(COPY.ui.compass.legend)}</button>`
-  + `<button class="cmp-tbtn cmp-twhole" type="button" data-whole aria-pressed="false" aria-label="${escHtml(COPY.ui.compass.whole)}" title="${escHtml(COPY.ui.compass.wholeTip)}">${WHOLE_ICON}<span class="cmp-tname">${escHtml(COPY.ui.compass.whole)}</span></button>`;
+const TOOLS_HTML = () => `<button class="cmp-tbtn" type="button" data-pop="time" aria-haspopup="dialog" aria-expanded="false">${esc(COPY.ui.compass.time)}</button><button class="cmp-tbtn" type="button" data-pop="legend" aria-haspopup="dialog" aria-expanded="false">${esc(COPY.ui.compass.legend)}</button>`
+  + `<button class="cmp-tbtn cmp-twhole" type="button" data-whole aria-pressed="false" aria-label="${esc(COPY.ui.compass.whole)}" title="${esc(COPY.ui.compass.wholeTip)}">${WHOLE_ICON}<span class="cmp-tname">${esc(COPY.ui.compass.whole)}</span></button>`;
 
 const C0 = () => COPY.ui.compass;
 /** 층의 실제 크기(measureCross)를 데이터별로 한 번만 잰다. 다시 그릴 때(새로고침 · 쓰고 난 뒤 마운트) 같은 주제 나무면 그대로 쓴다. */
@@ -197,7 +197,6 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
     return ['concept', 'doc', 'bridge'].includes(n.k) ? s.replace(/^([^:]{3,40}):.*$/, '$1') : s; };
   const short = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
   const GW = (k: 'fan' | 'bridge') => LS.glyphWidth(st.fontKey, k);   // 이름표 글자 하나의 폭: 배치는 이 한 곳에서 읽는다
-  const esc = (s: unknown) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   const KIND: Record<string, string> = COPY.ui.compass.kinds;
 
   // ── 모양·빛살·표(문법) ─────────────────────────────────────────────────────────────────────

@@ -14,8 +14,6 @@ import { tableCaret, tableMarkdown, type InsertOpts } from "./cm-insert";
 /** 결정론 미니 마크다운 렌더러(폴백 미리보기·Reader 공용). **표시 전용** — 소스는
  *  변형하지 않는다. 전부 이스케이프 후 최소 문법만. */
 export function renderMarkdown(src: string): string {
-  const esc = (s: string) => s.replace(/[&<>"]/g, (c) =>
-    c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;");
   const inline = (s: string) => s
     .replace(/`([^`]+)`/g, (_m, c) => `<code>${c}</code>`)
     // `[[문서]]` 가 먼저다 — 아래 링크 규칙이 `[..](..)` 를 먹기 전에 잡아야 대괄호

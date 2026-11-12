@@ -201,7 +201,8 @@ _RECEDE_LITERAL = re.compile(r"\*\s*0?\.(15|12|35|40?)\b")
 #: 물러남 맥락에서만 잡는다 — 기하 계수(`r * 0.12` 튜브 반경, 곡률 `* 0.12`)는
 #: 같은 숫자여도 물러남이 아니다. 불투명도를 만지는 줄에만 규율을 건다.
 _RECEDE_CTX = re.compile(r"\b(opacity|fade)\b|userData\.base", re.I)
-_VIEW_FILES = ("view3d.ts", "view2d.ts", "view-planar.ts")
+#: 그래프를 그리는 지금의 표면들. 이름을 바꾸거나 지우면 아래에서 실패로 드러난다(조용히 건너뛰지 않는다).
+_VIEW_FILES = ("view.ts", "view-compass.ts", "view-compass-whole.ts")
 
 
 def run_recede(app_src: Path) -> list[Finding]:
@@ -214,6 +215,8 @@ def run_recede(app_src: Path) -> list[Finding]:
     for name in _VIEW_FILES:
         p = app_src / "surfaces" / name
         if not p.exists():
+            # 없는 파일을 건너뛰면 이 검사가 아무것도 읽지 않고 통과한다: 이름 목록을 고치라고 막는다
+            out.append(Finding(f"{name}: _VIEW_FILES 가 가리키는 파일이 없다 — 지금 그리는 표면으로 목록을 고쳐라"))
             continue
         for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
             if "recede" in line.lower():

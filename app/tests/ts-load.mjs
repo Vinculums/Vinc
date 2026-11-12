@@ -36,7 +36,7 @@ const mk = (path) => new Proxy(function () {}, {
 export const COPY = mk('COPY');`;
 
 export const COMPONENTS_STUB = `
-export const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));`;
+export const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));`;
 
 /** copy.ts 에서 `key: { … }` 블록 하나를 원문으로 꺼낸다. `nth` 0 이 영어(앞), 1 이 한국어다. */
 export async function copyBlock(key, nth = 0) {

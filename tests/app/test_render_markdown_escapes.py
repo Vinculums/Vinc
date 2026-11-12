@@ -29,11 +29,21 @@ def body() -> str:
 
 
 class RenderMarkdownEscapes(unittest.TestCase):
-    def test_함수가_자기_이스케이프를_갖는다(self):
+    def test_함수가_정본_이스케이프를_쓴다(self):
+        """`esc` 는 `components.ts` 의 정본 하나다. 함수 안에 같은 이름을 다시 두면 그 사본이
+        정본을 가리므로, 지역 정의가 없고 파일이 정본을 들여오는지를 본다."""
         b = body()
-        self.assertRegex(b, r"const esc\s*=", "지역 esc 가 사라졌다 — 게이트의 전제가 깨진다")
+        self.assertNotRegex(b, r"const esc\s*=", "지역 esc 사본이 정본을 가린다")
+        with open(SRC, encoding="utf-8") as fh:
+            src = fh.read()
+        self.assertRegex(src, r'import \{[^}]*\besc\b[^}]*\} from "\./components";',
+                         "정본 esc 를 들여오지 않는다 — 게이트의 전제가 깨진다")
+        with open(os.path.join(ROOT, "app", "src", "components.ts"), encoding="utf-8") as fh:
+            comp = fh.read()
+        i = comp.index("export const esc")
+        canon = comp[i:comp.index("\n\n", i)]
         for ch in ("&amp;", "&lt;", "&gt;", "&quot;"):
-            self.assertIn(ch, b, f"{ch} 치환이 없다")
+            self.assertIn(ch, canon, f"정본 esc 에 {ch} 치환이 없다")
 
     def test_속성_자리는_전부_이스케이프를_지난다(self):
         """속성은 본문보다 나쁘다 — 따옴표 하나로 빠져나가면 핸들러를 붙일 수 있다."""
