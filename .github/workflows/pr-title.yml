@@ -1,0 +1,50 @@
+# PR 제목 계약 게이트 — 타입 접두 · 영어 · 대시 금지. 규칙의 정본은 CLAUDE.md §7 이고
+# 실행체는 `scripts/gate_pr_title.py` 다. 스쿼시 머지에서 PR 제목이 곧 main 의 커밋 제목이다.
+#
+# 왜 별도 워크플로인가: 제목은 push 없이 바뀐다. 게이트가 `ci.yml` 안에 있으면 제목을 고쳐도
+# 다시 돌지 않아 빨간 제목이 다음 push 까지 빨갛게 남고, `ci.yml` 에 `edited` 를 더하면 제목
+# 한 글자에 CI 전체(20분 남짓)가 다시 돈다. 여기서는 제목 편집이 이 잡 하나만 다시 돌린다.
+# 대가는 PR 이벤트마다 청구 1분 남짓이고, 그것을 알고 골랐다.
+#
+# ⚠ 워크플로 수준의 `paths` 필터를 달지 않는다. 필수 체크가 될 잡이라, 경로로 걸러져
+#   워크플로가 아예 안 뜨면 체크가 영영 대기로 남는다. 제목은 경로와 무관하게 늘 검사한다.
+name: pr-title
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+  # 룰셋이 이 체크를 요구하면 머지 큐에서도 결과가 있어야 한다. 큐의 트리에는 PR 제목이
+  # 없으므로 잡은 아래 `if` 로 건너뛰고, 룰셋은 skipped 를 통과로 센다.
+  merge_group:
+
+# 같은 PR 의 연이은 편집·push 는 앞 실행을 취소한다. 제목은 최신 값만 참이면 된다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    name: pr-title
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      # 스크립트 한 파일만 받는다. 표준 라이브러리만 쓰므로 setup-python 도 필요 없다.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/gate_pr_title.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      # ⚠ 제목을 `run:` 안에 `${{ }}` 로 펼치지 않는다 — 제목은 사람이 쓰는 문자열이라
+      # 백틱이나 `$(…)` 가 들어오면 그대로 셸에서 돈다. `env:` 로 넘기면 셸이 값으로만 본다.
+      - name: PR title contract (type prefix, English, no dash)
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          PY=$(command -v python3 || command -v python)
+          "$PY" -X utf8 scripts/gate_pr_title.py

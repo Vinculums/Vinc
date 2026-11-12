@@ -280,8 +280,12 @@ ci(release): pin the interpreter the container can run
 - subject 는 소문자로 시작하고 마침표로 끝내지 않는다(약어는 예외 — `MCP`·`CI`).
   제목은 100자 안. 자세한 것은 본문에 쓴다.
 
-강제는 `scripts/gate_pr_title.py` 이고 `ci.yml` 의 `changes` 잡에서 PR 마다 돈다
-(잡을 새로 세우지 않은 이유는 청구가 1분부터 시작해서다). 손으로 보려면:
+강제는 `scripts/gate_pr_title.py` 이고 전용 워크플로 `.github/workflows/pr-title.yml` 의
+`pr-title` 잡이 PR 이 열리고·고쳐지고·다시 열리고·push 될 때마다 돌린다. 따로 세운 이유는
+**제목 편집이 CI 전체를 다시 돌리지 않고 게이트만 다시 돌리게** 하려는 것이다(`ci.yml` 에
+`edited` 를 더하면 제목 한 글자에 20분 CI 가 다시 돈다). 대가는 PR 이벤트마다 청구 1분
+남짓이고, 그것을 받아들였다. 머지 큐에서는 잡이 건너뛰어 통과로 센다. `ci.yml` 의 `changes`
+잡에 남은 같은 스텝은 `pr-title` 이 필수 체크가 된 뒤 지운다. 손으로 보려면:
 
 ```bash
 python -X utf8 scripts/gate_pr_title.py "fix(share): unchecked documents stay behind"
