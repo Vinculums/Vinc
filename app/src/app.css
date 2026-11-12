@@ -2585,7 +2585,8 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
    이름(아이콘이 남는다) → 검색 칸의 고정 폭(내용 폭으로) → 검색의 이름(아이콘 · 단축키).
    손잡이는 하나도 사라지지 않는다. 경로는 그 사이 내내 앞자리 안에서 말줄임으로 준다. */
 @container topbar (max-width: 760px) {
-  .tb-seg-name, #tb-graph-tools .cmp-tname { display: none; }
+  .tb-seg-name { display: none; }
+  #tb-graph-tools .cmp-tname { display: none; }
   .tb-seg { padding: 0 var(--space-2, .5rem); }
   .tb-find-open { width: auto; }
 }

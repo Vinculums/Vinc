@@ -1045,7 +1045,7 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   const TW = new Map<string, number>();
   const tw = (t: string, k: LS.GlyphKind) => { const key = `${st.fontKey}|${k}|${t}`; let w = TW.get(key); if (w == null) { w = LS.textWidth(st.fontKey, t, k); if (TW.size > 20000) TW.clear(); TW.set(key, w); } return w; };
   /** 글자 폭의 서명: 이 값이 바뀔 때만 글꼴 때문에 다시 그린다(restyle) */
-  function metric(s: LensState) { return `${LS.glyphWidth(s.fontKey, 'fan')}|${LS.glyphWidth(s.fontKey, 'bridge')}|${(['leaf', 'hub', 'head', 'name', 'count', 'hover'] as const).map((k) => LS.textWidth(s.fontKey, 'Ag가1', k)).join(',')}`; }
+  function metric(s: LensState) { return `${LS.glyphWidth(s.fontKey, 'fan')}|${LS.glyphWidth(s.fontKey, 'bridge')}|${(['leaf', 'hub', 'head', 'name', 'count', 'hover'] as const).map((k) => LS.textWidth(s.fontKey, 'Ag\uac001', k)).join(',')}`; }
   const wNewest = (a: LNode, b: LNode) => (when(b) || '').localeCompare(when(a) || '') || titleOf(a).localeCompare(titleOf(b));
   /** 배치 입력: 층 보기와 같은 갈래(isMean = 9시 부채, 다리 = 3시, 나머지 = 6시 목록). 범례에서 끈 종류는 뺀다 */
   function wholeModel(s: LensState): WTopicIn {
