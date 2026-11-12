@@ -1,5 +1,5 @@
-// Topic marks are decorative: every colour the topic plan can give holds the non-text floor (the plan's own
-// `floorKit.floor`, at least 3:1, WCAG 1.4.11) on every ground a tinted mark sits on in the sidebar (shell base
+// Topic marks are decorative: every colour the topic plan can give holds the non-text floor (3:1, WCAG 1.4.11)
+// on every ground a tinted mark sits on in the sidebar (shell base
 // and drawer card, at rest, under the hover fill and under the selected fill), in both themes and both skins.
 // Marks without a topic colour (the muted ink fallback, the selected row's --ring) keep the text floor 4.5:1. The grounds are built here from the token CSS and the
 // sidebar rules in app.css, not from view-tint's own constants, so a token, a fill or a plan change that
@@ -32,6 +32,8 @@ function hsl(h, s, l) {
 }
 const over = (fg, a, bg) => fg.map((v, i) => Math.round((v * a + bg[i] * (1 - a)) * 255) / 255);
 const hex = (n) => `#${n.toString(16).padStart(6, "0")}`;
+/** The floors, written here and not read from the plan: tinted marks 3:1, marks without a topic colour 4.5:1. */
+const FLOOR = 3, TEXT_FLOOR = 4.5;
 
 const APP = read("app.css");
 const fill = (sel) => {
@@ -74,28 +76,41 @@ const planColours = (mode) => [...new Set(planSlots(mode).map((s) => s.after))];
 const jewelMarks = (mode) => [0, 1, 2, 3, 4].map((i) => planColour(i, 0, mode));
 
 test("the tinted-mark floor is the non-text floor, not lower", () => {
-  assert.ok(floorKit.floor >= 3, `floorKit.floor ${floorKit.floor}`);
+  assert.equal(floorKit.floor, FLOOR);
 });
 for (const skin of ["desktop", "web"]) for (const mode of ["light", "dark"]) {
   test(`${skin} ${mode}: every plan colour holds the tinted-mark floor on every sidebar ground`, () => {
     const G = grounds(skin, mode), colours = [...planColours(mode), ...jewelMarks(mode)];
     assert.ok(colours.length > 100, "the plan should give well over a hundred colours for 24 areas");
     const bad = [];
-    for (const c of colours) for (const [g, bg] of Object.entries(G)) { const r = ratio(rgb(c), bg); if (r < floorKit.floor) bad.push(`${c} on ${g} ${r.toFixed(2)}`); }
+    for (const c of colours) for (const [g, bg] of Object.entries(G)) { const r = ratio(rgb(c), bg); if (r < FLOOR) bad.push(`${c} on ${g} ${r.toFixed(2)}`); }
     assert.deepEqual(bad, []);
   });
   test(`${skin} ${mode}: marks without a topic colour keep 4.5:1 on every sidebar ground`, () => {
     const G = grounds(skin, mode), bad = [];
     const css = read(`tokens.${skin}.css`), blk = css.match(mode === "dark" ? /\[data-theme="dark"\]\s*\{([\s\S]*?)\n\}/ : /:root(?:\[data-skin="web"\])?\s*\{([\s\S]*?)\n\}/)[1];
     const tok = (n) => { const m = blk.match(new RegExp(`--${n}:\\s*([\\d.]+)\\s+([\\d.]+)%\\s+([\\d.]+)%`)); return hsl(+m[1], +m[2], +m[3]); };
-    for (const [g, bg] of Object.entries(G)) { const r = ratio(tok("muted-foreground"), bg); if (r < 4.5) bad.push(`muted on ${g} ${r.toFixed(2)}`); }
+    for (const [g, bg] of Object.entries(G)) { const r = ratio(tok("muted-foreground"), bg); if (r < TEXT_FLOOR) bad.push(`muted on ${g} ${r.toFixed(2)}`); }
     // the selected document and graph-node rows draw their mark in --ring on the selected fill
-    for (const [g, bg] of Object.entries(G)) if (/under ring/.test(g)) { const r = ratio(tok("ring"), bg); if (r < 4.5) bad.push(`ring on ${g} ${r.toFixed(2)}`); }
+    for (const [g, bg] of Object.entries(G)) if (/under ring/.test(g)) { const r = ratio(tok("ring"), bg); if (r < TEXT_FLOOR) bad.push(`ring on ${g} ${r.toFixed(2)}`); }
     assert.deepEqual(bad, []);
   });
 }
 test("a plan colour that already holds the floor is drawn unchanged", () => {
-  for (const mode of ["light", "dark"]) for (const s of planSlots(mode)) if (floorKit.passes(s.before, mode)) assert.equal(s.after, s.before, `${mode} ${s.slot}`);
+  // "holds" is judged here, on the grounds this test builds from the token CSS and app.css, at 3:1 exactly
+  const changed = [];
+  for (const skin of ["desktop", "web"]) for (const mode of ["light", "dark"]) {
+    const G = Object.values(grounds(skin, mode));
+    for (const s of planSlots(mode)) if (Math.min(...G.map((g) => ratio(rgb(s.before), g))) >= FLOOR && s.after !== s.before) changed.push(`${skin} ${mode} ${s.slot} ${s.before} -> ${s.after}`);
+  }
+  assert.deepEqual([...new Set(changed)], []);
+});
+test("light area 15 turn 3 holds 3:1 on every drawn ground and is drawn as planned", () => {
+  // the plan's ruby +40 turned +8: 3.007:1 on the light selected row as the CSS draws it
+  const s = planSlots("light").find((x) => x.slot === "r15/t3");
+  assert.equal(s.before, "#9b6c1b");
+  assert.ok(Math.min(...Object.values(grounds("desktop", "light")).map((g) => ratio(rgb(s.before), g))) >= FLOOR);
+  assert.equal(s.after, "#9b6c1b");
 });
 
 // Pair distances are measured limits of the jewel set under the floor, not a rule the colours meet: a colour that

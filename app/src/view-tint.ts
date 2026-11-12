@@ -91,12 +91,13 @@ export function tintPlan(domains: (string | undefined)[], mode: ThemeMode): {
  *  앉는 면 전부다: 판(`--surface-0`: 라이트 muted · 다크 background)과 좁은 창 서랍(`--surface-2` = card),
  *  각각 맨 면 · 쉼(글자색 .07, `.lnb-doc:hover`) · 고름(링 .16, `.lnb-group.on`). app.css 의 그 알파나
  *  면 매핑이 바뀌면 여기도 같이 바뀌어야 한다 — `tests/topic-tint-contrast.test.mjs` 가 CSS 에서 면을
- *  따로 지어 이 값과 맞대므로 어긋나면 빌드가 멈춘다. 그래프 바탕과 범례 카드는 이 면들보다 바깥쪽
- *  (라이트는 더 밝고 다크는 더 어둡다)이라 여기를 넘으면 거기도 넘는다. */
+ *  따로 지어 이 값과 맞대므로 어긋나면 빌드가 멈춘다. 그래프 바탕과 범례 카드는 이 면 가운데 하나와 같거나(범례 카드 =
+ *  서랍 카드, 다크 그래프 바탕 = 다크 판) 그보다 바깥쪽(라이트 그래프 바탕은 판보다 밝다)이라 여기를 넘으면 거기도 넘는다. */
 const MARK_FLOOR = 3;
-/** 토큰 CSS 는 채널을 반올림한 HSL 로 적고 화면은 8비트로 내린다 — 둘이 대비를 0.03 안팎 옮겨서
- *  바닥을 그만큼 위에 잡는다(이 여유를 없애면 CSS 로 잰 값이 바닥 아래로 내려가는 색이 생긴다). */
-const MARK_MARGIN = 0.06;
+/** 면은 화면이 그리는 값으로 짓는다(`drawnRgb`, 줄 칠은 실수로 섞어 8비트로). 화면은 줄 칠을 GPU 에서 섞어 그 값과
+ *  8비트 한 칸쯤 어긋나는데, 묶는 면(라이트 고른 줄: 지은 #d0d0d8, 그려진 #cfd0d9)에서 지은 값이 대비를 0.0046 낙관한다.
+ *  다크의 묶는 면(서랍 고른 줄: 지은 #2d2e39, 그려진 #2c2d38)에서는 지은 값이 비관적이다(0). 그 낙관만큼을 위에 둔다. */
+const GROUND_EPSILON = 0.005;
 const ROW_HOVER = 0.07, ROW_PICK = 0.16;
 
 type Rgb = [number, number, number];
@@ -104,16 +105,33 @@ const rgbOf = (n: number): Rgb => [(n >> 16) / 255, ((n >> 8) & 255) / 255, (n &
 const lin = (v: number) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
 const gam = (v: number) => (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055);
 const lum = (c: Rgb) => 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
-/** 알파 칠을 바닥에 얹는다(브라우저처럼 감마 공간에서). */
-const over = (fg: Rgb, a: number, bg: Rgb): Rgb => [0, 1, 2].map((i) => fg[i] * a + bg[i] * (1 - a)) as Rgb;
+/** 알파 칠을 바닥에 얹는다(감마 공간에서 섞고 8비트로 내린다). */
+const over = (fg: Rgb, a: number, bg: Rgb): Rgb => [0, 1, 2].map((i) => Math.round((fg[i] * a + bg[i] * (1 - a)) * 255) / 255) as Rgb;
+/** 파이썬 `round` 와 같은 반올림(정확히 반이면 짝수로). 토큰 생성기가 HSL 채널을 이렇게 내린다. */
+const roundHalfEven = (x: number) => { const f = Math.floor(x), d = x - f; return d > 0.5 + 1e-9 ? f + 1 : d < 0.5 - 1e-9 ? f : f % 2 === 0 ? f : f + 1; };
+/** 토큰 HEX 를 화면이 그리는 값으로: 토큰 CSS 는 채널을 정수로 반올림한 HSL 로 적고(build_tokens.py `hsl_channels`),
+ *  브라우저는 그 HSL 을 8비트로 내린다. HEX 를 그대로 쓰면 대비가 0.01~0.03 어긋난다. */
+function drawnRgb(n: number): Rgb {
+  const [r, g, b] = rgbOf(n), mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+  let h = 0, s = 0;
+  if (d > 0) {
+    s = l <= 0.5 ? d / (mx + mn) : d / (2 - mx - mn);
+    const rc = (mx - r) / d, gc = (mx - g) / d, bc = (mx - b) / d;
+    h = ((((r === mx ? bc - gc : g === mx ? 2 + rc - bc : 4 + gc - rc) / 6) % 1) + 1) % 1;
+  }
+  const H = roundHalfEven(h * 360) % 360, S = roundHalfEven(s * 100) / 100, L = roundHalfEven(l * 100) / 100;
+  const k = (m: number) => (m + H / 30) % 12, a = S * Math.min(L, 1 - L);
+  const f = (m: number) => Math.round((L - a * Math.max(-1, Math.min(k(m) - 3, 9 - k(m), 1))) * 255) / 255;
+  return [f(0), f(8), f(4)];
+}
 
 const groundCache = new Map<ThemeMode, number[]>();
-/** 모드의 바닥 휘도들. */
+/** 모드의 바닥 휘도들(화면이 그리는 값). */
 function groundLums(mode: ThemeMode): number[] {
   let g = groundCache.get(mode);
   if (g) return g;
-  const p = palette[mode], base = rgbOf(mode === "light" ? p.surface : p.background), drawer = rgbOf(p.card);
-  g = [base, drawer].flatMap((s) => [s, over(rgbOf(p.text), ROW_HOVER, s), over(rgbOf(p.ring), ROW_PICK, s)]).map(lum);
+  const p = palette[mode], base = drawnRgb(mode === "light" ? p.surface : p.background), drawer = drawnRgb(p.card);
+  g = [base, drawer].flatMap((s) => [s, over(drawnRgb(p.text), ROW_HOVER, s), over(drawnRgb(p.ring), ROW_PICK, s)]).map(lum);
   groundCache.set(mode, g);
   return g;
 }
@@ -153,27 +171,33 @@ function atL(L: number, C: number, h: number): Rgb {
 const toHex = (c: Rgb) => `#${c.map((v) => Math.round(v * 255).toString(16).padStart(2, "0")).join("")}`;
 const markCache = new Map<string, string>();
 
-/** 보석 하나를 마크 바닥까지 옮긴다: 이미 넘으면 그대로, 아니면 **색상각을 지킨 채 명도만**(OKLab L)
- *  라이트는 내리고 다크는 올린다. 묽게(채도를 빼서 바탕 쪽으로) 하지 않는다 — 회색이 아니라 같은
- *  보석의 짙은 · 밝은 톤이 되어야 그래프 · 범례와 한 색으로 읽힌다. 채도는 sRGB 범위가 허락하는
- *  만큼만 깎는다(짙은 노랑은 범위가 좁아 갈색 쪽으로 간다). */
+/** 보석 하나를 마크 바닥까지 옮긴다: 이미 넘으면 그대로, 아니면 **같은 색상각**(OKLab hue)에서 바닥을 넘는
+ *  가장 가까운 값(OKLab 거리)으로. 채도 몫마다(0.5~1.1, 0.02 칸) 명도를 바닥까지 이분 탐색하고(30 번, 명도 오차
+ *  1e-9 아래) 원래 색에 가장 가까운 것을 고른다. 라이트는 어두운 쪽, 다크는 밝은 쪽으로 간다. 재는 값은 화면에
+ *  놓이는 8비트 색이라 결과는 8비트 한 칸 안에서 가장 가깝다(독립 탐색과의 차는 `dev/topic-tint-contrast.mjs`). */
 function markColour(hexColour: string, mode: ThemeMode): string {
   const key = `${mode}${hexColour}`, hit = markCache.get(key);
   if (hit) return hit;
-  const need = MARK_FLOOR + MARK_MARGIN, src = rgbOf(parseInt(hexColour.slice(1), 16));
+  const need = MARK_FLOOR + GROUND_EPSILON, src = rgbOf(parseInt(hexColour.slice(1), 16));
   let out = hexColour.toLowerCase();
   if (worstRatio(src, mode) < need) {
-    const [L, a, b] = toLab(src), C = Math.hypot(a, b), h = Math.atan2(b, a), end = mode === "light" ? 0 : 1;
+    const lab0 = toLab(src), [L, a, b] = lab0, C = Math.hypot(a, b), h = Math.atan2(b, a), end = mode === "light" ? 0 : 1;
     const q = (c: Rgb): Rgb => c.map((v) => Math.round(v * 255) / 255) as Rgb;   // 화면에 놓이는 8비트 값으로 잰다
-    let lo = 0, hi = 1;
-    for (let i = 0; i < 30; i++) { const t = (lo + hi) / 2; if (worstRatio(q(atL(L + (end - L) * t, C, h)), mode) >= need) hi = t; else lo = t; }
-    out = toHex(atL(L + (end - L) * hi, C, h));
+    let best = Infinity;
+    for (let cs = 0.5; cs <= 1.1 + 1e-9; cs += 0.02) {
+      let lo = 0, hi = 1;
+      for (let i = 0; i < 30; i++) { const t = (lo + hi) / 2; if (worstRatio(q(atL(L + (end - L) * t, C * cs, h)), mode) >= need) hi = t; else lo = t; }
+      const c = q(atL(L + (end - L) * hi, C * cs, h));
+      if (worstRatio(c, mode) < need) continue;
+      const l1 = toLab(c), d = Math.hypot(l1[0] - lab0[0], l1[1] - lab0[1], l1[2] - lab0[2]);
+      if (d < best) { best = d; out = toHex(c); }
+    }
   }
   markCache.set(key, out);
   return out;
 }
 
-const passes = (hexColour: string, mode: ThemeMode) => worstRatio(rgbOf(parseInt(hexColour.slice(1), 16)), mode) >= MARK_FLOOR + MARK_MARGIN;
+const passes = (hexColour: string, mode: ThemeMode) => worstRatio(rgbOf(parseInt(hexColour.slice(1), 16)), mode) >= MARK_FLOOR + GROUND_EPSILON;
 /** 재고 테스트하는 도구(`dev/topic-tint-contrast.mjs`, `tests/topic-tint-contrast.test.mjs`)만 쓴다. 화면 코드는 부르지 않는다. */
 export const floorKit = { rawPlanColour, passes, floor: MARK_FLOOR, turns: TOPIC_TURN.length };
 
