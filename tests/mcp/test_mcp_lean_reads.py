@@ -7,6 +7,7 @@ vinc_node 의 빈 칸과 노드에 이미 있는 시간 값, neighbors 의 빈 �
 """
 import copy
 import json
+import re
 
 import pytest
 
@@ -75,7 +76,7 @@ def _search_result(rows=2, temporal=None):
                       "doc_title": "Doc A", "cite_id": "concept:doc.doc.a"} for i in range(rows)],
             "node_hits": [hit], "arms": "fts+vector", "total_count": rows, "has_more": False,
             "next_cursor": None, "validity_filtered": 3, "validity_best_dropped": [2, 1],
-            "validity_best_dropped_distance": 0.4, "validity_note": "hid nodes",
+            "validity_best_dropped_distance": 0.4, "validity_note": tools.HIDDEN_NOTE,
             "node_window": {"pagination": "first_page_only", "returned": 1,
                             "lexical_candidates_capped": False},
             "total_count_capped": False, "page": {"offset": 0, "limit": rows, "fingerprint": "abc"},
@@ -97,7 +98,7 @@ def _choose_brief():
                       "hit_tokens": 1, "title_tokens": 1, "temporal": t, **_flat(t)})
     return {"kind": "brief", "executed": True, "query": "what is c", "status": "choose",
             "candidates": cands, "grounds": [], "arms": "fts+vector",
-            "validity_filtered": 1, "validity_note": "hid nodes", "validity_best_dropped": [1, 0],
+            "validity_filtered": 1, "validity_note": tools.HIDDEN_NOTE, "validity_best_dropped": [1, 0],
             "resolution": {"rule": "v3", "p": 0.1},
             "candidate_material": {"candidate": "concept:c0", "one_liner": "C0 is c.",
                                    "body_src": "one_liner", "excerpts": []}}
@@ -125,7 +126,7 @@ def _resolved_brief():
             "links": {"degree": 2, "out": 2, "in": 0, "executed": True, "offset": 0,
                       "truncated": False, "items": [_link_item(0), _link_item(1)]},
             "grounds": ["concept:n", "d"], "cite_grounds": ["concept:n", "d"],
-            "validity_note": "hid nodes", "validity_best_dropped": [0, 0]}
+            "validity_note": tools.HIDDEN_NOTE, "validity_best_dropped": [0, 0]}
 
 
 def _neighbors(node="concept:v", domain="vinc/x"):
@@ -441,6 +442,7 @@ def _rich_results():
 
 #: "default" 로 빠지는 칸이 가질 수 있는 값. 다른 값이 빠지면 그것은 기본값이 아니다.
 DEFAULTS = {"interval_invalid": (False,), "claim_status": ("unscoped", "unassessed"),
+            "validity": ("unknown",),
             "claim_assessment_scope": ("stored_fields", "retrieved_candidates"),
             "total_count_capped": (False,), "executed": (True,), "offset": (0,),
             "truncated": (False,), "evidence": (False,)}
@@ -452,20 +454,115 @@ def _at(obj, where):
     return obj
 
 
+#: `tools.OMITTED_KINDS` 의 손 사본. 빼는 칸을 늘리거나 줄이거나 종류를 바꾸면 이 사본도 사람이 고친다.
+DROP_TABLE = (
+    ("vinc_search", "", "node_rescore", "diagnostic"),
+    ("vinc_search", "", "validity_best_dropped", "diagnostic"),
+    ("vinc_search", "", "validity_best_dropped_distance", "diagnostic"),
+    ("vinc_search", "", "node_window", "diagnostic"),
+    ("vinc_search", "", "node_semantic", "diagnostic"),
+    ("vinc_search", "", "validity_note", "fixed notes"),
+    ("vinc_search", "", "page", "page"),
+    ("vinc_search", "", "total_count_capped", "default"),
+    ("vinc_search", "/rows[]", "rrf_score", "diagnostic"),
+    ("vinc_search", "/rows[]", "arms", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "matched_in", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "hit_tokens", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "title_tokens", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "token_total", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "arms", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "distance", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "prod_rank", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "colbert", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "sem_lead", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "sem_decisive", "diagnostic"),
+    ("vinc_brief", "", "resolution", "diagnostic"),
+    ("vinc_brief", "", "validity_best_dropped", "diagnostic"),
+    ("vinc_brief", "", "validity_note", "fixed notes"),
+    ("vinc_brief", "", "cite_grounds", "duplicate"),
+    ("vinc_brief", "/candidates[]", "matched_in", "diagnostic"),
+    ("vinc_brief", "/candidates[]", "hit_tokens", "diagnostic"),
+    ("vinc_brief", "/candidates[]", "title_tokens", "diagnostic"),
+    ("vinc_brief", "*links", "executed", "default"),
+    ("vinc_brief", "*links", "offset", "default"),
+    ("vinc_brief", "*links", "truncated", "default"),
+    ("vinc_brief", "*links/items[]", "evidence", "default"),
+    ("vinc_node", "/node", "sync_seq", "internal"),
+    ("vinc_node", "/node", "owner_id", "internal"),
+    ("vinc_node", "/node", "tenant_id", "internal"),
+    ("vinc_node", "/node/temporal", "created_at", "repeated"),
+    ("vinc_node", "/node/temporal", "updated_at", "repeated"),
+    ("vinc_node", "/node/temporal", "valid_from", "repeated"),
+    ("vinc_node", "/node/temporal", "valid_until", "repeated"),
+    ("vinc_node", "/node/temporal", "content_time", "repeated"),
+    ("vinc_node", "/node/temporal", "superseded_by", "repeated"),
+    ("vinc_node", "/node/temporal", "interval_known", "repeated"),
+    ("vinc_node", "/node/temporal", "validity", "unset"),
+    ("vinc_node", "/node/temporal", "claim_status", "unset"),
+    ("vinc_node", "/node/temporal", "claim_assessment_scope", "unset"),
+    ("vinc_node", "/node/temporal", "interval_invalid", "unset"),
+    ("vinc_neighbors", "/neighbors[]", "rev", "internal"),
+    ("vinc_neighbors", "/neighbors[]", "domain", "repeated"),
+    ("*", "*/temporal", "created_at", "created_at"),
+    ("*", "*/temporal", "claim_assessment_scope", "default"),
+    ("*", "*/temporal", "interval_invalid", "default"),
+    ("*", "*/temporal", "claim_status", "default"),
+    ("*", "*/temporal", "validity", "derived"),
+    ("*", "*/temporal", "interval_known", "derived"),
+    ("vinc_brief", "*", "created_at", "created_at"),
+    ("vinc_brief", "*", "updated_at", "duplicate"),
+    ("vinc_brief", "*", "content_time", "duplicate"),
+    ("vinc_brief", "*", "valid_from", "duplicate"),
+    ("vinc_brief", "*", "valid_until", "duplicate"),
+    ("vinc_brief", "*", "superseded_by", "duplicate"),
+    ("vinc_brief", "*", "validity", "derived"),
+)
+
+
+def _kind(tool, where, key):
+    import fnmatch
+    for t, pat, k, kind in tools.OMITTED_KINDS:
+        if k == key and t in (tool, "*") and fnmatch.fnmatchcase(where, pat):
+            return kind
+    raise KeyError((tool, where, key))
+
+
+def test_the_drop_table_is_the_one_a_person_wrote():
+    assert tools.OMITTED_KINDS == DROP_TABLE
+    assert len(set((t, w, k) for t, w, k, _ in DROP_TABLE)) == len(DROP_TABLE)
+
+
+def test_every_lean_drop_key_is_in_the_drop_table():
+    import fnmatch
+    for tool, drops in tools.LEAN_DROP.items():
+        for where, keys in drops.items():
+            at = "" if where == "" else f"/{where}[]"
+            for k in keys:
+                assert any(t == tool and kk == k and fnmatch.fnmatchcase(at, w)
+                           for t, w, kk, _ in DROP_TABLE), (tool, at, k)
+
+
 def test_every_key_left_out_falls_under_a_kind_the_note_names():
-    note = tools.OMITTED_NOTE.lower()
-    assert all(kind in note for kind in set(tools.OMITTED_KINDS.values()) | {"empty"})
-    assert all(k in tools.OMITTED_KINDS for drops in tools.LEAN_DROP.values()
-               for keys in drops.values() for k in keys)
+    notes = {"vinc_search": tools.OMITTED_NOTE.lower(), "vinc_brief": tools.OMITTED_NOTE.lower(),
+             "vinc_node": tools.OMITTED_NODE_NOTE.lower()}
+    for tool, _w, _k, kind in DROP_TABLE:
+        for t in ((tool,) if tool != "*" else ("vinc_search", "vinc_brief")):
+            if t in notes:
+                assert kind in notes[t], (t, kind)
     seen = set()
-    for name, raw in _rich_results():
+    for name, raw in list(_rich_results()) + [("vinc_neighbors", _neighbors(node="domain:vinc/x"))]:
         lean = tools.lean_result(name, {}, raw)
         for where, key, value in _dropped(raw, lean):
-            if name == "vinc_node" and where in ("/node", "/node/temporal"):
-                continue                # vinc_node 는 짧은 자기 문장을 싣는다(아래 테스트)
-            kind = "empty" if value is None or value in ("", [], {}) else tools.OMITTED_KINDS[key]
-            assert kind in note, (name, where, key, value)
-            if kind == "default":
+            at = re.sub(r"\[\d+\]", "[]", where)
+            if value is None or value in ("", [], {}):
+                kind = "empty"
+                assert name == "vinc_neighbors" or (
+                    ("unset" if name == "vinc_node" else "empty") in notes[name]), (name, at, key)
+            else:
+                kind = _kind(name, at, key)
+                if name in notes:
+                    assert kind in notes[name], (name, at, key, value)
+            if kind in ("default", "unset") and value not in (None, "", [], {}):
                 assert any(value is d or (value == d and type(value) is type(d))
                            for d in DEFAULTS[key]), (where, key, value)
             if kind == "duplicate":
@@ -474,7 +571,9 @@ def test_every_key_left_out_falls_under_a_kind_the_note_names():
                 assert value in ((here.get("temporal") or {}).get(key), lean.get("grounds")), \
                     (where, key, value)
             seen.add(kind)
-    assert seen == set(tools.OMITTED_KINDS.values()) | {"empty"}, seen
+    kinds = seen
+    assert kinds >= {kind for _t, _w, _k, kind in DROP_TABLE}, \
+        {kind for _t, _w, _k, kind in DROP_TABLE} - kinds
 
 
 def test_node_drops_only_unset_internal_and_repeated_keys():
@@ -483,11 +582,11 @@ def test_node_drops_only_unset_internal_and_repeated_keys():
     for where, key, value in _dropped(raw, lean):
         unset = value is None or value in ("", [], {}) or (key, value) in (
             ("claim_status", "unassessed"), ("interval_invalid", False),
-            ("claim_assessment_scope", "stored_fields"))
+            ("claim_assessment_scope", "stored_fields"), ("validity", "unknown"))
         internal = key in tools._NODE_DROP
         repeated = (where == "/node/temporal" and (raw["node"].get(key) == value
                     or key == "created_at" and raw["node"].get("created") == value
-                    or key in ("validity", "interval_known")))
+                    or key == "interval_known"))
         assert unset or internal or repeated, (where, key, value)
 
 

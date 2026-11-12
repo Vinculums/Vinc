@@ -145,10 +145,12 @@ _RAW_PROP = {"type": "boolean", "description": (
         "unknown when interval_invalid is true or neither valid_from nor valid_until is set, and "
         "current otherwise, so historical and future stay. interval_known is left out and is true "
         "when valid_from or valid_until is set and interval_invalid is not. created_at and "
-        "claim_assessment_scope are left out. Search also leaves out validity_note, page, total_count_capped when false, and "
+        "claim_assessment_scope are left out. Search and brief leave out validity_note only when it "
+        "is the fixed sentence about nodes hidden as no longer current; any other validity_note "
+        "stays. Search also leaves out page, total_count_capped when false, and "
         "node_window with node_semantic when the node arm completed with nothing stale, missing or "
         "capped. Brief leaves out its flat copies of temporal fields (node.validity stays), "
-        "validity_best_dropped, validity_note, cite_grounds when it equals grounds, null, empty and "
+        "validity_best_dropped, cite_grounds when it equals grounds, null, empty and "
         "false fields of relation items, and links.executed, offset and truncated at their defaults. "
         "vinc_node leaves out sync_seq, owner_id, tenant_id, empty fields and temporal values the "
         "node already holds; props are always whole. Neighbors leave out empty fields, rev, and on a "
@@ -2693,20 +2695,20 @@ SHRINKERS = {"vinc_search": _shrink_search_result,
 # 저장된 `props` 안은 어느 도구에서도 건드리지 않는다(쓰기가 props 를 통째로 갈아 끼운다).
 #: 줄이는 도구. vinc_node·vinc_neighbors 는 칸 규칙만 타고 LEAN_DROP 에 행이 없다.
 LEAN_TOOLS = ("vinc_search", "vinc_brief", "vinc_node", "vinc_neighbors")
-#: 기본으로 빼는 순위 진단과 고정 문장. 키 ""는 결과 최상위, 나머지는 그 목록의 행이다.
+#: 기본으로 빼는 순위 진단. 키 ""는 결과 최상위, 나머지는 그 목록의 행이다.
 #: ⚠ rows 의 `score` 와 node_hits 의 `rrf_score` 는 빼지 않는다: OpenClaw 플러그인이 MCP 로 읽고
 #: minScore 로 거른다(integrations/openclaw/src/memory.ts). `page` 는 축소기와 다음 커서가 읽으므로
 #: 축소가 끝난 뒤(`lean_finish`)에 뺀다. `node_window`·`node_semantic` 은 노드 팔이 건강할 때만 뺀다.
+#: `validity_note` 는 아무 일도 없었다는 고정 문장(`HIDDEN_NOTE`)일 때만 뺀다.
 LEAN_DROP: dict[str, dict[str, tuple[str, ...]]] = {
     "vinc_search": {
-        "": ("node_rescore", "validity_best_dropped", "validity_best_dropped_distance",
-             "validity_note"),
+        "": ("node_rescore", "validity_best_dropped", "validity_best_dropped_distance"),
         "rows": ("rrf_score", "arms"),
         "node_hits": ("matched_in", "hit_tokens", "title_tokens", "token_total", "arms",
                       "distance", "prod_rank", "colbert", "sem_lead", "sem_decisive"),
     },
     "vinc_brief": {
-        "": ("resolution", "validity_best_dropped", "validity_note"),
+        "": ("resolution", "validity_best_dropped"),
         "candidates": ("matched_in", "hit_tokens", "title_tokens"),
     },
 }
@@ -2716,23 +2718,79 @@ LEAN_DROP: dict[str, dict[str, tuple[str, ...]]] = {
 OMITTED_NOTE = ("Omitted: empty, default, derived, duplicate, diagnostic keys, fixed notes, page, "
                 "created_at. No validity: unknown if interval_invalid or no valid_from/until, else "
                 "current. raw:true has all.")
-#: 값이 비지 않았는데 search·brief 가 빼는 칸 → `OMITTED_NOTE` 가 부르는 종류. 빈 값(None·""·[]·{})은
-#: 이 표 없이 "empty" 다. LEAN_DROP 의 칸은 아래에서 채운다.
-OMITTED_KINDS: dict[str, str] = {
-    "validity_note": "fixed notes", "page": "page", "created_at": "created_at",
-    "node_window": "diagnostic", "node_semantic": "diagnostic",
-    "validity": "derived", "interval_known": "derived",
-    "interval_invalid": "default", "claim_status": "default", "claim_assessment_scope": "default",
-    "total_count_capped": "default", "executed": "default", "offset": "default",
-    "truncated": "default", "evidence": "default",
-    "cite_grounds": "duplicate", "updated_at": "duplicate", "content_time": "duplicate",
-    "valid_from": "duplicate", "valid_until": "duplicate", "superseded_by": "duplicate",
-}
 #: vinc_node 의 한 줄. 노드는 알려진 validity 를 늘 남기므로 규칙을 싣지 않는다. 빠지는 것은 빈·기본값
 #: 칸, 내부 좌표(sync_seq·owner_id·tenant_id), 노드 칸과 겹치는 시간 값이다.
 OMITTED_NODE_NOTE = "Unset, internal, repeated keys omitted; raw:true gives all."
-OMITTED_KINDS.update({k: "diagnostic" for drops in LEAN_DROP.values() for keys in drops.values()
-                      for k in keys if k not in OMITTED_KINDS})
+#: 검색 팔이 숨긴 노드를 세어 알리는 고정 문장(vinc_rag.retrieval 이 오늘 범위에서 쓴다). 이 문장
+#: 그대로일 때만 `validity_note` 를 뺀다. 다른 문장은 무엇이 숨었거나 고르지 못했는지 말하므로 남긴다.
+#: ⚠ 사이드카 문장의 미러다. 두 사본의 일치는 tests/mcp/test_mcp_lean_reads.py 가 실제 검색으로 대조한다.
+HIDDEN_NOTE = "hid nodes whose claim is no longer current; pass historical=true to include them"
+#: 값이 비지 않았는데 빠지는 칸 전부: (도구, 자리, 키, 종류). 자리는 fnmatch 꼴이고 [] 는 목록의 원소다.
+#: 빈 값(None·""·[]·{})은 어느 칸이든 "empty" 라 여기 없다. 처음 맞는 줄이 이긴다. 종류는 search·brief 면
+#: `OMITTED_NOTE`, vinc_node 면 `OMITTED_NODE_NOTE` 가 부르는 말이다. 손으로 고치고, 테스트가 사본과
+#: 대조한다(빼는 칸을 늘리거나 종류를 바꾸면 그 사본도 사람이 고쳐야 한다).
+OMITTED_KINDS: tuple[tuple[str, str, str, str], ...] = (
+    ("vinc_search", "", "node_rescore", "diagnostic"),
+    ("vinc_search", "", "validity_best_dropped", "diagnostic"),
+    ("vinc_search", "", "validity_best_dropped_distance", "diagnostic"),
+    ("vinc_search", "", "node_window", "diagnostic"),
+    ("vinc_search", "", "node_semantic", "diagnostic"),
+    ("vinc_search", "", "validity_note", "fixed notes"),
+    ("vinc_search", "", "page", "page"),
+    ("vinc_search", "", "total_count_capped", "default"),
+    ("vinc_search", "/rows[]", "rrf_score", "diagnostic"),
+    ("vinc_search", "/rows[]", "arms", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "matched_in", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "hit_tokens", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "title_tokens", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "token_total", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "arms", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "distance", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "prod_rank", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "colbert", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "sem_lead", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "sem_decisive", "diagnostic"),
+    ("vinc_brief", "", "resolution", "diagnostic"),
+    ("vinc_brief", "", "validity_best_dropped", "diagnostic"),
+    ("vinc_brief", "", "validity_note", "fixed notes"),
+    ("vinc_brief", "", "cite_grounds", "duplicate"),
+    ("vinc_brief", "/candidates[]", "matched_in", "diagnostic"),
+    ("vinc_brief", "/candidates[]", "hit_tokens", "diagnostic"),
+    ("vinc_brief", "/candidates[]", "title_tokens", "diagnostic"),
+    ("vinc_brief", "*links", "executed", "default"),
+    ("vinc_brief", "*links", "offset", "default"),
+    ("vinc_brief", "*links", "truncated", "default"),
+    ("vinc_brief", "*links/items[]", "evidence", "default"),
+    ("vinc_node", "/node", "sync_seq", "internal"),
+    ("vinc_node", "/node", "owner_id", "internal"),
+    ("vinc_node", "/node", "tenant_id", "internal"),
+    ("vinc_node", "/node/temporal", "created_at", "repeated"),
+    ("vinc_node", "/node/temporal", "updated_at", "repeated"),
+    ("vinc_node", "/node/temporal", "valid_from", "repeated"),
+    ("vinc_node", "/node/temporal", "valid_until", "repeated"),
+    ("vinc_node", "/node/temporal", "content_time", "repeated"),
+    ("vinc_node", "/node/temporal", "superseded_by", "repeated"),
+    ("vinc_node", "/node/temporal", "interval_known", "repeated"),
+    ("vinc_node", "/node/temporal", "validity", "unset"),
+    ("vinc_node", "/node/temporal", "claim_status", "unset"),
+    ("vinc_node", "/node/temporal", "claim_assessment_scope", "unset"),
+    ("vinc_node", "/node/temporal", "interval_invalid", "unset"),
+    ("vinc_neighbors", "/neighbors[]", "rev", "internal"),
+    ("vinc_neighbors", "/neighbors[]", "domain", "repeated"),
+    ("*", "*/temporal", "created_at", "created_at"),
+    ("*", "*/temporal", "claim_assessment_scope", "default"),
+    ("*", "*/temporal", "interval_invalid", "default"),
+    ("*", "*/temporal", "claim_status", "default"),
+    ("*", "*/temporal", "validity", "derived"),
+    ("*", "*/temporal", "interval_known", "derived"),
+    ("vinc_brief", "*", "created_at", "created_at"),
+    ("vinc_brief", "*", "updated_at", "duplicate"),
+    ("vinc_brief", "*", "content_time", "duplicate"),
+    ("vinc_brief", "*", "valid_from", "duplicate"),
+    ("vinc_brief", "*", "valid_until", "duplicate"),
+    ("vinc_brief", "*", "superseded_by", "duplicate"),
+    ("vinc_brief", "*", "validity", "derived"),
+)
 #: `stamp` 이 행에 평평하게 한 벌 더 쓰는 칸(`store.search_temporal.FLAT` 과 같다).
 _TEMPORAL_FLAT = ("created_at", "updated_at", "content_time", "valid_from", "valid_until",
                   "superseded_by", "validity")
@@ -2817,10 +2875,11 @@ def _lean_node(node: dict) -> None:
     뺀다. props 는 통째로 둔다(비어 있어도). unknown 이 아닌 validity 는 남긴다."""
     t = node.get("temporal")
     if isinstance(t, dict):
-        slim = _slim_temporal(t)
-        if t.get("validity") not in (None, "unknown"):
-            # ⚠ 인용 매니페스트 갱신(api/refs.py)이 MCP 로 이 칸을 읽고, 없으면 unknown 으로 적는다.
-            slim["validity"] = t["validity"]
+        kept = _slim_temporal(t)
+        # ⚠ 인용 매니페스트 갱신(api/refs.py)이 MCP 로 validity 를 읽고, 없으면 unknown 으로 적는다.
+        # 핸들러의 칸 순서를 지킨다(t 를 따라 걷는다).
+        slim = {k: v for k, v in t.items()
+                if k in kept or (k == "validity" and v not in (None, "unknown"))}
         for k in [k for k, v in slim.items() if k in _TEMPORAL_VALUES + ("updated_at",)
                   and (node.get(k) or None) == v]:
             slim.pop(k)
@@ -2905,6 +2964,8 @@ def lean_project(name: str, args: dict, out: Any) -> Any:
         for row in rows:
             for k in keys:
                 row.pop(k, None)
+    if out.get("validity_note") == HIDDEN_NOTE:
+        out.pop("validity_note")
     if name == "vinc_search":
         if out.get("total_count_capped") is False:
             out.pop("total_count_capped")
