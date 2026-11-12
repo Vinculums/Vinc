@@ -28,6 +28,7 @@ from . import revstamp
 from . import syncmerge
 from . import query as q
 from store import pkns
+from store import run_state
 from store import embedded_schema as _es
 
 # 청크 상한 — 원격 `MAX_BODY`(4MB, vinc_mcp/http_server.py)보다 넉넉히 아래.
@@ -877,7 +878,8 @@ def _edges_after_deletions(store, owner, bundle):
     return kept
 
 
-def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
+def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
+                trusted_run_state: bool = False) -> dict:
     """delta 번들을 **필드단위 3-way 병합**으로 적용(S3 — 발주자 핵심 요구).
 
     각 노드: base(마지막 동기화값) 대비 local·remote 를 필드별로 병합한다. 서로 다른
@@ -885,6 +887,10 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
     로 최신승. 병합 결과가 로컬과 달라졌으면 새 HLC 로 스탬프해 push 가 집어가게 하고,
     **base 는 원격값으로** 갱신한다 — 그래야 다음 push 가 로컬-only 필드만 감지한다
     (에코 완전 제거). 스탬프 규칙(§S2)은 그대로: sync_seq 는 수신측 자기 번호.
+
+    `trusted_run_state` 는 이 스토어가 처음 보는 실행 기록의 대기·승인·답을 보낸 쪽 그대로
+    받는가다(`store/run_state.py` `keep_own`). 기기가 자기 허브에서 받는 pull 만 True 를 넘긴다.
+    허브가 기기 묶음을 받는 길(사이드카 `/sync/apply-delta`)은 언제나 기본값 False 다.
     """
     out = {"executed": False, "applied": 0, "skipped_stale": 0, "merged": 0,
            "edges": 0, "deleted": 0, "resurrected": 0, "kept_deleted": 0, "warnings": []}
@@ -902,8 +908,14 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
     writes: list[dict] = []          # merge_fragment 로 쓸 노드(스탬프 포함)
     base_updates: list[tuple] = []   # (nid, label, base_fields, base_rev, base_ua)
     births: list[tuple] = []         # (label, pk, nid, remote_created) — 병합과 무관
+    protected: list[str] = []        # 받는 스토어의 프로토콜 상태를 남긴 실행 id
     for n in bundle.get("nodes") or []:
         nid, ntype = n.get("id"), n.get("type")
+        # 실행 기록은 스토어가 쓰는 id(앞뒤 공백을 벗긴 id)로 읽는다. 벗기지 않으면 저장된 행을
+        # 못 보고 처음 보는 실행으로 적용해, 같은 노드에 상태 없는 props 를 쓴다.
+        rid = run_state.run_id(nid)
+        if rid is not None:
+            nid = rid
         label = _SYNC_TYPES.get(ntype or "")
         if not nid or not label:
             out["warnings"].append(f"unsupported node — skipped ({nid or '?'})")
@@ -938,6 +950,14 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         births.append((label, pk, nid, n.get("_created") or ""))
 
         local = _local_snapshot(store, label, pk, nid, owner)
+        if rid is not None and "props" in n:
+            # 실행 기록의 대기·승인·답은 받는 스토어의 값을 남긴다(허브는 push, 기기는 pull 에서).
+            # 위에서 읽은 로컬 행을 쓰므로 읽기가 늘지 않고, 같은 쓰기 잡 안이라 그 사이에 든 답도 없다.
+            own = None if local is None else (local.get("props") or {})
+            remote_snap["props"], differed = run_state.keep_own(
+                remote_snap.get("props"), own, trusted=trusted_run_state)
+            if differed:
+                protected.append(rid)
 
         if local is None:                       # 신규 — 원격 그대로, 스탬프 보존
             for f in unstated:                  # 쓰지 않는다(fragment 의 기존 규칙에 맡긴다)
@@ -1087,6 +1107,9 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
         revstamp.observe_hlc(store, t.get("deleted_at") or "")
 
     out["applied"] = len(writes)
+    if protected:
+        out[run_state.CODE] = sorted(set(protected))
+        out["warnings"].append(run_state.warning(out[run_state.CODE]))
     return out
 
 
@@ -1160,15 +1183,18 @@ def pull_apply(store, cfg, *, owner: str, remote) -> dict:
     since = get_cursor(store, "pull")
     applied = skipped = deleted = pages = 0
     warnings: list[str] = []
+    protected: set[str] = set()
     while pages < 1000:                       # 안전 상한(무한루프 방어)
         page = remote.pull(since)
         nodes = page.get("nodes") or []
         tombs = page.get("tombstones") or []
-        r = apply_delta(owner=owner, bundle=page, cfg=cfg, store=store)
+        # 기기가 자기 허브에서 받는다: 처음 보는 실행은 허브가 기록한 상태 그대로 받는다.
+        r = apply_delta(owner=owner, bundle=page, cfg=cfg, store=store, trusted_run_state=True)
         applied += r["applied"]
         skipped += r["skipped_stale"]
         deleted += r.get("deleted", 0)
         warnings += r.get("warnings") or []
+        protected.update(r.get(run_state.CODE) or [])
         pages += 1
         nxt = int(page.get("next_cursor", since))
         advanced = nxt > since
@@ -1177,8 +1203,11 @@ def pull_apply(store, cfg, *, owner: str, remote) -> dict:
             set_cursor(store, "pull", since)   # 페이지별 내구 전진
         if (not nodes and not tombs) or not advanced:
             break
-    return {"phase": "pull", "applied": applied, "skipped_stale": skipped,
-            "deleted": deleted, "pages": pages, "cursor": since, "warnings": warnings}
+    out = {"phase": "pull", "applied": applied, "skipped_stale": skipped,
+           "deleted": deleted, "pages": pages, "cursor": since, "warnings": warnings}
+    if protected:
+        out[run_state.CODE] = sorted(protected)
+    return out
 
 
 # ── 문서 정본 동기화 국면(D45 P3 배선) ────────────────────────────────────────
@@ -1369,8 +1398,9 @@ def pull_everything(store, cfg, *, owner: str, remote) -> dict:
             nodes_mode = "topics"             # 옛 허브 — 주제 없는 노드는 안 왔다
         nodes = page.get("nodes") or []
         received += len(nodes)
+        # 계정에서 이 기기로 옮긴다: 처음 보는 실행은 허브가 기록한 상태 그대로 받는다.
         r = apply_delta(owner=owner, bundle={**page, "tombstones": [], "edge_tombstones": []},
-                        cfg=cfg, store=store)
+                        cfg=cfg, store=store, trusted_run_state=True)
         applied += int(r.get("applied") or 0)
         skipped += int(r.get("skipped_stale") or 0)
         kept_deleted += int(r.get("kept_deleted") or 0)
