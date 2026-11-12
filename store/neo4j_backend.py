@@ -166,7 +166,9 @@ class Neo4jBackend:
     #: 마지막으로 못 연 사유(사람에게 보여도 되는 문장, 비밀번호 없음). `/health` 의 open_error 로 나간다.
     last_open_error: str = ""
     #: 닫기가 다른 스레드의 진행 중인 드라이버 사용을 기다리는 상한(초). 넘기면 말하고 그대로 닫는다.
-    close_wait_s: float = 30.0
+    #: 가장 짧은 종료 유예 안에 들어와야 한다: 데스크톱은 사이드카를 끄고 5초 뒤 강제로 죽이므로, 그보다
+    #: 길게 기다리면 임대를 놓기 전에 죽는다. 허브의 유예는 이보다 길다.
+    close_wait_s: float = 4.0
 
     @classmethod
     def open(cls, cfg) -> "Neo4jBackend | None":
