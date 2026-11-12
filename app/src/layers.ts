@@ -19,14 +19,14 @@ export function topLayerOf<T extends LayerLike>(candidates: ArrayLike<T>): T | n
   return null;
 }
 
-/** 딤 없이 뜨는 메뉴와 팝오버: 우클릭 메뉴 · 공간 전환 메뉴 · 검색 모드 메뉴 · 그래프 머리의 시간과 범례 창.
- *  떠 있는 동안 표의 단축키가 쉬고(`keys.shortcutsRest`), 시트의 Esc 는 이것에 먼저 양보한다.
- *  숨김으로 닫는 것(모드 메뉴 · 시간과 범례 창)은 아래 `shown` 이 거른다. */
-export const MENU_SELECTOR = ".ctx-menu, .space-menu, #tb-modemenu, .cmp-pop";
-/** 그 메뉴를 연 단추(열려 있는 동안 `aria-expanded="true"`). 시트가 열릴 때 이 단추를 눌러 메뉴를 자기 길로
- *  닫는다. 우클릭 메뉴는 연 단추가 없어 `components.ts` 가 직접 닫는다. */
-export const MENU_OPENER_SELECTOR =
-  '.space-switch[aria-expanded="true"], #tb-mode[aria-expanded="true"], button[data-pop][aria-expanded="true"]';
+/** 딤 없이 뜨는 메뉴와 팝오버: 우클릭 메뉴 · 공간 전환 메뉴 · 검색 모드 메뉴 · 그래프 머리의 시간과 범례 창 ·
+ *  노드 카드의 메뉴 · 편집기의 삽입 · 슬래시 · `[[` 메뉴. 떠 있는 동안 표의 단축키가 쉰다(`keys.shortcutsRest`).
+ *  숨김으로 닫는 것은 아래 `shown` 이 거른다. Esc 는 이 목록이 아니라 쌓임(`keys.escapeTop`)이 나눈다:
+ *  쌓임에 올리지 못하는 공간 전환 메뉴와 시간 · 범례 창은 자기 Esc 를 쓴다. */
+export const MENU_SELECTOR = ".ctx-menu, .space-menu, #tb-modemenu, .cmp-pop, .card-menu, .cm-insert, .cm-assist-menu";
+/** 쌓임 밖 메뉴를 연 단추(열려 있는 동안 `aria-expanded="true"`). 시트가 열릴 때 이 단추를 눌러 메뉴를
+ *  자기 길로 닫는다. 쌓임에 있는 메뉴는 `keys.closeMenuLayers` 가 닫는다. */
+export const MENU_OPENER_SELECTOR = '.space-switch[aria-expanded="true"], button[data-pop][aria-expanded="true"]';
 /** 단축키를 쉬게 하는 나머지 층: 열린 팔레트와 딤 밖의 모달 화면(로그인 · 기기 그래프 알림). */
 const SCREEN_SELECTOR = '#palette, [aria-modal="true"]';
 

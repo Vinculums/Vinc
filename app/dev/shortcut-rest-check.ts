@@ -12,14 +12,20 @@ import { tsUrl, COPY_STUB } from '../tests/ts-load.mjs';
 
 const { body } = installDom();
 
-// ── 작은 DOM 에 없는 것: 문서의 듣기(잡기 · 거품), 초점, 상자 ─────────────────────────────
-const listeners = [];   // { type, f, capture }
-document.addEventListener = (type, f, opt) => listeners.push({ type, f, capture: opt === true || !!opt?.capture });
-document.removeEventListener = (type, f, opt) => {
-  const capture = opt === true || !!opt?.capture;
-  const i = listeners.findIndex((l) => l.type === type && l.f === f && l.capture === capture);
-  if (i >= 0) listeners.splice(i, 1);
-};
+// ── 작은 DOM 에 없는 것: 창과 문서의 듣기(잡기 · 거품), 초점, 상자 ─────────────────────────────
+const listeners = [];   // { on: 'window' | 'document', type, f, capture }
+const wire = (on) => ({
+  add: (type, f, opt) => listeners.push({ on, type, f, capture: opt === true || !!opt?.capture }),
+  remove: (type, f, opt) => {
+    const capture = opt === true || !!opt?.capture;
+    const i = listeners.findIndex((l) => l.on === on && l.type === type && l.f === f && l.capture === capture);
+    if (i >= 0) listeners.splice(i, 1);
+  },
+});
+document.addEventListener = wire('document').add;
+document.removeEventListener = wire('document').remove;
+globalThis.addEventListener = wire('window').add;
+globalThis.removeEventListener = wire('window').remove;
 document.activeElement = body;
 El.prototype.focus = function () { document.activeElement = this; };
 El.prototype.getClientRects = function () { return this.isConnected ? [{}] : []; };
@@ -30,18 +36,21 @@ El.prototype.remove = function () {
   realRemove.call(this);
 };
 
-/** 문서에 이벤트를 보낸다: 문서의 잡기 듣기 → 대상에서 위로 거품 → 문서의 거품 듣기. */
+/** 브라우저의 순서로 이벤트를 보낸다: 창의 잡기 → 문서의 잡기 → 대상에서 위로 거품 → 문서의 거품 → 창의 거품.
+ *  `stopPropagation` 은 다음 자리부터, `stopImmediatePropagation` 은 바로 다음 듣기부터 멈춘다. */
 function send(type, target = document.activeElement, extra = {}) {
-  let stopped = false;
+  let stop = false, now = false;
   const ev = { type, target, ...extra, defaultPrevented: false,
-    stopPropagation() { stopped = true; }, stopImmediatePropagation() { stopped = true; },
+    stopPropagation() { stop = true; }, stopImmediatePropagation() { stop = true; now = true; },
     preventDefault() { this.defaultPrevented = true; } };
-  for (const l of listeners.filter((x) => x.type === type && x.capture)) l.f(ev);
-  if (stopped) return ev;
-  for (let x = target; x && x !== body && !stopped; x = x.parent)
-    for (const f of [...(x.listeners?.[type] || [])]) f(ev);
-  if (stopped) return ev;
-  for (const l of listeners.filter((x) => x.type === type && !x.capture)) l.f(ev);
+  const at = (fs) => { for (const f of fs) { if (now) return; f(ev); } };
+  const phase = (on, capture) => listeners.filter((l) => l.on === on && l.type === type && l.capture === capture).map((l) => l.f);
+  const path = [];
+  for (let x = target; x && x !== body; x = x.parent) path.push(x);
+  const steps = [() => phase('window', true), () => phase('document', true),
+    ...path.map((x) => () => [...(x.listeners?.[type] || [])]),
+    () => phase('document', false), () => phase('window', false)];
+  for (const step of steps) { if (stop) break; at(step()); }
   return ev;
 }
 const key = (k) => send('keydown', document.activeElement, { key: k });
@@ -157,6 +166,7 @@ test('딤 밖의 모달 화면(로그인)이 시트 위에 뜨면 Esc 는 아래
   const screen = new El('section');
   screen.setAttribute('aria-modal', 'true');
   body.append(screen);
+  K.pushLayer({ alive: () => screen.isConnected });     // firstrun.ts · device-graph.ts 와 같은 배선(Esc 를 삼킨다)
   key('Escape');
   await settle();
   assert.equal(s.closed, false, '보이지 않는 시트가 Esc 를 가져가지 않는다');
@@ -262,6 +272,88 @@ test('숨겨 닫는 메뉴와 팝오버 · 팔레트: 보이는 동안만 쉬고
   pop.hidden = false; pop.remove();                          // 그래프를 떠나며 창이 빠짐
   await nothingOpen('열린 창이 빠짐');
   pal.remove();
+});
+
+// ── 한 번의 Esc 는 맨 위 층 하나만 닫고, 그 뒤의 누구도 그 키를 듣지 않는다 ─────────────────────────────
+// 뒤의 처리기(View 의 레일 닫기 · 나침반의 뿌리 · 툴팁 · 검색 칸)를 대신하는 듣기를 층을 열기 **전에** 문서와 창의
+// 거품 단계에 건다. Esc 를 받은 층이 있으면 그 듣기는 불리지 않아야 한다.
+const heard = [];
+const behind = (e) => { if (e.key === 'Escape') heard.push(e.target?.id || e.target?.tagName || 'body'); };
+document.addEventListener('keydown', behind);
+globalThis.addEventListener('keydown', behind);
+/** 팔레트처럼 components.ts 밖에서 쌓임에 오르는 층(main.ts 의 팔레트, 편집기의 메뉴, 모드 메뉴와 같은 배선). */
+function stackLayer(name, menu = false) {
+  const el = new El('div'); el.setAttribute('id', name); body.append(el);
+  let release = K.pushLayer({ menu, alive: () => el.isConnected && !el.hidden, escape: () => { el.hidden = true; release(); } });
+  return el;
+}
+
+test('맨 위 층마다: Esc 는 그 층만 닫고 뒤의 듣기에 닿지 않는다(시트 · 확인 · 알림 · 입력 · 우클릭 메뉴 · 팔레트 · 편집기 메뉴)', async () => {
+  const kinds = {
+    sheet: () => { const s = open('sheet'); return () => s.closed; },
+    confirm: () => { let done = false; document.activeElement = opener; void C.confirmDestructive('?', 'y', 'n').then(() => { done = true; }); return () => done; },
+    notice: () => { let done = false; document.activeElement = opener; void C.showNotice('!', 'ok').then(() => { done = true; }); return () => done; },
+    prompt: () => { let done = false; document.activeElement = opener; void C.promptText('?', 'x', 'ok', 'no').then(() => { done = true; }); return () => done; },
+    ctxmenu: () => { document.activeElement = opener; C.openContextMenu(1, 1, [{ label: 'a', run() {} }]); return () => !body.querySelector('.ctx-menu'); },
+    palette: () => { const el = stackLayer('palette'); return () => el.hidden; },
+    editorMenu: () => { const el = stackLayer('mention', true); return () => el.hidden; },
+  };
+  for (const [name, openIt] of Object.entries(kinds)) {
+    heard.length = 0;
+    const closed = openIt();
+    const ev = key('Escape');
+    await settle(); await settle();
+    assert.equal(closed(), true, `${name}: Esc 로 닫히지 않았다`);
+    assert.deepEqual(heard, [], `${name}: 뒤의 듣기가 Esc 를 들었다`);
+    assert.equal(ev.defaultPrevented, true, `${name}: Esc 의 기본 동작이 남았다`);
+    body.querySelector('#palette')?.remove(); body.querySelector('#mention')?.remove();
+    await nothingOpen(name);
+  }
+  heard.length = 0;
+  key('Escape');
+  assert.deepEqual(heard, ['BUTTON', 'BUTTON'], '아무것도 안 떠 있으면 Esc 는 main 과 같이 뒤의 처리기에 간다');
+});
+
+test('맨 위가 아닌 층은 Esc 로 닫히지 않는다: 팔레트 위의 알림 · 팔레트 위의 시트 · 설정 위의 확인 · 시트 위의 메뉴 · 로그인 화면', async () => {
+  heard.length = 0;
+  const pal = stackLayer('palette');
+  document.activeElement = pal;
+  const shown = C.showNotice('arrived', 'ok');
+  key('Escape'); await shown; await settle();
+  assert.equal(pal.hidden, false, '알림 아래 팔레트가 첫 Esc 에 닫혔다');
+  assert.equal(document.activeElement, pal, '알림이 닫히면 초점이 팔레트로 돌아온다');
+  key('Escape');
+  assert.equal(pal.hidden, true);
+  pal.remove();
+
+  const pal2 = stackLayer('palette');
+  const s = C.openSheet({ title: 'async' });
+  key('Escape'); await settle();
+  assert.equal(s.closed, true); assert.equal(pal2.hidden, false, '시트 아래 팔레트가 같은 Esc 에 닫혔다');
+  key('Escape'); assert.equal(pal2.hidden, true);
+  pal2.remove();
+
+  const settings = open('settings');
+  const confirmed = C.confirmDestructive('?', 'y', 'n');
+  key('Escape'); assert.equal(await confirmed, false); await settle();
+  assert.equal(settings.closed, false, '확인 아래 설정이 같은 Esc 에 닫혔다');
+  key('Escape'); await settle(); assert.equal(settings.closed, true);
+
+  const under = open('composer');
+  const menu = stackLayer('mention', true);
+  key('Escape'); assert.equal(menu.hidden, true); assert.equal(under.closed, false, '메뉴 아래 시트가 같은 Esc 에 닫혔다');
+  key('Escape'); await settle(); assert.equal(under.closed, true);
+  menu.remove();
+
+  const sheet = open('settings');
+  const screen = new El('section'); body.append(screen);
+  const down = K.pushLayer({ alive: () => screen.isConnected });   // 로그인 화면: Esc 를 삼킨다
+  key('Escape'); await settle();
+  assert.equal(sheet.closed, false, '로그인 화면 아래 시트가 닫혔다');
+  screen.remove(); void down;
+  key('Escape'); await settle(); assert.equal(sheet.closed, true);
+  assert.deepEqual(heard, [], '어느 Esc 도 뒤의 듣기에 닿지 않았다');
+  await nothingOpen('맨 위가 아닌 층');
 });
 
 test('빠른 여닫기: 시트 · 메뉴 · 다이얼로그를 200번 섞어 열고 닫아도 끝에 단축키가 돈다', async () => {

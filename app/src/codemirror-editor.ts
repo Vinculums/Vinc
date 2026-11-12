@@ -20,6 +20,7 @@ import { syntaxTree } from "@codemirror/language";
 import { MentionMenu, SelectionBar, MENTION_RE,
          type MentionOpts, type SelectionOpts } from "./cm-assist";
 import { esc } from "./components";
+import { pushLayer } from "./keys";
 import { InsertMenu, applyFormat, filterBlocks, insertBlock,
          type InsertBlock, type InsertOpts } from "./cm-insert";
 import { addRow, isDelimLine, setCell, splitCells, tableRows } from "./cm-table";
@@ -663,6 +664,8 @@ class SlashMenu {
   items: InsertBlock[] = [];
   sel = 0;
   open = false;
+  // 열린 동안 층의 쌓임에 오른다: 표의 ⌘/Ctrl 단축키가 쉬고, 맨 위일 때 Esc 는 목록만 닫는다.
+  private layer: (() => void) | null = null;
   constructor(private view: EditorView, private list: InsertBlock[]) {
     this.dom = document.createElement("div");
     this.dom.className = "cm-slash-menu cm-insert";
@@ -679,6 +682,7 @@ class SlashMenu {
     this.open = true;
     this.render();
     this.dom.hidden = false;
+    this.layer ??= pushLayer({ menu: true, alive: () => this.open && this.dom.isConnected, escape: () => this.hide() });
     const h = this.dom.offsetHeight;
     const below = c.bottom + 4 + h < window.innerHeight;
     this.dom.style.left = `${Math.round(c.left)}px`;
@@ -695,7 +699,7 @@ class SlashMenu {
     this.dom.querySelector(".cm-ins-row.on")?.scrollIntoView({ block: "nearest" });
   }
   move(d: number) { if (!this.open) return; this.sel = (this.sel + d + this.items.length) % this.items.length; this.render(); }
-  hide() { this.open = false; this.dom.hidden = true; }
+  hide() { this.open = false; this.dom.hidden = true; this.layer?.(); this.layer = null; }
   choose(i = this.sel) {
     if (!this.open) return;
     const it = this.items[i]; if (!it) return;

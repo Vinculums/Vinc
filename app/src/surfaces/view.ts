@@ -13,7 +13,7 @@ import { isHistorical, conflictIds } from "../node-validity";
 import { tintMap } from "../view-tint";
 import { esc, openContextMenu, confirmDestructive } from "../components";
 import { hostOf } from "../storage-mode";
-import { shortcutsRest } from "../keys";
+import { pushLayer, shortcutsRest } from "../keys";
 import { disposeEditorsIn, docEditorOpen, renderMarkdown } from "../doc-editor";
 import { hydrateRich } from "../rich-blocks";
 
@@ -1830,7 +1830,9 @@ export async function renderView(el: HTMLElement, resume = false) {
     const label = (s: string) => {
       if (trigger.firstChild) trigger.replaceChild(document.createTextNode(s), trigger.firstChild);
     };
-    const close = () => { menu.hidden = true; trigger.setAttribute("aria-expanded", "false"); };
+    // 열린 메뉴는 층의 쌓임에 오른다: 맨 위일 때 Esc 는 메뉴만 닫고(레일은 남는다) 초점을 단추로 돌린다.
+    let layer: (() => void) | null = null;
+    const close = () => { menu.hidden = true; trigger.setAttribute("aria-expanded", "false"); layer?.(); layer = null; };
     const place = () => {
       const r = trigger.getBoundingClientRect();
       const w = 246, gap = 6;
@@ -1840,10 +1842,12 @@ export async function renderView(el: HTMLElement, resume = false) {
         ? `${r.bottom + gap}px` : `${Math.max(8, r.top - gap - menu.offsetHeight)}px`;
     };
     trigger.addEventListener("click", () => {
-      const open = menu.hidden;
-      menu.hidden = !open;
-      if (open) place();
-      trigger.setAttribute("aria-expanded", String(open));
+      if (!menu.hidden) { close(); return; }
+      menu.hidden = false;
+      place();
+      trigger.setAttribute("aria-expanded", "true");
+      layer ??= pushLayer({ menu: true, alive: () => menu.isConnected && !menu.hidden && trigger.isConnected,
+        escape: () => { close(); trigger.focus(); } });
     });
     document.addEventListener("click", (e) => {
       // 붙어 있던 표면이 사라졌으면 메뉴도 데려간다 — body 에 있으니 저절로 안 없어진다.

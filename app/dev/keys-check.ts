@@ -13,7 +13,8 @@
  *  `keys.ts` 가 DOM 을 안 쓰는 것(오리 타이핑)이 이 검사가 성립하는 조건이다.
  *  잡기와 물음은 모듈에 하나뿐인 상태라 순서대로 쌓고 걷는다: 끝마다 "아무것도 안 떠 있으면 다 돈다"를 본다. */
 import assert from "node:assert/strict";
-import { holdShortcuts, isTypingTarget, restWhile, shortcutsRest } from "../src/keys.ts";
+import { closeMenuLayers, escapeTop, isTypingTarget, pushLayer, restWhile, shortcutsRest } from "../src/keys.ts";
+const holdShortcuts = (alive: () => boolean = () => true) => pushLayer({ alive });
 
 let n = 0;
 const ok = (label: string) => { n += 1; console.log("  ok", label); };
@@ -132,6 +133,47 @@ for (let round = 0; round < 50; round++) {
 for (let i = 0; i < 200; i++) { const r = holdShortcuts(); r(); }
 allLive("빠른 여닫기 200번");
 ok("섞인 순서 · 두 번 닫기 · 닫기 없이 지움 · 빠른 여닫기 뒤에 아무것도 안 떠 있으면 단축키가 다 돈다");
+
+// ── 10. Esc 는 맨 위 층 하나가 받는다(연 순서) ────────────────────────────────────
+const log: string[] = [];
+const layer = (name: string, extra: { menu?: boolean; swallow?: boolean } = {}) => {
+  let open = true;
+  const rel = pushLayer({ alive: () => open, menu: extra.menu,
+    escape: extra.swallow ? undefined : () => { log.push(name); open = false; rel(); } });
+  return { close: () => { open = false; rel(); }, get open() { return open; } };
+};
+assert.equal(escapeTop(), false);
+ok("층이 없으면 Esc 를 받지 않는다(화면의 처리기로 간다)");
+const pal = layer("palette");
+const note = layer("notice");                   // 팔레트 위에 늦게 뜬 알림
+assert.equal(escapeTop(), true); assert.deepEqual(log, ["notice"]); assert.equal(pal.open, true);
+assert.equal(escapeTop(), true); assert.deepEqual(log, ["notice", "palette"]);
+assert.equal(escapeTop(), false);
+ok("팔레트 위의 알림: 첫 Esc 는 알림만, 둘째는 팔레트, 그다음은 받지 않는다");
+log.length = 0;
+const settings = layer("settings");
+const confirmL = layer("confirm");
+const gone = layer("removed");
+gone.close();                                   // 닫기 없이 빠진 층은 건너뛴다
+escapeTop(); escapeTop();
+assert.deepEqual(log, ["confirm", "settings"]);
+ok("설정 위의 확인: 확인 · 설정 순서, 빠진 층은 Esc 를 가져가지 않는다");
+log.length = 0;
+const sheet = layer("sheet");
+const signin = layer("signin", { swallow: true });
+assert.equal(escapeTop(), true); assert.deepEqual(log, []); assert.equal(sheet.open, true);
+signin.close();
+escapeTop(); assert.deepEqual(log, ["sheet"]);
+ok("Esc 를 삼키는 층(로그인 · 고르기를 요구하는 시트)이 맨 위면 아무것도 닫히지 않고 키는 받힌 것으로 센다");
+log.length = 0;
+const under = layer("composer");
+layer("ctx", { menu: true }); layer("mention", { menu: true });
+closeMenuLayers();
+assert.deepEqual(log, ["mention", "ctx"]); assert.equal(under.open, true);
+under.close();
+ok("시트가 열릴 때 메뉴 층만 위에서부터 닫힌다");
+void settings; void confirmL;
+allLive("Esc 검사 뒤");
 
 unprobe();
 unprobe();

@@ -10,7 +10,7 @@
  *  주제를 남긴다. 쓰기 결과는 만든 것 · 맞춘 것 · 거절된 연결과 그 이유를 말한다. */
 import { api, cfg, messageOf } from "./api";
 import { COPY } from "./copy";
-import { esc, openSheet, sheetActions, showNotice } from "./components";
+import { esc, layerWhileShown, openSheet, sheetActions, showNotice } from "./components";
 import { viewHooks } from "./topbar";
 import {
   NODE_KINDS, RELS, edgeRefusal, fillTopicList, findNodes, forgetTopics, isWhen, nodeHitsHtml,
@@ -244,6 +244,8 @@ function mount(sheet: ReturnType<typeof openSheet>, o: ComposerOpts, done: (m: M
       if (!row.isConnected) return;
       list.innerHTML = nodeHitsHtml(hits, note);
       list.hidden = false;
+      // 목록이 떠 있는 동안 Esc 는 목록만 닫는다(새 노드 시트는 남는다).
+      layerWhileShown(list, () => { list.hidden = true; input.focus(); });
     })(), 200);
   });
 

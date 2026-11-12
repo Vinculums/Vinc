@@ -26,6 +26,7 @@ import { COPY } from "./copy";
 import { hasAccount, connectAccount, openBrowser } from "./account-connect";
 import { IN_SHELL, WEB, ensureSidecar } from "./api";
 import { loaderInline } from "./vinc-loaders.js";
+import { pushLayer } from "./keys";
 
 /** 이 기기에서 로그인이 필요한가. 셸만 해당한다(웹은 세션 게이트가 따로 있다).
  *
@@ -86,6 +87,9 @@ function openSignInScreen(reason: "first" | "expired") {
   // 뒤의 셸을 잠근다 — 탭 키가 보이지 않는 앱 손잡이로 새지 않게.
   shell?.setAttribute("inert", "");
   document.body.append(screen);
+  // 층의 쌓임에 오른다: 떠 있는 동안 표의 단축키가 쉬고, Esc 는 삼킨다(닫는 문이 없는 화면이고, 뒤의 시트 ·
+  // 레일 · 그래프도 그 Esc 를 듣지 않는다). 화면이 문서에서 빠지면 저절로 내려간다.
+  pushLayer({ alive: () => screen.isConnected });
   const btn = screen.querySelector<HTMLButtonElement>("#fr-signin")!;
   btn.focus();
   return {

@@ -17,7 +17,7 @@ import { mountLnb, refreshLnb, setLnbNavigator, repaintLnb } from "./lnb";
 import { mountSpaceSwitcher } from "./space-switcher";
 import { SELF_HOSTED_BUILD, selfHosted } from "./self-hosted";
 import { showNotice } from "./components";
-import { shortcutsRest } from "./keys";
+import { pushLayer, shortcutsRest } from "./keys";
 import { SURFACE_ORDER, shortcutList } from "./shortcuts";
 import { disposeEditorsIn, docEditorOpen } from "./doc-editor";
 import { mountAuthoringKeys, startNewDoc, startNewNode } from "./authoring";
@@ -184,9 +184,14 @@ settingsBtn.addEventListener("click", () => openSettings("general", undefined, t
 // ── Command palette (Cmd/Ctrl+K — navigation aid, not a replacement; D26) ──
 const palette = document.getElementById("palette")!;
 let paletteReturnFocus: HTMLElement | null = null;
+// 팔레트도 층의 쌓임에 오른다: 맨 위에 있을 때만 Esc 를 받고(components.ts 의 한 자리), 그 위에 알림 · 시트가
+// 뜨면 그쪽이 먼저 닫힌다.
+let paletteLayer: (() => void) | null = null;
 function closePalette() {
   if (palette.hidden) return;
   palette.hidden = true;
+  paletteLayer?.();
+  paletteLayer = null;
   if (paletteReturnFocus?.isConnected) paletteReturnFocus.focus();
   paletteReturnFocus = null;
 }
@@ -213,7 +218,10 @@ const COMMANDS: Cmd[] = [
 ];
 
 function openPalette() {
-  if (palette.hidden) paletteReturnFocus = document.activeElement as HTMLElement | null;
+  if (palette.hidden) {
+    paletteReturnFocus = document.activeElement as HTMLElement | null;
+    paletteLayer = pushLayer({ alive: () => !palette.hidden, escape: closePalette });
+  }
   palette.hidden = false;
   palette.innerHTML = `
     <div class="palette-card" role="dialog" aria-label="Command palette">
@@ -242,12 +250,11 @@ function openPalette() {
   const close = closePalette;
   q.addEventListener("input", () => { sel = 0; hits = draw(); });
   q.addEventListener("keydown", (e) => {
-    // Esc 는 팔레트 하나만 닫는다: 뒤 화면(레일 · 그래프)의 Esc 까지 가지 않는다.
-    if (e.key === "Escape") { e.stopPropagation(); close(); }
     if (e.key === "ArrowDown") { sel = Math.min(sel + 1, hits.length - 1); hits = draw(); }
     if (e.key === "ArrowUp") { sel = Math.max(sel - 1, 0); hits = draw(); }
     // 닫고 나서 부른다: 명령이 연 시트 · 편집기가 받은 초점을 팔레트의 초점 돌려주기가 빼앗지 않게.
-    if (e.key === "Enter" && hits[sel]) { const c = hits[sel]; close(); c.run(); }
+    // Enter 의 기본 동작은 막는다: 닫으며 초점이 돌아간 단추(설정 단추 등)가 같은 Enter 로 한 번 더 눌리지 않게.
+    if (e.key === "Enter" && hits[sel]) { e.preventDefault(); const c = hits[sel]; close(); c.run(); }
   });
   q.focus();
 }
@@ -275,9 +282,6 @@ document.addEventListener("keydown", (e) => {
     if (!shortcutsRest("command", e.target, document.activeElement)) openPalette();
     return;
   }
-  // Esc 는 쉬는 키가 아니다: 여기까지 온 Esc 는 위의 시트 · 메뉴가 받지 않은 것이고, 팔레트가 맨 위면 닫는다.
-  // 같은 문서에 걸린 표면의 Esc(View 의 레일 닫기)보다 먼저 걸린 듣기라 그것까지 멈춘다.
-  if (e.key === "Escape" && !palette.hidden) { e.stopImmediatePropagation(); closePalette(); return; }
   // 층이 떠 있거나 입력 칸 · 편집기에 있으면 표면 단축키는 쉰다 — 판정은 keys.ts, DOM 은 doc-editor.ts.
   if (shortcutsRest("surface", e.target, document.activeElement, docEditorOpen() || homeEditorOpen())) return;
   // 표면 **수만큼만** 받는다. 여기 `"1"`~`"3"` 리터럴이 박혀 있었는데, 그것은 ORDER 가

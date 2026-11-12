@@ -5,12 +5,21 @@ import { COPY } from "./copy";
 import { temporalEntries } from "./search-temporal";
 import { popIn, popOut, fadeIn, fadeOut } from "./motion";
 import { loaderTrack } from "./vinc-loaders.js";
-import { holdShortcuts, restWhile } from "./keys";
+import { closeMenuLayers, escapeTop, pushLayer, restWhile } from "./keys";
 import { LAYER_SELECTOR, MENU_OPENER_SELECTOR, menuOpenIn, openLayerIn, topLayerOf } from "./layers";
 
-// 메뉴 · 팝오버 · 팔레트 · 딤 밖의 모달 화면이 떠 있는 동안 표의 단축키가 쉰다. 잡지 않고 키마다 화면을
-// 묻는다: 메뉴가 어느 길로 닫히든(지워지든 숨든) 다음 키에서 바로 풀리고, 놓기를 잊을 자리가 없다.
+// 쌓임에 올리지 못하는 메뉴(공간 전환 메뉴 · 시간과 범례 창)도 떠 있는 동안 표의 단축키를 쉬게 한다.
+// 잡지 않고 키마다 화면을 묻는다: 어느 길로 닫히든(지워지든 숨든) 다음 키에서 바로 풀린다.
 restWhile(() => openLayerIn(document));
+
+// Esc 는 한 자리에서 받는다: 창의 잡기 단계(어느 처리기보다 먼저)에서 맨 위 층 하나에 주고, 받은 층이 있으면
+// 키를 멈춘다. 그래서 그 뒤의 레일 닫기 · 그래프 뿌리 · 검색 칸 비우기 · 툴팁 · 아래 층은 이 Esc 를 듣지 않는다.
+// 층이 없으면 아무것도 하지 않는다(화면의 처리기가 main 과 같이 받는다). 앱이 뜰 때 가장 먼저 걸리는 듣기다.
+window.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || !escapeTop()) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+}, true);
 
 /** ── 바깥 클릭으로 닫기 ────────────────────────────────────────────────────
  *
@@ -125,20 +134,29 @@ function focusablesIn(root: HTMLElement): HTMLElement[] {
     !el.closest("[inert]") && !el.closest("[hidden]") && el.getClientRects().length > 0);
 }
 
-/** 이 딤이 맨 위 층인가. 딤 밖의 모달 화면(로그인 · 기기 그래프 알림)도 층으로 센다(layers.ts). */
-const isTopLayer = (scrim: HTMLElement): boolean =>
-  topLayerOf(document.querySelectorAll<HTMLElement>(LAYER_SELECTOR)) === scrim;
-
-/** Esc 가 이 딤을 닫는가: 맨 위 층이고, 그 위에 메뉴가 떠 있지 않다. 메뉴는 시트가 열릴 때 닫히므로
- *  (`closeMenus`) 떠 있는 메뉴는 늘 시트보다 위다: 그 Esc 는 메뉴가 받는다. */
-const escClosesHere = (scrim: HTMLElement): boolean => isTopLayer(scrim) && !menuOpenIn(document);
-
 /** 떠 있는 메뉴와 팝오버를 각자의 닫는 길로 닫는다. 시트와 다이얼로그가 열릴 때 부른다: 딤 위에 메뉴가
- *  남으면 화살표 · Esc 가 보이는 층과 다른 층으로 간다. 연 단추를 한 번 더 누르는 것이 그 메뉴의 닫기다. */
+ *  남으면 화살표 · Esc 가 보이는 층과 다른 층으로 간다. 쌓임의 메뉴는 자기 Esc 로, 쌓임 밖의 메뉴는 연 단추를
+ *  한 번 더 눌러 닫는다. */
 function closeMenus(): void {
-  closeContextMenu?.(true);
+  closeMenuLayers();
   if (!menuOpenIn(document)) return;
   document.querySelectorAll<HTMLElement>(MENU_OPENER_SELECTOR).forEach((b) => b.click());
+}
+
+/** 입력 칸 아래에 뜨는 고르기 목록(새 노드 시트의 연결 대상 · 연결 띠의 찾기 결과)을 보이는 동안 메뉴 층으로
+ *  올린다. 보일 때마다 부르면 된다: 이미 올라 있으면 그대로 두고, 숨거나 빠지면 저절로 내려간다.
+ *  맨 위일 때 Esc 는 목록만 닫는다(`escape`). */
+const shownLayers = new WeakMap<HTMLElement, { on: boolean }>();
+export function layerWhileShown(el: HTMLElement, escape: () => void): void {
+  const st = shownLayers.get(el) ?? { on: false };
+  shownLayers.set(el, st);
+  if (st.on) return;
+  st.on = true;
+  pushLayer({ menu: true, escape, alive: () => {
+    const shown = el.isConnected && !el.hidden;
+    if (!shown) st.on = false;
+    return shown;
+  } });
 }
 
 /** Tab 을 층 안에 가둔다. 반환 = 배선 해제.
@@ -232,13 +250,13 @@ export function openSheet(opts: {
   // (설정은 고른 분류, 확인류는 기본 버튼) — 여기서 첫 버튼을 고르면 ✕ 가 잡힌다.
   sheetEl.focus({ preventScroll: true });
   const untrap = trapFocus(el, sheetEl);
-  // 딤이 문서에서 빠지면(닫기를 거치지 않고 지워져도) 잡은 것이 저절로 풀린다.
-  const release = holdShortcuts(() => el.isConnected);
+  // 쌓임에 올린다. 딤이 문서에서 빠지면(닫기를 거치지 않고 지워져도) 저절로 내려간다. 고르기를 요구하는
+  // 시트는 Esc 를 삼킨다(닫히지 않고, 뒤의 화면도 그 Esc 를 듣지 않는다).
+  const release = pushLayer({ alive: () => el.isConnected, escape: opts.mustChoose ? undefined : () => close() });
   let closed = false;
   const close = () => {
     if (closed) return;            // 애니메이션 도중 두 번 눌려도 한 번만 닫는다
     closed = true;
-    document.removeEventListener("keydown", onKey, true);
     untrap();
     release();
     returnFocus(el, opener);
@@ -248,16 +266,7 @@ export function openSheet(opts: {
       opts.onClose?.();
     });
   };
-  const onKey = (e: KeyboardEvent) => {
-    if (e.key !== "Escape") return;
-    // 시트가 여럿 쌓여도 **맨 위 하나만** 닫는다. 로그인 화면처럼 딤 밖의 모달이 위에 있으면
-    // 그 아래 시트는 닫지 않는다(보이지 않는 층이 Esc 를 가져가지 않게). 위에 뜬 메뉴가 먼저다.
-    if (!escClosesHere(el)) return;
-    e.stopPropagation();
-    close();
-  };
   if (!opts.mustChoose) {
-    document.addEventListener("keydown", onKey, true);
     wireScrimDismiss(el, close);
     el.querySelector(".sheet-x")!.addEventListener("click", close);
   } else {
@@ -387,16 +396,15 @@ export function openContextMenu(x: number, y: number, items: MenuItem[]) {
     closeContextMenu = null;
     const inside = el.contains(document.activeElement);
     el.remove();
+    release();
     document.removeEventListener("mousedown", onOut, true);
-    document.removeEventListener("keydown", onKey, true);
     if (refocus && (inside || document.activeElement === document.body)
         && opener instanceof HTMLElement && opener.isConnected) opener.focus({ preventScroll: true });
   };
   closeContextMenu = close;
+  const release = pushLayer({ alive: () => el.isConnected, escape: () => close(true), menu: true });
   const onOut = (e: MouseEvent) => { if (!el.contains(e.target as Node)) close(false); };
-  const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); close(true); } };
   document.addEventListener("mousedown", onOut, true);
-  document.addEventListener("keydown", onKey, true);
   el.querySelectorAll<HTMLElement>(".ctx-item").forEach((b) =>
     b.addEventListener("click", () => { const it = items[Number(b.dataset.i)]; close(true); it.run(); }));
   el.querySelector<HTMLElement>(".ctx-item")?.focus();
@@ -421,10 +429,11 @@ function wireDialogMotion(el: HTMLElement, dismiss: () => void): (then: () => vo
   fadeIn(el);
   popIn(sheetEl);
   wireScrimDismiss(el, dismiss);
-  // 기본 버튼에 초점을 두는 것은 호출부다(이 함수 다음 줄). 여기서는 Tab 을 가두고 단축키를 쉬게 한다.
+  // 기본 버튼에 초점을 두는 것은 호출부다(이 함수 다음 줄). 여기서는 Tab 을 가두고, 쌓임에 올린다:
+  // 맨 위에 있는 동안 Esc 는 `dismiss`(취소)다.
   sheetEl.tabIndex = -1;
   const untrap = trapFocus(el, sheetEl);
-  const release = holdShortcuts(() => el.isConnected);
+  const release = pushLayer({ alive: () => el.isConnected, escape: dismiss });
   let closed = false;
   return (then) => {
     if (closed) return;            // 애니메이션 도중 두 번 눌려도 한 번만 닫는다
@@ -457,12 +466,7 @@ export function confirmDestructive(message: string, confirmLabel: string,
       </div>`;
     document.body.appendChild(el);
     const close = wireDialogMotion(el, () => done(false));
-    const done = (v: boolean) => {
-      document.removeEventListener("keydown", onKey);
-      close(() => resolve(v));
-    };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && escClosesHere(el)) done(false); };
-    document.addEventListener("keydown", onKey);
+    const done = (v: boolean) => close(() => resolve(v));
     el.querySelector("#cd-no")!.addEventListener("click", () => done(false));
     el.querySelector("#cd-yes")!.addEventListener("click", () => done(true));
     (el.querySelector("#cd-no") as HTMLButtonElement).focus();
@@ -487,12 +491,7 @@ export function showNotice(message: string, okLabel: string): Promise<void> {
       </div>`;
     document.body.appendChild(el);
     const close = wireDialogMotion(el, () => done());
-    const done = () => {
-      document.removeEventListener("keydown", onKey);
-      close(() => resolve());
-    };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && escClosesHere(el)) done(); };
-    document.addEventListener("keydown", onKey);
+    const done = () => close(() => resolve());
     el.querySelector("#nt-ok")!.addEventListener("click", () => done());
     (el.querySelector("#nt-ok") as HTMLButtonElement).focus();
   });
@@ -527,9 +526,9 @@ export function promptText(title: string, initial: string, confirmLabel: string,
       document.removeEventListener("keydown", onKey);
       close(() => resolve(v));
     };
+    // Enter 는 이 칸의 것이다: 기본 동작을 막아, 닫으며 초점이 돌아간 단추가 같은 Enter 를 받지 않게 한다.
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && escClosesHere(el)) done(null);
-      if (e.key === "Enter" && document.activeElement === input) done(input.value.trim());
+      if (e.key === "Enter" && document.activeElement === input) { e.preventDefault(); done(input.value.trim()); }
     };
     document.addEventListener("keydown", onKey);
     el.querySelector("#pt-no")!.addEventListener("click", () => done(null));
