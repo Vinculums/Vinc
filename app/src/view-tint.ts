@@ -58,8 +58,9 @@ function rawPlanColour(a: number, k: number, mode: ThemeMode): string {
 }
 /** a 번째 영역의 k 번째 주제가 입는 마크 색. 계획은 고정된 차례로 색을 주므로 이 값은 (a, k, 모드)만의 함수다 —
  *  주제가 늘어도 다른 주제의 색은 계획이 원래 바꾸던 만큼만 바뀐다. 바닥을 이미 넘는 색은 계획 그대로이고,
- *  못 넘는 색만 같은 색상각의 가장 가까운 바닥 위 값으로 옮긴다(`markColour`). 옮긴 색끼리나 제자리 색과의
- *  거리는 지키지 않는다: 재고(`dev/topic-tint-contrast.mjs`) 테스트가 지금보다 나빠지지 않게 묶는다. */
+ *  못 넘는 색만 같은 색상각에서 바닥을 막 넘는 값으로 옮긴다(`markColour`: 탐색이 찾은 것 가운데 원래 색에
+ *  가장 가까운 값). 옮긴 색끼리나 제자리 색과의 거리는 지키지 않는다: 재고(`dev/topic-tint-contrast.mjs`)
+ *  테스트가 지금보다 나빠지지 않게 묶는다. */
 export function planColour(a: number, k: number, mode: ThemeMode): string {
   return markColour(rawPlanColour(a, k, mode), mode);
 }
@@ -91,10 +92,11 @@ export function tintPlan(domains: (string | undefined)[], mode: ThemeMode): {
  *  앉는 면 전부다: 판(`--surface-0`: 라이트 muted · 다크 background)과 좁은 창 서랍(`--surface-2` = card),
  *  각각 맨 면 · 쉼(글자색 .07, `.lnb-doc:hover`) · 고름(링 .16, `.lnb-group.on`). app.css 의 그 알파나
  *  면 매핑이 바뀌면 여기도 같이 바뀌어야 한다 — `tests/topic-tint-contrast.test.mjs` 가 CSS 에서 면을
- *  따로 지어 이 값과 맞대므로 어긋나면 빌드가 멈춘다. 그래프 바탕과 범례 카드는 이 면 가운데 하나와 같거나(범례 카드 =
+ *  따로 지어 이 값과 맞대므로, 대비가 낮아지는 쪽으로 어긋나면 빌드가 멈춘다(면이 밝아지는 쪽으로 어긋나면
+ *  색을 필요보다 조금 더 옮길 뿐이라 바닥 테스트는 지나가고, 옮긴 거리 테스트가 그 몫을 묶는다). 그래프 바탕과 범례 카드는 이 면 가운데 하나와 같거나(범례 카드 =
  *  서랍 카드, 다크 그래프 바탕 = 다크 판) 그보다 바깥쪽(라이트 그래프 바탕은 판보다 밝다)이라 여기를 넘으면 거기도 넘는다. */
 const MARK_FLOOR = 3;
-/** 면은 화면이 그리는 값으로 짓는다(`drawnRgb`, 줄 칠은 실수로 섞어 8비트로). 화면은 줄 칠을 GPU 에서 섞어 그 값과
+/** 면은 화면이 그리는 값으로 짓는다(`drawnRgb`, 줄 칠은 실수로 섞어 8비트로). 화면이 줄 칠을 섞어 놓는 픽셀은 그 값과
  *  채널마다 8비트 한 칸쯤 어긋난다. 묶는 면(라이트 고른 줄)에서 지은 값이 대비를 0.0046 낙관하고, 다크의 묶는 면
  *  (서랍 고른 줄)에서는 비관적이다(0). 그 낙관만큼을 위에 둔다(잰 값: `dev/topic-tint-contrast.mjs` 가 아닌 화면 픽셀). */
 const GROUND_EPSILON = 0.005;
@@ -159,7 +161,7 @@ function fromLab(L: number, a: number, b: number): Rgb | null {
     -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s];
   return out.every((v) => v >= -1e-7 && v <= 1 + 1e-7) ? (out.map((v) => gam(Math.min(1, Math.max(0, v)))) as Rgb) : null;
 }
-/** 명도 L, 색상각 h 에서 원래 채도 C 를 넘지 않는 범위 안 색(채도만 깎는다). */
+/** 명도 L, 색상각 h 에서 준 채도 C 를 넘지 않는 색: 색역 안이면 그대로, 밖이면 채도만 깎는다. */
 function atL(L: number, C: number, h: number): Rgb {
   const at = (c: number) => fromLab(L, c * Math.cos(h), c * Math.sin(h));
   const full = at(C);
@@ -174,7 +176,8 @@ const markCache = new Map<string, string>();
 /** 보석 하나를 마크 바닥까지 옮긴다: 이미 넘으면 그대로, 아니면 **같은 색상각**(OKLab hue)에서 바닥을 넘는
  *  가장 가까운 값(OKLab 거리)으로. 채도 몫마다(0.5~1.1, 0.02 칸) 명도를 바닥까지 이분 탐색하고(30 번, 명도 오차
  *  1e-9 아래) 원래 색에 가장 가까운 것을 고른다. 라이트는 어두운 쪽, 다크는 밝은 쪽으로 간다. 재는 값은 화면에
- *  놓이는 8비트 색이라 결과는 8비트 한 칸 안에서 가장 가깝다(독립 탐색과의 차는 `dev/topic-tint-contrast.mjs`). */
+ *  놓이는 8비트 색이다. 결과는 이 탐색 격자 안에서 가장 가까운 값이지, 8비트 색을 모두 뒤진 최근접은 아니다:
+ *  그 최근접보다 원래 색에서 더 멀어지는 몫은 `tests/topic-tint-contrast.test.mjs` 가 CIEDE2000 0.5 아래로 묶는다. */
 function markColour(hexColour: string, mode: ThemeMode): string {
   const key = `${mode}${hexColour}`, hit = markCache.get(key);
   if (hit) return hit;

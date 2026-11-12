@@ -165,6 +165,36 @@ test("a colour that moves keeps its hue", () => {
   }
 });
 
+// "Nearest" is held as an excess: a colour that moves may end at most 0.5 CIEDE2000 further from its plan colour
+// than the closest 8-bit colour of the same hue (within one degree) that holds 3:1 on every ground built here.
+// The search below looks at every 8-bit colour around the drawn one; it shares nothing with the plan's own search.
+test("a colour that moves goes no further from its plan colour than it must", () => {
+  const SPAN = 28, LIMIT = 0.5, over = [];
+  for (const mode of ["light", "dark"]) {
+    const lums = ["desktop", "web"].flatMap((skin) => Object.values(grounds(skin, mode))).map(lum);
+    const holds = (c) => { const y = lum(c); return lums.every((g) => (Math.max(y, g) + 0.05) / (Math.min(y, g) + 0.05) >= FLOOR); };
+    const seen = new Set(), moved = planSlots(mode).filter((s) => s.after !== s.before && !seen.has(s.before) && seen.add(s.before));
+    for (const s of moved) {
+      const plan = rgb(s.before), planLab = lab(plan), [, h0] = oklch(plan), drawn = rgb(s.after).map((v) => Math.round(v * 255));
+      assert.ok(holds(rgb(s.after)), `${mode} ${s.slot} ${s.after} does not hold the floor`);
+      let best = Infinity;
+      for (let r = Math.max(0, drawn[0] - SPAN); r <= Math.min(255, drawn[0] + SPAN); r++)
+        for (let g = Math.max(0, drawn[1] - SPAN); g <= Math.min(255, drawn[1] + SPAN); g++)
+          for (let b = Math.max(0, drawn[2] - SPAN); b <= Math.min(255, drawn[2] + SPAN); b++) {
+            const c = [r / 255, g / 255, b / 255];
+            if (!holds(c)) continue;
+            const [, h] = oklch(c);
+            if (Math.abs(((h - h0 + 540) % 360) - 180) > 1) continue;
+            const d = de2000Lab(planLab, lab(c));
+            if (d < best) best = d;
+          }
+      const excess = de2000Lab(planLab, lab(rgb(s.after))) - best;
+      if (excess > LIMIT) over.push(`${mode} ${s.slot} ${s.before} -> ${s.after}: ${excess.toFixed(2)} further than the nearest`);
+    }
+  }
+  assert.deepEqual(over, []);
+});
+
 test("the Agent board and its sidebar rows take their jewels from the plan", () => {
   const map = read("surfaces/agent-map.ts");
   assert.match(map, /export function policyColour\(\)[^\n]*planColour\(4, 0, mode\)/);
