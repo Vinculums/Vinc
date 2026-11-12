@@ -213,7 +213,7 @@ class ThisRepo(unittest.TestCase):
         열둘이 된 경위: `layout-deploy.yml`(2026-10-12)은 `vinc-layout` 하나의 이미지를 바꾼다.
         같은 앱에 `containerapp update` 둘이 겹치면 뒤의 것이 앞의 것을 덮고 끝의 이미지 대조가
         엉뚱한 런에서 실패한다. 스토어를 안 물어 허브 그룹 키는 빌리지 않는다.
-        근거: [[decision:time-branch-layout-is-computed-on-the-hub-per-topic-2026-10-12]]
+        근거: [[decision:vinc-layout-is-retired-in-two-steps-2026-11-07]]
 
         `azure-ops.yml` 은 컨테이너 앱의 현재 리비전을 재시작한다. 허브를 고르면 `hub-deploy` 의
         그룹 키를 빌린다: 배포·수리 도중의 재시작은 내려 둔 허브를 다시 띄우거나 두 리비전을

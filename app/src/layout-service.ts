@@ -9,7 +9,8 @@ import { edgeKeys, type LayoutAnswer, type SlimEdge, type SlimNode } from "./vie
  * request after a write lays out only the topics whose inputs changed. It sees ids, kinds,
  * domains, dates and relation ends, never labels, evidence or properties. Requests run one at a
  * time: the container is small and the work is CPU bound.
- * 근거: [[decision:time-branch-layout-is-computed-on-the-hub-per-topic-2026-10-12]] */
+ * 은퇴 1단계: 허브가 더는 부르지 않고, 이 코드는 2단계에서 지운다.
+ * 근거: [[decision:vinc-layout-is-retired-in-two-steps-2026-11-07]] */
 export type LayoutRequest = { space: string; basis: "recorded" | "content"; nodes: SlimNode[]; edges: SlimEdge[] };
 export type LayoutStats = { ms: number; branchesLaidOut: number; corridorsRouted: number; reusedPlacement: boolean };
 
