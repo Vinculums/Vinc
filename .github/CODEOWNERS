@@ -26,6 +26,7 @@
 /.gitattributes                                  @Vinculums/platform
 /.github/                                        @Vinculums/platform
 /.gitignore                                      @Vinculums/platform
+/.test_durations                                 @Vinculums/platform
 /CHANGELOG.md                                    @Vinculums/platform
 /CLAUDE.md                                       @Vinculums/platform
 /Dockerfile.hub                                  @Vinculums/platform
