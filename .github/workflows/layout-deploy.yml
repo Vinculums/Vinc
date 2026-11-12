@@ -6,7 +6,8 @@
 #
 # 앱이 아직 없으면(운영자가 만들기 전) 빌드도 하지 않고 끝낸다. 없는 것과 확인 못 한 것은
 # hub-deploy 의 인코더 스텝처럼 가른다.
-# 근거: [[decision:time-branch-layout-is-computed-on-the-hub-per-topic-2026-10-12]]
+# 은퇴 1단계: 허브가 이 앱을 부르지 않는다. 이 워크플로는 2단계에서 앱과 함께 지운다.
+# 근거: [[decision:vinc-layout-is-retired-in-two-steps-2026-11-07]]
 name: layout-deploy
 
 on:

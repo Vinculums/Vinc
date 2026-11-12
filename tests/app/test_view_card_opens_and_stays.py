@@ -5,9 +5,9 @@
 - `show()` 의 기본 닫기
 - 바깥 누르기의 예외(렌즈 버튼 자리)
 - 닫기 버튼이 없던 것
-- 관점 세그가 카드에서 미끄러져 나오던 것(보기는 3D 하나라 고를 관점이 없다)
+- 관점 세그가 카드에서 미끄러져 나오던 것(보기는 2D 나침반 렌즈 하나라 고를 관점이 없다)
 
-근거: [[decision:the-graph-whole-view-is-the-infra-layout-in-vinc-orbs-2026-10-28]]
+근거: [[decision:the-graph-is-one-2d-compass-lens-2026-11-06]]
 """
 from __future__ import annotations
 

@@ -37,6 +37,7 @@
     "d2c4724c2dc09e3e5",
     "d2c4c5750c1384a91",
     "d2dc4d48990c0ca90",
+    "d2eb6c246330e0392",
     "d2f3f68b4e072d6a0",
     "d2fcdb7f6d7075729",
     "d32ee8996dc2af73a",
@@ -106,6 +107,7 @@
     "d7b137aa1b2dceefc",
     "d7bc90f6815d62c80",
     "d7c3687752ee171e4",
+    "d7d768562f374c701",
     "d7e8a226c5f305ed1",
     "d7e8c7997c3907a58",
     "d8360c173b9c07cde",
@@ -127,6 +129,7 @@
     "d986cfe18adc5a867",
     "d9b37180fdd4ccef3",
     "d9bb6ada3f76ce718",
+    "d9be6c1577e466f4c",
     "d9ce1cad47a7a8e21",
     "d9ea6c03135525aea",
     "da059e03130764ff1",
@@ -156,6 +159,7 @@
     "dc857e340d74bae75",
     "dc8f108c437ce4459",
     "dca8ac25f402986e6",
+    "dd1dfef73b07eb47d",
     "dd3d5f8a72da0cb3d",
     "dd41ccab7d35b8d60",
     "dd5e6f03ee4396a17",
@@ -224,6 +228,7 @@
     "vinc.adr.core",
     "vinc.adr.rag",
     "vinc.arch.search-pipeline-current-2026-10-31",
+    "vinc.archive.claude-code-local-memory-2026-11-02",
     "vinc.audit.0-9-4-handoff-da7318ea-2026-09-20",
     "vinc.audit.agent-framework-memory-2026-10-06",
     "vinc.audit.code-cleanup-app-2026-10-16",
@@ -239,6 +244,8 @@
     "vinc.audit.personal-graph-and-mcp-2026-09-24",
     "vinc.audit.personal-role-contracts-2026-10-15",
     "vinc.audit.rag-code-review-2026-09-29",
+    "vinc.audit.rag-eval-traceability-2026-11-05",
+    "vinc.audit.role-fold-audit-2026-11-04",
     "vinc.audit.site-korean-vin92-2026-09-20",
     "vinc.audit.view-layout-restoration-2026-10-11",
     "vinc.audit.work-inventory-2026-09-29",
@@ -258,7 +265,10 @@
     "vinc.canon.graph-conventions",
     "vinc.canon.linear-workflow",
     "vinc.canon.mcp-contract",
+    "vinc.canon.merge-and-deploy-policy",
     "vinc.canon.principles",
+    "vinc.canon.rag-eval-sets",
+    "vinc.canon.rag-metrics",
     "vinc.canon.rag-production-state",
     "vinc.canon.repo-workflow",
     "vinc.canon.share-pack",
@@ -305,13 +315,20 @@
     "vinc.design.tenant-desktop",
     "vinc.design.tokens",
     "vinc.engineering.search-temporal-2026-10-13",
+    "vinc.eval.current-state-2026-11-03",
     "vinc.frd.app",
     "vinc.frd.core",
     "vinc.frd.rag",
+    "vinc.guide.agent-harness-2026-11-01",
     "vinc.guide.agents-page",
     "vinc.guide.code-and-design-one-graph",
+    "vinc.guide.design-system-2026-11-01",
+    "vinc.guide.development-2026-11-01",
     "vinc.guide.docs-agents-and-mcp-restructure",
+    "vinc.guide.hardware-2026-11-01",
+    "vinc.guide.logs-2026-11-01",
     "vinc.guide.overview",
+    "vinc.guide.planning-2026-11-01",
     "vinc.guide.quick-start",
     "vinc.guide.what-to-add",
     "vinc.handoff.codex-api-cli-0-9-6",
@@ -347,6 +364,7 @@
     "vinc.ops.backoffice-stats-activation-2026-10-04",
     "vinc.ops.branch-pr-cleanup-2026-08-18",
     "vinc.ops.chatgpt-apps-directory",
+    "vinc.ops.ci-cd-audit-2026-11-04",
     "vinc.ops.ci-runner-diagnosis",
     "vinc.ops.claude-session-board-2026-09-11",
     "vinc.ops.container-apps-cost-rise-2026-09-25",
@@ -398,6 +416,7 @@
     "vinc.ops.vin328-description-before-vincs-closure-2026-10-08",
     "vinc.ops.vinc-docs-decommission",
     "vinc.ops.watch-sweep",
+    "vinc.paper.miracl-ko-v12-revision-2026-11-07",
     "vinc.plan.0-8-4",
     "vinc.plan.0-8-5",
     "vinc.plan.0-8-7",
@@ -407,14 +426,17 @@
     "vinc.plan.0-9-2",
     "vinc.plan.0-9-4-desktop-site-renewal-2026-09-20",
     "vinc.plan.address-compile-surface-2026-09-29",
+    "vinc.plan.agent-approvals-in-the-vinc-app-2026-11-07",
     "vinc.plan.agent-domain",
     "vinc.plan.agent-framework-task-eval-2026-10-18",
     "vinc.plan.agent-harness-work-order-2026-10-25",
     "vinc.plan.agent-lab-remediation-2026-10-03",
     "vinc.plan.agent-lifecycle-and-the-deploy-plane",
+    "vinc.plan.agent-ontology-2026-11-05",
     "vinc.plan.ai-community-dataset-2026-10-15",
     "vinc.plan.attribution-and-decision-structure-2026-09-28",
     "vinc.plan.authoring-contract-and-write-lifecycle-2026-10-13",
+    "vinc.plan.azure-access-and-vinclog-monitoring-2026-11-07",
     "vinc.plan.backoffice-and-stats-2026-09-12",
     "vinc.plan.backoffice-authenticator-otp-2026-10-06",
     "vinc.plan.backoffice-information-architecture-2026-10-05",
@@ -427,8 +449,11 @@
     "vinc.plan.brief-promotion-threshold-sealed6-2026-10-23",
     "vinc.plan.brief-quote-units-citation-gate-2026-10-26",
     "vinc.plan.brief-rule-v2-refit-2026-10-31",
+    "vinc.plan.brief-rule-v3-whole-path-refit-2026-11-01",
+    "vinc.plan.brief-rule-v3-with-haiku-verifier-2026-11-03",
     "vinc.plan.brief-xlang-ko2en-sealed10-2026-10-26",
     "vinc.plan.brief-xlang-promotion-sealed9-2026-10-25",
+    "vinc.plan.bring-your-own-database-2026-11-08",
     "vinc.plan.cag-context-compiler-2026-10-05",
     "vinc.plan.call-volume-add-on-2026-10-27",
     "vinc.plan.chatgpt-reviewer-login",
@@ -458,14 +483,18 @@
     "vinc.plan.decision-api-probabilistic-memory-1-0-0-2026-10-06",
     "vinc.plan.deployment-agent-harness-2026-10-15",
     "vinc.plan.desktop-account-mode",
+    "vinc.plan.desktop-ui-ux-audit-and-shell-rework-2026-11-11",
     "vinc.plan.docs-book-v2-agent-plan-2026-09-17",
     "vinc.plan.docs-book-v2-openclaw-2026-09-16",
     "vinc.plan.docs-cli-api-2026-09-28",
+    "vinc.plan.docs-job-guides-2026-11-01",
+    "vinc.plan.docs-tutorials-handoff-2026-11-01",
     "vinc.plan.document-reading",
     "vinc.plan.embedding-candidate-evaluation-v2-2026-09-07",
     "vinc.plan.embedding-pipeline",
     "vinc.plan.encode-cold-start-declaration",
     "vinc.plan.entity-alignment-advisor-2026-10-15",
+    "vinc.plan.entity-first-writing-kind-filter-mcp-slimming-2026-11-11",
     "vinc.plan.episode-mirror-600-sealed11-2026-10-26",
     "vinc.plan.eval-mcp-tooluse",
     "vinc.plan.figma-build",
@@ -476,6 +505,8 @@
     "vinc.plan.graph-restructure",
     "vinc.plan.grok-bot-roster-and-host-handoff-2026-09-11",
     "vinc.plan.gte-reader-veto-sealed-2026-10-20",
+    "vinc.plan.guides-web-and-desktop-pass-checklist-2026-11-01",
+    "vinc.plan.hardening-against-reverse-engineering-2026-11-01",
     "vinc.plan.host-memory-layers-and-task-manifest-2026-09-28",
     "vinc.plan.hub-capacity-trial-2026-10-06",
     "vinc.plan.hub-writer-handoff-2026-10-17",
@@ -485,6 +516,7 @@
     "vinc.plan.korean-retrieval-p1-p2-2026-10-02",
     "vinc.plan.landing-hero-scroll-film-2026-10-04",
     "vinc.plan.landing-redesign-2026-10-16",
+    "vinc.plan.laptop-storage-layout-2026-11-03",
     "vinc.plan.large-topic-ownership-conversion-2026-10-14",
     "vinc.plan.laya-ai-curation-registration-2026-10-15",
     "vinc.plan.laya-curated-comparison-execution-2026-10-15",
@@ -503,6 +535,7 @@
     "vinc.plan.m3-rebuild-rehearsal",
     "vinc.plan.machine-role-gates-2026-10-04",
     "vinc.plan.maker-checker-agent-redesign-2026-11-04",
+    "vinc.plan.market-channel-2026-11-07",
     "vinc.plan.mcp-agent-surface",
     "vinc.plan.mcp-directory-listings",
     "vinc.plan.mcp-events-and-webhooks",
@@ -513,11 +546,20 @@
     "vinc.plan.mcp-short-tool-descriptions-2026-10-17",
     "vinc.plan.merge-order-2026-10-04",
     "vinc.plan.miracl-dev-evaluation-2026-10-29",
+    "vinc.plan.miracl-follow-up-checks-2026-10-31",
+    "vinc.plan.miracl-ko-node-selection-2026-11-03",
     "vinc.plan.n-wave-remaining-work-2026-09-11",
     "vinc.plan.node-mirror-body-text-sealed8-2026-10-24",
     "vinc.plan.node-pk-namespacing",
+    "vinc.plan.ontology-kg-rag-paper-2-agent-use-2026-11-09",
+    "vinc.plan.ontology-kg-rag-paper-2-e1-agent-tasks-2026-11-10",
+    "vinc.plan.ontology-kg-rag-paper-2-e2-longmemeval-2026-11-09",
+    "vinc.plan.ontology-kg-rag-paper-2-e3-hop-depth-2026-11-09",
+    "vinc.plan.ontology-kg-rag-paper-2026-11-08",
+    "vinc.plan.ontology-kg-rag-paper-addendum-rule4-mentions-2026-11-12",
     "vinc.plan.p3-execution",
     "vinc.plan.p5-remote-rollout",
+    "vinc.plan.paper-1-and-2-revision-after-2026-11-11-findings",
     "vinc.plan.plans-and-limits-redesign-2026-10-17",
     "vinc.plan.post-n2-commitment-wave-2026-09-13",
     "vinc.plan.predicate-judge-comparison-community-run-2026-10-10",
@@ -528,13 +570,16 @@
     "vinc.plan.query-type-strata-2026-10-30",
     "vinc.plan.rag-code-review-fixes-2026-09-29",
     "vinc.plan.rag-eval-v2-0-9-6",
+    "vinc.plan.rag-final-work-and-remeasurement-2026-11-02",
     "vinc.plan.read-verification-contract-recovery-2026-10-14",
     "vinc.plan.reader-resolution-sealed-2026-10-20",
     "vinc.plan.reinforcement-points",
+    "vinc.plan.release-0-9-9-2026-11-03",
     "vinc.plan.retrieval-research-2026-09-08",
     "vinc.plan.retrieval-research-next-2026-09-09",
     "vinc.plan.roster-consolidation-proposal-2026-09-24",
     "vinc.plan.roster-v2-teams-and-job-titles-2026-09-16",
+    "vinc.plan.self-hosted-hub-web-2026-11-11",
     "vinc.plan.self-hosted-system1-judge-followup-2026-10-10",
     "vinc.plan.semantic-lead-resolve-sealed4-2026-10-22",
     "vinc.plan.semif-and-fp32-reranker-screen-2026-10-27",
@@ -553,14 +598,19 @@
     "vinc.plan.vin82-durable-ack-2026-09-29",
     "vinc.plan.vin845-colbert-node-rescoring-implementation-2026-10-30",
     "vinc.plan.vinc-command-on-path",
+    "vinc.plan.vincos-2026-11-02",
+    "vinc.plan.vincos-agent-shell-web-search-voice-design-2026-11-03",
+    "vinc.plan.vincos-desktop-surface-2026-11-02",
     "vinc.plan.watchdog-test-timers",
     "vinc.plan.work-closeout-2026-09-29",
     "vinc.plan.work-order-2026-09-24",
     "vinc.plan.work-order-2026-09-27",
+    "vinc.plan.write-contention-measurement-2026-11-10",
     "vinc.prd.community-renewal-2026-10-13",
     "vinc.prd.desktop",
     "vinc.prd.mcp",
     "vinc.prd.site",
+    "vinc.procedure.market-brief-2026-11-07",
     "vinc.progress.qa-session-a-2026-10-04",
     "vinc.progress.qa-session-b-2026-10-04",
     "vinc.progress.unified-execution-2026-10-04",
@@ -569,6 +619,7 @@
     "vinc.qa.cli-cloud-followup-2026-10-03-180459",
     "vinc.reference.desktop-surface-inventory-2026-09",
     "vinc.reference.pstack-principles-2026-11-02",
+    "vinc.reference.research-references-2026-11-03",
     "vinc.reference.single-agent-loop-principles-2026-11-04",
     "vinc.reference.view-controls",
     "vinc.reference.view-time-branches-layout",
@@ -587,6 +638,7 @@
     "vinc.research.abstention-paired-gold-and-fruitfly-circuits-2026-10-18",
     "vinc.research.agent-frameworks-mcp-cli-api-2026-09-28",
     "vinc.research.agent-harness-and-eval-without-a-model-api-2026-10-25",
+    "vinc.research.agent-harness-review-2026-11-12",
     "vinc.research.agent-hosts-and-subscription-runs-2026-10-25",
     "vinc.research.agent-lab-integration-packages-findings-2026-10-03",
     "vinc.research.agent-lab-role-composition-findings-2026-10-03",
@@ -595,6 +647,7 @@
     "vinc.research.agent-system-flow-design",
     "vinc.research.agent-tool-connections-scope-2026-10-28",
     "vinc.research.agent-wiki-comparison",
+    "vinc.research.ai-os-on-linux-2026-11-01",
     "vinc.research.answer-material-section-ai-corpus-2026-10-17",
     "vinc.research.api-cli-benchmark-mem0-zep-2026-09-27",
     "vinc.research.architecture-laya-fruitfly-vinc",
@@ -602,6 +655,7 @@
     "vinc.research.backoffice-operator-stats-inventory-2026-09-12",
     "vinc.research.backoffice-w1-handoff-2026-09-12",
     "vinc.research.brief-grounding-sentence-generated-answers-2026-10-16",
+    "vinc.research.bring-your-own-database-2026-11-08",
     "vinc.research.cag-code-behavior-baseline-2026-10-05",
     "vinc.research.choose-ratio-ruling-material-2026-09-12",
     "vinc.research.cli-brief-threshold-2026-10-03",
@@ -616,6 +670,8 @@
     "vinc.research.community-interface-principles",
     "vinc.research.community-need-evidence-2026-10-13",
     "vinc.research.community-prompt-injection-review-2026-10-18",
+    "vinc.research.community-wiki-and-discussion-split-scope-2026-11-01",
+    "vinc.research.compass-view-animation-on-the-site-2026-11-12",
     "vinc.research.competitive-landscape",
     "vinc.research.competitive-landscape-2026-09-24",
     "vinc.research.concept-identity-evidence-sampling-2026-10-15",
@@ -628,9 +684,12 @@
     "vinc.research.desktop-inventory-vin86-2026-09-20",
     "vinc.research.desktop-runtime-vin86-2026-09-20",
     "vinc.research.desktop-search-and-graph-placement-2026-10-23",
+    "vinc.research.desktop-settings-audit-2026-11-01",
     "vinc.research.desktop-shell",
     "vinc.research.docs-phone-nav-2026-10-03",
     "vinc.research.docs-teardown-2026-09",
+    "vinc.research.docs-tutorial-hub-patterns-2026-11-01",
+    "vinc.research.docs-tutorials-by-job-2026-11-01",
     "vinc.research.document-editing-2026-09-07",
     "vinc.research.document-reading-ux",
     "vinc.research.dots-and-grok-bot-2026-10-03",
@@ -651,6 +710,7 @@
     "vinc.research.graph-area-spheres-2026-10-28",
     "vinc.research.graph-defined-agents-usage-2026-09-28",
     "vinc.research.graph-dotted-orbs-2026-10-28",
+    "vinc.research.graph-engine-replacement-2026-11-08",
     "vinc.research.graph-layout-direction-rules-2026-10-28",
     "vinc.research.graph-node-forms-2026-10-28",
     "vinc.research.graph-pages-and-marks-2026-10-25",
@@ -662,6 +722,7 @@
     "vinc.research.graph-volumetric-areas-2026-10-28",
     "vinc.research.graph-write-method-2026-10-14",
     "vinc.research.graphrag-agent-memory-literature-2026-09-28",
+    "vinc.research.guide-space-and-tutorials-audit-2026-11-12",
     "vinc.research.hero-motion-premium-vs-cheap-2026-10-17",
     "vinc.research.hero-sunbeam-motion-2026-10-17",
     "vinc.research.hub-query-waits-2026-10-06",
@@ -669,6 +730,7 @@
     "vinc.research.korean-two-syllable-node-resolution-2026-10-22",
     "vinc.research.landing-and-community-architecture",
     "vinc.research.landing-demo-material-2026-09-12",
+    "vinc.research.landing-feature-chapters-teardown-2026-11-12",
     "vinc.research.landing-hero-references-2026-10-04",
     "vinc.research.landing-visual-production-paths-2026-10-16",
     "vinc.research.laya-graph-predicate-qualification-2026-10-16",
@@ -685,6 +747,7 @@
     "vinc.research.market-viability-assessment-2026-09-28",
     "vinc.research.masked-erosion-paper-review-2026-10-31",
     "vinc.research.mcp-companion-tools",
+    "vinc.research.mcp-default-response-size-2026-11-12",
     "vinc.research.mcp-npx-distribution",
     "vinc.research.memory-hierarchy-service-brief",
     "vinc.research.methodology",
@@ -696,6 +759,7 @@
     "vinc.research.no-llm-chat",
     "vinc.research.node-address-comparables-2026-09-28",
     "vinc.research.node-excerpt-order-and-window-rsangmoo-2026-10-17",
+    "vinc.research.okf-and-vinc-addressing-2026-11-07",
     "vinc.research.openclaw-agentic-services",
     "vinc.research.openclaw-integration",
     "vinc.research.p1b-adaptive-vector-weight-third-corpus-2026-10-18",
@@ -719,6 +783,8 @@
     "vinc.research.scoped-package-evidence-2026-10-04",
     "vinc.research.search-abstention-2026-10-04",
     "vinc.research.search-field-coverage-and-freshness-2026-10-13",
+    "vinc.research.self-hosted-hub-for-the-web-app-2026-11-11",
+    "vinc.research.self-hosted-seat-price-2026-11-11",
     "vinc.research.sibling-material-answer-harm-2026-10-16",
     "vinc.research.signin-media-panel-2026-10-29",
     "vinc.research.single-graph-viewer-2026-10-24",
@@ -739,6 +805,7 @@
     "vinc.research.view-redesign",
     "vinc.research.vin343-aggregate-diagnostic-handoff-2026-10-09",
     "vinc.research.vinc-operated-system1-judge-qualification-2026-10-10",
+    "vinc.research.vincos-talking-to-claude-without-a-cli-2026-11-02",
     "vinc.research.volume-rendering-for-view",
     "vinc.result.laya-evidence-low-mixture-2026-10-13",
     "vinc.run.community-content-cleanup-2026-10-14",
@@ -751,12 +818,15 @@
     "vinc.spec.context-compiler-interface",
     "vinc.spec.dataplane",
     "vinc.spec.desktop-content-first-ia-0-9-4",
+    "vinc.spec.docs-guides-ia-2026-11-01",
     "vinc.spec.docs-information-architecture-2026-09",
     "vinc.spec.email-subsystem",
     "vinc.spec.figma-coverage-matrix",
     "vinc.spec.glass-language",
     "vinc.spec.host-and-vinc-boundary",
+    "vinc.spec.maker-checker-harness",
     "vinc.spec.mcp-server",
+    "vinc.spec.model-work-specs-2026-11-02",
     "vinc.spec.product-overview",
     "vinc.spec.remote-profile",
     "vinc.spec.retrieval-knobs",
@@ -771,7 +841,9 @@
     "vinc.spec.ui-copy",
     "vinc.spec.ui-copy-ko",
     "vinc.spec.viewpoints",
-    "vinc.spec.web-system"
+    "vinc.spec.web-system",
+    "vinc.style.market-writing-2026-11-08",
+    "vincos.design.policy-agent-surfaces"
   ],
   "nodes": [
     "concept:agent-orchestration",
@@ -803,7 +875,6 @@
     "decision:design-token-values-live-in-the-graph-and-the-hub-directory-is-gone-2026-10-29",
     "decision:detect-the-replica-overlap-and-defer-the-single-writer-fence-2026-09-04",
     "decision:documents-and-graph-share-one-lnb-tree-2026-11-06",
-    "decision:each-area-volume-carries-its-name-at-its-area-topic-2026-10-29",
     "decision:english-is-the-default-surface-language",
     "decision:escape-once-at-the-boundary",
     "decision:every-written-field-has-a-read-path",
@@ -817,7 +888,6 @@
     "decision:ladybug-extensions-ship-from-a-vinc-release-not-the-repo-2026-09-26",
     "decision:large-topic-conversion-admission-2026-10-16",
     "decision:lnb-picks-in-the-graph-open-the-floating-card-and-the-side-pane-2026-10-28",
-    "decision:maker-and-checker-replace-the-job-title-roster-2026-11-04",
     "decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24",
     "decision:mcp-modern-era-is-served-per-request-beside-the-initialize-era",
     "decision:mcp-skills-extension-opens-skill-files-in-the-modern-era-only",
@@ -839,20 +909,15 @@
     "decision:swap-the-production-encoder-to-bge-m3-ko-int8-after-the-hub-encoder-work-2026-10-18",
     "decision:temporal-model-operational-policy-2026-09-09",
     "decision:the-agent-rail-opens-an-agents-board-and-roles-edit-in-place-2026-10-24",
-    "decision:the-agents-screen-edits-agents-procedures-and-policies-in-place-2026-11-06",
-    "decision:the-ambient-azure-identity-is-read-only",
     "decision:the-app-reads-its-own-view-addresses-through-the-shared-parser",
     "decision:the-default-agent-tool-surface-is-reads-plus-role-gated-writes-2026-10-31",
     "decision:the-desktop-app-icon-keeps-a-black-plate-2026-09-26",
-    "decision:the-desktop-shell-docks-search-and-the-view-switch-in-a-view-header-2026-10-23",
     "decision:the-desktop-shell-is-documents-first",
     "decision:the-desktop-sign-in-fills-the-window-instead-of-a-modal-2026-09-26",
     "decision:the-desktop-signs-in-and-shows-the-account-graph-live-and-local-mode-is-a-setting",
-    "decision:the-document-tree-opens-three-levels-and-a-row-click-only-folds-2026-09-26",
     "decision:the-eval-harness-lives-in-top-level-rag-eval-not-inside-vinc-rag-2026-10-01",
     "decision:the-graph-is-one-2d-compass-lens-2026-11-06",
     "decision:the-graph-opens-as-3d-time-branches-with-related-lines",
-    "decision:the-graph-whole-view-is-the-infra-layout-in-vinc-orbs-2026-10-28",
     "decision:the-hub-hands-the-writer-over-at-boot-instead-of-stopping-the-old-revision-2026-10-17",
     "decision:the-hub-layout-gives-up-weight-proportional-spread-so-that-adding-a-node-moves-nothing",
     "decision:the-node-mirror-is-rebuilt-whole-or-not-at-all",
@@ -861,21 +926,18 @@
     "decision:the-reader-says-concepts-in-this-document-not-mentions-2026-09-26",
     "decision:the-semantic-arm-ships-on-and-the-mirror-rebuilds-at-the-release-boundary",
     "decision:the-space-is-an-argument-and-the-default-is-personal",
-    "decision:the-view-header-ends-with-the-options-and-legend-of-the-current-surface-2026-10-28",
     "decision:the-windows-release-leg-goes-back-to-hosted-2026-09-07",
-    "decision:time-branch-layout-is-computed-on-the-hub-per-topic-2026-10-12",
     "decision:time-branches-read-left-to-right",
     "decision:topic-transfer-edge-history-and-foreign-rejection-endpoints-2026-10-16",
     "decision:topic-transfer-moves-unmanaged-attachments-as-text-2026-10-16",
     "decision:topic-transfer-plain-references-and-external-images-2026-10-16",
     "decision:topic-transfer-rejection-endpoint-is-the-owners-concept-2026-10-16",
     "decision:topics-wear-their-area-jewel-2026-10-28",
-    "decision:view-3d-nodes-are-instanced-and-recede-by-blending-to-the-background",
     "decision:view-offers-two-layouts-by-centre-and-time-branches-2026-10-11",
-    "decision:vin-845-ships-the-brief-rule-v2-constants-over-its-failed-pre-registered-criteria-2026-10-31",
     "decision:vin314-every-agent-answer-ends-with-a-sources-line-2026-10-07",
     "decision:vin318-parity-is-judged-on-three-runs-with-a-shared-tool-call-cap-2026-10-07",
     "decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24",
+    "decision:vinc-layout-is-retired-in-two-steps-2026-11-07",
     "decision:vinc-memory-providers-write-only-through-explicit-tools-2026-10-25",
     "decision:web-app-follows-main-desktop-ships-by-release-2026-10-23",
     "episode:2026-09-14-brief-carries-the-connectivity-instead-of-leaving-it-to-be-summed",
@@ -935,7 +997,6 @@
     "record:hub-segfault-loop-on-embedding-apply-2026-09-24",
     "record:hub-snapshots-the-whole-database-every-five-minutes-because-a-no-op-job-counts-as-a-write-2026-09-25",
     "record:in-a-container-a-swallowed-log-is-no-log",
-    "record:in-container-bge-m3-encode-2026-09-09",
     "record:inherits-from-now-reverses-with-derives-from",
     "record:int8-batch-padding-moves-stored-vectors-and-costs-fused-ndcg-on-the-fixture-2026-10-21",
     "record:isolated-seed-read-back-reported-empty-fields",
@@ -995,7 +1056,6 @@
     "record:the-node-mirror-rebuilds-at-the-deploy-boundary-2026-09-10",
     "record:the-one-liner-join-improves-no-item-and-costs-four-2026-09-16",
     "record:the-only-alert-watches-the-signal-that-was-green-in-all-three-outages",
-    "record:the-probe-payload-outgrew-the-exec-command-limit-2026-09-08",
     "record:the-registry-passed-its-included-storage-and-nothing-prunes-it",
     "record:the-release-machine-idles-at-86-percent-of-its-commit-limit-2026-09-07",
     "record:the-search-chunk-arm-is-owner-scoped-and-fails-closed",
@@ -1117,9 +1177,6 @@
     "decision:documents-and-graph-share-one-lnb-tree-2026-11-06": {
       "validity": "current"
     },
-    "decision:each-area-volume-carries-its-name-at-its-area-topic-2026-10-29": {
-      "validity": "current"
-    },
     "decision:english-is-the-default-surface-language": {
       "validity": "unknown"
     },
@@ -1157,9 +1214,6 @@
       "validity": "unknown"
     },
     "decision:lnb-picks-in-the-graph-open-the-floating-card-and-the-side-pane-2026-10-28": {
-      "validity": "current"
-    },
-    "decision:maker-and-checker-replace-the-job-title-roster-2026-11-04": {
       "validity": "current"
     },
     "decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24": {
@@ -1208,7 +1262,7 @@
       "validity": "current"
     },
     "decision:ship-brief-rule-v3-on-the-owners-reading-of-the-wrong-picks-2026-11-03": {
-      "validity": "unknown"
+      "validity": "current"
     },
     "decision:site-boards-are-captures-of-the-running-code": {
       "validity": "current"
@@ -1225,12 +1279,6 @@
     "decision:the-agent-rail-opens-an-agents-board-and-roles-edit-in-place-2026-10-24": {
       "validity": "current"
     },
-    "decision:the-agents-screen-edits-agents-procedures-and-policies-in-place-2026-11-06": {
-      "validity": "current"
-    },
-    "decision:the-ambient-azure-identity-is-read-only": {
-      "validity": "current"
-    },
     "decision:the-app-reads-its-own-view-addresses-through-the-shared-parser": {
       "validity": "unknown"
     },
@@ -1239,9 +1287,6 @@
     },
     "decision:the-desktop-app-icon-keeps-a-black-plate-2026-09-26": {
       "validity": "unknown"
-    },
-    "decision:the-desktop-shell-docks-search-and-the-view-switch-in-a-view-header-2026-10-23": {
-      "validity": "current"
     },
     "decision:the-desktop-shell-is-documents-first": {
       "validity": "current"
@@ -1252,9 +1297,6 @@
     "decision:the-desktop-signs-in-and-shows-the-account-graph-live-and-local-mode-is-a-setting": {
       "validity": "current"
     },
-    "decision:the-document-tree-opens-three-levels-and-a-row-click-only-folds-2026-09-26": {
-      "validity": "unknown"
-    },
     "decision:the-eval-harness-lives-in-top-level-rag-eval-not-inside-vinc-rag-2026-10-01": {
       "validity": "unknown"
     },
@@ -1262,9 +1304,6 @@
       "validity": "current"
     },
     "decision:the-graph-opens-as-3d-time-branches-with-related-lines": {
-      "validity": "current"
-    },
-    "decision:the-graph-whole-view-is-the-infra-layout-in-vinc-orbs-2026-10-28": {
       "validity": "current"
     },
     "decision:the-hub-hands-the-writer-over-at-boot-instead-of-stopping-the-old-revision-2026-10-17": {
@@ -1291,14 +1330,8 @@
     "decision:the-space-is-an-argument-and-the-default-is-personal": {
       "validity": "current"
     },
-    "decision:the-view-header-ends-with-the-options-and-legend-of-the-current-surface-2026-10-28": {
-      "validity": "current"
-    },
     "decision:the-windows-release-leg-goes-back-to-hosted-2026-09-07": {
       "validity": "current"
-    },
-    "decision:time-branch-layout-is-computed-on-the-hub-per-topic-2026-10-12": {
-      "validity": "unknown"
     },
     "decision:time-branches-read-left-to-right": {
       "validity": "current"
@@ -1318,14 +1351,8 @@
     "decision:topics-wear-their-area-jewel-2026-10-28": {
       "validity": "current"
     },
-    "decision:view-3d-nodes-are-instanced-and-recede-by-blending-to-the-background": {
-      "validity": "unknown"
-    },
     "decision:view-offers-two-layouts-by-centre-and-time-branches-2026-10-11": {
       "validity": "unknown"
-    },
-    "decision:vin-845-ships-the-brief-rule-v2-constants-over-its-failed-pre-registered-criteria-2026-10-31": {
-      "validity": "current"
     },
     "decision:vin314-every-agent-answer-ends-with-a-sources-line-2026-10-07": {
       "validity": "unknown"
@@ -1334,6 +1361,9 @@
       "validity": "unknown"
     },
     "decision:vinc-graph-node-budget-lives-in-the-mcp-handler-2026-09-24": {
+      "validity": "current"
+    },
+    "decision:vinc-layout-is-retired-in-two-steps-2026-11-07": {
       "validity": "current"
     },
     "decision:vinc-memory-providers-write-only-through-explicit-tools-2026-10-25": {
@@ -1513,9 +1543,6 @@
     "record:in-a-container-a-swallowed-log-is-no-log": {
       "validity": "current"
     },
-    "record:in-container-bge-m3-encode-2026-09-09": {
-      "validity": "current"
-    },
     "record:inherits-from-now-reverses-with-derives-from": {
       "validity": "current"
     },
@@ -1691,9 +1718,6 @@
       "validity": "current"
     },
     "record:the-only-alert-watches-the-signal-that-was-green-in-all-three-outages": {
-      "validity": "current"
-    },
-    "record:the-probe-payload-outgrew-the-exec-command-limit-2026-09-08": {
       "validity": "current"
     },
     "record:the-registry-passed-its-included-storage-and-nothing-prunes-it": {

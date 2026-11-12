@@ -5,7 +5,8 @@
 그래서 허브가 쓰기 뒤에 미리 배치를 맡기고, 화면은 들고 있는 결과를 받아 바로 그린다.
 배치 컨테이너는 주제 조각·통로·상자 자리를 공간별로 기억하므로 쓰기 뒤의 재배치는 바뀐
 주제만 다시 한다(`app/src/layout-service.ts`).
-근거: [[decision:time-branch-layout-is-computed-on-the-hub-per-topic-2026-10-12]]
+은퇴 1단계: 허브에 배치 환경변수가 없어 이 경로는 꺼져 있고, 2단계에서 지운다.
+근거: [[decision:vinc-layout-is-retired-in-two-steps-2026-11-07]]
 
 계약:
 
