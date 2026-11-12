@@ -2092,3 +2092,120 @@ class FailureEnvelopeTests(unittest.TestCase):
         res = self._get("/decide?topic=view&owner=u")
         self.assertIn("exactly", res["hint"])
         self.assertIn("concept:view", res["hint"], "예시 id 가 없다")
+
+
+class BadReadInputTests(unittest.TestCase):
+    """잘못된 조회 인자는 400 과 핸들러가 만든 오류 본문으로 답한다.
+
+    핸들러가 `(code, obj)` 대신 dict 만 돌려주면 라우터가 dict 의 키 둘을 풀어
+    `_send` 가 터지고, 클라이언트는 답 대신 끊긴 연결을 받는다."""
+
+    CASES = (
+        ("/node-edges", {"owner": "u", "nodes": "not-json"},
+         {"executed": False, "error": "invalid nodes JSON array"}),
+        ("/roles", {"owner": "u", "limit": "x"},
+         {"executed": False, "error": "invalid role pagination"}),
+    )
+
+    def test_http_route_answers_400_with_the_handler_body(self):
+        import urllib.parse
+        with running_server(_app(store=_EmptyStore())) as base:
+            for path, params, body in self.CASES:
+                got = _req(base, path + "?" + urllib.parse.urlencode(params))
+                self.assertEqual(got, (400, body), path)
+
+    def test_in_process_bridge_gets_the_same_400(self):
+        from unittest.mock import patch
+        from api.cli_tools import _InProcessBridge
+        bridge = _InProcessBridge(_app(store=_EmptyStore()))
+        seen = []
+        # 브리지는 본문만 돌려주므로 상태 코드는 진단 기록에서 읽는다.
+        with patch("api.cli_tools.diagnostics.trace",
+                   lambda method, route, status, *a, **k: seen.append(status)):
+            got = [bridge.request("GET", path, params) for path, params, _ in self.CASES]
+        self.assertEqual((seen, got), ([400, 400], [body for _, _, body in self.CASES]))
+
+
+class SyncFlagTests(unittest.TestCase):
+    """sync 는 접수 때 깃발을 세운다. 겹친 요청은 하나만 잡이 되고, 잡이 끝나면
+    (예외로 끝나도) 다시 받는다."""
+
+    BUSY = (409, {"error": "a sync is already in progress"})
+
+    def _hold_worker(self, app):
+        # 워커를 붙잡아 sync 잡이 큐에서 기다리게 한다: 접수와 실행 사이의 틈을 고정한다.
+        hold = threading.Event()
+        app.jobs.submit("hold", lambda: hold.wait(5) and {})
+        return hold
+
+    def _wait(self, app, accepted):
+        job = app.jobs.get(accepted[1]["job_id"])
+        self.assertTrue(job._done.wait(5), "sync 잡이 끝나지 않았다")
+        return job
+
+    def test_overlapping_presses_make_exactly_one_job(self):
+        from unittest.mock import patch
+        app = _app(store=_EmptyStore())
+        calls, entered, release = [], threading.Event(), threading.Event()
+
+        def fake_run(*a, **k):
+            calls.append(1)
+            entered.set()
+            release.wait(5)
+            return {"executed": True}
+
+        with patch("api.server.sync.run", fake_run):
+            hold = self._hold_worker(app)
+            gate = threading.Barrier(8)
+            answers = []
+
+            def press():
+                gate.wait(5)
+                answers.append(app.submit_sync({"token": "k"}))
+
+            threads = [threading.Thread(target=press) for _ in range(8)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(5)
+            accepted = [a for a in answers if a[0] == 202]
+            self.assertEqual(len(accepted), 1, [a[0] for a in answers])
+            self.assertEqual([a for a in answers if a[0] != 202], [self.BUSY] * 7)
+            # 같은 깃발이 데이터 이동도 막는다.
+            self.assertEqual(app._submit_move("sync:push-all", dict)[0], 409)
+            hold.set()
+            self.assertTrue(entered.wait(5), "sync 잡이 시작되지 않았다")
+            self.assertEqual(app.submit_sync({"token": "k"}), self.BUSY)
+            release.set()
+            self._wait(app, accepted[0])
+            self.assertEqual(len(calls), 1)
+            again = app.submit_sync({"token": "k"})
+            self.assertEqual(again[0], 202)
+            self._wait(app, again)
+            self.assertEqual(len(calls), 2)
+
+    def test_a_job_that_raises_still_clears_the_flag(self):
+        from unittest.mock import patch
+        app = _app(store=_EmptyStore())
+
+        def boom(*a, **k):
+            raise RuntimeError("remote went away")
+
+        with patch("api.server.sync.run", boom):
+            first = app.submit_sync({"token": "k"})
+            self.assertEqual(first[0], 202)
+            self.assertEqual(self._wait(app, first).status, "error")
+            self.assertEqual(app.submit_sync({"token": "k"})[0], 202)
+
+    def test_a_job_refused_before_it_runs_still_clears_the_flag(self):
+        # 실행 전 가드(on_before_run)가 거절하면 잡 함수는 불리지 않는다.
+        from api.jobs import JobQueue
+
+        def refuse(job):
+            raise RuntimeError("write refused")
+
+        app = VincApp(store=_EmptyStore(), auth=SessionAuth(_TOKEN),
+                      jobs=JobQueue(on_before_run=refuse))
+        first = app.submit_sync({"token": "k"})
+        self.assertEqual(self._wait(app, first).status, "error")
+        self.assertEqual(app.submit_sync({"token": "k"})[0], 202)
