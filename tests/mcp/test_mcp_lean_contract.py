@@ -181,7 +181,7 @@ def _expected(tool, raw):
         for r in o.get("node_hits") or []:
             _no_cite(r, r.get("id"))
         _walk_blocks(o, flat=False)
-        note = tools.OMITTED_NOTE
+        note = tools.OMITTED_SEARCH_NOTE
     else:
         for k in BRIEF_TOP:
             o.pop(k, None)
@@ -194,17 +194,6 @@ def _expected(tool, raw):
                 c.pop(k, None)
         _links(o.get("links"))
         _links((o.get("candidate_material") or {}).get("links"))
-        mat = o.get("candidate_material") or {}
-        cands = o.get("candidates") or []
-        for quotes in [o.get("quotes") or []] + [c.get("quotes") or [] for c in cands]:
-            _cut_in(quotes, "source")
-            for q in quotes:
-                if q.get("widened") is False:
-                    del q["widened"]
-        for links in (o.get("links"), mat.get("links")):
-            _cut_in((links or {}).get("items"), "title")
-        for ex in (o.get("excerpts") or [], mat.get("excerpts") or []):
-            _cut_in(ex, "doc_title")
         _walk_blocks(o, flat=True)
         note = tools.OMITTED_NOTE
     o.pop("page", None)
@@ -282,8 +271,8 @@ NODE_ENVELOPE = ("kind", "executed", "found")
 NEIGHBOR_ENVELOPE = ("kind", "executed", "found", "node", "by_rel", "count", "neighbors_truncated")
 NEIGHBOR_ROW = ("rel", "dir", "id", "title", "one_liner", "updated_at")
 LONG = "Measured 2026-10-07 on the owner's laptop: " + "one epoch takes nine minutes " * 10 + "end"
-#: 기본 본문이 120자에서 자르는 제목 칸. cite_id 는 search node hit 에서 id 와 같을 때만 빠진다.
-CUT = ("title", "doc_title", "source")
+#: search·neighbors 기본 본문이 120자에서 자르는 제목 칸. cite_id 는 search node hit 에서 id 와 같을 때만 빠진다.
+CUT = ("title", "doc_title")
 
 
 def _same(got, want, keys, *, cut=(), derived_cite=None):
@@ -349,22 +338,20 @@ def test_every_must_stay_key_survives_unchanged():
     out = tools.lean_result("vinc_brief", {}, brief)
     for k in BRIEF_ENVELOPE + ("validity_note",):
         assert k in out and out[k] == brief[k], k
-    # 확정 노드와 후보의 제목은 자르지 않는다.
-    _same(out["node"], brief["node"], BRIEF_NODE_KEEP)
+    for k in BRIEF_NODE_KEEP:
+        assert out["node"][k] == brief["node"][k], k
     for got, want in zip(out["quotes"], brief["quotes"]):
-        _same(got, want, QUOTE_KEEP, cut=CUT)
+        assert {k: got[k] for k in QUOTE_KEEP} == {k: want[k] for k in QUOTE_KEEP}
     assert len(out["quotes"]) == 2
-    _same(out["excerpts"][0], brief["excerpts"][0], EXCERPT_KEEP, cut=CUT)
-    _same(out["links"]["items"][0], brief["links"]["items"][0], LINK_KEEP, cut=CUT)
+    for k in EXCERPT_KEEP:
+        assert out["excerpts"][0][k] == brief["excerpts"][0][k], k
+    for k in LINK_KEEP:
+        assert out["links"]["items"][0][k] == brief["links"]["items"][0][k], k
     assert len(out["candidates"]) == 5
     for got, want in zip(out["candidates"], brief["candidates"]):
-        _same({k: v for k, v in got.items() if k != "quotes"}, want,
-              [k for k in CAND_KEEP if k != "quotes"])
-        _same(got["quotes"][0], want["quotes"][0], QUOTE_KEEP, cut=CUT)
-    mat, want = out["candidate_material"], brief["candidate_material"]
-    _same(mat, want, [k for k in MATERIAL_KEEP if k != "excerpts"])
-    assert len(mat["excerpts"]) == len(want["excerpts"])
-    _same(mat["excerpts"][0], want["excerpts"][0], EXCERPT_KEEP, cut=CUT)
+        assert {k: got[k] for k in CAND_KEEP} == {k: want[k] for k in CAND_KEEP}
+    for k in MATERIAL_KEEP:
+        assert out["candidate_material"][k] == brief["candidate_material"][k], k
 
     node = {"kind": "node", "executed": True, "found": True,
             "node": {"id": "record:n", "title": LONG, "domain": "vinc/x", "tags": ["a", "b"],

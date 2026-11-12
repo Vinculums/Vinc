@@ -99,7 +99,7 @@ test("recall reads a trimmed brief: a node without cite_id cites its id, and a s
     one_liner: "Releases leave on Wednesday.",
     quotes: [{ text: "The train leaves on Wednesday.", doc_id: "vinc.ops.release" }],
     grounds: ["record:train-moved"],
-    omitted: "Omitted: empty, default, derived, duplicate, diagnostic, created_at. …=cut title. No cite_id: id. No validity: unknown if interval_invalid or no valid_from/until, else current. raw:true=all",
+    omitted: "Omitted: empty, default, derived, duplicate, diagnostic keys, fixed notes, page, created_at. No validity: unknown if interval_invalid or no valid_from/until, else current. raw:true has all.",
   };
   const { o } = hub((name) => (name === "vinc_brief" ? slim : { rows: [], node_hits: [] }));
   const [first] = await recall(o, "when do releases leave", 8);
