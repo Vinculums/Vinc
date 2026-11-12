@@ -10,6 +10,11 @@
 
 출력은 게이트 하나에 한 줄(PASS · FAIL · SKIP 과 이유)이고, 막는 게이트가 하나라도 FAIL 이면
 exit 1, 쓰임이 틀리면 2. 알림(advisory) 게이트의 FAIL 은 줄에 적히지만 종료코드를 바꾸지 않는다.
+GitHub Actions 안(`GITHUB_ACTIONS`)에서는 막는 게이트의 FAIL 마다 `::error` 주석 한 줄을 더 찍어
+체크 화면이 그 게이트 이름을 보이게 한다. 로컬 출력은 그대로다.
+
+게이트마다 제한 시간(`timeout`, 기본 `DEFAULT_TIMEOUT` 초)이 있다. 넘으면 그 게이트는
+"timed out after N s" 로 FAIL 이고, 게이트가 띄운 프로세스는 자식까지 그룹째 멈춘다.
 
 필요한 것(`needs`)이 없으면 로컬에서는 SKIP 하고 이유를 적는다. `--ci` 에서는 SKIP 이 아니라
 FAIL 이다: 러너에 도구가 빠져 게이트가 조용히 건너뛰면 초록이 거짓이 된다. CI 에서 SKIP 할 수
@@ -25,8 +30,10 @@ import argparse
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from importlib.util import find_spec
@@ -38,6 +45,12 @@ SELF = "scripts/gates.py"
 #: 어느 파일이 바뀌어도 관련이 있다(빈 정규식은 모든 경로에 맞는다).
 ANY: tuple[str, ...] = ("",)
 _DESIGN = (r"^app/src/", r"^scripts/design/")
+
+#: 게이트 하나(명령 전부를 합친 것)의 기본 제한 시간, 초. CI 에서 가장 느린 레지스트리 게이트가
+#: 몇 초라 그 수십 배를 둔다: 느린 러너나 느린 네트워크로는 떨어지지 않고 멈춘 게이트만 떨어진다.
+DEFAULT_TIMEOUT = 120
+#: 제한 시간을 넘은 그룹에 SIGTERM 을 보낸 뒤 스스로 끝나기를 기다리는 초. 넘으면 SIGKILL.
+_TERM_GRACE = 5.0
 
 
 @dataclass(frozen=True)
@@ -61,6 +74,8 @@ class Gate:
     advisory: bool = False
     #: 리포 루트 기준 작업 디렉터리.
     cwd: str = ""
+    #: 제한 시간, 초. 넘으면 FAIL("timed out after N s")이고 프로세스 그룹을 멈춘다.
+    timeout: int = DEFAULT_TIMEOUT
     #: 워크플로 `run:` 에서 이 게이트를 알아보는 글자. 비우면 명령의 첫 파일 경로.
     marker: str = ""
     #: 표에 함께 찍는 한 줄 설명.
@@ -114,7 +129,10 @@ GATES: tuple[Gate, ...] = (
          paths=(r"^vinc_mcp/", r"^api/", r"^scripts/gen_openapi\.py$"),
          ci="changes", advisory=True, note="homepage follows MCP tools and REST reference"),
     # 이 PR 이 건드린 경로를 다스리는 기록·결정을 호스티드 그래프에서 찾아 알린다. 시크릿과
-    # 실행 기록 아티팩트가 얽혀 ci.yml 의 손 스텝으로 남는다.
+    # 실행 기록 아티팩트가 얽혀 ci.yml 의 손 스텝으로 남는다. 그 스텝의 명령은 이것에 CI 전용
+    # 선택지(`--format json` · `--summary` · `--trace` · `--run-id` · `--task-ref` · `--host`)만
+    # 더한 것이고 `--diff` 는 `origin/$BASE_REF` 다. 둘 다 `REF...HEAD` 의 merge-base 로 읽으므로
+    # 고르는 경로는 같다. 테스트가 그 차이 밖으로 어긋나지 않는지 본다.
     Gate("decision-gate",
          py("-X", "utf8", "-m", "api.cli", "--target", "account", "gate", "check",
             "--diff", "{BASE}"),
@@ -194,13 +212,15 @@ GATES: tuple[Gate, ...] = (
          steps=("release.yml:version-gate",), marker="version_sync.py --check",
          note="every version site agrees"),
     # 타입체크 · 레이아웃 테스트 · 프로덕션 빌드. `app (typecheck)` 잡이 경로 조건과 함께 돈다.
+    # 노드 빌드와 cargo 를 부르는 셋은 분 단위라 제한 시간을 그 잡의 제한(20분) 안에서 따로 둔다.
     Gate("app-build", (("npm", "run", "build"),), needs=("node",),
          paths=(r"^app/", r"^api/contract/"), steps=("ci.yml:app",), cwd="app",
-         marker="npm run build", note="app typecheck, layout tests and build"),
+         timeout=900, marker="npm run build", note="app typecheck, layout tests and build"),
     # 브라우저 없이 도는 app/dev/*-check.ts. tsconfig include 밖이라 위 빌드가 덮지 않는다.
     Gate("app-dev-checks", (("bash", "-c", _DEV_CHECKS),), needs=("node", "tool:bash"),
          paths=(r"^app/", r"^api/contract/"), steps=("ci.yml:app", "verify-hosted.yml:app"),
-         cwd="app", marker="for f in dev/*-check.ts", note="app/dev checks without a browser"),
+         cwd="app", timeout=900, marker="for f in dev/*-check.ts",
+         note="app/dev checks without a browser"),
 
     # ── CI 가 스텝으로 부르지 않는 생성물 검사 ──────────────────────────────
     # 앞의 둘은 core-pkns 의 pytest 가 같은 것을 단언한다(tests/mcp/test_tool_reference.py,
@@ -216,7 +236,7 @@ GATES: tuple[Gate, ...] = (
     # 릴리스는 생성기를 돌리기만 하고 커밋된 사본과 대조하지 않는다. 어디서도 막지 않으므로 알림이다.
     Gate("third-party-notices", py("-X", "utf8", "scripts/third_party_notices.py", "--check"),
          needs=("tool:cargo", "node"), paths=(r"^app/package-lock\.json$", r"^app/src-tauri/Cargo"),
-         advisory=True, marker="third_party_notices.py --check",
+         advisory=True, timeout=900, marker="third_party_notices.py --check",
          note="committed notices match the dependencies"),
 )
 
@@ -350,8 +370,90 @@ def _argv(argv: tuple[str, ...], ctx: Ctx) -> list[str]:
             for a in out]
 
 
+def _group_kw() -> dict:
+    """자식을 새 프로세스 그룹의 우두머리로 띄운다: 멈출 때 손자까지 한 번에 닿게."""
+    if os.name == "nt":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+def _stop_group(proc: subprocess.Popen) -> None:
+    """proc 과 그 그룹을 멈춘다. POSIX 는 SIGTERM, 유예 뒤 남은 것에 SIGKILL. 윈도는 트리째 끝낸다."""
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        proc.wait()
+        return
+    # start_new_session 으로 띄웠으므로 그룹 id 는 자식의 pid 다.
+    pgid = proc.pid
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except ProcessLookupError:
+        proc.wait()
+        return
+    deadline = time.monotonic() + _TERM_GRACE
+    while time.monotonic() < deadline:
+        # 자식을 거둬야 좀비가 그룹에 남아 살아 있는 것처럼 보이지 않는다.
+        proc.poll()
+        try:
+            os.killpg(pgid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    else:
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    proc.wait()
+
+
+def _pump(pipe, sink: list[str], echo: bool) -> None:
+    """자식 출력을 줄마다 붙잡고, echo 면 받는 대로 이 프로세스의 stdout 에 그대로 흘린다."""
+    for raw in iter(pipe.readline, b""):
+        sink.append(raw.decode("utf-8", errors="replace").replace("\r\n", "\n"))
+        if echo:
+            out = sys.stdout
+            buf = getattr(out, "buffer", None)
+            if buf is not None:
+                buf.write(raw)
+                buf.flush()
+            else:
+                out.write(sink[-1])
+                out.flush()
+    pipe.close()
+
+
+def _run_cmd(argv: list[str], cwd: Path, env: dict, stream: bool,
+             deadline: float) -> tuple[int | None, str]:
+    """명령 하나를 deadline(monotonic)까지 돌린다. (종료코드, 출력). 시간을 넘기면 종료코드는 None."""
+    if stream:
+        sys.stdout.flush()
+    proc = subprocess.Popen(argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, **_group_kw())
+    out: list[str] = []
+    reader = threading.Thread(target=_pump, args=(proc.stdout, out, stream), daemon=True)
+    reader.start()
+    try:
+        try:
+            proc.wait(timeout=max(0.0, deadline - time.monotonic()))
+            # 자식이 끝나도 그룹에 남은 손자가 파이프를 쥐고 있으면 그것도 시간 안에 끝나야 한다.
+            reader.join(max(0.0, deadline - time.monotonic()))
+            timed_out = reader.is_alive()
+        except subprocess.TimeoutExpired:
+            timed_out = True
+        if timed_out:
+            _stop_group(proc)
+            reader.join(1.0)
+    except BaseException:
+        # Ctrl-C 등으로 러너가 빠질 때 새 그룹의 자식이 혼자 남지 않게 한다.
+        _stop_group(proc)
+        raise
+    return (None if timed_out else proc.returncode), "".join(out)
+
+
 def run_gate(g: Gate, ctx: Ctx, stream: bool) -> tuple[str, str, str]:
-    """(상태, 이유, 붙잡은 출력). 상태는 PASS · FAIL · SKIP."""
+    """(상태, 이유, 붙잡은 출력). 상태는 PASS · FAIL · SKIP. stream 이면 출력을 받는 대로도 흘린다."""
     why = missing(g, ctx)
     if why:
         # CI 에서 도구가 빠진 것은 건너뛸 일이 아니라 러너 설정의 고장이다.
@@ -364,19 +466,46 @@ def run_gate(g: Gate, ctx: Ctx, stream: bool) -> tuple[str, str, str]:
         env.setdefault("HEAD", ctx.head)
     captured: list[str] = []
     started = time.monotonic()
+    # 제한 시간은 명령마다가 아니라 게이트 하나의 명령 전부에 걸린다.
+    deadline = started + g.timeout
     for argv in g.cmd:
-        kw: dict = {"cwd": ROOT / g.cwd, "env": env}
-        if not stream:
-            kw.update(stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                      encoding="utf-8", errors="replace")
         try:
-            r = subprocess.run(_argv(argv, ctx), **kw)
+            code, out = _run_cmd(_argv(argv, ctx), ROOT / g.cwd, env, stream, deadline)
         except OSError as exc:
             return "FAIL", f"could not start: {exc}", "".join(captured)
-        captured.append(r.stdout or "")
-        if r.returncode != 0:
-            return "FAIL", f"exit {r.returncode}", "".join(captured)
+        captured.append(out)
+        if code is None:
+            return "FAIL", f"timed out after {g.timeout} s", "".join(captured)
+        if code != 0:
+            return "FAIL", f"exit {code}", "".join(captured)
     return "PASS", f"{time.monotonic() - started:.1f}s", "".join(captured)
+
+
+def _escape_data(s: str) -> str:
+    """워크플로 명령의 메시지 부분 이스케이프."""
+    return s.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
+def _escape_property(s: str) -> str:
+    """워크플로 명령의 속성 값 이스케이프. 메시지 규칙에 `:` 와 `,` 가 더해진다."""
+    return _escape_data(s).replace(":", "%3A").replace(",", "%2C")
+
+
+def annotation(gate_id: str, message: str) -> str:
+    """막는 게이트의 FAIL 하나를 GitHub 체크 화면에 올리는 `::error` 한 줄."""
+    return f"::error title={_escape_property('gate ' + gate_id)}::{_escape_data(message)}"
+
+
+#: 출력에서 실패를 말하는 줄의 표지. 게이트 출력의 첫 줄은 흔히 머리말이라 이 줄을 먼저 고른다.
+_FAILURE_WORD = re.compile(r"\b(?:fail(?:ed|ure)?|error|drift|block(?:ed)?)\b", re.I)
+
+
+def failure_line(why: str, out: str) -> str:
+    """주석에 실을 실패의 첫 줄: 이유(exit N · timed out …)와, 출력에서 실패를 말하는 첫 줄
+    (없으면 비어 있지 않은 첫 줄)."""
+    lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
+    first = next((ln for ln in lines if _FAILURE_WORD.search(ln)), lines[0] if lines else "")
+    return f"{why}: {first}" if first else why
 
 
 def _line(status: str, g: Gate, why: str) -> str:
@@ -450,6 +579,7 @@ def main(argv: list[str] | None = None) -> int:
     ctx = Ctx(ci=ci, network=ci or a.network, base=base, head=head, title=a.title)
 
     results: list[tuple[Gate, str, str]] = []
+    failures: list[tuple[Gate, str]] = []
     for g in chosen:
         if ci:
             print(f"::group::{g.id}", flush=True)
@@ -460,6 +590,8 @@ def main(argv: list[str] | None = None) -> int:
             print(out.rstrip())
         print(_line(status, g, why), flush=True)
         results.append((g, status, why))
+        if status == "FAIL" and not g.advisory:
+            failures.append((g, failure_line(why, out)))
 
     blocking = [g.id for g, s, _ in results if s == "FAIL" and not g.advisory]
     if ci:
@@ -472,6 +604,9 @@ def main(argv: list[str] | None = None) -> int:
                 fh.write(f"### Gates ({', '.join(a.ci)})\n\n| gate | result | detail |\n|---|---|---|\n")
                 for g, s, why in results:
                     fh.write(f"| {g.id} | {s}{' (advisory)' if g.advisory and s == 'FAIL' else ''} | {why} |\n")
+    if os.environ.get("GITHUB_ACTIONS"):
+        for g, msg in failures:
+            print(annotation(g.id, msg), flush=True)
     print(f"{len(results)} gate(s) run, {len(blocking)} blocking failure(s)"
           + (f": {', '.join(blocking)}" if blocking else ""))
     return 1 if blocking else 0
