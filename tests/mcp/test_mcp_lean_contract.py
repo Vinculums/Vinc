@@ -83,6 +83,28 @@ def _walk_blocks(o, flat):
             _walk_blocks(v, flat)
 
 
+def _cut(t):
+    """120자를 넘는 제목: 119자 안의 마지막 빈칸(앞 절반보다 뒤일 때)에서 끊고 "…" 를 붙인다.
+    실제 꼴의 제목은 ASCII 라 결합 부호 규칙은 여기서 다시 쓰지 않는다."""
+    if not isinstance(t, str) or len(t) <= 120:
+        return t
+    head = t[:119]
+    if t[119] != " " and head.rfind(" ") > 59:
+        head = head[:head.rfind(" ")]
+    return head.rstrip(" ,;:") + "…"
+
+
+def _cut_in(rows, key):
+    for r in rows or []:
+        if key in r:
+            r[key] = _cut(r[key])
+
+
+def _no_cite(r, same):
+    if r.get("cite_id") and r["cite_id"] == same:
+        del r["cite_id"]
+
+
 def _links(links):
     if not isinstance(links, dict):
         return
@@ -108,6 +130,7 @@ def _expected(tool, raw):
                 del r[k]
             if dom is not None and r.get("domain") == dom:
                 del r["domain"]
+        _cut_in(o.get("neighbors"), "title")
         return o
     if tool == "vinc_node":
         n = o.get("node")
@@ -145,6 +168,16 @@ def _expected(tool, raw):
         for r in o.get("node_hits") or []:
             for k in SEARCH_HIT:
                 r.pop(k, None)
+        docs = set()
+        for r in o.get("rows") or []:
+            if "doc_title" in r and r["doc_id"] in docs:
+                del r["doc_title"]
+            docs.add(r.get("doc_id"))
+            _no_cite(r, "concept:doc." + str(r.get("doc_id")))
+        _cut_in(o.get("rows"), "doc_title")
+        _cut_in(o.get("node_hits"), "title")
+        for r in o.get("node_hits") or []:
+            _no_cite(r, r.get("id"))
         _walk_blocks(o, flat=False)
         note = tools.OMITTED_NOTE
     else:
@@ -159,6 +192,34 @@ def _expected(tool, raw):
                 c.pop(k, None)
         _links(o.get("links"))
         _links((o.get("candidate_material") or {}).get("links"))
+        mat = o.get("candidate_material") or {}
+        cands = o.get("candidates") or []
+        if o.get("status") == "choose":
+            sec = o.get("section")
+            if sec is not None and not (cands and sec.get("node_id") == cands[0]["id"]):
+                del o["section"]
+            ex0 = (mat.get("excerpts") or [None])[0]
+            if mat.get("body_src") == "doc" and ex0 and mat.get("one_liner") == ex0["excerpt"].strip():
+                where = ex0.get("doc_title") or ex0["doc_id"]
+                if mat.get("body_cite") == (f"{where} · {ex0['section']}" if ex0.get("section") else where):
+                    del mat["one_liner"]
+                    mat.pop("body_cite", None)
+        for quotes in [o.get("quotes") or []] + [c.get("quotes") or [] for c in cands]:
+            _cut_in(quotes, "source")
+            for q in quotes:
+                if q.get("widened") is False:
+                    del q["widened"]
+        for links in (o.get("links"), mat.get("links")):
+            _cut_in((links or {}).get("items"), "title")
+        for ex in (o.get("excerpts") or [], mat.get("excerpts") or []):
+            _cut_in(ex, "doc_title")
+            for e in ex:
+                _no_cite(e, "concept:doc." + str(e.get("doc_id")))
+        for c in cands:
+            _no_cite(c, c["id"])
+        if isinstance(o.get("node"), dict):
+            _no_cite(o["node"], o["node"].get("id"))
+        _no_cite(mat, mat.get("candidate"))
         _walk_blocks(o, flat=True)
         note = tools.OMITTED_NOTE
     o.pop("page", None)
@@ -236,6 +297,17 @@ NODE_ENVELOPE = ("kind", "executed", "found")
 NEIGHBOR_ENVELOPE = ("kind", "executed", "found", "node", "by_rel", "count", "neighbors_truncated")
 NEIGHBOR_ROW = ("rel", "dir", "id", "title", "one_liner", "updated_at")
 LONG = "Measured 2026-10-07 on the owner's laptop: " + "one epoch takes nine minutes " * 10 + "end"
+#: 기본 본문이 120자에서 자르는 제목 칸과, id 에서 되찾을 수 있을 때 빠지는 cite_id.
+CUT = ("title", "doc_title", "source")
+
+
+def _same(got, want, keys, *, cut=(), derived_cite=None):
+    """남아야 하는 칸이 그대로인가. `cut` 의 칸은 잘린 꼴이고, cite_id 는 `derived_cite` 와 같으면 빠진다."""
+    for k in keys:
+        if k == "cite_id" and want.get(k) and want[k] == derived_cite:
+            assert k not in got, k
+        else:
+            assert got[k] == (_cut(want[k]) if k in cut else want[k]), k
 
 
 def _signal(k):
@@ -266,10 +338,11 @@ def test_every_must_stay_key_survives_unchanged():
     out = tools.lean_result("vinc_search", {}, search)
     for k in SEARCH_ENVELOPE + ("validity_note",):
         assert k in out and out[k] == search[k], k
-    for k in SEARCH_ROW_KEEP:
-        assert out["rows"][0][k] == search["rows"][0][k], k
-    for k in SEARCH_HIT_KEEP:
-        assert out["node_hits"][0][k] == search["node_hits"][0][k], k
+    _same(out["rows"][0], search["rows"][0], SEARCH_ROW_KEEP, cut=CUT,
+          derived_cite="concept:doc.doc.a")
+    _same(out["node_hits"][0], search["node_hits"][0], SEARCH_HIT_KEEP, cut=CUT,
+          derived_cite="record:r")
+    assert out["rows"][0]["doc_title"] != LONG and out["node_hits"][0]["title"] != LONG
 
     brief = {k: _signal(k) for k in BRIEF_ENVELOPE}
     brief.update(kind="brief", status="resolved",
@@ -292,20 +365,24 @@ def test_every_must_stay_key_survives_unchanged():
     out = tools.lean_result("vinc_brief", {}, brief)
     for k in BRIEF_ENVELOPE + ("validity_note",):
         assert k in out and out[k] == brief[k], k
-    for k in BRIEF_NODE_KEEP:
-        assert out["node"][k] == brief["node"][k], k
+    # 확정 노드와 후보의 제목은 자르지 않는다.
+    _same(out["node"], brief["node"], BRIEF_NODE_KEEP, derived_cite="record:n")
     for got, want in zip(out["quotes"], brief["quotes"]):
-        assert {k: got[k] for k in QUOTE_KEEP} == {k: want[k] for k in QUOTE_KEEP}
+        _same(got, want, QUOTE_KEEP, cut=CUT)
     assert len(out["quotes"]) == 2
-    for k in EXCERPT_KEEP:
-        assert out["excerpts"][0][k] == brief["excerpts"][0][k], k
-    for k in LINK_KEEP:
-        assert out["links"]["items"][0][k] == brief["links"]["items"][0][k], k
+    _same(out["excerpts"][0], brief["excerpts"][0], EXCERPT_KEEP, cut=CUT,
+          derived_cite="concept:doc.doc.e")
+    _same(out["links"]["items"][0], brief["links"]["items"][0], LINK_KEEP, cut=CUT)
     assert len(out["candidates"]) == 5
     for got, want in zip(out["candidates"], brief["candidates"]):
-        assert {k: got[k] for k in CAND_KEEP} == {k: want[k] for k in CAND_KEEP}
-    for k in MATERIAL_KEEP:
-        assert out["candidate_material"][k] == brief["candidate_material"][k], k
+        _same({k: v for k, v in got.items() if k != "quotes"}, want,
+              [k for k in CAND_KEEP if k != "quotes"], derived_cite=want["id"])
+        _same(got["quotes"][0], want["quotes"][0], QUOTE_KEEP, cut=CUT)
+    mat, want = out["candidate_material"], brief["candidate_material"]
+    _same(mat, want, [k for k in MATERIAL_KEEP if k != "excerpts"], derived_cite="record:c0")
+    assert len(mat["excerpts"]) == len(want["excerpts"])
+    _same(mat["excerpts"][0], want["excerpts"][0], EXCERPT_KEEP, cut=CUT,
+          derived_cite="concept:doc.doc.e")
 
     node = {"kind": "node", "executed": True, "found": True,
             "node": {"id": "record:n", "title": LONG, "domain": "vinc/x", "tags": ["a", "b"],
@@ -327,8 +404,7 @@ def test_every_must_stay_key_survives_unchanged():
     out = tools.lean_result("vinc_neighbors", {}, nb)
     for k in NEIGHBOR_ENVELOPE:
         assert out[k] == nb[k], k
-    for k in NEIGHBOR_ROW + ("domain",):
-        assert out["neighbors"][0][k] == nb["neighbors"][0][k], k
+    _same(out["neighbors"][0], nb["neighbors"][0], NEIGHBOR_ROW + ("domain",), cut=CUT)
 
 
 # ── validity_note: 고정 문장만 빠진다 ───────────────────────────────────────────

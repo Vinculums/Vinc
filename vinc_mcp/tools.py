@@ -152,6 +152,17 @@ _RAW_PROP = {"type": "boolean", "description": (
         "capped. Brief leaves out its flat copies of temporal fields (node.validity stays), "
         "validity_best_dropped, cite_grounds when it equals grounds, null, empty and "
         "false fields of relation items, and links.executed, offset and truncated at their defaults. "
+        "A title longer than 120 characters is cut at a word boundary to at most 120 ending in \"…\": "
+        "neighbors row title, search node_hits title and rows doc_title, brief relation item title, "
+        "excerpt doc_title and quote source; brief candidates and node titles and vinc_node are never "
+        "cut, so read the node for the whole title. Search sends a row's doc_title only on the first "
+        "row of each doc_id in the response. cite_id is left out where it can be rebuilt: a missing "
+        "cite_id means cite `id` (node hits, candidates, the resolved node; `candidate` on "
+        "candidate_material), or `concept:doc.<doc_id>` on a row or excerpt; a null cite_id with "
+        "cite_unavailable stays. On a choose brief, `section` is sent only when its node is the "
+        "first candidate (its document mirror stays in grounds), candidate_material leaves out "
+        "one_liner and body_cite when its body is the first excerpt (body_src doc), and quotes "
+        "leave out widened when false. "
         "vinc_node leaves out sync_seq, owner_id, tenant_id, empty fields and temporal values the "
         "node already holds; props are always whole. Neighbors leave out empty fields, rev, and on a "
         "domain listing the domain each row repeats. A trimmed search or brief result carries "
@@ -1224,7 +1235,8 @@ TOOLS: list[dict] = [
                 "Hybrid keyword and vector search over this graph's documents and nodes; use it before "
                 "vinc_ingest to find ids to reuse. Returns `rows` (chunk excerpts with doc_id and cite_id) "
                 "and, on the first page only, `node_hits`. Read whole documents with vinc_doc_get and cite "
-                "`cite_id`. Page with `cursor` set to `next_cursor` while `has_more` (rows only). "
+                "`cite_id`; where it is missing, cite `id`, or `concept:doc.<doc_id>` for a row. "
+                "Page with `cursor` set to `next_cursor` while `has_more` (rows only). "
                 "`node_window` and `node_semantic` appear when the node arm was not complete. `vector_note` means the meaning "
                 "arm did not fully run: right after a document write the index rebuilds (`arms` is \"fts\", the "
                 "call never waits, and this is benign); otherwise (a timeout, a missing index) the rows came "
@@ -1364,7 +1376,8 @@ TOOLS: list[dict] = [
                 "for the first candidate, which is not a confirmed answer; "
                 "'none' means no match, unless `unreadable` or `search_error` is present. "
                 "`partial:true` means excerpts or relations are missing. Text is quoted verbatim, never "
-                "generated; cite `cite_id`. A node reached by id may be historical: check node.validity "
+                "generated; cite `cite_id`, or `id` where it is missing (`concept:doc.<doc_id>` for an "
+                "excerpt). A node reached by id may be historical: check node.validity "
                 "before quoting it as current. Read-only."
             )
             ),
@@ -2479,7 +2492,15 @@ def _shrink_brief_result(out: dict, budget: int) -> dict | None:
     dropped_ex = dropped_ln = 0
     # choose 의 첫 후보 재료(`candidate_material`)의 발췌가 맨 먼저다 — 확정 답이 아니다.
     if isinstance(out.get("candidate_material"), dict):
-        dropped_ex += _shrink_material_lists(out["candidate_material"], _over)[0]
+        mat = out["candidate_material"]
+        ex = mat.get("excerpts")
+        # 기본 본문이 첫 발췌와 같아 뺀 본문(one_liner·body_cite)은 그 발췌를 덜기 전에 되살린다.
+        while isinstance(ex, list) and ex and _over():
+            if len(ex) == 1:
+                restore_material_body(mat)
+            ex.pop()
+            dropped_ex += 1
+        dropped_ex += _shrink_material_lists(mat, _over)[0]
     # 확정 답에서는 발췌 → 질문이 가리키는 절(`section`) → 관계 순서다. 절은 발췌보다 답에
     # 가깝고, 관계는 근거 지도라 마지막이다. 절의 미러는 `grounds` 에 남아 되찾을 수 있다.
     ex = out.get("excerpts")
@@ -2692,6 +2713,7 @@ SHRINKERS = {"vinc_search": _shrink_search_result,
 # rpc 의 tools/call 결과에만 건다. 핸들러 출력은 그대로라 REST v1·SDK·`vinc call`·평가 하네스의
 # cli·v1 경로는 꼴이 바뀌지 않는다. `raw` 가 참(true 나 문자열 "true")이면 아무것도 빼지 않는다.
 # 규칙은 하나다: 차 있지 않은 칸, 건강한 기본값, 같은 객체의 다른 칸에서 되찾을 수 있는 값은 뺀다.
+# 값을 바꾸는 것은 하나뿐이다: 120자를 넘는 제목은 "…" 로 자른다(`cut_title`, 노드 제목은 vinc_node 가 준다).
 # 저장된 `props` 안은 어느 도구에서도 건드리지 않는다(쓰기가 props 를 통째로 갈아 끼운다).
 #: 줄이는 도구. vinc_node·vinc_neighbors 는 칸 규칙만 타고 LEAN_DROP 에 행이 없다.
 LEAN_TOOLS = ("vinc_search", "vinc_brief", "vinc_node", "vinc_neighbors")
@@ -2714,10 +2736,11 @@ LEAN_DROP: dict[str, dict[str, tuple[str, ...]]] = {
 }
 #: 줄인 결과에 붙는 한 줄. 도구 목록을 예전에 받아 둔 호스트는 새 설명을 못 읽으므로 빠진 칸의
 #: 뜻을 결과가 직접 말한다. 빠지는 칸은 모두 문장이 이름 붙인 종류 중 하나여야 하고(`OMITTED_KINDS`),
-#: validity 규칙은 `temporal_expand` 와 같아야 한다(둘 다 테스트가 대조한다).
-OMITTED_NOTE = ("Omitted: empty, default, derived, duplicate, diagnostic keys, fixed notes, page, "
-                "created_at. No validity: unknown if interval_invalid or no valid_from/until, else "
-                "current. raw:true has all.")
+#: validity 규칙은 `temporal_expand` 와 같아야 한다(둘 다 테스트가 대조한다). 잘린 제목("…")과 빠진
+#: cite_id 를 읽는 법도 이 한 줄이 말한다. ⚠ 190자 상한 안에 둔다(호출마다 실린다).
+OMITTED_NOTE = ("Omits empty/default/derived/duplicate/diagnostic. …=cut title. No cite_id: id; row "
+                "concept:doc.<doc_id>. No validity: unknown if interval_invalid or no valid_*, else "
+                "current. raw:true=all")
 #: vinc_node 의 한 줄. 노드는 알려진 validity 를 늘 남기므로 규칙을 싣지 않는다. 빠지는 것은 빈·기본값
 #: 칸, 내부 좌표(sync_seq·owner_id·tenant_id), 노드 칸과 겹치는 시간 값이다.
 OMITTED_NODE_NOTE = "Unset, internal, repeated keys omitted; raw:true gives all."
@@ -2735,11 +2758,14 @@ OMITTED_KINDS: tuple[tuple[str, str, str, str], ...] = (
     ("vinc_search", "", "validity_best_dropped_distance", "diagnostic"),
     ("vinc_search", "", "node_window", "diagnostic"),
     ("vinc_search", "", "node_semantic", "diagnostic"),
-    ("vinc_search", "", "validity_note", "fixed notes"),
-    ("vinc_search", "", "page", "page"),
+    ("vinc_search", "", "validity_note", "default"),
+    ("vinc_search", "", "page", "diagnostic"),
     ("vinc_search", "", "total_count_capped", "default"),
     ("vinc_search", "/rows[]", "rrf_score", "diagnostic"),
     ("vinc_search", "/rows[]", "arms", "diagnostic"),
+    ("vinc_search", "/rows[]", "doc_title", "duplicate"),
+    ("vinc_search", "/rows[]", "cite_id", "derived"),
+    ("vinc_search", "/node_hits[]", "cite_id", "derived"),
     ("vinc_search", "/node_hits[]", "matched_in", "diagnostic"),
     ("vinc_search", "/node_hits[]", "hit_tokens", "diagnostic"),
     ("vinc_search", "/node_hits[]", "title_tokens", "diagnostic"),
@@ -2752,11 +2778,19 @@ OMITTED_KINDS: tuple[tuple[str, str, str, str], ...] = (
     ("vinc_search", "/node_hits[]", "sem_decisive", "diagnostic"),
     ("vinc_brief", "", "resolution", "diagnostic"),
     ("vinc_brief", "", "validity_best_dropped", "diagnostic"),
-    ("vinc_brief", "", "validity_note", "fixed notes"),
+    ("vinc_brief", "", "validity_note", "default"),
     ("vinc_brief", "", "cite_grounds", "duplicate"),
     ("vinc_brief", "/candidates[]", "matched_in", "diagnostic"),
     ("vinc_brief", "/candidates[]", "hit_tokens", "diagnostic"),
     ("vinc_brief", "/candidates[]", "title_tokens", "diagnostic"),
+    ("vinc_brief", "/candidates[]", "cite_id", "derived"),
+    ("vinc_brief", "/node", "cite_id", "derived"),
+    ("vinc_brief", "/candidate_material", "cite_id", "derived"),
+    ("vinc_brief", "*excerpts[]", "cite_id", "derived"),
+    ("vinc_brief", "", "section", "duplicate"),
+    ("vinc_brief", "/candidate_material", "one_liner", "duplicate"),
+    ("vinc_brief", "/candidate_material", "body_cite", "duplicate"),
+    ("vinc_brief", "*quotes[]", "widened", "default"),
     ("vinc_brief", "*links", "executed", "default"),
     ("vinc_brief", "*links", "offset", "default"),
     ("vinc_brief", "*links", "truncated", "default"),
@@ -2777,13 +2811,13 @@ OMITTED_KINDS: tuple[tuple[str, str, str, str], ...] = (
     ("vinc_node", "/node/temporal", "interval_invalid", "unset"),
     ("vinc_neighbors", "/neighbors[]", "rev", "internal"),
     ("vinc_neighbors", "/neighbors[]", "domain", "repeated"),
-    ("*", "*/temporal", "created_at", "created_at"),
+    ("*", "*/temporal", "created_at", "diagnostic"),
     ("*", "*/temporal", "claim_assessment_scope", "default"),
     ("*", "*/temporal", "interval_invalid", "default"),
     ("*", "*/temporal", "claim_status", "default"),
     ("*", "*/temporal", "validity", "derived"),
     ("*", "*/temporal", "interval_known", "derived"),
-    ("vinc_brief", "*", "created_at", "created_at"),
+    ("vinc_brief", "*", "created_at", "diagnostic"),
     ("vinc_brief", "*", "updated_at", "duplicate"),
     ("vinc_brief", "*", "content_time", "duplicate"),
     ("vinc_brief", "*", "valid_from", "duplicate"),
@@ -2920,6 +2954,152 @@ def _lean_links(links: Any) -> None:
         links.pop("offset")
 
 
+#: 기본 본문에서 제목 칸이 갖는 최대 글자 수("…" 포함). vinc_node 와 brief 의 후보·확정 노드
+#: 제목은 자르지 않는다(후보 제목은 고르는 신호이고 확정 노드 제목은 답이다).
+TITLE_MAX = 120
+_ELLIPSIS = "…"
+#: 문서 행·발췌의 인용 id 는 이 접두에 doc_id 를 붙인 문서 미러다(`api.query._DOC_CONCEPT_PREFIX` 와 같다).
+_DOC_CITE_PREFIX = "concept:doc."
+
+
+def _glued(ch: str) -> bool:
+    """앞 글자에 붙어 한 글자로 읽히는 코드 포인트(결합 부호·ZWJ·이체 선택자·짝 잃은 뒤 서로게이트)."""
+    import unicodedata
+    return (unicodedata.combining(ch) != 0 or unicodedata.category(ch) in ("Mn", "Mc", "Me")
+            or ch == "‍" or "︀" <= ch <= "️" or "\udc00" <= ch <= "\udfff"
+            or "ᅠ" <= ch <= "ᇿ" or "ힰ" <= ch <= "퟿")    # 한글 조합형 중성·종성
+
+
+def cut_title(text: Any, limit: int = TITLE_MAX) -> Any:
+    """`limit` 자를 넘는 제목을 단어 경계에서 잘라 "…" 로 끝낸다(결과는 "…" 까지 `limit` 자 이하).
+    글자 수는 바이트가 아니라 코드 포인트로 세고, 결합 부호·ZWJ 앞이나 서로게이트 쌍 가운데서는
+    자르지 않는다. 문자열이 아니거나 짧으면 그대로 돌려준다."""
+    if not isinstance(text, str) or len(text) <= limit:
+        return text
+    room = limit - len(_ELLIPSIS)
+    head = text[:room]
+    if not text[room].isspace():
+        space = max(head.rfind(" "), head.rfind("\t"), head.rfind("\n"))
+        if space > room // 2:
+            head = head[:space]
+    # 다음 글자가 앞 글자에 붙는 것이면 그 앞 글자째 덜어낸다(한 글자를 둘로 가르지 않는다).
+    while head and (_glued(text[len(head)]) or head[-1] == "‍"
+                    or "\ud800" <= head[-1] <= "\udbff"):
+        head = head[:-1]
+    return head.rstrip(" \t\n,;:") + _ELLIPSIS
+
+
+def _cut_key(rows: Any, key: str) -> None:
+    """목록의 행마다 `key` 제목을 자른다."""
+    for row in rows if isinstance(rows, list) else []:
+        if isinstance(row, dict) and isinstance(row.get(key), str):
+            row[key] = cut_title(row[key])
+
+
+def _drop_cite(row: Any, same_as: Any) -> None:
+    """`cite_id` 가 `same_as` 와 같으면 뺀다. null(인용할 미러 없음)이나 다른 값은 남긴다."""
+    if isinstance(row, dict) and row.get("cite_id") and row.get("cite_id") == same_as:
+        row.pop("cite_id")
+
+
+def _drop_doc_cite(rows: Any) -> None:
+    """문서 행·발췌: `cite_id` 가 `concept:doc.<doc_id>` 이면 뺀다."""
+    for row in rows if isinstance(rows, list) else []:
+        if isinstance(row, dict) and row.get("doc_id"):
+            _drop_cite(row, _DOC_CITE_PREFIX + str(row["doc_id"]))
+
+
+def _material_body_cite(ex: dict) -> str:
+    """`api.query._brief_body` 가 발췌 폴백에서 쓰는 출처 문자열을 같은 규칙으로 다시 만든다."""
+    where = str(ex.get("doc_title") or ex.get("doc_id") or "")
+    sec = str(ex.get("section") or "")
+    return (where + " · " + sec) if sec else where
+
+
+def _lean_material_body(mat: Any) -> None:
+    """choose 재료의 본문이 첫 발췌의 글 그대로면(`body_src:"doc"`) one_liner·body_cite 를 뺀다.
+    ⚠ 제목을 자르기 **전에** 대조한다(body_cite 는 자르지 않은 문서 제목으로 만든 것이다)."""
+    if not isinstance(mat, dict) or mat.get("body_src") != "doc":
+        return
+    ex = mat.get("excerpts")
+    first = ex[0] if isinstance(ex, list) and ex and isinstance(ex[0], dict) else None
+    if first is None or not mat.get("one_liner"):
+        return
+    if mat["one_liner"] == str(first.get("excerpt") or "").strip() \
+            and mat.get("body_cite", "") == _material_body_cite(first):
+        mat.pop("one_liner")
+        mat.pop("body_cite", None)
+
+
+def restore_material_body(mat: Any) -> None:
+    """축소기가 재료의 첫 발췌를 덜어내기 전에 부른다: 뺀 one_liner·body_cite 를 그 발췌에서
+    되살린다(발췌가 사라지면 본문을 되찾을 길이 없다). 빼지 않았으면 아무것도 안 한다."""
+    if not isinstance(mat, dict) or mat.get("body_src") != "doc" or "one_liner" in mat:
+        return
+    ex = mat.get("excerpts")
+    if isinstance(ex, list) and ex and isinstance(ex[0], dict):
+        mat["one_liner"] = str(ex[0].get("excerpt") or "").strip()
+        mat["body_cite"] = _material_body_cite(ex[0])
+
+
+def _quote_lists(out: dict) -> list:
+    """brief 의 인용 단위 목록 전부(확정 노드의 것과 후보마다의 것)."""
+    lists = [out.get("quotes")]
+    lists += [c.get("quotes") for c in out.get("candidates") or [] if isinstance(c, dict)]
+    return [q for q in lists if isinstance(q, list)]
+
+
+def _lean_titles_and_cites(name: str, out: dict) -> None:
+    """제목 자르기, 문서 제목 한 번만, 되찾을 수 있는 cite_id 빼기, choose 의 중복 재료 빼기.
+    vinc_node 에는 걸지 않는다. brief 의 `candidates[].title`·`node.title` 은 자르지 않는다."""
+    if name == "vinc_neighbors":
+        _cut_key(out.get("neighbors"), "title")
+        return
+    if name == "vinc_search":
+        seen: set = set()
+        for row in out.get("rows") or []:
+            if not isinstance(row, dict) or "doc_title" not in row or not row.get("doc_id"):
+                continue
+            # 응답 안에서 문서 제목은 그 문서의 첫 행만 싣는다(행은 점수 순이라 첫 행이 앞선다).
+            if row["doc_id"] in seen:
+                row.pop("doc_title")
+            else:
+                seen.add(row["doc_id"])
+        _cut_key(out.get("rows"), "doc_title")
+        _cut_key(out.get("node_hits"), "title")
+        _drop_doc_cite(out.get("rows"))
+        for hit in out.get("node_hits") or []:
+            if isinstance(hit, dict):
+                _drop_cite(hit, hit.get("id"))
+        return
+    mat = out.get("candidate_material") if isinstance(out.get("candidate_material"), dict) else None
+    cands = [c for c in out.get("candidates") or [] if isinstance(c, dict)]
+    if out.get("status") == "choose":
+        sec = out.get("section")
+        # choose 에서는 첫 후보의 절만 싣는다. 다른 후보의 절은 그 미러가 grounds 에 남는다.
+        if isinstance(sec, dict) and not (cands and sec.get("node_id") == cands[0].get("id")):
+            out.pop("section")
+        _lean_material_body(mat)
+    for quotes in _quote_lists(out):
+        _cut_key(quotes, "source")
+        for q in quotes:
+            if isinstance(q, dict) and q.get("widened") is False:
+                q.pop("widened")
+    for links in (out.get("links"), (mat or {}).get("links")):
+        if isinstance(links, dict):
+            _cut_key(links.get("items"), "title")
+    _cut_key(out.get("excerpts"), "doc_title")
+    _drop_doc_cite(out.get("excerpts"))
+    for c in cands:
+        _drop_cite(c, c.get("id"))
+    if isinstance(out.get("node"), dict):
+        _drop_cite(out["node"], out["node"].get("id"))
+    if mat is not None:
+        _cut_key(mat.get("excerpts"), "doc_title")
+        _drop_doc_cite(mat.get("excerpts"))
+        _drop_cite(mat, mat.get("candidate"))
+
+
 def _walk_dicts(node: Any, fn: Callable[[dict], None]) -> None:
     if isinstance(node, dict):
         fn(node)
@@ -2954,6 +3134,7 @@ def lean_project(name: str, args: dict, out: Any) -> Any:
                 row.pop("rev", None)    # 쓰기 토큰은 vinc_node 가 준다
                 if dom is not None and row.get("domain") == dom:
                     row.pop("domain")   # 도메인 목록은 그 도메인을 행마다 되풀이하지 않는다
+        _lean_titles_and_cites(name, out)
         return out
     if name == "vinc_node":
         if isinstance(out.get("node"), dict):
@@ -2978,6 +3159,7 @@ def lean_project(name: str, args: dict, out: Any) -> Any:
             _lean_links(out["candidate_material"].get("links"))
         if "cite_grounds" in out and out.get("cite_grounds") == out.get("grounds"):
             out.pop("cite_grounds")
+    _lean_titles_and_cites(name, out)
     flat = name == "vinc_brief"
     _walk_dicts(out, lambda d: _lean_temporal(d, flat=flat))
     return out

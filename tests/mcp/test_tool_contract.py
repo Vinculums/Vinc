@@ -440,6 +440,20 @@ def test_degraded_states_are_named_not_just_listed():
     assert "incomplete" in doc_get, "무결성 실패의 결과(본문이 잘림)를 안 말한다"
 
 
+def test_search_and_brief_say_what_to_cite_when_cite_id_is_missing():
+    """기본 본문은 id 에서 되찾을 수 있는 cite_id 를 뺀다. 참조문이 되찾는 규칙을 말해야 인용이 끊기지 않는다."""
+    from vinc_mcp.tools import _RAW_PROP
+    for name in ("vinc_search", "vinc_brief"):
+        assert "cite `cite_id`" in REF[name] and "where it is missing" in REF[name], name
+        assert "concept:doc.<doc_id>" in REF[name], name
+    raw = _RAW_PROP["x-reference"]
+    for phrase in ("a missing cite_id means cite `id`", "`concept:doc.<doc_id>` on a row or excerpt",
+                   "cut at a word boundary to at most 120", "never cut",
+                   "first row of each doc_id", "only when its node is the first candidate",
+                   "widened when false"):
+        assert phrase in raw, phrase
+
+
 class _AnswerBridge:
     owner = "user:local"
 
