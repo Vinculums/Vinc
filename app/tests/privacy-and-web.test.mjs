@@ -86,12 +86,24 @@ test('outbound addresses are the graph and the site pages only', async () => {
   assert.match(api, /const url = new URL\(WEB \? "\/api\/graph" \+ path : path, cfg\.base\);/);
 });
 
-test('the web build has no Storage, AI connections or Advanced in Settings', async () => {
+test('the web build has no Storage, connections or Advanced in Settings', async () => {
   const settings = await read('src/surfaces/settings.ts');
   const cats = slice(settings, 'const ALL_CATS', '\n  let active');
-  const ids = await run(`export default (WEB) => { const U = new Proxy({}, { get: (o, k) => k }); ${cats} return CATS.map((c) => c.id); };`);
-  assert.deepEqual(ids(true), ['general', 'reading', 'account', 'data', 'graphmd', 'about']);
-  assert.deepEqual(ids(false), ['general', 'reading', 'account', 'storage', 'ai', 'data', 'graphmd', 'advanced', 'about']);
+  // 분류는 다섯 묶음 아래에 선다. 알림은 웹에서만, 공간은 계정 그래프(웹 · 셸 계정 모드)에서만.
+  const ids = await run(`export default (WEB, REMOTE, SELF = false) => { const U = new Proxy({}, { get: (o, k) => k });
+    const COPY = { ui: { tools: { import: "import" } } }; const remote = () => REMOTE; const selfHosted = () => SELF;
+    ${cats} return { ids: CATS.map((c) => c.id), groups: GROUPS.map((g) => g.label) }; };`);
+  assert.deepEqual(ids(true, true).ids, ['general', 'appearance', 'reading', 'shortcuts', 'notifications',
+    'account', 'spaces', 'import', 'share', 'graphmd', 'about']);
+  // 보일 분류가 없는 묶음(연결)은 머리째 빠진다.
+  assert.deepEqual(ids(true, true).groups, ['groupApp', 'groupAccount', 'groupData', 'groupSystem']);
+  assert.deepEqual(ids(false, false).ids, ['general', 'appearance', 'reading', 'shortcuts',
+    'account', 'storage', 'apps', 'assistants', 'terminal', 'import', 'share', 'graphmd', 'advanced', 'about']);
+  assert.deepEqual(ids(false, true).ids, ['general', 'appearance', 'reading', 'shortcuts',
+    'account', 'spaces', 'storage', 'apps', 'assistants', 'terminal', 'import', 'share', 'graphmd', 'advanced', 'about']);
+  // 셀프호스트 허브: 알림·공간이 없다.
+  assert.deepEqual(ids(true, true, true).ids, ['general', 'appearance', 'reading', 'shortcuts',
+    'account', 'import', 'share', 'graphmd', 'about']);
 });
 
 test('Share offers Community on the web only', async () => {
@@ -117,7 +129,7 @@ test('the web is the hosted origin, not the shell or local dev', async () => {
   assert.deepEqual(decide({ protocol: 'tauri:', hostname: 'tauri.localhost' }, true), { IN_SHELL: true, WEB: false });
 });
 
-test('spaces are switched from the sidebar header, on the account graph only', async () => {
+test('spaces are switched from the view header, on the account graph only', async () => {
   const main = await read('src/main.ts');
   // 계정 그래프(웹 · 셸의 계정 모드)일 때만 머리를 세운다. 로컬 모드에는 고를 공간이 없다.
   // 셀프호스트 허브에는 개인 그래프 하나뿐이라 머리를 세우지 않는다(`self-hosted.ts`).
@@ -125,11 +137,12 @@ test('spaces are switched from the sidebar header, on the account graph only', a
   // 머리는 모드와 스페이스가 정해진 뒤에 선다(주소의 `?space=` 를 받은 뒤).
   assert.ok(main.indexOf('mountSpaceSwitcher();') > main.indexOf('await adoptSpaceFromAddress()'));
   const settings = await read('src/surfaces/settings.ts');
-  const account = slice(settings, 'function renderAccount', '\n  }\n');
+  const spaces = slice(settings, 'function renderSpaces', '\n  }\n');
   assert.doesNotMatch(settings, /space-picker|mountSpacePicker|space-pick/);
-  // 계정 탭에는 그 자리를 알리는 한 줄과 주제 옮기기만 남는다.
-  assert.match(account, /<label>\$\{U\.space\}<\/label>\s*<p class="hint">\$\{esc\(U\.spaceHint\)\}<\/p>\s*\$\{!cfg\.team \? '<div id="topic-conversion"><\/div>' : ""\}/);
-  assert.match(account, /mountTopicConversion\(conversion\)/);
+  // 공간 분류에는 그 자리를 알리는 한 줄과(개인 공간이면) 주제 옮기기만 남는다.
+  assert.match(spaces, /settingsRow\(\{ title: U\.space, desc: U\.spaceHint \}\)/);
+  assert.match(spaces, /!cfg\.team \? settingsCard\(\[settingsRow\(\{ wide: `<div id="topic-conversion"><\/div>` \}\)\]\) : ""/);
+  assert.match(spaces, /mountTopicConversion\(conversion\)/);
   const switcher = await read('src/space-switcher.ts');
   assert.match(switcher, /createSpacePicker\(deps\)/, 'the switching rules stay in createSpacePicker');
 });

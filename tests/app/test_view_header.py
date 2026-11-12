@@ -1,4 +1,4 @@
-"""뷰 머리: 내용 카드의 윗줄에 경로 · 검색 · 문서 | 그래프, 맨 끝에 보기 설정과 범례.
+"""뷰 머리: 내용 카드의 윗줄에 공간 전환 · 경로 · 검색 · 그래프의 시간 · 범례 · 문서 | 그래프, 맨 끝에 읽기 설정.
 
 소스 잠금이다. 배치 자체는 헤드리스 브라우저 실측으로 확인했고(창 1440 · 1024 · 800 · 600 ·
 390, 문서 · 문서 면 · 그래프), 여기서는 그 배치가 조용히 옛 자리로 돌아가지 않게 구조만 붙잡는다:
@@ -6,7 +6,9 @@
 - 머리가 다시 떠 있으면 본문이 그 밑으로 지나가고, 아래 것들이 또 비켜설 값을 재야 한다.
 - 머리와 본문이 칼럼을 따로 가지면 경로와 제목의 세로선이 갈라진다.
 - 전환이 표면마다 다른 자리에 서면 누른 자리에서 손이 빗나간다.
-- 보기 설정과 범례는 캔버스 안이 아니라 머리 맨 끝 한 자리다. 그래프는 렌즈, 문서 면은 읽기 설정.
+- 그래프의 시간 · 범례는 캔버스 안이 아니라 머리 뒤 묶음, 전환 바로 왼쪽이다(전환이 어느 면에서나 같은 자리).
+  문서 면의 읽기 설정은 맨 끝이다.
+- 공간 전환은 머리 맨 앞 칸이다(계정 그래프에서만 채워지고, 비면 자리를 차지하지 않는다).
 
 근거: [[decision:documents-and-graph-share-one-lnb-tree-2026-11-06]]
 근거: [[decision:the-graph-is-one-2d-compass-lens-2026-11-06]]
@@ -56,19 +58,22 @@ HEADER = _block(HTML, '<header id="topbar">', "</header>")
 
 
 class HeaderOrder(unittest.TestCase):
-    def test_lead_then_search_then_switch_then_options(self):
+    def test_space_then_lead_then_search_then_tools_then_switch_then_options(self):
+        space = HEADER.index('<div class="tb-space" id="tb-space"></div>')
         lead = HEADER.index('id="tb-lead"')
         find = HEADER.index('id="tb-find"')
+        tools = HEADER.index('<div id="tb-graph-tools"></div>')
         switch = HEADER.index('id="tb-switch"')
-        lens = HEADER.index('<div id="tb-lens"></div>')
         docopts = HEADER.index('<div id="tb-docopts"></div>')
+        self.assertLess(space, lead)
         self.assertLess(lead, find)
-        self.assertLess(find, switch)
-        self.assertLess(switch, lens)
-        self.assertLess(lens, docopts)
+        self.assertLess(find, tools)
+        self.assertLess(tools, switch)
+        self.assertLess(switch, docopts)
         trail = _block(HEADER, '<div class="tb-trail">', '<div id="tb-right">')
-        self.assertIn('id="tb-lens"', trail)
+        self.assertIn('id="tb-graph-tools"', trail)
         self.assertIn('id="tb-docopts"', trail)
+        self.assertNotIn("tb-lens", HTML)
 
     def test_the_switch_has_two_segments(self):
         sw = _block(HEADER, 'id="tb-switch"', "</div>")
@@ -135,12 +140,15 @@ class OneColumn(unittest.TestCase):
 
 class HeaderEnd(unittest.TestCase):
     def test_empty_slots_take_no_room(self):
-        self.assertIn("#tb-lens:empty, #tb-docopts:empty, #tb-docopts[hidden] { display: none; }", CSS)
+        self.assertIn("#tb-graph-tools:empty, #tb-docopts:empty, #tb-docopts[hidden] { display: none; }", CSS)
+        self.assertIn("#tb-space:empty { display: none; }", CSS)
 
-    def test_the_graph_draws_no_lens_button(self):
-        # 그래프의 렌즈 단추와 패널은 3D 와 함께 걷었다. 머리의 슬롯은 남고(비면 자리를 차지하지 않는다) 그리는 이가 없다
-        self.assertNotIn("lensSlot", VIEW)
-        self.assertIn('return $("tb-lens")', TOPBAR)
+    def test_graph_tools_stand_in_the_trail_not_the_lead(self):
+        # 시간 · 범례는 나침반이 넘기고 머리가 전환 왼쪽 자리에 옮겨 붙인다. 앞자리(경로)에는 붙지 않는다.
+        self.assertIn("setTopbarTools(cmp.tools)", VIEW)
+        self.assertIn('const slot = $("tb-graph-tools");', TOPBAR)
+        self.assertNotIn("setTopbarLeadTools", TOPBAR + VIEW)
+        self.assertNotIn("lensSlot", TOPBAR + VIEW)
 
     def test_the_options_panel_keeps_its_own_width(self):
         self.assertIn("width: var(--lens-panel-w)", _rule("#doc-opts-panel"))

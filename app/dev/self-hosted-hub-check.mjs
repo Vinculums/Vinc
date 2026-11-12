@@ -73,7 +73,7 @@ step("document written, edited and shown");
 // 계정 전용 칸이 없다.
 const shown = await page.evaluate(() => ({
   gnb: !!document.querySelector("#site-gnb, script[src$='/assets/gnb.js']"),
-  spaceHead: !!document.getElementById("space-head"),
+  spaceHead: !!document.querySelector("#tb-space .space-switch"),
 }));
 assert.deepEqual(shown, { gnb: false, spaceHead: false });
 await page.click("#rail-settings");

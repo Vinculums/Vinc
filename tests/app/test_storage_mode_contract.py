@@ -147,11 +147,11 @@ class SettingsTest(unittest.TestCase):
             self.assertNotIn(gone, API)
 
     def test_셸이면_저장_위치_탭에_저장_덩어리를_건다(self):
-        # 저장 위치는 계정 탭이 아니라 데스크톱 전용 탭이다. 계정 탭에는 그 탭으로 가는 줄만 남는다.
+        # 저장 위치는 계정 탭이 아니라 데스크톱 전용 분류다. VIN-996 부터 계정 분류 바로 아래
+        # 레일에 서므로 계정 탭에 있던 "저장 위치 열기" 줄은 없다.
         self.assertIn('{ id: "storage", label: U.navStorage, desktop: true }', SETTINGS)
         self.assertIn('mountStorage(body.querySelector<HTMLElement>("#st-box")!, '
                       '{ openAccount: () => go("account") })', SETTINGS)
-        self.assertIn('go("storage")', SETTINGS)
 
 
 if __name__ == "__main__":

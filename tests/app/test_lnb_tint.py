@@ -45,7 +45,7 @@ class LnbTintTests(unittest.TestCase):
         self.assertRegex(LNB, r"tints\?\.get\(")      # 없으면 조회가 아니라 강제다
 
     def test_CSS_는_토큰_대체값을_들고_색을_읽는다(self):
-        for rule in ('border: 1px solid var(--tint, hsl(var(--caption-foreground)))',
+        for rule in ('border: 1px solid var(--tint, hsl(var(--muted-foreground)))',
                      'background: var(--tint, hsl(var(--muted-foreground)))'):
             self.assertIn(rule, CSS, "대체값이 없으면 토글을 껐을 때 도트가 사라진다")
 

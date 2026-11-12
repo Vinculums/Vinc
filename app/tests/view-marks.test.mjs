@@ -104,17 +104,3 @@ test("two current claims with one key and different values conflict while their 
   ], today);
   assert.deepEqual([...got].sort(), ["record:a", "record:b", "record:c"]);
 });
-
-const { areasApart } = await source("../src/area-key.ts");
-test("area volumes are drawn only when the areas stand apart", () => {
-  // 시간순 가지: 영역마다 단면이 떨어져 있다.
-  const grouped = [{ cx: 0, cy: 0, cz: 0, hx: 300, rc: 40 }, { cx: 20, cy: 120, cz: 0, hx: 300, rc: 44 },
-    { cx: 10, cy: 0, cz: -110, hx: 280, rc: 30 }];
-  assert.equal(areasApart(grouped), true);
-  // 중심에서: 영역마다 지도 전체를 감싸 같은 자리에 선다.
-  const hub = [{ cx: 0, cy: 2, cz: 1, hx: 400, rc: 380 }, { cx: 5, cy: -3, cz: 0, hx: 400, rc: 360 }];
-  assert.equal(areasApart(hub), false);
-  // 시간이 안 겹치면 단면이 같은 자리여도 겹친 것이 아니다.
-  assert.equal(areasApart([{ cx: 0, cy: 0, cz: 0, hx: 50, rc: 40 }, { cx: 200, cy: 0, cz: 0, hx: 50, rc: 40 }]), true);
-  assert.equal(areasApart([]), true);
-});

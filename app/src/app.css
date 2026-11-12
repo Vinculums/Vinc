@@ -309,6 +309,10 @@ body {
      데스크탑 창에는 도구막대가 없어 둘이 같다. */
   height: 100vh; height: 100dvh; min-height: 0; overflow: hidden;
   padding: var(--shell-gap);
+  /* 왼쪽만 덜 비운다: 카드가 없는 사이드바의 줄 알약(안쪽 여백 `--pad-card` 뒤)이 타이틀바 마크와
+     같은 세로선(.75rem, `.tb-title`)에 서게. 웹은 아래 GNB 블록이 로고 선(`--site-gutter`)으로 바꾼다. */
+  --lnb-pad-l: calc(.75rem - var(--pad-card));
+  padding-left: var(--lnb-pad-l);
   /* 행 사이는 0 이다 — 뷰 머리(1행)와 내용 카드(2행)가 붙어 한 장의 카드가 된다. */
   column-gap: var(--shell-gap); row-gap: 0;
   background: hsl(var(--surface-0));
@@ -341,7 +345,6 @@ body {
   flex: 0 0 auto;
   display: flex; align-items: center; gap: var(--space-1, .25rem);
   padding: var(--pad-card) var(--pad-card) var(--space-2, .5rem);
-  border-bottom: 1px solid hsl(var(--border));
 }
 .lnb-nav { display: flex; align-items: center; gap: var(--space-1, .25rem); flex: 1 1 auto; min-width: 0; }
 /* 맨 위 줄: 홈 · Agent 가 폭을 반씩 나눠 채운다(접기 손잡이는 바닥으로 갔다) */
@@ -349,8 +352,8 @@ body {
 .lnb-foot {
   flex: 0 0 auto; margin-top: auto;
   display: flex; align-items: center; gap: var(--space-1, .25rem);
-  padding: var(--space-2, .5rem) var(--pad-card) var(--pad-card);
-  border-top: 1px solid hsl(var(--border));
+  /* 위 선이 없다: 판 위에서는 트리와 바닥을 여백이 가른다(맨 위 줄 아래도 같다). */
+  padding: var(--space-3, .75rem) var(--pad-card) var(--pad-card);
 }
 /* 맨 위 줄 · 바닥의 버튼 한 벌. 표식 + 이름이 **한 줄**이고, 접힌 띠에서는 이름이 숨는다. */
 .rail-btn {
@@ -362,33 +365,38 @@ body {
   font: inherit; font-size: var(--fs-sm); white-space: nowrap;
 }
 .rail-btn svg { display: block; }
-.rail-btn:hover { background: hsl(var(--muted-foreground) / .12); color: hsl(var(--foreground)); }
+.rail-btn:hover { background: hsl(var(--foreground) / .07); color: hsl(var(--foreground)); }
 .rail-btn:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
 /* 고른 것은 **채움과 글자 굵기**로 말한다. 홈과 Agent 는 둘 중 하나가 늘 켜져 있다. */
 .rail-btn[aria-pressed="true"] {
-  background: hsl(var(--foreground) / .08); color: hsl(var(--foreground)); font-weight: 600;
+  background: hsl(var(--foreground) / .1); color: hsl(var(--foreground)); font-weight: 600;
 }
 .rail-name { line-height: 1; }
 .rail-n {
   font-family: var(--font-mono); font-weight: 400;
-  color: hsl(var(--caption-foreground));
+  color: hsl(var(--muted-foreground));
 }
 #rail-settings { flex: 1 1 auto; min-width: 0; }
+/* 넓은 창의 사이드바는 **카드가 아니다**: 면 · 테두리 · 모서리 · 그림자가
+   없고 줄이 셸 판(`--surface-0`)에 바로 선다. 판은 타이틀바와 이어지고, 떠 있는 면은 오른쪽
+   내용 카드 하나뿐이다. 유리로 만들지 않는 것은 그대로다(스크롤 조상의 블러는 끊긴다).
+   위 1px 은 사라진 테두리 자리다: 맨 위 줄(홈 · Agent)이 뷰 머리의 컨트롤과 한 줄에 선다.
+   왼쪽은 셸이 덜 비운다(`--lnb-pad-l`): 줄의 알약 왼쪽 끝이 타이틀바 마크(웹은 GNB 로고)와
+   같은 세로선이다. 좁은 창(<900)의 서랍은 내용 위에 뜨므로 카드를 되찾는다(아래 900 블록). */
 #lnb {
   grid-column: 1; grid-row: 1 / -1;      /* 천장까지 — 첫 칸이 홈 · Agent · 접기 줄이다 */
   display: flex; flex-direction: column; overflow: hidden;
-  background: hsl(var(--surface-2));
-  border: 1px solid hsl(var(--border));
-  border-radius: var(--shell-card-r);
-  /* 구조 면이라 **불투명**이다. 유리로 만들지 않는 이유가 둘 있고 둘 다 실측이다:
-     ① 이 카드의 본문은 스크롤하는데, 조상에 backdrop-filter 가 있으면 스크롤마다
-        블러가 다시 계산돼 끊긴다(렌즈 패널이 유리를 형제 층으로 뗀 이유와 같은 것).
-     ② 부유 유리(D37) 위에 부유 유리를 겹치면 글자가 못 읽힌다 — 문서 패널이 이미
-        유리이므로 그 아래 면은 불투명해야 한다.
-     깊이는 상단 바와 **같은 단**이다 — 나란히 뜬 두 카드가 서로 다른 높이로
-     떠 있으면 어느 쪽이 위인지 눈이 매 프레임 다시 판정한다. */
-  box-shadow: var(--shadow-elev-3);
+  padding-top: 1px;
 }
+/* 판 위의 줄(아래 `.rail-btn` · `.lnb-*` 규칙): 쉼은 글자색 쪽으로 한 단(`--foreground / .07`, 눌린 홈 ·
+   Agent 는 `.1`), 고른 것은 초점색 알약(`--ring / .16`) + 굵기. 회색 알파(`--muted-foreground`)는 판(light 91%)
+   위에서 묻혀 글자색 알파로 바꿨다. 작은 글씨(수 · 절 이름 · 캐럿 · 깊은 문서 줄)는 캡션이 아니라 muted 다:
+   캡션은 light 판에서 3.09:1 이라 4.5:1 에 못 미친다(muted 6.0:1, 고른 알약 위 4.76:1).
+   ⚠ 고른 알약을 .16 보다 진하게 하지 말 것: light 에서 그 위의 수(muted)가 4.5:1 아래로 내려간다(.2 에서 4.48). */
+#lnb .cmp-side { --c-mute: hsl(var(--muted-foreground)); }
+/* 사이드바의 검색 칸은 판 위의 칸이다: 카드 면과 테두리로 판에서 떠오른다(칸 안의 모드 메뉴 ·
+   결과 판은 건드리지 않는다). 접힌 띠의 돋보기 단추도 같은 면이다. */
+#lnb #tb-search, #lnb .tb-find-open { background: hsl(var(--card)); border-color: hsl(var(--border)); }
 /* 접힌 띠 — 손잡이(맨 위) · 홈 · Agent 가 세로로 서고 이름은 숨는다. 머리와 트리는
    그리지 않는다(좁은 띠에 잘린 글자를 남기지 않는다). 설정은 바닥에 아이콘으로 남는다. */
 #shell[data-lnb="closed"] .lnb-top {
@@ -402,31 +410,43 @@ body {
 #shell[data-lnb="closed"] .lnb-foot { padding: var(--space-2, .5rem) 0 var(--pad-card); flex-direction: column; justify-content: center; }
 #shell[data-lnb="closed"] #rail-settings { flex: 0 0 auto; width: var(--ctl-h); }
 
-/* ── 공간 머리(`space-switcher.ts`) ───────────────────────────────────────
-   사이드바 맨 위, 홈 · Agent 줄 위의 한 줄: 지금 공간의 표식 · 이름 · 종류. 계정 그래프에서만 선다.
-   이름과 종류 줄은 같은 글씨 크기(`--fs-sm`)이고 층은 굵기와 색이 가른다. 이름은 한 줄로 두고
-   말줄임으로 준다. 접힌 띠에서는 표식만 남는다. */
-.space-head { flex: 0 0 auto; padding: var(--pad-card) var(--pad-card) 0; }
-.space-head + .lnb-top { padding-top: var(--space-1); }
+/* ── 공간 전환(`space-switcher.ts`) ───────────────────────────────────────
+   뷰 머리의 맨 앞 칸(`#tb-space`): 지금 공간의 이름과 캐럿, **글자만**이다(표식이 없다). 커뮤니티는
+   이름 옆에 자물쇠와 "읽기 전용"이 선다. 종류는 메뉴의 묶음 이름이 말한다. 계정 그래프에서만
+   채워지고, 비어 있으면(로컬 모드) 자리를 차지하지 않아 앞자리가 지금 자리 그대로다.
+   이름의 첫 글자가 머리의 시작선(`.tb-col` 의 왼쪽 여백)에 선다: 단추 안쪽 여백만큼 바깥으로 뺀다.
+   이름 뒤에 세로 구분선, 그다음이 앞자리(경로 · "그래프 · 범위")다.
+   좁은 머리: 이름은 머리 폭의 45% 까지만 쓰고 말줄임으로 준다(뒤 묶음은 줄지 않는다). 앞자리는 남는 폭을
+   쓰고, 이름이 읽히지 않을 만큼 줄 때에만 비킨다(아래 `[data-tight]` · `[data-ro-short]`, 판단은
+   space-switcher.ts `fit` 이 실제 폭을 재서 한다). */
+#tb-space {
+  flex: 0 1 auto; min-width: 0; max-width: min(18rem, 45cqi);
+  display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-sm);
+}
+#tb-space:empty { display: none; }
+/* 공간이 있으면 앞자리는 남는 폭만 쓴다(기준 폭 0): 모자라면 앞자리가 먼저 말줄임으로 준다. 다만 서 있는 동안은
+   글자 셋쯤(3em)을 지킨다 — 폭 0 으로 줄어 구분선만 남는 일이 없다. 그 폭도 없으면 아래 마지막 수단이 켜진다. */
+#tb-space:not(:empty) + .tb-lead { flex-basis: 0; min-width: 3em; }
+/* 마지막 수단(space-switcher.ts `fit`): 이름이 읽을 수 없을 만큼 줄면 구분선과 앞자리가 비켜서고 이름이
+   45% 상한 없이 그 폭을 쓴다. 스크립트가 이름의 실제 폭을 재서 켠다(머리 폭 하나로 정하지 않는다). */
+#tb-space[data-tight] { max-width: none; }
+#tb-space[data-tight] .tb-space-sep, #tb-space[data-tight] + .tb-lead { display: none; }
+#tb-space[data-tight] ~ .tb-trail { margin-left: auto; }
+/* 그다음 수단: 앞자리가 비켜도 이름이 읽히지 않으면 커뮤니티의 "읽기 전용" 글자가 비키고 자물쇠만 남는다(같은 `fit`). */
+#tb-space[data-ro-short] .space-ro-text { display: none; }
 .space-switch {
-  display: flex; align-items: center; gap: var(--space-2); width: 100%; min-width: 0;
-  min-height: var(--ctl-h); padding: var(--space-1) var(--pad-row);
+  /* 폭은 칸(`#tb-space`)이 정한다: 칸이 flex 라 단추는 `min-width: 0` 으로 줄고 이름이 말줄임이 된다.
+     ⚠ `max-width: 100%` 를 주지 말 것 — 음수 왼쪽 여백만큼 칸이 단추보다 좁게 잡혀 이름이 늘 8px 잘린다. */
+  display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0;
+  height: var(--ctl-h); margin-left: calc(var(--space-2) * -1); padding: 0 var(--space-2);
   border: none; border-radius: var(--shell-ctl-r); background: none; cursor: pointer;
-  font: inherit; color: hsl(var(--foreground)); text-align: left;
+  font: inherit; font-size: var(--fs-sm); color: hsl(var(--foreground)); white-space: nowrap;
   transition: background-color var(--dur-hover) var(--ease-out);
 }
 .space-switch:hover, .space-switch[aria-expanded="true"] { background: hsl(var(--muted-foreground) / .12); }
 .space-switch:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
-.space-text { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; line-height: var(--lh-tight); }
-.space-name {
-  font-size: var(--fs-sm); font-weight: 600;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.space-sub {
-  font-size: var(--fs-sm); font-weight: 400; color: hsl(var(--muted-foreground));
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; word-break: keep-all;
-}
-.space-ro { display: inline-flex; align-items: center; gap: var(--space-1); vertical-align: bottom; }
+.space-name { min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.space-ro { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--space-1); color: hsl(var(--muted-foreground)); }
 .space-ro .icon, .space-row-sub .icon { flex: 0 0 auto; }
 .space-caret {
   flex: 0 0 auto; display: inline-flex; color: hsl(var(--muted-foreground));
@@ -434,30 +454,16 @@ body {
 }
 .space-switch[aria-expanded="true"] .space-caret { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .space-switch, .space-caret { transition: none; } }
-#shell[data-lnb="closed"] .space-head { display: flex; justify-content: center; padding: var(--pad-card) 0 0; }
-#shell[data-lnb="closed"] .space-switch { width: var(--ctl-h); height: var(--ctl-h); padding: 0; justify-content: center; }
-#shell[data-lnb="closed"] .space-text,
-#shell[data-lnb="closed"] .space-caret { display: none; }
+/* 공간과 지금 자리 사이의 세로 구분선(장식). */
+.tb-space-sep { flex: 0 0 auto; width: 1px; height: 1.5em; background: hsl(var(--border)); }
+/* 크럼의 첫 글자를 칼럼 시작선으로 빼던 일(`.tb-lead .home-crumbs`)은 공간 이름이 맡는다. */
+#tb-space:not(:empty) + .tb-lead .home-crumbs > :first-child { margin-left: 0; }
 
-/* 공간 표식: 개인은 동그라미 안의 Vinc 고리, 팀은 네모 안의 첫 글자, 커뮤니티는 점선 동그라미
-   (내 것이 아니고 읽기만 한다). 색으로만 말하지 않는다: 모양이 종류를 가른다. */
-.space-mark {
-  flex: 0 0 auto; display: inline-grid; place-items: center; box-sizing: border-box;
-  font-size: var(--fs-sm); font-weight: 700; line-height: var(--lh-tight); text-transform: uppercase;
-  border-radius: var(--shell-ctl-r);
-}
-.space-mark-md { width: var(--row-h); height: var(--row-h); }
-.space-mark-sm { width: calc(var(--row-h) - var(--space-1)); height: calc(var(--row-h) - var(--space-1)); }
-.space-mark-personal { border-radius: var(--radius-pill); background: hsl(var(--foreground) / .08); color: hsl(var(--foreground)); }
-.space-mark-team { background: hsl(var(--point) / .18); color: hsl(var(--point-text)); }
-.space-mark-community {
-  border-radius: var(--radius-pill); background: none; color: hsl(var(--muted-foreground));
-  border: 1px dashed hsl(var(--muted-foreground) / .8);
-}
-
-/* 공간 메뉴: `.ctx-menu` 의 판(카드 면 · 테두리 · 그림자 · 등장)에 묶음을 짠다. 묶음 이름은 사이드바
-   절 이름(`.lnb-sec-label`)을 그대로 쓴다. 지금 공간 = 트리의 켜진 줄과 같은 알약 + 굵기 + 체크. */
-.ctx-menu.space-menu { min-width: 0; padding: var(--space-1); overflow: hidden; word-break: keep-all; }
+/* 공간 메뉴: 판(카드 면 · 테두리 · 그림자 · 등장)은 `.ctx-menu` 와 한 규칙을 나눠 쓰고(아래 `.ctx-menu,
+   .space-menu`), 클래스는 따로다 — `openContextMenu` 가 `.ctx-menu` 를 전부 지우므로 같은 클래스면
+   이 메뉴가 듣기를 단 채 사라진다. 폭(15rem 이상)과 자리는 스크립트가 준다(단추 바로 아래).
+   묶음 이름은 사이드바 절 이름(`.lnb-sec-label`)을 그대로 쓴다. 지금 공간 = 알약 + 굵기 + 체크. */
+.space-menu { overflow: hidden; word-break: keep-all; }
 .space-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .space-group + .space-group, .space-group + .space-nomatch {
   margin-top: var(--space-1); padding-top: var(--space-1); border-top: 1px solid hsl(var(--border));
@@ -473,7 +479,6 @@ body {
 .ctx-item.space-row[aria-checked="true"] { background: hsl(var(--ring) / .14); font-weight: 600; }
 .ctx-item.space-row-off { color: hsl(var(--muted-foreground)); cursor: default; }
 .ctx-item.space-row-off:hover { background: none; }
-.space-row-off .space-mark { opacity: .55; }
 .space-row-text { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; line-height: var(--lh-tight); }
 .space-row-name { font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .space-row-sub {
@@ -511,12 +516,10 @@ body {
 .space-find-input::placeholder { color: hsl(var(--muted-foreground)); }
 /* 지우기 단추는 검색바(`#tb-q`)와 같이 무채색으로 둔다(브라우저 기본은 파랑이다). */
 .space-find-input::-webkit-search-cancel-button { filter: grayscale(1) opacity(.5); }
-/* 좁은 창: 손이 짚는 자리는 44px 이상이다(`--ctl-h` 36 + 8). */
+/* 좁은 창: 손이 짚는 자리는 44px 이상이다(`--ctl-h` 36 + 8). 머리의 단추는 머리 줄(36)에 맞춰 그리고
+   메뉴의 줄만 키운다. */
 @media (max-width: 600px) {
-  .space-switch, .ctx-item.space-row { min-height: calc(var(--ctl-h) + var(--space-2)); }
-  #shell[data-lnb="closed"] .space-switch {
-    width: calc(var(--ctl-h) + var(--space-2)); height: calc(var(--ctl-h) + var(--space-2));
-  }
+  .ctx-item.space-row { min-height: calc(var(--ctl-h) + var(--space-2)); }
   /* 16px 아래 글씨의 입력은 iOS 가 누르는 순간 화면을 확대한다. 그래서 여기만 1rem 이다. */
   .space-find-input { height: calc(var(--ctl-h) + var(--space-2) - 2px); font-size: 1rem; }  /* fs-allow: 휴대폰 입력 칸은 16px 아래면 브라우저가 화면을 확대한다 */
 }
@@ -708,13 +711,13 @@ body {
   color: hsl(var(--muted-foreground)); text-decoration: none;
   font-size: var(--fs-base); white-space: nowrap; overflow: hidden;
 }
-.lnb-navrow:hover { background: hsl(var(--muted-foreground) / .1); color: hsl(var(--foreground)); }
+.lnb-navrow:hover { background: hsl(var(--foreground) / .07); color: hsl(var(--foreground)); }
 /* 활성 = **채워진 알약 + 굵기**. 좌측 색띠(box-shadow inset 2px)를 쓰지 말 것.
    각 줄 옆에 색 막대가 서면 장식이 내용보다 먼저 읽힌다(발주자 지적 2026-07-31,
    문서 사이트에 먼저 적용된 뒤 2026-08-02 앱에도 확대). 게다가 홈 행은 View 표면에서
    항상 활성이라, 주제를 고르는 순간 사이드바에 띠가 **두 개 동시에** 섰다. */
 .lnb-navrow.on {
-  background: hsl(var(--ring) / .14); color: hsl(var(--foreground)); font-weight: 600;
+  background: hsl(var(--ring) / .16); color: hsl(var(--foreground)); font-weight: 600;
 }
 
 .lnb-sec {
@@ -746,7 +749,7 @@ body {
 
 .lnb-sec-label {
   font-size: var(--fs-sm); font-weight: 600; letter-spacing: .02em;
-  color: hsl(var(--caption-foreground)); text-transform: uppercase;
+  color: hsl(var(--muted-foreground)); text-transform: uppercase;
 }
 /* ⚠ 여기 있던 갈래 칩(`문서 | 노드`)은 폐기됐다 - 종 레일이 그 일을 일반화했고,
    같은 일을 하는 손잡이를 두 벌 두지 않는다. 남은 규칙은 없다.
@@ -765,13 +768,13 @@ body {
   color: hsl(var(--foreground)); cursor: pointer; text-align: left;
   padding: 0 var(--pad-row); border-radius: var(--shell-ctl-r);
 }
-.lnb-group:hover { background: hsl(var(--muted-foreground) / .1); }
+.lnb-group:hover { background: hsl(var(--foreground) / .07); }
 /* 홈 행과 같은 알약. 색띠를 걷어내면서 배경을 함께 준다 — 굵기만 남기면 hover
    배경(--ring/.1)이 활성보다 더 눈에 띄는 역전이 난다. */
-.lnb-group.on { font-weight: 600; background: hsl(var(--ring) / .14); }
+.lnb-group.on { font-weight: 600; background: hsl(var(--ring) / .16); }
 .lnb-caret {
   display: inline-block; flex: 0 0 auto; width: .7rem; text-align: center;
-  color: hsl(var(--caption-foreground));
+  color: hsl(var(--muted-foreground));
   /* 회전이 실제로 도는 것은 lnb.ts spinCaret 덕이다 — 트리는 통째로 다시 그려지므로. */
   transition: transform var(--dur-fast) var(--ease-out);
 }
@@ -781,7 +784,7 @@ body {
 .lnb-unfiled { color: hsl(var(--muted-foreground)); font-style: italic; }
 .lnb-gcount {
   flex: 0 0 auto; font-family: var(--font-mono); font-size: var(--fs-xs);
-  color: hsl(var(--caption-foreground));
+  color: hsl(var(--muted-foreground));
 }
 /* 문서 묶음 = 주제의 자식. 담김을 말하는 것은 **들여쓰기와 여백**이지 선이 아니다.
    여기 세로 안내선이 있었고 2026-09-09 에 걷어냈다: 층당 5px(border 1 + padding 4)을
@@ -815,7 +818,7 @@ body {
   color: hsl(var(--muted-foreground)); cursor: pointer; text-align: left;
   padding: 0 var(--pad-row); border-radius: var(--shell-ctl-r);
 }
-.lnb-fold:hover { background: hsl(var(--muted-foreground) / .1); }
+.lnb-fold:hover { background: hsl(var(--foreground) / .07); }
 .lnb-fold:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
 .lnb-fname { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 깊이는 세 갈래로 말한다: 들여쓰기(--lvl) · 잉크 3단(--ink) · 도트 차등.
@@ -831,8 +834,8 @@ body {
   border-radius: var(--shell-ctl-r);
 }
 .lnb-doc[style*="--ink:0"] { color: hsl(var(--foreground)); }
-.lnb-doc[style*="--ink:2"] { color: hsl(var(--caption-foreground)); }
-.lnb-doc:hover { background: hsl(var(--muted-foreground) / .1); color: hsl(var(--foreground)); }
+.lnb-doc[style*="--ink:2"] { color: hsl(var(--muted-foreground)); }   /* 판 위라 캡션은 4.5:1 미달: 셋째 단은 들여쓰기 · 도트가 말한다 */
+.lnb-doc:hover { background: hsl(var(--foreground) / .07); color: hsl(var(--foreground)); }
 .lnb-doc.on {
   background: hsl(var(--ring) / .16); color: hsl(var(--foreground)); font-weight: 600;
 }
@@ -847,7 +850,8 @@ body {
    다시 안 그린 것이다(`applyTheme` → `repaintLnb`). */
 .lnb-dot {
   flex: 0 0 auto; width: 5px; height: 5px; border-radius: 999px;
-  border: 1px solid var(--tint, hsl(var(--caption-foreground)));
+  /* 주제 색이 없는 줄(뿌리 · 주제 없음)의 대체값은 muted 다: 판 위의 캡션은 4.5:1 에 못 미친다. */
+  border: 1px solid var(--tint, hsl(var(--muted-foreground)));
 }
 .lnb-doc[style*="--ink:0"] .lnb-dot {
   background: var(--tint, hsl(var(--muted-foreground)));
@@ -879,7 +883,7 @@ body {
 /* 셸도 같은 틀에 선다: 사이드바 왼쪽은 GNB 로고와, 내용 카드 오른쪽은 GNB 오른쪽
    단추와 같은 세로선이다. 틀보다 넓은 창에서는 양옆이 바탕(셸과 같은 면)으로 빈다. */
 [data-skin="web"] body { background: hsl(var(--surface-0)); }
-[data-skin="web"] #shell { max-width: var(--gnb-max); margin: 0 auto; padding-left: var(--site-gutter); padding-right: var(--site-gutter); }
+[data-skin="web"] #shell { max-width: var(--gnb-max); margin: 0 auto; --lnb-pad-l: calc(var(--site-gutter) - var(--pad-card)); padding-left: var(--lnb-pad-l); padding-right: var(--site-gutter); }
 /* 웹 빌드는 index.html 에 빈 `#site-gnb` 를 미리 둔다(vite.config.ts `webShell`). gnb.js 가 갈아
    끼우기 전까지 그 자리를 같은 높이(52 + 테두리 1)로 잡아, 주입 순간 셸이 밀리지 않게 한다. */
 [data-skin="web"] #site-gnb:empty {
@@ -895,7 +899,8 @@ body {
 [data-shell] #titlebar {
   display: flex; align-items: stretch; justify-content: space-between;
   height: var(--titlebar-h); flex: 0 0 auto;
-  background: hsl(var(--muted));
+  /* 셸 판과 같은 면이다: 카드 없는 사이드바가 타이틀바에서 끊기지 않고 이어진다(dark 에서 muted 는 판보다 밝다). */
+  background: hsl(var(--surface-0));
   user-select: none; -webkit-user-select: none;
 }
 [data-shell] #shell { height: calc(100vh - var(--titlebar-h)); height: calc(100dvh - var(--titlebar-h)); }
@@ -1019,14 +1024,19 @@ body {
   margin-left: auto; display: inline-flex; align-items: center;
   height: 20px; box-sizing: border-box; padding: 0 .375rem; border-radius: 4px;
 }
-/* 머리 맨 끝 — 보기 설정과 범례 버튼 자리 둘. 그래프는 View 가 렌즈 버튼을 `#tb-lens` 에
-   채우고 떠날 때 비운다(topbar.ts `refreshTopbar`). 문서 면은 `#tb-docopts` 에 읽기 설정
-   버튼이 선다(doc-options.ts). 빈 자리는 줄의 gap 을 먹지 않게 숨는다. 패널은 이 버튼 바로
-   아래에서 오른쪽 끝을 맞춰 열린다(view.ts `positionPanel` · doc-options.ts `place`). */
-#tb-lens, #tb-docopts { display: flex; align-items: center; flex: 0 0 auto; }
-#tb-lens:empty, #tb-docopts:empty, #tb-docopts[hidden] { display: none; }
-/* 머리의 다른 컨트롤(검색 칸 · 전환)과 같은 면 · 같은 모서리다. */
-:is(#tb-lens, #tb-docopts) > .lens-btn { border-radius: var(--shell-ctl-r); background: hsl(var(--background)); }
+/* 뒤 묶음의 단추 자리 둘. 그래프의 시간 · 범례(`#tb-graph-tools`)는 전환 바로 왼쪽에 서고 나침반이
+   채운다(topbar.ts `setTopbarTools`). 문서 면의 읽기 설정(`#tb-docopts`)은 맨 끝이다(doc-options.ts).
+   빈 자리는 줄의 gap 을 먹지 않게 숨는다. 창은 단추 바로 아래에서 오른쪽 끝을 단추에 맞춰 열린다
+   (view-compass.ts `placePop` · doc-options.ts `place`). */
+#tb-graph-tools, #tb-docopts { display: flex; align-items: center; flex: 0 0 auto; }
+#tb-graph-tools:empty, #tb-docopts:empty, #tb-docopts[hidden] { display: none; }
+/* 머리의 다른 컨트롤(검색 칸 · 전환)과 같은 높이 · 같은 면 · 같은 모서리다. */
+#tb-docopts > .lens-btn { border-radius: var(--shell-ctl-r); background: hsl(var(--background)); }
+#tb-graph-tools .cmp-tools { margin-left: 0; gap: var(--space-2); }
+#tb-graph-tools .cmp-tbtn {
+  height: var(--ctl-h); padding: 0 var(--space-3); background: hsl(var(--background));
+}
+#tb-graph-tools .cmp-tbtn:hover { background: hsl(var(--muted)); }
 /* 숨긴 버튼만 담은 묶음은 자리를 먹지 않는다 — 폭 0 이어도 바의 gap 이 한 칸 붙는다. */
 #tb-right:not(:has(> :not([hidden]))) { display: none; }
 
@@ -1278,7 +1288,7 @@ body {
    정사각 · `--radius-sm` 을 준다. */
 #tb-shell-toggle { flex: 0 0 auto; align-self: center; }
 #rail-settings { position: relative; }
-#rail-settings .rail-name { color: hsl(var(--caption-foreground)); }
+#rail-settings .rail-name { color: hsl(var(--muted-foreground)); }
 #rail-settings-badge {
   position: absolute; top: .1rem; left: 1.4rem; min-width: .9rem; height: .9rem;
   padding: 0 .18rem; border-radius: .5rem; background: hsl(var(--ring));
@@ -1418,7 +1428,8 @@ button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px;
 .surface-meta { margin: .15rem 0 0; }
 .header-cta { display: inline-flex; align-items: center; gap: .4rem; }
 
-.ctx-menu {
+/* 공간 메뉴(`.space-menu`)도 같은 판이다. 클래스가 다른 이유는 그 규칙 쪽 주석. */
+.ctx-menu, .space-menu {
   position: fixed; z-index: 80; min-width: 11rem; padding: .25rem;
   background: hsl(var(--card)); border: 1px solid hsl(var(--border));
   border-radius: var(--radius-sm, .625rem); box-shadow: var(--shadow-elev-3, none);
@@ -1429,7 +1440,7 @@ button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px;
 @keyframes ctxIn { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
 /* 감소 모션의 등장은 전부 이것 하나다: 움직임 없이 나타나기만 한다. */
 @keyframes fadeOnly { from { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .ctx-menu { animation: fadeOnly .12s ease; } }
+@media (prefers-reduced-motion: reduce) { .ctx-menu, .space-menu { animation: fadeOnly .12s ease; } }
 .ctx-item {
   border: none; background: none; font: inherit; text-align: left; cursor: pointer;
   padding: .4rem .6rem; border-radius: .4rem; color: hsl(var(--foreground));
@@ -1481,6 +1492,8 @@ button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px;
   padding: var(--space-3, .75rem) var(--space-4, 1rem) var(--space-4, 1rem);
 }
 .sheet-foot:empty { display: none; }
+/* 시트 상자는 열릴 때 초점을 받는다(tabindex=-1). 상자 테두리에 초점 고리를 그리지 않는다. */
+.sheet:focus { outline: none; }
 /* 쓰는 자리도 높이 **고정** — 시트가 내용(52vh 편집기)에 맞춰 크기를 잡던 역전을
    끊는다. 문서는 패널에 맞춰 흐르고 스크롤은 .sheet-body 가 진다(doc-editor.ts). */
 .sheet[data-size="write"]  { width: 52rem; height: 84vh; }
@@ -1810,7 +1823,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
       말고 쓰는 데가 없어 함께 지웠다. 여기 남은 둘은 Tools 공유 탭의 백업 링크다. ── */
 /* Tools 가져오기 탭 안의 드롭존: 시트 안이므로 무대 상단 여백·최대폭 제거
    (구 Packs 의 `#pack-import-host` 자리에 있던 같은 규칙이다 — P15 로 자리만 옮겼다) */
-#tools-pane .intake-stage { margin-top: 0; max-width: none; }
+#settings-tools .intake-stage { margin-top: 0; max-width: none; }
 .pack-backup { max-width: none; display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; margin: var(--space-2, .5rem) 0 0; }
 .pack-linkbtn {
   font: inherit; background: none; border: none; cursor: pointer; padding: 0;
@@ -1857,7 +1870,7 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
 /* 키 입력칸과 저장 버튼은 **한 줄**이다 — 버튼이 다음 줄로 내려가면 무엇을 저장하는
    버튼인지 자리로 말하지 못한다. */
 .s-keyrow { display: flex; align-items: center; gap: var(--space-2, .5rem); }
-.s-keyrow > input { flex: 1 1 auto; min-width: 0; }
+.s-keyrow > input, .settings-main .s-keyrow > .set-input { flex: 1 1 auto; width: auto; min-width: 0; }
 .s-keyrow > .btn { flex: 0 0 auto; }
 
 /* 문서 패널의 머리도 **스크롤 밖에 남는다**(발주자 지시 2026-09-10 — 렌즈·LNB 와
@@ -2174,16 +2187,8 @@ textarea.props-val {
   text-transform: uppercase; letter-spacing: .075em; font-size: var(--fs-xs);
 }
 
-/* ── Tools 모달(D71) — 가져오기 · 공유를 한 층에 눕힌 탭 ────────────
-   탭은 시트 규격(머리·몸·발) 안에 산다: 갈래를 고르는 줄 하나 + 그 갈래의 몸. */
-.tools-tabs {
-  display: flex; align-items: baseline; gap: .75rem; flex-wrap: wrap;
-  margin-bottom: var(--space-4, 1rem);
-}
-/* 설명은 탭 줄 아래 한 줄이다(탭처럼 읽히지 않게). */
-.tools-sub { margin: calc(-1 * var(--space-2, .5rem)) 0 var(--space-4, 1rem); }
+/* ── Tools(D71) — 설정의 가져오기 · 공유 분류 안의 몸 ──────────────────── */
 .tools-preview:not(:empty) { margin: var(--space-3, .75rem) 0; }
-.tools-pane { display: block; }
 /* 라디오 줄 — 목록 행 문법을 그대로 쓰되 선택 컨트롤이 앞에 온다. */
 .tools-opt {
   display: flex; align-items: center; gap: .6rem; cursor: pointer;
@@ -2514,10 +2519,17 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
      **서랍**이다 — 열을 뺏으면 내용이 쓸 수 없을 만큼 좁아진다. 서랍은 띠와 같은 격자 칸에
      서되 자기 폭(`--lnb-w`)만큼 오른쪽으로 넘쳐 내용을 덮는다(z 가 상단 바보다 위). */
   #shell, #shell[data-lnb="closed"] { grid-template-columns: var(--lnb-mini-w) minmax(0, 1fr); }
+  /* 서랍은 내용 위에 뜨므로 **카드다**(넓은 창의 판 위 사이드바와 다르다). 셸이 왼쪽을 덜 비운
+     만큼(`--lnb-pad-l`) 오른쪽으로 옮겨 카드의 왼쪽 끝이 다른 카드와 같은 여백(셸 간격, 웹은
+     GNB 거터)에 선다. 위 1px 은 테두리가 대신한다. */
   #shell[data-lnb="open"] #lnb {
     position: relative; z-index: 45; width: var(--lnb-w);
+    left: calc(var(--shell-gap) - var(--lnb-pad-l)); padding-top: 0;
+    background: hsl(var(--surface-2));
+    border: 1px solid hsl(var(--border)); border-radius: var(--shell-card-r);
     box-shadow: var(--shadow-elev-3), 0 0 0 100vmax hsl(var(--background) / .35);
   }
+  [data-skin="web"] #shell[data-lnb="open"] #lnb { left: calc(var(--site-gutter) - var(--lnb-pad-l)); }
 
   /* 지표 줄은 `nowrap` 이라 좁은 창에서 지도 카드 밖으로 밀려났다(실측 R435 / 화면
      375). 줄이되 **버리지 않는다** — 넷 중 무엇이 덜 중요한지는 읽는 사람이 정할
@@ -2577,6 +2589,11 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
 }
 @container topbar (max-width: 480px) {
   .tb-find-label { display: none; }
+  /* 공간 이름이 남을 폭을 위해 뒤 묶음과 공간 단추의 여백을 한 단 줄인다(손잡이는 그대로 다 선다). */
+  .tb-trail, #tb-graph-tools .cmp-tools { gap: var(--space-1); }
+  #tb-graph-tools .cmp-tbtn, .tb-seg { padding: 0 var(--space-2); }
+  .space-switch { gap: var(--space-1); margin-left: calc(var(--space-1) * -1); padding: 0 var(--space-1); }
+
   #tb-find[data-expanded] { width: calc(100cqi - var(--sb-w, 0px) - var(--page-inset) * 2); }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -2666,8 +2683,10 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
 .a2-metric b { color: hsl(var(--foreground)); font-weight: 600; }
 
 /* Settings — 왼쪽 분류 레일 + 본문(2026-09-22). 딤·머리·✕ 는 시트의 것이다.
-   분류는 일반·화면 · 읽기·View · 계정·동기화 · AI 연결 · 데이터 · GRAPH.md ·
-   고급 · 앱 정보. 웹 Vinc 는 AI·고급을 숨긴다. */
+   레일은 다섯 묶음(앱 · 계정 · 연결 · 가져오기·공유 · 시스템)의 머리 아래 분류를 세운다.
+   본문은 카드와 줄 두 가지로만 짓는다(settings.ts `settingsCard` · `settingsRow`).
+   ⚠ 본문 칸의 발(`.settings-foot`)은 본문 열 **안**에 있다. 시트의 발을 쓰면 저장·공유 줄이
+   레일 밑까지 번져 레일이 짧아지고 버전 줄이 뛰었다 — 레일은 어느 분류에서나 같은 높이다. */
 .sheet[data-size="panel"]:has(.settings) .sheet-body {
   padding: 0; overflow: hidden; display: flex;
 }
@@ -2675,28 +2694,38 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
   display: flex; flex: 1 1 auto; min-height: 0; width: 100%;
 }
 .settings-cats {
-  flex: 0 0 16rem; width: 16rem;
-  display: flex; flex-direction: column; gap: .5rem;
+  /* 기준 상자다: settings.ts `revealActive` 가 분류의 offsetTop 을 레일 안의 자리로 읽는다. */
+  position: relative;
+  flex: 0 0 14rem; width: 14rem;
+  display: flex; flex-direction: column; gap: var(--space-2);
   /* 낮은 창에서는 분류가 상자보다 길다. 스크롤을 안 주면 아래 분류와 버전 줄이
      모달 **밖**에 그려졌다(실측 2026-09-26, 창 844×390: 내용 313 · 상자 274). */
   min-height: 0; overflow-y: auto;
-  padding: 1.5rem 1.5rem 1.25rem;
+  padding: var(--space-4) var(--space-3) var(--space-3);
   border-right: 1px solid hsl(var(--border));
   background: hsl(var(--surface-2));
+}
+.settings-group { display: flex; flex-direction: column; gap: 2px; }
+/* 묶음 머리는 사이드바 소제목과 같은 문법이다(작고, 대문자, 캡션색). 누르는 것이 아니다. */
+.settings-group-head {
+  margin: 2px 0; padding: 0 var(--pad-row);
+  font-size: var(--fs-xs); font-weight: 600; letter-spacing: .02em; line-height: var(--lh-tight);
+  color: hsl(var(--muted-foreground)); text-transform: uppercase;
 }
 .settings-cat {
   position: relative;
   display: flex; align-items: center;
-  width: 100%; height: 2.5rem; padding: 0 .75rem;
-  border: none; border-radius: 10px; background: none;
-  color: hsl(var(--foreground)); font: inherit; font-size: var(--fs-base); font-weight: 500;
+  width: 100%; min-height: var(--row-h); padding: 0 var(--pad-row);
+  border: none; border-radius: var(--radius-xs); background: none;
+  color: hsl(var(--foreground)); font: inherit; font-size: var(--fs-sm); font-weight: 500;
   text-align: left; cursor: pointer;
 }
 /* 고른 분류 = LNB 의 고른 행과 같은 알약(ring 14%). `--muted` 는 다크에서 레일 바탕
    (surface-2 10%)보다 어두운 7% 라 고른 칸이 움푹 꺼져 거의 안 보였다. */
 .settings-cat:hover { background: hsl(var(--muted-foreground) / .1); }
 .settings-cat.on { background: hsl(var(--ring) / .14); font-weight: 600; }
-.settings-cat-space { flex: 1 1 auto; min-height: .5rem; }
+.settings-cat:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+.settings-cat-space { flex: 1 1 auto; min-height: var(--space-1); }
 .settings-cat-badge {
   margin-left: auto; min-width: 1rem; height: 1rem; padding: 0 .22rem;
   border-radius: .5rem; background: hsl(var(--ring));
@@ -2704,23 +2733,92 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
   font-weight: 650; text-align: center;
 }
 .settings-cat-badge[hidden] { display: none; }
+.settings-pane {
+  flex: 1 1 auto; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+}
 .settings-main {
   flex: 1 1 auto; min-width: 0; min-height: 0; overflow-y: auto;
-  padding: 2rem 2rem 1.5rem;
+  padding: var(--space-6) var(--space-6) var(--space-5);
 }
+.settings-foot { border-top: 1px solid hsl(var(--border)); }
 .settings-main > h2 {
-  margin: 0 0 .35rem; font-size: var(--fs-title); font-weight: 600; line-height: 1.25;
+  margin: 0 0 var(--space-1); font-size: var(--fs-title); font-weight: 600; line-height: 1.25;
 }
-.settings-main > h2 + .hint { margin-top: 0; margin-bottom: 1.25rem; }
-.settings-row {
+.settings-main > h2 + .hint { margin-top: 0; margin-bottom: var(--space-5); font-size: var(--fs-sm); }
+.settings-main > h2:not(:has(+ .hint)) { margin-bottom: var(--space-5); }
+/* ── 카드와 줄 ──────────────────────────────────────────────────────────────
+   줄: 왼쪽에 제목과 설명, 오른쪽에 컨트롤. 넓은 컨트롤은 줄 글 아래 전폭이다.
+   글 크기는 두 단계뿐이다: 줄 제목 = --fs-base, 설명·상태·안내 = --fs-sm. */
+.set-card-wrap { margin: 0 0 var(--space-5); }
+.set-card-head { margin: 0 0 var(--space-2); font-size: var(--fs-base); font-weight: 600; }
+.set-card {
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  background: hsl(var(--surface-2));
+}
+/* 자기 틀을 가진 모듈(드롭존 · 저장 위치 카드)을 담는 카드는 틀을 그리지 않는다 — 틀 안의 틀이 된다. */
+.set-card--bare { border: none; background: none; }
+.set-card--bare > .set-row { padding: 0; }
+/* 옮겨 심은 모듈의 안내문도 설명과 같은 크기다(줄 설명 = --fs-sm). 공유의 소제목은 제 크기를 지킨다. */
+.settings-main .set-card .hint:not(.rail-sec) { font-size: var(--fs-sm); }
+.set-row {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 1.5rem; min-height: 5.5rem;
+  gap: var(--space-2) var(--space-5); min-height: 3.5rem;
+  padding: var(--space-3) var(--space-4);
 }
-.settings-row-copy { flex: 1 1 auto; min-width: 0; }
-/* 줄 끝의 동작 버튼은 제 폭을 지킨다. 설명이 길면 "Turn off" 가 두 줄로 꺾였다(실측). */
-.settings-row > .btn { flex: 0 0 auto; white-space: nowrap; }
-.settings-row-copy strong { display: block; font-size: var(--fs-lg); font-weight: 600; }
-.settings-row-copy .hint { margin: .25rem 0 0; }
+.set-row + .set-row { border-top: 1px solid hsl(var(--border)); }
+.set-row--wide { flex-wrap: wrap; }
+.set-row-text { flex: 1 1 16rem; min-width: 0; }
+.settings-main .set-row-title {
+  display: block; margin: 0; font-size: var(--fs-base); font-weight: 500; line-height: var(--lh-tight);
+}
+.set-row-desc {
+  margin: var(--space-1) 0 0; font-size: var(--fs-sm); line-height: var(--lh-normal);
+  color: hsl(var(--muted-foreground));
+}
+.set-row-desc:empty { display: none; }
+.set-row-desc a { color: hsl(var(--link)); }
+/* 옮겨 심을 자리가 아직 비었거나(모듈을 불러오는 중) 그 모듈이 그릴 것이 없으면 빈 카드를 세우지 않는다. */
+.set-card-wrap:has(.set-row-wide > div:empty:only-child) { display: none; }
+/* 웹 알림 상자의 상태 줄도 설명 크기다(제목은 줄 제목이 진다). */
+.settings-main #push-box p { font-size: var(--fs-sm); }
+.set-row-desc code { font-size: var(--fs-sm); }
+.set-row-ctl { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-2); }
+.set-row-ctl > .btn { white-space: nowrap; }
+.set-row-wide { flex: 1 0 100%; min-width: 0; }
+/* 제목도 컨트롤도 없는 넓은 줄(드롭존 · GRAPH.md · 저장 위치)은 카드 안을 그대로 채운다. */
+.set-row-wide:only-child { padding: var(--space-1) 0; }
+.set-card-note {
+  margin: var(--space-2) var(--space-1) 0; font-size: var(--fs-sm); line-height: var(--lh-normal);
+  color: hsl(var(--muted-foreground));
+}
+.set-card-note:empty { display: none; }
+/* 할 일이 없는 분류가 그 까닭을 말하는 한 문장. */
+.set-lone { margin: 0; font-size: var(--fs-sm); color: hsl(var(--muted-foreground)); }
+.settings-main .set-input {
+  width: 18rem; max-width: 100%; height: var(--ctl-h); font: inherit; font-size: var(--fs-sm);
+  padding: 0 var(--space-3); border: 1px solid hsl(var(--input)); border-radius: var(--radius-sm);
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+}
+.set-num {
+  display: flex; align-items: center; gap: var(--space-2);
+  color: hsl(var(--muted-foreground)); font-size: var(--fs-sm);
+}
+.settings-main .set-num input {
+  width: 6rem; height: var(--ctl-h); font: inherit; font-size: var(--fs-sm); padding: 0 var(--space-2);
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius-sm);
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+}
+.set-kbd {
+  font: 500 var(--fs-xs)/1 var(--font-mono); color: hsl(var(--muted-foreground));
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-xs);
+  padding: var(--space-1) var(--space-2); white-space: nowrap;
+}
+.settings-select {
+  width: 15.5rem; height: var(--ctl-h); font: inherit; font-size: var(--fs-sm); padding: 0 var(--space-3);
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius-sm);
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+}
 /* 켜짐·꺼짐 표지 — 동작 버튼의 글자로 지금 상태를 짐작하지 않게 제목 옆에 적는다. */
 .settings-state {
   display: inline-block; margin-left: .5rem; padding: .05rem .5rem; vertical-align: middle;
@@ -2728,38 +2826,25 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
   color: hsl(var(--muted-foreground)); border: 1px solid hsl(var(--border));
 }
 .settings-state.on { color: hsl(var(--point-text, var(--foreground))); border-color: hsl(var(--point-text, var(--foreground)) / .45); }
-.settings-select {
-  width: 15.5rem; font: inherit; padding: .5rem .75rem;
-  border: 1px solid hsl(var(--input)); border-radius: var(--radius);
-  background: hsl(var(--background)); color: hsl(var(--foreground));
-}
-.settings-px {
-  display: flex; align-items: center; gap: .4rem;
-  color: hsl(var(--muted-foreground)); font-size: var(--fs-base);
-}
-.settings-px input {
-  width: 5.5rem; font: inherit; padding: .45rem .55rem;
-  border: 1px solid hsl(var(--input)); border-radius: var(--radius);
-  background: hsl(var(--background)); color: hsl(var(--foreground));
-}
 .settings-build {
-  font-size: var(--fs-lg); font-variant-numeric: tabular-nums; margin: .5rem 0 1rem;
+  font-size: var(--fs-lg); font-variant-numeric: tabular-nums; margin: 0;
 }
 /* 앱 정보의 첫 줄 = 마크 + 빌드. 마크는 크기 단계(128·96·64·40) 중 64 이고 상자를
    그림의 비율(viewBox 436×604)에 딱 맞춘다. 사이 여백 1.25rem 은 마크 폭(약 46px)의
    25% 보다 넓다([[vinc.design.logo]] 의 여백 규칙). */
 .settings-about-id {
-  display: flex; align-items: center; gap: 1.25rem; margin: .5rem 0 1.25rem;
+  display: flex; align-items: center; gap: 1.25rem;
 }
 .settings-about-id .brand-logo { height: 4rem; aspect-ratio: 436 / 604; }
-.settings-about-id .settings-build { margin: 0; }
 .settings-ver {
-  flex: 0 0 auto; font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
+  flex: 0 0 auto; padding: 0 var(--pad-row); font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
   color: hsl(var(--muted-foreground));
 }
-.settings-sep { border: none; border-top: 1px solid hsl(var(--border)); margin: var(--space-4, 1rem) 0; }
-.settings-main label { display: block; margin-top: var(--space-3, .75rem); font-weight: 700; }
-.settings-main input:not([type="checkbox"]):not([type="radio"]):not([type="number"]) {
+/* 옮겨 심는 모듈(저장 위치 · 공간 옮기기 · 알림)의 이름표와 입력칸. `:where` 로 감싸 낮춘다:
+   줄의 제목(`.set-row-title`)과 줄의 입력(`.set-input`)이 이 규칙에 지지 않게. 모듈 자기 규칙은
+   여전히 `.settings-body …` 로 이긴다. */
+.settings-main :where(label) { display: block; margin-top: var(--space-3, .75rem); font-weight: 700; }
+.settings-main :where(input:not([type="checkbox"]):not([type="radio"]):not([type="number"])) {
   width: 100%; font: inherit; padding: var(--space-2, .5rem);
   border: 1px solid hsl(var(--input)); border-radius: var(--radius);
   background: hsl(var(--background)); color: hsl(var(--foreground));
@@ -2771,8 +2856,12 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
     overflow-x: auto; overflow-y: hidden; border-right: none;
     border-bottom: 1px solid hsl(var(--border));
   }
+  /* 가로 레일에서는 묶음 머리를 접고 분류만 한 줄로 잇는다. */
+  .settings-group { display: contents; }
+  .settings-group-head { display: none; }
   .settings-cat { width: auto; white-space: nowrap; }
   .settings-cat-space { display: none; }
+  .set-row { flex-wrap: wrap; }
 }
 
 /* ── D37 부유 크롬 = Liquid Glass. 콘텐츠 평면(목록·캔버스 마크·레일)은 불변.
@@ -2855,22 +2944,10 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
   input.slider::-webkit-slider-thumb { transition: none; }
 }
 
-/* ── 행 목록 ─────────────────────────────────────────────────────────────
-   "이름 하나 + 그것에 대한 동작들"이 한 줄인 자리(MCP 호스트 등). `.seg` 로 이 일을
-   하지 말 것 — 그건 여럿 중 **하나를 고르는** 컨트롤이라, 독립 동작을 담으면 한
-   덩어리로 뭉쳐 보이고 선택 상태가 없는 세그가 된다(2026-08-05 재설계 이유). */
-.rowlist { list-style: none; margin: .5rem 0 0; padding: 0; }
-.rowlist .row {
-  display: flex; align-items: center; gap: var(--space-3, .75rem);
-  padding: .5rem .1rem;
-  border-bottom: 1px solid hsl(var(--border) / .5);
-}
-.rowlist .row:last-child { border-bottom: none; }
+/* ── 행 이름 ─────────────────────────────────────────────────────────────
+   "이름 하나 + 그것에 대한 동작들"이 한 줄인 자리의 이름 칸(공간 메뉴 등). 설정의 줄은
+   `.set-row` 다. 독립 동작을 `.seg` 에 담지 말 것 — 그건 여럿 중 **하나를 고르는** 컨트롤이다. */
 .row-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-acts { flex: 0 0 auto; display: flex; align-items: center; gap: .4rem; }
-.mcp-row { flex-wrap: wrap; }
-.mcp-row .mcp-result { flex-basis: 100%; margin: 0; }
-.mcp-row .mcp-result:empty { display: none; }
 /* 작은 보조 문구·긴 문자열 처리 — 인라인 style 로 매번 적던 것들을 클래스로. */
 .hint-sm { font-size: var(--fs-sm); margin-top: .35rem; }
 .break-all { word-break: break-all; }
@@ -3126,6 +3203,8 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 .lnb-sec-end { display: inline-flex; align-items: center; gap: var(--space-1, .25rem); }
 .lnb-sec-end.no-add { padding-right: calc(var(--pad-row) + var(--space-1) / 2); }   /* + 가 없으면 수가 아래 줄의 수와 같은 오른쪽 세로선에 선다 */
 .lnb-add { font-size: 1rem; line-height: 1; padding: .1rem .4rem; }  /* fs-allow: 글씨가 아니라 기호(+) 크기 */
+/* 판 위의 기호라 캡션(light 3.13:1)이 아니라 muted 다(6.0:1). 손이 오르면 `.rail-x:hover` 가 글자색으로 바꾼다. */
+.lnb-add { color: hsl(var(--muted-foreground)); }
 
 /* 흐름 B — 문서 열의 새 문서: 주제 칩 + id 미리보기가 편집기 위에 한 줄로 선다. */
 .writer-meta {
@@ -3307,14 +3386,6 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 .pick-hint { margin: .2rem 0 .5rem; }
 .pick-msg { margin: .35rem 0 0; }
 .pick-msg:empty { display: none; }
-.pick-hint + .pick-drag { margin: -.3rem 0 .5rem; }
-/* 끌어서 잇기(Alt 끌기, surfaces/drag-connect.ts) — 캔버스 위 SVG 한 장. 포인트색은 가는 선과
-   고리에만 쓴다(면을 칠하지 않는다). 전환·애니메이션이 없다 — 움직임 줄이기에서도 같은 그림이다. */
-.dc-layer { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 5; pointer-events: none; overflow: visible; }
-.dc-line { stroke: hsl(var(--point)); stroke-width: 1.5; stroke-linecap: round; }
-.dc-src { fill: none; stroke: hsl(var(--foreground) / .55); stroke-width: 1; }
-.dc-ring { fill: none; stroke: hsl(var(--point)); stroke-width: 2; }
-.dc-ring.dc-no { stroke: hsl(var(--muted-foreground)); stroke-dasharray: 3 3; }
 .cx-arrow {
   display: flex; align-items: center; flex-wrap: wrap; gap: .5rem;
   margin: 0 0 var(--space-3, .75rem); font-weight: 600;
@@ -3648,7 +3719,7 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 
 /* Agent 관계 그래프(surfaces/agent-map.ts) — 그래프는 왼쪽, 고른 항목(절차면 편집 칸)은 오른쪽 칸.
    값은 전부 디자인 토큰이다(글자 --fs-* · 간격 --space-* · 반경 --radius-* · 시간 --dur-* · 곡선 --ease-* · 글꼴 --font-*).
-   토큰이 없는 것은 둘뿐: 칸 폭(배치 치수)과 선의 굵기·불투명도·파선(그래프 보기 view3d 와 같은 값). */
+   토큰이 없는 것은 둘뿐: 칸 폭(배치 치수)과 선의 굵기·불투명도·파선. */
 .agent-map .am-stage { display: grid; grid-template-columns: minmax(0, 1fr) 24rem; gap: var(--space-4); align-items: start; }
 @media (max-width: 1180px) { .agent-map .am-stage { grid-template-columns: minmax(0, 1fr); }
   /* 쌓일 때 차례: 지도 → 옆 칸(고른 것의 편집) → 정책. 편집 칸이 정책 칸 아래로 밀려 내려가지 않게 */
@@ -3875,7 +3946,8 @@ details.pe-group[open] > summary::before { transform: rotate(90deg); }
 .cmp-side .btn { white-space: nowrap; height: 1.75rem; min-height: 0; padding: 0 var(--space-2); font-size: var(--fs-sm); }
 .cmp-side .cmp-seg { margin: 0; } .cmp-side .cmp-seg .btn { flex: 1; }
 .cmp-side .cmp-kinds { grid-template-columns: 1fr 1fr; } .cmp-side .cmp-lk { padding: 3px 6px; }
-/* 시간 · 범례 창(view-compass.ts 의 pop). 머리의 버튼 바로 아래에 왼쪽 끝을 맞춰 뜬다(left·top·max-width 는 스크립트가 준다).
+/* 시간 · 범례 창(view-compass.ts 의 pop). 머리 뒤 묶음의 버튼 바로 아래에 오른쪽 끝을 맞춰 뜬다(right · top · 최대 폭 · 높이는
+   스크립트가 내용 카드 안쪽으로 준다).
    시간 창은 화면이 클수록 넓어져 격자가 더 길게 나열된다 */
 .cmp-pop { position: fixed; z-index: 90; width: clamp(22rem, 52vw, 60rem); max-height: min(80dvh, 46rem); overflow: auto;
   background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: var(--radius-lg); box-shadow: var(--shadow-elev-2);
@@ -3898,7 +3970,7 @@ details.pe-group[open] > summary::before { transform: rotate(90deg); }
 .lnb-pdot.lnb-pmark { width: 8px; height: 8px; margin: 0 1px; }   /* 정책 묶음 줄: Agent 줄의 원(10px)과 같은 무게 */
 .lnb-adot { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; background: var(--tint, hsl(var(--muted-foreground))); }   /* Agent(Maker · Checker) */
 /* 사이드바의 주제 표식: 그래프 · 범례와 같은 점선 고리(view-tint.ts topicRingIcon)를 주제 색으로 */
-.lnb-gring { flex: 0 0 auto; display: inline-flex; width: 11px; height: 11px; margin-right: 2px; color: var(--tint, hsl(var(--caption-foreground))); }
+.lnb-gring { flex: 0 0 auto; display: inline-flex; width: 11px; height: 11px; margin-right: 2px; color: var(--tint, hsl(var(--muted-foreground))); }   /* 주제 색이 없는 줄도 판 위에서 4.5:1 */
 .lnb-gring svg { display: block; }
 .cmp-side .btn.on { border-color: var(--c-point); color: var(--c-point); }
 .cmp-side .cmp-tleg { display: flex; gap: 10px; flex-wrap: wrap; font-size: var(--fs-xs); color: var(--c-soft); } .cmp-side .cmp-tleg i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }

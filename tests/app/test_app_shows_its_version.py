@@ -49,7 +49,7 @@ class VersionOnScreen(unittest.TestCase):
     def test_탭_안이_아니라_셸에_있다(self):
         """탭 안에 두면 그 탭이 없는 빌드에서는 버전이 안 보인다(웹에서 두 탭이 숨는다)."""
         s = src()
-        for fn in ("function renderAccount", "function renderConnections", "function renderAdvanced"):
+        for fn in ("function renderAccount", "function renderApps", "function renderAdvanced"):
             i = s.index(fn)
             j = s.find("\n  function ", i + 10)
             self.assertNotIn("buildId", s[i:j if j > 0 else len(s)],

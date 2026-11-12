@@ -44,8 +44,8 @@ export const EDGE_KINDS: EdgeKind[] = ["directed", "related", "cross", "bridge"]
 /** 끝이 원천(조상)을 가리키는 관계 — "a 가 b 에서 나왔다". 시간순 배치는 이 둘만
  *  뒤집어 조상을 앞에 세운다(`view-layout.ts` 의 `ancestry`). */
 export const ANCESTRY_RELS = ["DERIVES_FROM", "INHERITS_FROM"];
-/** 화살촉이 붙는 방향 3종. 렌더러(view2d·view3d·view)가 모두 이 목록을 읽는다. */
-export const DIRECTED_RELS = ["PREREQUISITE_OF", ...ANCESTRY_RELS];
+/** 화살촉이 붙는 방향 3종. `edgeKindOf` 가 읽는다. */
+const DIRECTED_RELS = ["PREREQUISITE_OF", ...ANCESTRY_RELS];
 export function edgeKindOf(e: { type: string; cross_domain?: boolean }): EdgeKind {
   if (DIRECTED_RELS.includes(e.type)) return "directed";
   if (e.type === "CONNECTS") return "bridge";
@@ -160,10 +160,6 @@ const DEFAULTS: ViewPrefs = {
   when: 1,
   edgeOff: ["directed", "cross", "bridge"],
 };
-/** 저장값을 거치지 않은 기본값 한 벌(새 배열). 저장소를 읽지도 쓰지도 않는 화면이
- *  데스크톱과 같은 기본에서 출발할 때 쓴다(`app/community-view/main.ts`). */
-export const defaultPrefs = (): ViewPrefs =>
-  ({ ...DEFAULTS, edgeOff: [...DEFAULTS.edgeOff] });
 // 주제 색 토글(`domainTint`)은 2026-09-26 에 없앴다 — 주제 색은 늘 켜져 있다(view-tint.ts).
 // 저장값에 남은 키는 loadPrefs 가 읽지 않으므로 무해하다(옮겨 읽기 불필요).
 // ⚠ `Number(v) || dflt` 였다(2026-08-17 수정). **0 을 없는 값으로 읽는다** — 시간
