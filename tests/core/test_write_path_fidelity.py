@@ -10,7 +10,7 @@ from itertools import count
 
 import pytest
 
-from api import docstore, docsync, query
+from api import docstore, docsync, query, revstamp
 from api.fragment import merge_fragment
 from store import pkns
 from store.backend import open_store
@@ -157,7 +157,8 @@ def test_docsync_applies_a_remote_content_time_only_edit(graph):
     local = _doc(graph, doc_id)
     remote = {"doc_id": doc_id, "text": TEXT, "title": local["title"],
               "content_hash": local["content_hash"], "content_time": "1990-01",
-              "updated_at": "2099-01-01T00:00:00.000Z"}   # 유효구간 키가 없는 구 송신자
+              # 유효구간 키가 없는 구 송신자. 로컬보다 새것이고 허용 스큐 안이다.
+              "updated_at": revstamp._fmt(revstamp._wall_ms() + 60_000)}
     out = docsync.import_docs(graph, owner=OWNER, payload={"docs": [remote]})
     assert out["updated"] == 1, out
     assert _doc(graph, doc_id)["content_time"] == "1990-01"

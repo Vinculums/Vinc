@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from api import docstore as ds       # noqa: E402
 from api import docsync              # noqa: E402
+from api import revstamp             # noqa: E402
 from store.embedded_backend import _import_driver  # noqa: E402
 
 _DRIVER, _NAME = _import_driver()
@@ -129,7 +130,8 @@ class DocSyncE2E(unittest.TestCase):
         ds.delete_doc(self.A, did, owner="user:a")
         tomb = self.A.run("MATCH (t:_DocTombstone) WHERE t.doc_id=$id RETURN t.deleted_at AS time",
                           {"id": did})[0]["time"]
-        for owner, stamp in (("user:a", "2000-01-01"), ("user:a", tomb), ("user:b", "2099")):
+        later = revstamp._fmt(revstamp._wall_ms() + 60_000)   # 삭제보다 새것, 허용 스큐 안
+        for owner, stamp in (("user:a", "2000-01-01"), ("user:a", tomb), ("user:b", later)):
             result = docsync.import_docs(self.A, owner=owner, payload={"docs": [
                 {"doc_id": did, "text": "Stale", "updated_at": stamp}]})
             self.assertEqual(result["skipped"], 1)
@@ -137,7 +139,7 @@ class DocSyncE2E(unittest.TestCase):
         self.assertEqual(self.A.run("MATCH (t:_DocTombstone) WHERE t.doc_id=$id RETURN t.deleted_at AS time",
                                     {"id": did}), [{"time": tomb}])
         result = docsync.import_docs(self.A, owner="user:a", payload={"docs": [
-            {"doc_id": did, "text": "Deliberate later recreation", "updated_at": "2099-01-01"}]})
+            {"doc_id": did, "text": "Deliberate later recreation", "updated_at": later}]})
         self.assertEqual(result["applied"], 1)
 
     def test_delete_propagation_and_recreate_wins(self):
@@ -250,7 +252,8 @@ class DocSyncE2E(unittest.TestCase):
         self.B.run("MATCH (d:_DocMeta) WHERE d.doc_id='dL' SET d.owner_id = ''")
         payload = {"docs": [{"doc_id": "dL", "title": "t", "origin": "",
                              "content_hash": ds._sha("가져가기"),
-                             "updated_at": "2999-01-01T00:00:00Z", "text": "가져가기"}],
+                             "updated_at": revstamp._fmt(revstamp._wall_ms() + 60_000),
+                             "text": "가져가기"}],
                    "tombstones": []}
         res = docsync.import_docs(self.B, owner="user:legit", payload=payload)
         self.assertEqual((res["updated"], res["skipped"]), (0, 1), res)
@@ -287,10 +290,12 @@ class DocSyncE2E(unittest.TestCase):
         self.B.run("MATCH (d:_DocMeta) WHERE d.doc_id = 'dM' DELETE d")
         payload = {"docs": [{"doc_id": "dM", "title": "t", "origin": "",
                              "content_hash": ds._sha("가져가기"),
-                             "updated_at": "2999-01-01T00:00:00Z", "text": "가져가기"}],
+                             "updated_at": revstamp._fmt(revstamp._wall_ms() + 60_000),
+                             "text": "가져가기"}],
                    "tombstones": []}
         res = docsync.import_docs(self.B, owner="user:legit", payload=payload)
         self.assertEqual(res["applied"], 0, res)
+        self.assertNotIn("clock_skew", res)
         rows = self.B.run("MATCH (c:Chunk) WHERE c.doc_id = 'dM' RETURN c.owner_id AS o")
         self.assertEqual({r["o"] for r in rows}, {"user:x"})
 

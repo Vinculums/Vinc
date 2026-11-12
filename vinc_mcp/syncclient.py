@@ -46,9 +46,13 @@ def _post(base: str, path: str, token: str, payload: dict, *, timeout: float) ->
 
 def push(bundle_chunks: list[dict], *, token: str, base: str = DEFAULT_URL,
          timeout: float = TIMEOUT) -> dict:
-    """청크를 순차 전송. 각 청크는 자기완결·멱등이라 중단 후 재전송해도 안전하다."""
+    """청크를 순차 전송. 각 청크는 자기완결·멱등이라 중단 후 재전송해도 안전하다.
+
+    허브가 받지 않은 항목(`clock_skew`, 보낸 기기의 시계가 앞섬)은 청크마다 모아 그대로 돌려준다.
+    부르는 쪽(`api/sync.push_local`)이 그 목록으로 base 를 옮기지 않고 다음 동기화에 다시 보낸다."""
     applied = skipped = edges = kept_deleted = 0
     warnings: list[str] = []
+    refused: list = []
     for i, ch in enumerate(bundle_chunks):
         out = _post(base, "/sync/push", token, {"bundle": ch}, timeout=timeout)
         if not out.get("executed"):
@@ -59,9 +63,13 @@ def push(bundle_chunks: list[dict], *, token: str, base: str = DEFAULT_URL,
         edges += int(out.get("edges") or 0)
         kept_deleted += int(out.get("kept_deleted") or 0)
         warnings += out.get("warnings") or []
-    return {"executed": True, "chunks": len(bundle_chunks), "applied": applied,
-            "skipped_stale": skipped, "edges": edges, "kept_deleted": kept_deleted,
-            "warnings": warnings}
+        refused += [r for r in out.get("clock_skew") or [] if r not in refused]
+    merged = {"executed": True, "chunks": len(bundle_chunks), "applied": applied,
+              "skipped_stale": skipped, "edges": edges, "kept_deleted": kept_deleted,
+              "warnings": warnings}
+    if refused:
+        merged["clock_skew"] = refused
+    return merged
 
 
 def pull(*, since: int, token: str, base: str = DEFAULT_URL,

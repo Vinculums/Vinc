@@ -859,9 +859,16 @@ def _merged_fragment_node(label: str, nid: str, ntype: str, merged: dict) -> dic
     return node
 
 
-def _edges_after_deletions(store, owner, bundle):
-    """끝점의 새 편집 증거가 없는 관계 재전송은 기존 삭제를 이기지 못한다."""
-    times = {n.get("id"): n.get("_updated_at") or "" for n in bundle.get("nodes") or []}
+def edge_ref(src, rel, dst) -> str:
+    """엣지 삭제 하나를 `clock_skew` 에 적는 이름. 보낸 기기가 같은 값으로 자기 표식을 찾는다."""
+    return f"{src} -{rel}-> {dst}"
+
+
+def _edges_after_deletions(store, owner, bundle, refused=()):
+    """끝점의 새 편집 증거가 없는 관계 재전송은 기존 삭제를 이기지 못한다. 받지 않은 노드의 스탬프는
+    증거가 아니다."""
+    times = {n.get("id"): n.get("_updated_at") or ""
+             for n in bundle.get("nodes") or [] if n.get("id") not in refused}
     carriers = {fragment: rel for rel, fragment in _REL_TO_FRAGMENT.items()}
     kept = []
     for edge in bundle.get("edges") or []:
@@ -879,7 +886,7 @@ def _edges_after_deletions(store, owner, bundle):
 
 
 def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
-                trusted_run_state: bool = False) -> dict:
+                trusted_sender: bool = False) -> dict:
     """delta 번들을 **필드단위 3-way 병합**으로 적용(S3 — 발주자 핵심 요구).
 
     각 노드: base(마지막 동기화값) 대비 local·remote 를 필드별로 병합한다. 서로 다른
@@ -888,9 +895,12 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
     **base 는 원격값으로** 갱신한다 — 그래야 다음 push 가 로컬-only 필드만 감지한다
     (에코 완전 제거). 스탬프 규칙(§S2)은 그대로: sync_seq 는 수신측 자기 번호.
 
-    `trusted_run_state` 는 이 스토어가 처음 보는 실행 기록의 대기·승인·답을 보낸 쪽 그대로
-    받는가다(`store/run_state.py` `keep_own`). 기기가 자기 허브에서 받는 pull 만 True 를 넘긴다.
-    허브가 기기 묶음을 받는 길(사이드카 `/sync/apply-delta`)은 언제나 기본값 False 다.
+    `trusted_sender` 는 보낸 쪽을 믿는가다. 기기가 자기 허브에서 받는 pull 만 True 를 넘기고, 허브가
+    기기 묶음을 받는 길(사이드카 `/sync/apply-delta`)은 언제나 기본값 False 다. 규칙 둘이 이것을 읽는다:
+      - 실행 기록: 처음 보는 실행의 대기·승인·답을 보낸 쪽 그대로 받는가(`store/run_state.py` `keep_own`).
+      - 시계: 믿지 않으면 스탬프가 `revstamp.ceiling_ms()` 뒤인 노드·노드 삭제·엣지 삭제는 저장하지 않고
+        결과 `clock_skew` 에 이름을 남긴다(자르지 않는다: 자르면 보낸 쪽과 다른 스탬프의 사본이 생긴다).
+        나머지는 적용한다. 믿으면 스탬프를 그대로 받고 시계도 거기까지 따라간다.
     """
     out = {"executed": False, "applied": 0, "skipped_stale": 0, "merged": 0,
            "edges": 0, "deleted": 0, "resurrected": 0, "kept_deleted": 0, "warnings": []}
@@ -908,6 +918,7 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
     writes: list[dict] = []          # merge_fragment 로 쓸 노드(스탬프 포함)
     base_updates: list[tuple] = []   # (nid, label, base_fields, base_rev, base_ua)
     births: list[tuple] = []         # (label, pk, nid, remote_created) — 병합과 무관
+    refused: list[str] = []          # 스탬프가 상한 뒤라 받지 않은 항목(응답 `clock_skew`)
     protected: list[str] = []        # 받는 스토어의 프로토콜 상태를 남긴 실행 id
     for n in bundle.get("nodes") or []:
         nid, ntype = n.get("id"), n.get("type")
@@ -924,6 +935,10 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
             # 기기에 남은 사본이 push-all 로 허브에 되살아나지 않게 한다. 묘비·base 를
             # 건드리기 전에 거른다(둘 다 키가 node_id 하나라 살아 있는 행의 것을 덮는다).
             out["warnings"].append(f"type disagrees with id prefix: skipped ({nid})")
+            continue
+        if not trusted_sender and revstamp.beyond_ceiling(n.get("_updated_at") or ""):
+            # 묘비·base·시계를 건드리기 전에 거른다. 보낸 기기는 base 를 옮기지 않고 다시 보낸다.
+            refused.append(nid)
             continue
         pk = frag._NODE_MAP[ntype][1]
         remote_snap = _snapshot(label, n)
@@ -955,7 +970,7 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
             # 위에서 읽은 로컬 행을 쓰므로 읽기가 늘지 않고, 같은 쓰기 잡 안이라 그 사이에 든 답도 없다.
             own = None if local is None else (local.get("props") or {})
             remote_snap["props"], differed = run_state.keep_own(
-                remote_snap.get("props"), own, trusted=trusted_run_state)
+                remote_snap.get("props"), own, trusted=trusted_sender)
             if differed:
                 protected.append(rid)
 
@@ -1005,9 +1020,9 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
             out["skipped_stale"] += 1           # 로컬에 반영할 변화 없음
         # base 는 항상 원격이 가진 값으로 — 다음 push 가 로컬-only 필드만 delta 로 본다.
         base_updates.append((nid, label, remote_snap, r_rev, r_ua))
-        revstamp.observe_hlc(store, r_ua)
+        revstamp.observe_hlc(store, r_ua, trusted=trusted_sender)
 
-    edges = _edges_after_deletions(store, owner, bundle)
+    edges = _edges_after_deletions(store, owner, bundle, set(refused))
     if writes or edges:
         # stamp_edges=False — 원격발 엣지를 끝점 스탬프하면 다음 push 로 무변경 노드가
         # 에코된다(엣지 전파 스탬프는 **원 저작 기기**에서만, fragment 주석 참조).
@@ -1049,6 +1064,11 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
     for t in bundle.get("tombstones") or []:
         tid, tlabel = t.get("node_id"), t.get("label")
         t_da = t.get("deleted_at") or ""
+        if not trusted_sender and revstamp.beyond_ceiling(t_da):
+            # 아래의 min 은 먼 삭제를 지금으로 당겨 적용한다. 믿지 않는 쪽의 먼 삭제는 아예 받지 않는다.
+            if tid:
+                refused.append(tid)
+            continue
         if t_da:
             t_da = min(t_da, revstamp.hlc_now(store))
         # 라벨→PK 를 손으로 적지 않는다 — 동기화 라벨이 늘 때 여기가 빠지면 그
@@ -1068,7 +1088,7 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
             out["deleted"] += 1
         del_base(store, tid, owner)
         put_tombstone(store, tid, tlabel, owner, t_da, int(t.get("rev") or 0))
-        revstamp.observe_hlc(store, t_da)
+        revstamp.observe_hlc(store, t_da, trusted=trusted_sender)
 
     # 엣지 삭제 전파(S4 확장): 엣지는 타임스탬프가 없어 노드식 재편집 가드가 불가 —
     # 삭제를 무조건 적용한다. '재생성이 삭제를 이긴다'는 별도 경로로 성립:
@@ -1080,6 +1100,10 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
         src, rel, dst = t.get("src"), t.get("rel"), t.get("dst")
         spec = q.sync_edge_spec(rel or "")
         if not spec or not src or not dst:
+            continue
+        if not trusted_sender and revstamp.beyond_ceiling(t.get("deleted_at") or ""):
+            # 먼 삭제 표식을 남기면 그 엣지는 끝점을 아무리 고쳐도 다시 쓰이지 않는다.
+            refused.append(edge_ref(src, rel, dst))
             continue
         carrier, subtype, ep = spec
         qualifier = " AND r.type = $subtype" if subtype is not None else ""
@@ -1104,9 +1128,12 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
                                "d": pkns.key(owner, d_), "owner": owner, **extra})
                     out["edges_deleted"] = out.get("edges_deleted", 0) + 1
         put_edge_tombstone(store, src, rel, dst, owner, t.get("deleted_at") or "")
-        revstamp.observe_hlc(store, t.get("deleted_at") or "")
+        revstamp.observe_hlc(store, t.get("deleted_at") or "", trusted=trusted_sender)
 
     out["applied"] = len(writes)
+    if refused:
+        out[revstamp.CLOCK_SKEW] = refused
+        out["warnings"].append(revstamp.clock_skew_warning(len(refused)))
     if protected:
         out[run_state.CODE] = sorted(set(protected))
         out["warnings"].append(run_state.warning(out[run_state.CODE]))
@@ -1168,14 +1195,54 @@ def push_local(store, cfg, *, owner: str, remote) -> dict:
     if not nodes and not (bundle.get("edges") or []) and not tombs:
         return {"phase": "push", "executed": True, "sent": 0, "deletes": 0, "cursor": since}
     res = remote.push(chunk_bundle(bundle))
+    refused = _refused_ids(res)
     for n in nodes:                       # base := 방금 보낸(=원격과 합의된) 값
         label = _SYNC_TYPES.get(n.get("type") or "")
-        if label:
+        # 허브가 받지 않은 노드는 합의된 값이 아니다. base 를 옮기면 다음 3-way 가 그 편집을 잃는다.
+        if label and n.get("id") not in refused:
             set_base(store, n["id"], label, _snapshot(label, n),
                      int(n.get("_rev") or 0), n.get("_updated_at") or "")
     set_cursor(store, "push", bundle["next_cursor"])
-    return {"phase": "push", "executed": True, "sent": len(nodes), "deletes": len(tombs),
-            "remote": res, "cursor": bundle["next_cursor"]}
+    out = {"phase": "push", "executed": True, "sent": len(nodes), "deletes": len(tombs),
+           "remote": res, "cursor": bundle["next_cursor"]}
+    if refused:
+        _send_again(store, owner, bundle, refused)
+        out[revstamp.CLOCK_SKEW] = sorted(refused)
+        out["warnings"] = [revstamp.clock_skew_warning(len(refused))]
+    return out
+
+
+def _refused_ids(reply) -> set:
+    """허브 답의 `clock_skew` 에서 이 기기가 보낸 이름(문자열)만 모은다. 다른 값은 무시한다."""
+    got = (reply or {}).get(revstamp.CLOCK_SKEW) if isinstance(reply, dict) else None
+    return {r for r in got if isinstance(r, str)} if isinstance(got, list) else set()
+
+
+def _send_again(store, owner: str, bundle: dict, refused: set) -> None:
+    """허브가 받지 않은 항목에 새 순번을 매겨 다음 push 의 delta 에 다시 싣는다. 스탬프·rev 는 그대로라
+    허브 시계가 따라잡으면 보낸 그대로 들어간다."""
+    for n in bundle.get("nodes") or []:
+        nid = n.get("id")
+        mapped = frag._NODE_MAP.get(n.get("type") or "")
+        if nid not in refused or not mapped:
+            continue
+        label, pk = mapped
+        store.run(f"MATCH (x:{label}) WHERE x.{pk} = $id AND x.owner_id = $owner "
+                  "SET x.sync_seq = $seq",
+                  {"id": pkns.key(owner, nid), "owner": owner,
+                   "seq": revstamp.next_seq(store, owner)})
+    for t in bundle.get("tombstones") or []:
+        if t.get("node_id") in refused:
+            store.run("MATCH (t:_Tombstone) WHERE t.node_id = $id AND t.owner_id = $owner "
+                      "SET t.sync_seq = $seq",
+                      {"id": pkns.key(owner, t["node_id"]), "owner": owner,
+                       "seq": revstamp.next_seq(store, owner)})
+    for t in bundle.get("edge_tombstones") or []:
+        if edge_ref(t.get("src"), t.get("rel"), t.get("dst")) in refused:
+            store.run("MATCH (t:_EdgeTombstone) WHERE t.owner_id = $owner AND t.src = $s "
+                      "AND t.rel = $r AND t.dst = $d SET t.sync_seq = $seq",
+                      {"owner": owner, "s": t.get("src"), "r": t.get("rel"), "d": t.get("dst"),
+                       "seq": revstamp.next_seq(store, owner)})
 
 
 def pull_apply(store, cfg, *, owner: str, remote) -> dict:
@@ -1188,8 +1255,9 @@ def pull_apply(store, cfg, *, owner: str, remote) -> dict:
         page = remote.pull(since)
         nodes = page.get("nodes") or []
         tombs = page.get("tombstones") or []
-        # 기기가 자기 허브에서 받는다: 처음 보는 실행은 허브가 기록한 상태 그대로 받는다.
-        r = apply_delta(owner=owner, bundle=page, cfg=cfg, store=store, trusted_run_state=True)
+        # 기기가 자기 허브에서 받는다: 처음 보는 실행은 허브가 기록한 상태 그대로, 스탬프도 허브의 것
+        # 그대로 받는다(기기 시계가 느려도 그 뒤의 편집이 허브 편집보다 뒤에 찍힌다).
+        r = apply_delta(owner=owner, bundle=page, cfg=cfg, store=store, trusted_sender=True)
         applied += r["applied"]
         skipped += r["skipped_stale"]
         deleted += r.get("deleted", 0)
@@ -1249,14 +1317,37 @@ def push_docs(store, cfg, *, owner: str, remote) -> dict:
         return {"phase": "docs-push", "executed": True, "sent": 0, "deletes": 0,
                 "cursor": since}
     agg = {"applied": 0, "updated": 0, "skipped": 0, "deleted": 0}
+    refused: set = set()
     for ch in _chunk_docs(payload):
         res = remote.docs_push(ch)
         for k in agg:
             agg[k] += int(res.get(k) or 0)
+        refused |= _refused_ids(res)
     cursor = int(payload.get("cursor") or since)
     set_cursor(store, "docs-push", cursor)
-    return {"phase": "docs-push", "executed": True, "sent": len(docs),
-            "deletes": len(tombs), "remote": agg, "cursor": cursor}
+    out = {"phase": "docs-push", "executed": True, "sent": len(docs),
+           "deletes": len(tombs), "remote": agg, "cursor": cursor}
+    if refused:
+        _send_docs_again(store, owner, payload, refused)
+        out[revstamp.CLOCK_SKEW] = sorted(refused)
+        out["warnings"] = [revstamp.clock_skew_warning(len(refused))]
+    return out
+
+
+def _send_docs_again(store, owner: str, payload: dict, refused: set) -> None:
+    """허브가 받지 않은 문서·문서 삭제에 새 순번을 매겨 다음 push 에 다시 싣는다(`_send_again` 과 같다).
+    순번은 문서 카운터에서 받는다: 문서 커서는 그 카운터의 값이다."""
+    from . import docstore as ds
+    for d in payload.get("docs") or []:
+        if d.get("doc_id") in refused:
+            store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id AND d.owner_id = $o "
+                      "SET d.sync_seq = $seq",
+                      {"id": d["doc_id"], "o": owner, "seq": ds._next_doc_seq(store, owner)})
+    for t in payload.get("tombstones") or []:
+        if t.get("doc_id") in refused:
+            store.run("MATCH (t:_DocTombstone) WHERE t.doc_id = $id AND t.owner_id = $o "
+                      "SET t.sync_seq = $seq",
+                      {"id": t["doc_id"], "o": owner, "seq": ds._next_doc_seq(store, owner)})
 
 
 def pull_docs(store, cfg, *, owner: str, remote) -> dict:
@@ -1267,7 +1358,7 @@ def pull_docs(store, cfg, *, owner: str, remote) -> dict:
     from . import docsync
     since = get_cursor(store, "docs-pull")
     page = remote.docs_pull(since)
-    r = docsync.import_docs(store, owner=owner, payload=page)
+    r = docsync.import_docs(store, owner=owner, payload=page, trusted_sender=True)
     nxt = int(page.get("cursor") or since)
     if nxt > since:
         set_cursor(store, "docs-pull", nxt)
@@ -1350,11 +1441,16 @@ def push_everything(store, cfg, *, owners: list[str], remote) -> dict:
             node_res = remote.push(chunks)
         docs = docsync.export_docs(store, owner=owner, everything=True).get("docs") or []
         doc_res = {"applied": 0, "updated": 0, "skipped": 0}
+        # 계정이 받지 않은 항목(보낸 쪽 시계가 앞섬)은 받았다는 수에 들지 않아 `missing` 에 든다.
+        # 이 스토어에는 쓰지 않으므로 다시 옮기기를 하면 그대로 다시 보낸다.
+        refused = list(node_res.get(revstamp.CLOCK_SKEW) or [])
         if docs:
             for ch in _chunk_docs({"docs": docs, "tombstones": []}):
                 res = remote.docs_push(ch)
                 for k in doc_res:
                     doc_res[k] += int(res.get(k) or 0)
+                refused += res.get(revstamp.CLOCK_SKEW) or []
+                rep["warnings"] += res.get("warnings") or []
         # 계정에서 먼저 지워진 노드(삭제가 이 기기의 마지막 편집보다 새것)는 계정의 삭제가
         # 이긴다. 받았다는 수에 들지만 계정에는 없으므로 따로 알린다.
         kept_deleted = int(node_res.get("kept_deleted") or 0)
@@ -1375,6 +1471,8 @@ def push_everything(store, cfg, *, owners: list[str], remote) -> dict:
         rep["docs"] += len(docs)
         rep["missing"] += missing
         rep["warnings"] += node_res.get("warnings") or []
+        if refused:
+            rep.setdefault(revstamp.CLOCK_SKEW, []).extend(refused)
     rep["executed"] = True
     return rep
 
@@ -1398,9 +1496,9 @@ def pull_everything(store, cfg, *, owner: str, remote) -> dict:
             nodes_mode = "topics"             # 옛 허브 — 주제 없는 노드는 안 왔다
         nodes = page.get("nodes") or []
         received += len(nodes)
-        # 계정에서 이 기기로 옮긴다: 처음 보는 실행은 허브가 기록한 상태 그대로 받는다.
+        # 계정에서 이 기기로 옮긴다: 처음 보는 실행은 허브가 기록한 상태 그대로, 스탬프도 그대로 받는다.
         r = apply_delta(owner=owner, bundle={**page, "tombstones": [], "edge_tombstones": []},
-                        cfg=cfg, store=store, trusted_run_state=True)
+                        cfg=cfg, store=store, trusted_sender=True)
         applied += int(r.get("applied") or 0)
         skipped += int(r.get("skipped_stale") or 0)
         kept_deleted += int(r.get("kept_deleted") or 0)
@@ -1426,7 +1524,8 @@ def pull_everything(store, cfg, *, owner: str, remote) -> dict:
             if not more or nxt <= cur:
                 break
             cur = nxt
-    dres = docsync.import_docs(store, owner=owner, payload={"docs": docs, "tombstones": []})
+    dres = docsync.import_docs(store, owner=owner, payload={"docs": docs, "tombstones": []},
+                               trusted_sender=True)
     acked_docs = sum(int(dres.get(k) or 0) for k in ("applied", "updated", "skipped"))
     missing = max(0, received - (applied + skipped)) + max(0, len(docs) - acked_docs)
     return {"phase": "pull-all", "executed": True, "received_nodes": received,

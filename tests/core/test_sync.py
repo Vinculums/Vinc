@@ -198,14 +198,25 @@ def test_apply_edge_tombstone_scopes_owner():
         assert params["owner"] == OWNER
 
 
-def test_apply_node_tombstone_scopes_owner_and_clamps_future_deleted_at():
+def test_apply_node_tombstone_scopes_owner_and_clamps_future_deleted_at(monkeypatch):
     """노드 툼스톤 적용 — owner 술어 없으면 남의 concept 을 지울 수 있고, deleted_at
-    을 clamp 하지 않으면 공격자가 미래 시각을 넣어 어떤 재편집도 이기게 만든다."""
-    fake = _SubFake({"RETURN x.updated_at AS ua": [{"ua": "2020-01-01T00:00:00.000Z"}]})
-    out = sync.apply_delta(owner=OWNER, bundle={
+    을 clamp 하지 않으면 공격자가 미래 시각을 넣어 어떤 재편집도 이기게 만든다.
+    허용 스큐 안의 미래 시각은 서버 클록으로 당겨 적용하고, 그보다 먼 시각은 받지 않는다."""
+    now = 1_800_000_000_000
+    monkeypatch.setattr(sync.revstamp, "_wall_ms", lambda: now)
+    sent = sync.revstamp._fmt(now + 4 * 60 * 1000)
+    far = _SubFake({"RETURN x.updated_at AS ua": [{"ua": "2020-01-01T00:00:00.000Z"}]})
+    refused = sync.apply_delta(owner=OWNER, bundle={
         "nodes": [], "edges": [],
         "tombstones": [{"node_id": "concept:victim", "label": "Concept",
                         "deleted_at": "2099-01-01T00:00:00.000Z"}],
+    }, store=far)
+    assert refused["deleted"] == 0 and refused["clock_skew"] == ["concept:victim"], refused
+    assert not [c for c, _ in far.calls if "DETACH DELETE x" in c or "MERGE (t:_Tombstone" in c]
+    fake = _SubFake({"RETURN x.updated_at AS ua": [{"ua": "2020-01-01T00:00:00.000Z"}]})
+    out = sync.apply_delta(owner=OWNER, bundle={
+        "nodes": [], "edges": [],
+        "tombstones": [{"node_id": "concept:victim", "label": "Concept", "deleted_at": sent}],
     }, store=fake)
     assert out["deleted"] == 1
     checks = [(c, p) for c, p in fake.calls if "RETURN x.updated_at AS ua" in c]
@@ -216,7 +227,7 @@ def test_apply_node_tombstone_scopes_owner_and_clamps_future_deleted_at():
         assert params["owner"] == OWNER
     tomb = [(c, p) for c, p in fake.calls if "MERGE (t:_Tombstone" in c]
     assert tomb, "재전파용 자기 tombstone 이 기록돼야 한다"
-    assert tomb[0][1]["da"] < "2099", "미래로 조작된 deleted_at 이 서버 클록으로 clamp 돼야 한다"
+    assert tomb[0][1]["da"] < sent, "미래로 조작된 deleted_at 이 서버 클록으로 clamp 돼야 한다"
 
 
 def test_apply_stamp_loop_scopes_owner():

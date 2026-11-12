@@ -2532,7 +2532,8 @@ class VincApp:
         """delta 번들 적용(쓰기 → 잡 큐 직렬화, R4).
 
         허브가 기기의 push 를 받는 길이다. 처음 보는 실행 기록의 상태를 믿을지는 본문의 어떤
-        필드로도 정하지 않는다: `trusted_run_state` 를 넘기지 않아 늘 믿지 않는다."""
+        필드로도 정하지 않는다: `trusted_sender` 를 넘기지 않아 늘 믿지 않는다. 시계 규칙도 같은 값을
+        읽는다: 스탬프가 이 허브의 벽시계 + `revstamp.MAX_SKEW_MS` 뒤인 항목은 받지 않는다(`clock_skew`)."""
         owner = _req(body, "owner")
         bundle = body.get("bundle") or {}
         res = self.jobs.run_sync("sync:apply", lambda: sync.apply_delta(

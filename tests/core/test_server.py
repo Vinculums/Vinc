@@ -1912,8 +1912,9 @@ class DocRouteE2E(unittest.TestCase):
                               body={"owner": "user:a", "payload": exp})
             self.assertEqual(code, 200, back)
             self.assertEqual((back["applied"], back["skipped"]), (0, 1))
-            recreated = {**exp, "docs": [{**d, "updated_at": "2099-01-01T00:00:00Z"}
-                                         for d in exp["docs"]]}
+            from api import revstamp
+            later = revstamp._fmt(revstamp._wall_ms() + 60_000)   # 삭제보다 새것, 허용 스큐 안
+            recreated = {**exp, "docs": [{**d, "updated_at": later} for d in exp["docs"]]}
             code, back = _req(base, "/sync/docs-apply", method="POST",
                               body={"owner": "user:a", "payload": recreated})
             self.assertEqual(code, 200, back)

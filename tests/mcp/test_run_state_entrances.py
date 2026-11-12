@@ -812,8 +812,9 @@ def test_a_person_approves_only_what_the_card_showed_on_a_run_the_hub_never_saw(
 
 def _push_with_trust_claims(hub: Hub, bundle: dict) -> tuple[int, dict]:
     """믿음을 켜려는 값을 본문·쿼리·헤더에 모두 싣고 push 한다."""
-    claims = {"trusted_run_state": True, "trusted": True, "trust": "hub", "mode_switch": True}
-    query = "trusted_run_state=1&trusted=true&trust=hub&mode_switch=1"
+    claims = {"trusted_sender": True, "trusted_run_state": True, "trusted": True, "trust": "hub",
+              "mode_switch": True}
+    query = "trusted_sender=1&trusted_run_state=1&trusted=true&trust=hub&mode_switch=1"
     req = urllib.request.Request(
         hub.base + "/sync/push?" + query, data=json.dumps({"bundle": bundle, **claims}).encode(),
         headers={"Content-Type": "application/json", "Authorization": "Bearer " + KEY,
@@ -838,7 +839,7 @@ def test_the_trust_flag_cannot_be_set_through_the_hub(hub):
     eid2 = run_protocol.episode_id(run_id2)
     props2 = _forgeries(eid2, run_id2)["approved-and-ask-first"]
     out = hub.bridge.request("POST", "/sync/apply-delta", body={
-        "owner": OWNER, "trusted_run_state": True, "trusted": True,
+        "owner": OWNER, "trusted_sender": True, "trusted_run_state": True, "trusted": True,
         "bundle": {"nodes": [{**_episode(eid2, props2), "_rev": 1, "_updated_at": _stamp()}],
                    "edges": []}})
     assert out["executed"] is True and out[run_state.CODE] == [eid2], out
@@ -851,7 +852,7 @@ def test_the_trust_flag_cannot_be_set_through_the_hub(hub):
 
 
 def test_only_the_device_pull_paths_pass_trust():
-    """`trusted_run_state` 를 넘기는 호출은 기기의 pull 두 곳뿐이고 둘 다 True 다. 나머지 적용은 기본값."""
+    """`trusted_sender` 를 넘기는 호출은 기기가 자기 허브에서 받는 세 곳뿐이고 모두 True 다. 나머지 적용은 기본값."""
     import ast
 
     found = []
@@ -865,8 +866,9 @@ def test_only_the_device_pull_paths_pass_trust():
                     if not isinstance(call, ast.Call):
                         continue
                     for kw in call.keywords:
-                        if kw.arg == "trusted_run_state":
+                        if kw.arg == "trusted_sender":
                             value = kw.value.value if isinstance(kw.value, ast.Constant) else None
                             found.append((path.relative_to(ROOT).as_posix(), fn.name, value))
     assert sorted(set(found)) == [("api/sync.py", "pull_apply", True),
+                                  ("api/sync.py", "pull_docs", True),
                                   ("api/sync.py", "pull_everything", True)], found
