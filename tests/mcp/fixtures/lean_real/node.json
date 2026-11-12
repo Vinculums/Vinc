@@ -1,0 +1,48 @@
+{
+ "kind": "node",
+ "executed": true,
+ "found": true,
+ "node": {
+  "id": "record:a-node-primary-key-cannot-be-changed-in-place-so-the-migration-writes-a-new-store",
+  "title": "Measured 2026-08-30: the engine refuses to SET a primary key, so PK namespacing migrates by reading the source and writing a new store, and rollback is keeping the original",
+  "owner_id": "tenant:local",
+  "tenant_id": "tenant:local",
+  "domain": "vinc/engineering/store",
+  "tags": [
+   "pk-namespacing",
+   "migration",
+   "measurement"
+  ],
+  "created": "2026-09-06T16:10:22.223Z",
+  "props": {
+   "measured_at": "2026-08-30",
+   "measured_ref": "e3c8707",
+   "note": "Setting a PK raises: 'Cannot set property concept_id in table Concept because it is used as primary key. Try delete and then insert.' Since a rewrite is unavoidable, doing it inside one store leaves a half-migrated store at every failure point, so the script never mutates the source and the destination is deleted when verification fails. Second constraint: the logical export on main drops every meta table, because node_table_specs excludes underscore-prefixed tables and meta_table_specs is PR 115's unmerged contribution, so the migration reads them itself. The rewrite map is the substance: node PKs only where an owner_id column exists (Domain and SkillExecution have none and the runtime also uses logical ids there), edge endpoints composed with that endpoint's owner, _Tombstone.node_id composed (without it two accounts deleting the same slug share one tombstone row and the loser's deletion stops propagating, audit M3), and _EdgeTombstone.ekey only because src and dst go out on the sync wire and the wire must not carry U+001F, pinned by a contract test. _SyncBase has no owner column so rows there stop the migration rather than being guessed at. Proven by attaching the migrated store with the flag on: user-facing ids come back as logical slugs, and bob inserting a slug alice already owns gives created:1 with no id_conflicts, which is the #121 symptom gone.",
+   "subject_path": "vinc:scripts/migrate_pk_namespacing.py"
+  },
+  "content_time": "",
+  "valid_from": "2026-08-30",
+  "valid_until": "",
+  "updated_at": "2026-09-06T16:10:22.229Z",
+  "rev": 1,
+  "sync_seq": 12539,
+  "kind": "record",
+  "temporal": {
+   "created_at": "2026-09-06T16:10:22.223Z",
+   "updated_at": "2026-09-06T16:10:22.229Z",
+   "content_time": null,
+   "valid_from": "2026-08-30",
+   "valid_until": null,
+   "superseded_by": null,
+   "validity": "current",
+   "interval_known": true,
+   "interval_invalid": false,
+   "holds_in_scope": null,
+   "supersession": [],
+   "supersedes": [],
+   "claim_status": "unassessed",
+   "conflicts": [],
+   "claim_assessment_scope": "stored_fields"
+  }
+ }
+}
