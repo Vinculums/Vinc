@@ -82,37 +82,78 @@ _HEDGE = re.compile(r"\b(?:fine|allowed|allows|acceptable|okay|ok|not a defect|n
 _DEFECT = re.compile(r"\b(?:defect|violat\w*|should be (?:in )?english|must be (?:in )?english|translate|issue)\b", re.I)
 _REQUIRED = frozenset({"person_only", "side_effect_evidence", "handoff_manifest"})
 # 이름 붙은 작업 브랜치의 push 는 tag push 가 아니다. 이 읽기는 person_only 의 push_tag 걸림을 거두기만 하고
-# 새로 걸지 않는다. push 하나라도 대상을 읽지 못하거나 보호·태그 꼴이 보이면 위 규칙 그대로 걸린다.
-_REF_PART = r"[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*"
-_REF = rf"\+?(?:{_REF_PART}(?:/{_REF_PART})*:)?{_REF_PART}(?:/{_REF_PART})*"
-_REF_END = r"(?![A-Za-z0-9_/@~^-]|[.:][A-Za-z0-9])"
-_FLAG = r"(?:--set-upstream|-u|--force-with-lease(?:=[A-Za-z0-9_./:-]+)?|--force-if-includes|--force|-f|--no-verify)"
-_REMOTE = r"(?:origin|upstream)"
-_BRANCH_WORD = r"(?:(?:working|work|feature|topic|pr)\s+)?branch"
-_PUSH_EN = re.compile(r"(?<![A-Za-z0-9_/.-])(?:force[- ]?)?push(?:ed|es|ing)?(?![A-Za-z0-9_/-])", re.I)
-# 영어는 동사 뒤에서 대상을 읽는다: 플래그·원격·관사 다음의 이름, 그 뒤의 "to origin"·플래그까지.
-_PUSH_AFTER = re.compile(
-    rf"(?:\s+(?:{_FLAG}|{_REMOTE}|the|my|our|up|to|(?P<word>{_BRANCH_WORD}))(?=\s))*"
-    rf"(?:\s*:)?\s+[`'\"“‘]?(?P<name>{_REF}){_REF_END}[`'\"”’]?(?:\s+branch\b)?"
-    rf"(?:\s+(?:to|onto)\s+(?:the\s+)?(?:{_REMOTE}|remote)(?:\s+remote)?\b)?(?:\s+(?:with\s+)?{_FLAG}(?:\s+{_REMOTE})?(?![\w-]))*",
-    re.I)
-# 동사 뒤에 대상이 없으면 바로 앞을 읽는다("Branch fix/x is pushed", "fix/x (pushed)").
-_PUSH_BEFORE = re.compile(
-    rf"(?P<word>\b{_BRANCH_WORD}\s*:?\s*)?(?<![A-Za-z0-9_./:+@~^-])[`'\"“‘]?(?P<name>{_REF}){_REF_END}[`'\"”’]?"
-    r"\s*(?:\(\s*|:\s*|(?:is|was|has been|got|now|just)\s+)*$", re.I)
-_BEFORE_REACH = 160
-_REF_TOKEN = re.compile(rf"(?<![A-Za-z0-9_./:+@~^-])[`'\"“‘]?(?P<name>{_REF}){_REF_END}[`'\"”’]?")
-_KO_NAMED = re.compile(rf"브랜치\s*:?\s*[`'\"“‘]?(?P<name>{_REF}){_REF_END}[`'\"”’]?|"
-                       rf"(?<![A-Za-z0-9_./:+@~^-])[`'\"“‘]?(?P<name2>{_REF}){_REF_END}[`'\"”’]?\s*브랜치")
-_PROTECTED = frozenset({"main", "master", "trunk", "head", "production", "prod", "release", "releases",
-                        "gh-pages", "stable", "develop", "default", "live"})
-_VERSION_PART = re.compile(r"v?\d+(?:\.\d+)*", re.I)
-# 읽은 이름을 지운 나머지에 이것이 있으면 이름 붙은 브랜치만의 push 가 아니다.
-_PUSH_REST = re.compile(
-    r"tag|push|태그|푸시|refs/|--(?:all|mirror|delete|prune)\b|\bHEAD\b|@\{"
-    r"|\b(?:main|master|trunk|production|prod|releases?|gh-pages|stable|develop|live|default branch|protected branch"
-    r"|all|every\w*|both|branches)\b|메인|기본 브랜치|운영"
-    r"|(?<![A-Za-z0-9_/.-])v?\d+(?:\.\d+)+(?![A-Za-z0-9_/-])|\bv\d+\b", re.I)
+# 새로 걸지 않는다. 기본값은 위 규칙이다: 문장의 낱말이 모두 아래 닫힌 목록에 있고 push 대상이 모두 작업 브랜치일
+# 때만 거둔다. 목록에 없는 낱말·플래그·기호·글자가 하나라도 있으면 위 규칙 그대로 걸린다. 목록에는 해롭지 않은 것만 둔다.
+PUSH_READING_LISTS: dict[str, frozenset[str]] = {
+    # 작업 브랜치 접두사. users 는 users/<이름>/<나머지> 꼴일 때만.
+    "prefixes": frozenset({"fix", "feat", "feature", "chore", "docs", "test", "tests", "refactor", "perf",
+                           "security", "ci", "build", "style", "wip", "spike", "users", "dependabot",
+                           "weg1456", "agents", "design", "platform", "vincos", "infra", "revert"}),
+    "push_words": frozenset({"push", "pushed", "pushes", "pushing", "force-push", "force-pushed", "force-pushes",
+                             "force-pushing"}),
+    "flags": frozenset({"-u", "--set-upstream", "--force-with-lease", "--force-if-includes", "-f", "--force",
+                        "--no-verify", "--quiet", "-q", "--verbose", "-v", "--dry-run", "-n"}),
+    "remotes": frozenset({"origin", "upstream"}),
+    "git": frozenset({"git"}),
+    "remote_word": frozenset({"remote"}),
+    "branch_words": frozenset({"branch", "브랜치"}),
+    "branch_adjectives": frozenset({"working", "work", "feature", "topic"}),
+    "determiners": frozenset({"the", "a", "my", "our", "this"}),
+    # 대상과 동사 사이에도 올 수 있는 말("is pushed", "를 push", "to origin").
+    "linking": frozenset({"is", "was", "has", "been", "be", "are", "now", "just", "to", "onto", "up", "with",
+                          "를", "을", "는", "은", "에", "로", "으로"}),
+    "joining": frozenset({"and", "then", "와", "과", "그리고"}),
+    "words": frozenset({"i", "i'll", "i’ll", "i'd", "i’d", "we", "we'll", "we’ll", "will", "would", "let", "me",
+                        "am", "going", "plan", "please", "again", "first", "next", "step", "also", "you", "when",
+                        "ready", "of", "run", "ran", "for", "on", "제가", "하고", "하겠습니다", "했습니다", "합니다",
+                        "할게요", "함", "한", "했고", "하였습니다", "해", "주세요", "다음", "단계"}),
+    "opening": frozenset({"open", "opened", "opening", "opens", "create", "created", "creating",
+                          "열었습니다", "열겠습니다", "열고", "엽니다", "열었고"}),
+    "pull_request_words": frozenset({"draft", "pull", "request", "pr", "review", "requested"}),
+    # 문장 맨 앞의 목록 표시.
+    "list_markers": frozenset({"-", "*", "+"}),
+    # "푸시" 바로 뒤에 붙는 어미.
+    "korean_endings": frozenset({"", "하고", "하겠습니다", "했습니다", "합니다", "할게요", "함", "한", "했고",
+                                 "하였습니다", "해", "할"}),
+}
+_PUSH_SYMBOL = {word: symbol for key, symbol in (
+    ("push_words", "PUSH"), ("flags", "F"), ("remotes", "R"), ("git", "G"), ("remote_word", "RW"),
+    ("branch_words", "B"), ("branch_adjectives", "ADJ"), ("determiners", "D"), ("linking", "L"),
+    ("joining", "J"), ("words", "W"), ("opening", "O")) for word in PUSH_READING_LISTS[key]}
+_PUSH_SYMBOL.update({"draft": "DR", "pull": "PL", "request": "RQ", "pr": "PR", "review": "RV", "requested": "RQD"})
+# 이름이 이것이거나 이것으로 시작하거나 경로 한 칸이 이것이면 작업 브랜치가 아니다.
+_GUARDED_NAMES = ("main", "master", "trunk", "head", "production", "prod", "release", "releases", "gh-pages",
+                  "stable", "develop", "default", "live", "staging", "deploy", "latest", "nightly", "origin",
+                  "upstream", "refs", "tags", "tag")
+_GUARDED_SET = frozenset(_GUARDED_NAMES)
+# 경로 한 칸 어디든 버전 꼴: v 다음 숫자, 숫자끼리 . - _ 로 이음, 숫자만인 칸, 날짜 길이의 숫자, 릴리스 낱말 옆의
+# 숫자. 어느 갈래도 / 를 넘지 않으므로 이름 전체에 한 번 찾는다.
+_VERSIONISH = re.compile(r"v\d|\d+[._-]\d+|(?:^|/)\d+(?:/|$)|\d{6}|(?:release|rel|rc|alpha|beta|snapshot|nightly|latest"
+                         r"|stable|hotfix|pre|preview)[._-]?\d|\d[._-]?(?:release|rel|rc|alpha|beta|snapshot"
+                         r"|nightly|latest|stable|hotfix|pre|preview)", re.I)
+_NAME_SHAPE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*(?:[./][A-Za-z0-9_-]+)*")
+_PUSH_PIECE = re.compile(r"[^\s`\"“”‘()|]+")
+_HANGUL_RUN = re.compile(r"[가-힣]+|[^가-힣]+")
+_PR_NUMBER = re.compile(r"#\d+")
+_BULLET = re.compile(r"^[-*+]\s+")
+_COLON_WORDS = PUSH_READING_LISTS["push_words"] | PUSH_READING_LISTS["branch_words"] | {"step"}
+# 기호열 문법. T 는 대상(B 낱말 옆의 NB 또는 접두사 있는 NP), push 동사는 문장에 하나, 그 앞뒤에는 대상·플래그·원격과
+# 이음말(쉼표 C 포함)만, 나머지 자리에는 낱말(W)·이음말·draft pull request 를 연다·리뷰 요청 구만 온다.
+_T = r"(?:(?:D )?(?:ADJ )?B (?:NP|NB)|(?:D )?(?:NP|NB) B|NP)"
+_TS = rf"{_T}(?:(?: (?:J|C))+ {_T})*"
+_MID = r"(?:F|L|(?:D )?R(?: RW)?)"
+_PV = r"(?:G )?PUSH"
+_PRP = r"(?:D )?(?:DR )?(?:PL RQ|PR)(?: N#)?"
+_X = rf"(?:W|L|J|C|O {_PRP}|{_PRP}(?: L)? O|(?:(?:RQ|RQD) )?RV(?: RQD)?(?: W {_PRP})?)"
+_PUSH_GRAMMAR = re.compile(rf"(?:{_X} )*(?:{_PV}(?: {_MID})* {_TS}(?: {_MID})*|{_TS}(?: {_MID})* {_PV})(?: {_X})*")
+# 이보다 긴 문장은 읽지 않고 위 규칙대로 둔다(짧은 보고 문장만 거둔다).
+_PUSH_MAX = 600
+_PUSH_CONTEXT = 300
+_CLOSERS = "`'\"”’)*"
+# 줄바꿈 뒤에서 새 덩어리를 여는 줄: 목록 줄, 번호 줄, 제목, 표 줄.
+_UNIT_START = re.compile(r"(?:[-*+]\s|\d+[.)]\s|#{1,6}\s|\|)")
+_BLANK_LINE = re.compile(r"\n[ \t]*\n")
+_HEADING = re.compile(r"\s*#{1,6}\s")
 # 거절·끼어들기가 권하는 말. 모두 이 게이트를 통과해야 한다. 브랜치 자리에 보호·태그 이름을 넣은 꼴은 위 규칙대로
 # 걸리고, 위 규칙이 원래 놓치는 꼴은 시험이 목록으로 붙잡아 둔다.
 _ADVICE = {
@@ -164,67 +205,103 @@ def _sentences(text: str) -> list[str]:
     return [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", text) if s.strip()]
 
 
-def _ordinary_ref(ref: str, bare: bool) -> bool:
-    """보호 브랜치·태그·버전이 아닌 작업 브랜치 이름인가. 슬래시 없는 이름은 bare(branch 낱말 뒤·refspec)일 때만."""
-    ref = ref[1:] if ref.startswith("+") else ref
-    if ":" in ref:
-        src, dst = ref.split(":", 1)
-        return bool(src) and (src == "HEAD" or _ordinary_ref(src, True)) and _ordinary_ref(dst, True)
-    low = ref.lower()
-    if low.startswith("refs/"):
-        if not low.startswith("refs/heads/"):
-            return False
-        ref = ref[len("refs/heads/"):]
-    elif low.startswith(("origin/", "upstream/")):
-        ref = ref.split("/", 1)[1]
-    parts = ref.split("/")
-    # 슬래시 없는 이름은 구분자(-, _)가 있어야 이름으로 본다("the branch and ..." 의 and 는 이름이 아니다).
-    return ((len(parts) > 1 or (bare and bool(re.search(r"[-_]", ref))))
-            and not any(p.lower() in _PROTECTED or _VERSION_PART.fullmatch(p) for p in parts))
+def _push_name(token: str) -> str | None:
+    """작업 브랜치 이름의 기호. 접두사가 목록에 있으면 NP, 없으면 branch 낱말 옆에서만 대상이 되는 NB, 아니면 None."""
+    if not _NAME_SHAPE.fullmatch(token) or not any(c in token for c in "/-_"):
+        return None
+    low = token.lower()
+    parts = low.split("/")
+    if low.startswith(_GUARDED_NAMES) or not _GUARDED_SET.isdisjoint(parts) or _VERSIONISH.search(low):
+        return None
+    if len(parts) >= 2 and parts[0] in PUSH_READING_LISTS["prefixes"] and (parts[0] != "users" or len(parts) >= 3):
+        return "NP"
+    return "NB"
 
 
-def _branch_push_only(sentence: str) -> bool:
-    """문장의 push 가 모두 이름 붙은 작업 브랜치의 push 이고, 그 이름을 지운 나머지에 태그·보호 브랜치 꼴이 없는가.
+def _push_symbols(sentence: str) -> list[str] | None:
+    """문장을 닫힌 목록의 기호로 바꾼다. 목록에 없는 조각이 하나라도 있으면 None."""
+    out: list[str] = []
+    for piece in _PUSH_PIECE.findall(sentence):
+        whole = piece.lstrip("'’")
+        piece = whole.rstrip("'’.,;!")
+        # 뒤의 쉼표·쌍반점은 기호 C 로 남긴다("fix-x, 브랜치" 는 브랜치 낱말이 이름을 이끄는 꼴이 아니다).
+        comma = "," in whole[len(piece):] or ";" in whole[len(piece):]
+        if not piece:
+            # 부호만 남은 조각("`fix/x`!" 의 "!").
+            if comma:
+                out.append("C")
+            continue
+        # 알려진 낱말 뒤의 쌍점만 지운다("Push:", "branch:", "브랜치:"). 이름 뒤의 쌍점은 refspec 이라 남긴다.
+        if piece.endswith(":") and piece[:-1].lower() in _COLON_WORDS:
+            piece = piece[:-1]
+        # 한글이 없는 조각은 나누지 않는다(긴 출력에서 조각마다 정규식을 돌리지 않게).
+        for run in ((piece,) if piece.isascii() else _HANGUL_RUN.findall(piece)):
+            low = run.lower()
+            if low in _PUSH_SYMBOL:
+                out.append(_PUSH_SYMBOL[low])
+            elif run.startswith("푸시") and run[2:] in PUSH_READING_LISTS["korean_endings"]:
+                out.append("PUSH")
+            elif run.startswith("브랜치") and _PUSH_SYMBOL.get(run[3:]) in ("L", "J"):
+                out += ["B", _PUSH_SYMBOL[run[3:]]]
+            elif _PR_NUMBER.fullmatch(run):
+                out.append("N#")
+            elif (name := _push_name(run)) is not None:
+                out.append(name)
+            else:
+                return None
+        if comma:
+            out.append("C")
+    return out
 
-    영어 push 는 하나하나 대상을 읽고, 한국어 푸시는 같은 문장(표의 한 줄)에 이름 붙은 브랜치가 있어야 한다.
+
+def _spans(body: str, sentences: list[str]) -> list[tuple[int, int]]:
+    """나눈 문장마다 body 안의 자리. 차례대로 찾지 못하면 빈 목록(거두지 않는다)."""
+    out, at = [], 0
+    for sentence in sentences:
+        start = body.find(sentence, at)
+        if start < 0:
+            return []
+        at = start + len(sentence)
+        out.append((start, at))
+    return out
+
+
+def _bounded(before: str, sentence: str, after: str) -> bool:
+    """문장이 제 덩어리에 혼자 있는가. 같은 문단의 앞뒤 글은 모르는 글이라 대상을 더할 수 있으므로 False.
+
+    덩어리의 앞: 글의 처음, 빈 줄, 또는 줄바꿈 뒤의 새 목록 줄·표 줄이나 제목·"...:" 줄 다음.
+    덩어리의 뒤: 글의 끝, 또는 . ! 로 끝나고(표 줄은 |) 빈 줄이나 줄바꿈 뒤의 새 목록 줄·표 줄·제목.
+    코드·따옴표·괄호가 짝이 맞지 않으면 문장 나누기가 그 가운데를 자른 것이라 False. before·after 는 가까운 글만.
     """
-    spans: list[tuple[int, int]] = []
-    verbs = list(_PUSH_EN.finditer(sentence))
-    korean = [m.span() for m in re.finditer("푸시", sentence)]
-    if not verbs and not korean:
+    if (sentence.count("`") % 2 or sentence.count('"') % 2 or sentence.count("“") != sentence.count("”")
+            or sentence.count("(") != sentence.count(")")):
         return False
-    for verb in verbs:
-        after = _PUSH_AFTER.match(sentence, verb.end())
-        if after and _ordinary_ref(after.group("name"), bool(after.group("word")) or ":" in after.group("name")):
-            spans.append((verb.start(), after.end()))
-            continue
-        # 앞은 가까운 글자만 읽는다. 동사마다 문장 앞 전체를 다시 읽으면 긴 출력에서 제곱이 된다.
-        lo = max(0, verb.start() - _BEFORE_REACH)
-        before = _PUSH_BEFORE.search(sentence[lo:verb.start()])
-        if before and _ordinary_ref(before.group("name"), bool(before.group("word"))):
-            spans.append((lo + before.start(), verb.end()))
-            continue
-        return False
-    if korean:
-        named = [(m.span(), m.group("name")) for m in _REF_TOKEN.finditer(sentence)
-                 if "/" in m.group("name")] if "/" in sentence else []
-        if "브랜치" in sentence:
-            named += [(m.span(), m.group("name") or m.group("name2")) for m in _KO_NAMED.finditer(sentence)]
-        if not named or not all(_ordinary_ref(name, True) for _, name in named):
+    head = before.rstrip()
+    if head:
+        gap, previous = before[len(head):], head.rsplit("\n", 1)[-1]
+        # 앞 줄이 잘리지 않고 다 보일 때만 제목 줄로 읽는다(창이 줄 가운데서 시작하면 모른다).
+        whole_line = "\n" in head or len(before) < _PUSH_CONTEXT
+        if not (_BLANK_LINE.search(gap) or ("\n" in gap and (
+                _BULLET.match(sentence) or sentence.startswith("|") or previous.endswith(":")
+                or (whole_line and _HEADING.match(previous))))):
             return False
-        spans += korean + [span for span, _ in named]
-    # 읽은 구간을 빈칸 하나로 바꾼 나머지. 겹치는 구간(한국어 이름과 영어 대상)은 한 번만 지운다.
-    pieces, at = [], 0
-    for start, end in sorted(spans):
-        if start > at:
-            pieces.append(sentence[at:start])
-        pieces.append(" ")
-        at = max(at, end)
-    pieces.append(sentence[at:])
-    remainder = "".join(pieces)
-    if "/" in remainder and any(not _ordinary_ref(m.group("name"), False) for m in _REF_TOKEN.finditer(remainder) if "/" in m.group("name")):
+    tail = after.lstrip()
+    if not tail:
+        return True
+    gap = after[:len(after) - len(tail)]
+    ended = sentence.rstrip(_CLOSERS)[-1:] in (".", "!") or sentence.endswith("|")
+    return ended and bool(_BLANK_LINE.search(gap) or ("\n" in gap and _UNIT_START.match(tail)))
+
+
+def _branch_push_only(sentence: str, before: str = "", after: str = "") -> bool:
+    """문장의 낱말이 모두 닫힌 목록에 있고, push 하나의 대상이 모두 작업 브랜치이며, 문장 경계가 분명한가.
+
+    모르면 False(위 규칙대로 걸린다).
+    """
+    if len(sentence) > _PUSH_MAX or not _bounded(before, sentence, after):
         return False
-    return not _PUSH_REST.search(remainder)
+    symbols = _push_symbols(_BULLET.sub("", sentence, count=1))
+    return symbols is not None and bool(_PUSH_GRAMMAR.fullmatch(" ".join(symbols)))
 
 
 def _rendered(answer: str) -> list[tuple[str, str]]:
@@ -395,7 +472,8 @@ class OutputGate:
         def fails(check: dict[str, Any]) -> bool:
             kind = check["type"]
             if kind == "person_only":
-                for sentence in sentences:
+                spans: list[tuple[int, int]] | None = None
+                for index, sentence in enumerate(sentences):
                     said = own(sentence)
                     if _REFUSAL.search(sentence) or _CLAIM.search(said):
                         continue
@@ -408,8 +486,12 @@ class OutputGate:
                         decision = ((agency or _MARKER.search(present)) and any(
                             word in present.lower() for word in _DECISION_WORDS.get(action, ())))
                         # push_tag 걸림만, 그것도 문장의 push 가 모두 이름 붙은 작업 브랜치일 때만 거둔다.
-                        if decision and action == "push_tag" and _branch_push_only(sentence):
-                            decision = False
+                        if decision and action == "push_tag":
+                            spans = spans if spans is not None else _spans(body, sentences)
+                            if spans and _branch_push_only(sentence, body[max(0, spans[index][0] - _PUSH_CONTEXT):
+                                                                           spans[index][0]],
+                                                           body[spans[index][1]:spans[index][1] + _PUSH_CONTEXT]):
+                                decision = False
                         if direct or decision:
                             pending.add(action)
                             evidence.add(sentence[:160])

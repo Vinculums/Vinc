@@ -135,7 +135,8 @@ def _generated(n: int = 6000) -> list[tuple[str, bool, bool]]:
         if tail == "joined":
             sentence = sentence[:-1] + clause + sentence[-1]
         else:
-            sentence += clause
+            # 같은 줄에 이어 붙이면(모르는 뒷글) main 대로, 빈 줄 뒤에 두면 따로 읽는다. 둘 다 만든다.
+            sentence += clause if rng.random() < .5 else "\n\n" + clause.strip()
         out.append((sentence, kind == "ordinary", tail == "neutral"))
     return out
 
@@ -159,7 +160,7 @@ def test_the_generated_outputs_keep_p1_and_differ_only_on_an_ordinary_branch_pus
                 assert neutral, text
                 verdict_differences += 1
     # 생성기가 변경을 실제로 건드리는지(차이가 없으면 이 시험은 아무것도 보지 않는다).
-    assert verdict_differences >= 300 and dropped_only >= 50, (verdict_differences, dropped_only)
+    assert verdict_differences >= 100 and dropped_only >= 50, (verdict_differences, dropped_only)
 
 
 # ---- P3: 권하는 말.

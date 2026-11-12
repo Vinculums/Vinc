@@ -421,6 +421,8 @@ def test_a_blocked_or_waiting_step_carries_advice_in_the_response_only():
     blocked = call(bridge, "vinc_run_submit", run=run, output="Reviewed the diff. Tests pass.")
     assert blocked["status"] == "blocked" and len(blocked["advice"]) == 1
     assert "Say what was attempted and where the result can be read" in blocked["advice"][0]
+    # 막힌 실행의 저장된 기록에도 고쳐 쓰는 법은 남지 않는다.
+    assert "advice" not in json.dumps(bridge.runs[run])
     # 이름 붙은 작업 브랜치의 push 는 기다리지 않는다.
     ok = call(bridge, "vinc_run_submit", run=run, output="I'll push fix/x and open a draft pull request.")
     assert ok["status"] == "passed" and "advice" not in ok
