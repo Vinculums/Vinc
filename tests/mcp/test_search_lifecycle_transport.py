@@ -67,3 +67,27 @@ def test_host_search_preserves_degradation_and_temporal_options():
             return RESULT
     result = tools._t_host_search({"query": "synthetic", "mode": "current", "known_at": "2026"}, Bridge())
     assert result["diagnostics"]["node_semantic"]["state"] == "degraded"
+
+
+def test_a_healthy_node_arm_leaves_its_diagnostics_out_of_the_mcp_text_only():
+    """위의 강등 결과와 쌍둥이: 노드 팔이 다 돌았으면 MCP 기본 본문에서만 두 진단이 빠진다."""
+    healthy = {**RESULT, "node_semantic": {"state": "complete", "freshness": "checked_candidates",
+                                           "scope": "returned_candidates", "stale_candidates": 0,
+                                           "missing_candidates": 0},
+               "node_window": {**RESULT["node_window"], "lexical_candidates_capped": False}}
+    healthy.pop("node_error")
+    server = Server(role="viewer", scope="read")
+    args = {"query": "synthetic"}
+    try:
+        server.bridge.override = healthy
+        status, _, rest = server.request("POST", f"/v1/search?space={TEAM}", body=args)
+        assert status == 200 and rest == healthy
+        rpc = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+            "name": "vinc_search", "arguments": {**args, "space": TEAM}}}
+        status, _, mcp = server.request("POST", "/mcp", body=rpc)
+        text = json.loads(mcp["result"]["content"][0]["text"])
+        assert "node_semantic" not in text and "node_window" not in text
+        assert {k: v for k, v in text.items() if k != "omitted"} == \
+            {k: v for k, v in healthy.items() if k not in ("node_semantic", "node_window")}
+    finally:
+        server.close()

@@ -1,0 +1,47 @@
+{
+ "kind": "neighbors",
+ "executed": true,
+ "found": true,
+ "node": "domain:vinc/engineering",
+ "neighbors": [
+  {
+   "rel": "PARENT_OF",
+   "dir": "out",
+   "id": "domain:vinc/engineering/account",
+   "title": "vinc/engineering/account",
+   "domain": "vinc/engineering"
+  },
+  {
+   "rel": "PARENT_OF",
+   "dir": "out",
+   "id": "domain:vinc/engineering/desktop",
+   "title": "vinc/engineering/desktop",
+   "domain": "vinc/engineering"
+  },
+  {
+   "rel": "PARENT_OF",
+   "dir": "out",
+   "id": "domain:vinc/engineering/docstore",
+   "title": "vinc/engineering/docstore",
+   "domain": "vinc/engineering"
+  },
+  {
+   "rel": "PARENT_OF",
+   "dir": "out",
+   "id": "domain:vinc/engineering/fragment",
+   "title": "vinc/engineering/fragment",
+   "domain": "vinc/engineering"
+  },
+  {
+   "rel": "PARENT_OF",
+   "dir": "out",
+   "id": "domain:vinc/engineering/mcp-server",
+   "title": "vinc/engineering/mcp-server",
+   "domain": "vinc/engineering"
+  }
+ ],
+ "by_rel": {
+  "PARENT_OF": 9
+ },
+ "count": 9
+}

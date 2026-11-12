@@ -132,6 +132,13 @@ class ChooseMaterialE2E(unittest.TestCase):
         for k in tools._TEMPORAL_FLAT:
             self.assertNotIn(k, ex)
         self.assertEqual(ex["excerpt"], full["excerpt"])
+        # 재료의 칸(후보·한줄 설명·본문 출처·발췌)과 후보 목록은 그대로다.
+        for k in ("candidate", "one_liner", "body_src"):
+            if k in out["candidate_material"]:
+                self.assertEqual(lean["candidate_material"][k], out["candidate_material"][k], k)
+        self.assertEqual(len(lean["candidate_material"]["excerpts"]),
+                         len(out["candidate_material"]["excerpts"]))
+        self.assertEqual([c["id"] for c in lean["candidates"]], [c["id"] for c in out["candidates"]])
         self.assertIs(tools.lean_result("vinc_brief", {"raw": True}, out), out)
 
 

@@ -34,9 +34,8 @@ const stubs = {
   '../components': COMPONENTS_STUB + `\nexport const confirmDestructive = async () => false;`,
   '../icons': `export const icon = () => '';`,
   '../view-prefs': `export const dayOf = (ts) => ts.slice(0, 10);`,
-  '../view-tint': `export const tintMap = () => null;`,
   '../topbar': `export const setTopbarLead = () => null; export const setViewHooks = () => {};`,
-  '../lnb': `export const agentRoleCount = () => 0; export const setLnbActive = () => {};
+  '../lnb': `export const agentRoleCount = () => 0; export const lnbTopicTint = () => ''; export const setLnbActive = () => {};
     export const setLnbDocOpener = () => {}; export const setLnbTopicPicker = () => {};
     export const setLnbScopeClearer = () => {}; export const refreshLnb = async () => {};`,
   '../doc-graph': `export const namedDecisions = () => []; export const docMirrorId = (id) => 'concept:doc.' + id;`,

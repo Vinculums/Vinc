@@ -38,10 +38,9 @@ class CardTests(unittest.TestCase):
     def test_노드_카드는_지도와_같은_색상표를_읽는다(self):
         src = _read("surfaces/view.ts")
         self.assertNotIn("tintMap([nd.domain]", src)
-        self.assertIn("shownTints?.get(nd.domain.trim())", src)
-        # 표는 setCurNodes 한 곳에서 전량으로 짓는다 — 지도가 그 뒤에 마운트된다.
-        body = _fn(src, "function setCurNodes(")
-        self.assertIn("tintMap(next.map((n) => n.domain), curMode())", body)
+        # 표는 지도(나침반)가 짓는 그 한 벌이다 — 카드가 따로 지으면 넣는 집합이 갈려 순위가 밀린다.
+        self.assertIn("compass?.colour(nd.domain.trim())", src)
+        self.assertNotIn("tintMap(", src)
 
     def test_범례가_노드_물러남을_가르치지_않는다(self):
         self.assertNotIn("tierNode", _read("copy.ts"))

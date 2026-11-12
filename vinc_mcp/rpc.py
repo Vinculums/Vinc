@@ -287,7 +287,8 @@ class Dispatcher:
                 carried = run_tasks.carry(outcome.result, params, args)
                 if carried is not None:
                     return carried
-            return _result_text(_mcp_text(name, args, outcome.result), name, args)
+            return _result_text(_mcp_text(name, args, outcome.result), name, args,
+                                result=outcome.result)
         if method in _SKILL_METHODS and modern_version is not None:
             # 스킬은 역할 계약을 읽는다. 프롬프트와 같은 규칙(커뮤니티 거절·쿼터)을 탄다.
             if community.is_space(forced_owner):
@@ -445,31 +446,40 @@ def _profile_refusal(name: str, profile: str) -> str:
 
 
 def _mcp_text(name: str, args: dict, result) -> str:
-    """tools/call 결과의 본문. 읽기 셋(`tools.LEAN_DROP`·vinc_neighbors)은 줄여서 빈칸 없는 JSON 으로
-    싣는다. 핸들러 결과는 건드리지 않으므로 REST v1·CLI 의 꼴은 그대로다. `raw:true` 면 예전 그대로다."""
+    """tools/call 결과의 본문. 읽기 넷(`tools.LEAN_TOOLS`)은 줄여서 빈칸 없는 JSON 으로 싣는다.
+    핸들러 결과는 건드리지 않으므로 REST v1·CLI 의 꼴은 그대로다. `raw` 면 예전 그대로다."""
     lean = tools.lean_result(name, args, result)
     if lean is result:
         return roles.serialize_result(result)
     return json.dumps(lean, ensure_ascii=False, separators=(",", ":"))
 
 
-def _result_text(text: str, name: str, args: dict) -> dict:
+def _result_text(text: str, name: str, args: dict, result=None) -> dict:
     """tools/call 결과 봉투. 상한 초과면 **행동 가능한 오류**로 강등한다.
 
     GM-14: `tools.SHRINKERS` 에 등재된 도구(현재 vinc_search·vinc_brief·vinc_graph)는 거부
     대신 덜 중요한 조각을 덜어 예산 안의 **잘린 결과**로 돌려준다 — 잘렸다는 사실은
     도구별 표식(has_more/next_cursor, shrunk)이 알린다. JSON 을 문자 단위로 자르지 않으므로 구문은 항상 온전하다.
-    미등재 도구는 기존 거부를 유지한다(깨진 JSON 보다 명시적 거절이 낫다)."""
+    미등재 도구는 기존 거부를 유지한다(깨진 JSON 보다 명시적 거절이 낫다).
+
+    `result`(핸들러 결과)가 오면 축소기는 줄인 사본을 `page` 가 남은 단계(`tools.lean_project`)에서
+    받고, 축소가 끝난 뒤에 `page` 를 뺀다. 축소기가 다음 커서를 `page` 로 쓰기 때문이다."""
     if len(text) <= MAX_RESULT_CHARS:
         return _tool_result(text, name, is_error=False)
     shrink = tools.SHRINKERS.get(name)
     if shrink is not None:
+        projected = tools.lean_project(name, args, result) if result is not None else None
         try:
-            slim = shrink(json.loads(text), MAX_RESULT_CHARS - _MARKER_RESERVE)
+            slim = shrink(projected if projected is not None else json.loads(text),
+                          MAX_RESULT_CHARS - _MARKER_RESERVE)
         except Exception:
             slim = None
         if slim is not None:
-            slim_text = _mcp_text(name, args, slim)
+            if projected is not None:
+                slim_text = json.dumps(tools.lean_finish(name, slim, result),
+                                       ensure_ascii=False, separators=(",", ":"))
+            else:
+                slim_text = _mcp_text(name, args, slim)
             if len(slim_text) <= MAX_RESULT_CHARS:
                 return _tool_result(slim_text, name, is_error=False)
     hint = _NARROW_HINT.get(name, "request a narrower slice")
