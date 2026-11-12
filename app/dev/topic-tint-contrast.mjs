@@ -1,0 +1,230 @@
+/** 주제 색 측정 — 주제 색 계획(`tintPlan`)이 낼 수 있는 모든 색을, 그 색이 앉는 모든 면 위에서 잰다.
+ *
+ *     cd app && node dev/topic-tint-contrast.mjs                 # 이 트리
+ *     cd app && node dev/topic-tint-contrast.mjs --src <app/src>  # 다른 트리(전후 비교)
+ *     ... --full                                                  # 색마다 한 줄씩(긴 표)
+ *     ... --raw <app/src>                                         # 바닥 전 색을 그 트리의 계획에서 읽는다
+ *                                                                   (기본: 이 트리의 floorKit, 없으면 --src 의 계획 그대로)
+ *
+ *  색: 영역 24개 × 영역 안 주제 돌림 7칸(0, ±4, ±8, ±12°)을 실제 `tintPlan` 으로 만든다. 돌림은 7칸마다
+ *  되풀이되므로 영역이 24개 이하인 어느 집합이든 이 안의 색만 쓴다. Agent 줄의 색은 `agent-map.ts`
+ *  와 같은 보석 순서(호박 · 에메랄드 · 루비 · 사파이어, 정책은 자수정)에, 그 모듈이 거치는 `markColour`
+ *  가 있으면 그것을 거친 값이다.
+ *  면: 토큰 CSS(데스크탑 · 웹)의 HSL 채널과 app.css 의 줄 칠(쉼 · 고름 알파, 판 · 서랍 매핑)을 읽어 만든다.
+ *  어느 값이든 못 찾으면 멈춘다(조용히 옛 값을 쓰지 않는다). */
+import { readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
+import { rgbOfHex, hexOfRgb, hslToRgb, over, mixSrgb, ratio, dOk, de2000, simulate, CVD_KINDS, oklch, lab, de2000Lab } from "./colour-math.mjs";
+
+const args = process.argv.slice(2);
+const opt = (k) => { const i = args.indexOf(k); return i < 0 ? null : args[i + 1]; };
+const SRC = resolve(opt("--src") || resolve(dirname(fileURLToPath(import.meta.url)), "../src"));
+const FULL = args.includes("--full");
+
+const bundle = async (entry, src = SRC) => {
+  const r = await build({ entryPoints: [resolve(src, entry)], bundle: true, platform: "node", format: "esm", write: false, logLevel: "silent" });
+  return import(`data:text/javascript;base64,${Buffer.from(r.outputFiles[0].text).toString("base64")}`);
+};
+const tint = await bundle("view-tint.ts");
+const RAWSRC = opt("--raw");
+const rawTint = RAWSRC ? await bundle("view-tint.ts", resolve(RAWSRC)) : null;
+const { topicJewels } = await bundle("theme.ts");
+const read = (f) => readFileSync(resolve(SRC, f), "utf8");
+const must = (m, what) => { if (!m) throw new Error(`못 찾았다: ${what}`); return m; };
+
+// ── 면 ──────────────────────────────────────────────────────────────────────
+function tokenBlock(css, dark) {
+  const blocks = css.split(/\n(?=[:\[][^{]*\{)/);
+  return must(blocks.find((b) => (dark ? /data-theme="dark"\]\s*\{/.test(b.split("\n")[0]) : !/data-theme/.test(b.split("\n")[0]) && /^:root/.test(b))), `토큰 블록 ${dark ? "dark" : "light"}`);
+}
+function tokenHsl(block, name) {
+  const m = must(block.match(new RegExp(`--${name}:\\s*([\\d.]+)\\s+([\\d.]+)%\\s+([\\d.]+)%`)), `--${name}`);
+  return hslToRgb(+m[1], +m[2], +m[3]);
+}
+const APP = read("app.css");
+const alphaOf = (sel) => +must(APP.match(new RegExp(`${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{[^}]*?hsl\\(var\\(--(\\w[\\w-]*)\\)\\s*/\\s*([\\d.]+)\\)`)), sel)[2];
+const tokOf = (sel) => must(APP.match(new RegExp(`${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{[^}]*?hsl\\(var\\(--(\\w[\\w-]*)\\)\\s*/`)), sel)[1];
+const HOVER = { tok: tokOf(".lnb-doc:hover"), a: alphaOf(".lnb-doc:hover") };
+const PICK = { tok: tokOf(".lnb-group.on"), a: alphaOf(".lnb-group.on") };
+for (const [s, want] of [[".lnb-group:hover", HOVER], [".lnb-fold:hover", HOVER]])
+  if (tokOf(s) !== want.tok || alphaOf(s) !== want.a) throw new Error(`${s} 가 .lnb-doc:hover 와 다르다: 면을 따로 재야 한다`);
+{ const m = must(APP.match(/\.lnb-doc\.on\s*\{[^}]*hsl\(var\(--(\w+)\)\s*\/\s*([\d.]+)\)/), ".lnb-doc.on");
+  if (m[1] !== PICK.tok || +m[2] !== PICK.a) throw new Error(".lnb-doc.on 이 .lnb-group.on 과 다르다"); }
+const S0 = { light: must(APP.match(/:root\s*\{[\s\S]*?--surface-0:\s*var\(--(\w+)\)/), "surface-0 light")[1],
+  dark: must(APP.match(/\[data-theme="dark"\]\s*\{[^}]*--surface-0:\s*var\(--(\w+)\)/), "surface-0 dark")[1] };
+const S2 = must(APP.match(/--surface-2:\s*var\(--(\w+)\)/), "surface-2")[1];
+const DOCK = must(APP.match(/#cmp-dock \.pi:hover\s*\{\s*background:\s*color-mix\(in srgb, var\(--c-point\) (\d+)%, var\(--c-card\)\)/), "#cmp-dock .pi:hover");
+const DOCK_P = +DOCK[1] / 100;
+
+/** 테마 · 스킨마다 사이드바 면과 그래프 · 범례 면. */
+function grounds(skin, theme) {
+  const css = read(`tokens.${skin}.css`), blk = tokenBlock(css, theme === "dark");
+  const T = (n) => tokenHsl(blk, n);
+  const base = T(S0[theme]), drawer = T(S2), hov = T(HOVER.tok), pick = T(PICK.tok), card = T("card");
+  return {
+    side: {
+      base, "base+hover": over(hov, HOVER.a, base), "base+selected": over(pick, PICK.a, base),
+      drawer, "drawer+hover": over(hov, HOVER.a, drawer), "drawer+selected": over(pick, PICK.a, drawer),
+      "dock pin hover": mixSrgb(T("point"), DOCK_P, card),
+    },
+    graph: T("background"), legend: card, ring: T("ring"), muted: T("muted-foreground"),
+  };
+}
+
+// ── 색 ──────────────────────────────────────────────────────────────────────
+const AREAS = 24, TURNS = 7;
+function planColours(mode) {
+  const doms = [];
+  for (let a = 0; a < AREAS; a++) for (let t = 0; t < TURNS; t++) doms.push(`r/a${String(a).padStart(2, "0")}/t${t}`);
+  const plan = tint.tintPlan(doms, mode), out = [];
+  for (let a = 0; a < AREAS; a++) for (let t = 0; t < TURNS; t++) {
+    const d = `r/a${String(a).padStart(2, "0")}/t${t}`;
+    out.push({ rank: a, turn: t, hex: plan.topics.get(d) });
+  }
+  // 영역 색(범례 견본 · 영역 부피)은 돌림 0 과 같아야 한다
+  for (let a = 0; a < AREAS; a++) if (plan.areas.get(`a${String(a).padStart(2, "0")}`) !== out[a * TURNS].hex) throw new Error(`영역 ${a} 색이 첫 주제와 다르다`);
+  return out;
+}
+const hex6 = (n) => `#${n.toString(16).padStart(6, "0")}`;
+/** Agent 색: 계획의 보석 자리(planColour(i, 0))가 있으면 그것, 개별 바닥(markColour)만 있으면 그것, 둘 다 없으면 보석 그대로. */
+const jewelOf = (i, mode) => (tint.planColour ? tint.planColour(i, 0, mode) : tint.markColour ? tint.markColour(hex6(topicJewels[mode][i]), mode) : hex6(topicJewels[mode][i]));
+const agentColours = (mode) => [3, 2, 0, 1].map((i) => ({ name: ["amber", "emerald", "ruby", "sapphire"][[3, 2, 0, 1].indexOf(i)], hex: jewelOf(i, mode) }));
+const policyColour = (mode) => jewelOf(4, mode);
+
+// ── 마크 × 상태 → 그 상태에서 마크가 입는 색과 면 ─────────────────────────────
+// 선택된 문서 줄 · 그래프 노드 줄의 표식은 주제 색이 아니라 --ring 이다(app.css `.lnb-doc.on .lnb-dot`,
+// `.lnb-doc.on .lnb-gmark`). 포커스는 윤곽선만 그리고 면을 바꾸지 않는다(`:focus-visible` outline).
+/** 주제 색 마크의 바닥: 트리의 floorKit 이 정한 값(그 트리에 없으면 --floor, 기본은 비텍스트 바닥 3).
+ *  주제 색이 없는 마크(잉크 대체값 · 고른 줄의 --ring)와 글자는 이 값과 상관없이 4.5 로 잰다. */
+const FLOOR = +(opt("--floor") || tint.floorKit?.floor || 3), TEXT_FLOOR = 4.5;
+const SIDE = [
+  ["document dot (ink 0, 1, 2)", "topic", { rest: "base", hover: "base+hover", focus: "base", selected: "ring" }],
+  ["topic ring", "topic", { rest: "base", hover: "base+hover", focus: "base", selected: "base+selected" }],
+  ["graph mark", "topic", { rest: "base", hover: "base+hover", focus: "base", selected: "ring" }],
+  ["bridge fold mark", "topic", { rest: "base", hover: "base+hover", focus: "base" }],
+  ["policy dot (row)", "policy", { rest: "base", hover: "base+hover", focus: "base", selected: "base+selected" }],
+  ["policy mark (group)", "policy", { rest: "base", hover: "base+hover", focus: "base" }],
+  ["Agent dot", "agent", { rest: "base", hover: "base+hover", focus: "base", selected: "base+selected" }],
+  ["pinned dock mark", "topic", { rest: "base", hover: "dock pin hover" }],
+  ["untinted mark (muted ink fallback)", "muted", { rest: "base", hover: "base+hover", focus: "base", selected: "base+selected" }],
+];
+
+const rows = [], fmt = (x) => x.toFixed(2);
+let globalMin = Infinity, textMin = Infinity;
+for (const skin of ["desktop", "web"]) for (const mode of ["light", "dark"]) {
+  const G = grounds(skin, mode), cols = planColours(mode);
+  const sets = { topic: cols.map((c) => ({ label: `rank ${c.rank} turn ${c.turn}`, hex: c.hex })),
+    agent: agentColours(mode).map((c) => ({ label: c.name, hex: c.hex })), policy: [{ label: "amethyst", hex: policyColour(mode) }],
+    muted: [{ label: "--muted-foreground", hex: hexOfRgb(G.muted) }] };
+  for (const [mark, set, states] of SIDE) for (const [state, gname] of Object.entries(states)) for (const where of ["sidebar", "drawer"]) {
+    if (gname === "dock pin hover" && where === "drawer") continue;
+    let ground, colours;
+    if (gname === "ring") { ground = G.side[where === "drawer" ? "drawer+selected" : "base+selected"]; colours = [{ label: "--ring", hex: hexOfRgb(G.ring) }]; }
+    else { ground = G.side[where === "drawer" ? gname.replace("base", "drawer") : gname] ?? G.side[gname]; colours = sets[set]; }
+    let worst = null;
+    for (const c of colours) { const r = ratio(rgbOfHex(c.hex), ground); if (!worst || r < worst.r) worst = { r, c }; if (FULL) console.log([skin, mode, mark, state, where, c.label, c.hex, hexOfRgb(ground), fmt(r)].join("\t")); }
+    const untinted = gname === "ring" || set === "muted";
+    rows.push({ skin, mode, mark, state, where, ground: hexOfRgb(ground), worst: worst.r, colour: `${worst.c.label} ${worst.c.hex}`, untinted });
+    if (!untinted) globalMin = Math.min(globalMin, worst.r); else textMin = Math.min(textMin, worst.r);
+  }
+  for (const [name, g] of [["graph surface", G.graph], ["legend card", G.legend]]) {
+    let worst = null;
+    for (const c of sets.topic) { const r = ratio(rgbOfHex(c.hex), g); if (!worst || r < worst.r) worst = { r, c }; }
+    rows.push({ skin, mode, mark: name, state: "full colour", where: "compass", ground: hexOfRgb(g), worst: worst.r, colour: `${worst.c.label} ${worst.c.hex}` });
+  }
+}
+if (FULL) process.exit(0);
+
+console.log(`# Topic tint contrast, ${SRC}\n`);
+console.log(`Grounds from tokens.{desktop,web}.css and app.css: hover = --${HOVER.tok} / ${HOVER.a}, selected = --${PICK.tok} / ${PICK.a}, base = --surface-0 (light --${S0.light}, dark --${S0.dark}), drawer = --surface-2 (--${S2}), dock hover = --point ${DOCK_P * 100}% over --card.\n`);
+console.log(`Colours: ${AREAS} area ranks x ${TURNS} topic turns per theme from tintPlan; Agent dots ${tint.planColour ? "from planColour" : tint.markColour ? "through markColour" : "raw jewels"}.\n`);
+console.log("| skin | theme | mark | state | where | ground | worst ratio | worst colour |\n|---|---|---|---|---|---|---|---|");
+for (const r of rows) console.log(`| ${r.skin} | ${r.mode} | ${r.mark} | ${r.state} | ${r.where} | ${r.ground} | ${fmt(r.worst)}${r.untinted ? ` (untinted${r.worst < TEXT_FLOOR ? ", FAIL" : ""})` : r.worst < FLOOR && r.where !== "compass" ? " FAIL" : ""} | ${r.colour} |`);
+console.log(`\nMinimum over every tinted sidebar mark, state and ground: ${fmt(globalMin)}:1 (${globalMin >= FLOOR ? "meets" : "below"} the tinted-mark floor ${FLOOR}:1)`);
+console.log(`Minimum over every untinted sidebar mark (muted ink, selected --ring): ${fmt(textMin)}:1 (${textMin >= TEXT_FLOOR ? "meets" : "below"} ${TEXT_FLOOR}:1)\n`);
+
+// ── 첫 열두 순위가 갈리는가 ─────────────────────────────────────────────────
+console.log("## Distinguishability\n\n| theme | vision | min dE2000, first 12 area ranks | pair | min OKLab dE, first 12 | min dE2000, 7 turns within an area | \n|---|---|---|---|---|---|");
+for (const mode of ["light", "dark"]) {
+  const cols = planColours(mode), ranks = cols.filter((c) => c.turn === 0).slice(0, 12);
+  for (const vis of ["normal", ...CVD_KINDS]) {
+    const f = (h) => (vis === "normal" ? rgbOfHex(h) : simulate(vis, rgbOfHex(h)));
+    let m = { d: Infinity }, mo = Infinity;
+    for (let i = 0; i < ranks.length; i++) for (let j = i + 1; j < ranks.length; j++) {
+      const d = de2000(f(ranks[i].hex), f(ranks[j].hex)); if (d < m.d) m = { d, i, j };
+      mo = Math.min(mo, dOk(f(ranks[i].hex), f(ranks[j].hex)));
+    }
+    let mt = Infinity;
+    for (let a = 0; a < 12; a++) { const t = cols.filter((c) => c.rank === a);
+      for (let i = 0; i < t.length; i++) for (let j = i + 1; j < t.length; j++) mt = Math.min(mt, de2000(f(t[i].hex), f(t[j].hex))); }
+    console.log(`| ${mode} | ${vis} | ${fmt(m.d)} | rank ${m.i} ${ranks[m.i].hex} / rank ${m.j} ${ranks[m.j].hex} | ${mo.toFixed(4)} | ${fmt(mt)} |`);
+  }
+}
+// ── 바닥이 쌍 사이 거리를 지우지 않는가: 계획의 색 전부, 모드 x 시각 ──────────────────────────────
+/** 바닥 전 색(같은 차례). floorKit 이 있으면 그것, --raw 면 그 트리의 계획, 둘 다 없으면 이 트리의 계획(바닥 전 트리). */
+function rawColours(mode) {
+  if (rawTint) { const doms = []; for (let a = 0; a < AREAS; a++) for (let t = 0; t < TURNS; t++) doms.push(`r/a${String(a).padStart(2, "0")}/t${t}`);
+    const p = rawTint.tintPlan(doms, mode); return doms.map((d) => p.topics.get(d)); }
+  if (tint.floorKit) { const out = []; for (let a = 0; a < AREAS; a++) for (let t = 0; t < TURNS; t++) out.push(tint.floorKit.rawPlanColour(a, t, mode)); return out; }
+  return planColours(mode).map((c) => c.hex);
+}
+// 쌍 거리는 **재는 값**이다(색이 지키는 규칙이 아니다): 옮긴 색은 같은 색상각의 가장 가까운 바닥 위 값을 받고,
+// 이웃과의 거리는 따로 지켜지지 않는다. 표의 "close" 는 정상 시각에서 5 이상이던 둘이 5 아래로(또는 절반 아래로),
+// 두 색각에서 5 이상이던 둘이 3 아래로 온 쌍이다.
+const PAIR_VIS = [["normal", (c) => c, 5, 5, true], ["deutan", (c) => simulate("deutan", c), 5, 3, false], ["protan", (c) => simulate("protan", c), 5, 3, false]];
+const SUBSETS = [["all plan colours (24 areas x 7 turns)", () => true], ["first twelve ranks (turn 0)", (a, t) => a < 12 && t === 0], ["seeded store (ranks 0-4, turn 0)", (a, t) => a < 5 && t === 0]];
+const pairClose = [];
+console.log("## Pair distances through the floor, measured (CIEDE2000)\n");
+console.log("Close = normal vision: at least 5 apart before and under 5 after, or under half the distance before; deuteranopia and protanopia (Machado 2009, full severity): at least 5 apart before and under 3 after. These are measured limits, not a rule the colours meet.\n");
+for (const [subName, inSub] of SUBSETS) {
+  console.log(`### ${subName}\n\n| theme | vision | pairs | pairs >= 5 before | close after | under half after | closest pair (rank/turn: before -> after) |\n|---|---|---|---|---|---|---|`);
+  for (const mode of ["light", "dark"]) {
+    const before = rawColours(mode), after = planColours(mode).map((c) => c.hex);
+    const keys = [...new Set(before.map((h, i) => (inSub(Math.floor(i / TURNS), i % TURNS) ? `${h}>${after[i]}` : null)).filter(Boolean))].map((k) => before.findIndex((h, j) => `${h}>${after[j]}` === k));
+    for (const [vis, f, need0, need1, half] of PAIR_VIS) {
+      const L0 = keys.map((i) => lab(f(rgbOfHex(before[i])))), L1 = keys.map((i) => lab(f(rgbOfHex(after[i]))));
+      let pairs = 0, big = 0, close = 0, under = 0, worst = null;
+      const lbl = (i) => `r${Math.floor(i / TURNS)}/t${i % TURNS} ${before[i]}->${after[i]}`;
+      for (let x = 0; x < keys.length; x++) for (let y = x + 1; y < keys.length; y++) {
+        if (before[keys[x]] === before[keys[y]]) continue;
+        pairs++; const d0 = de2000Lab(L0[x], L0[y]), d1 = de2000Lab(L1[x], L1[y]);
+        const isClose = d0 >= need0 && d1 < need1, isUnder = half && d1 < d0 / 2;
+        if (d0 >= need0) big++;
+        if (isClose) close++; if (isUnder) under++;
+        if ((isClose || isUnder) && (!worst || d1 < worst.d1)) worst = { d0, d1, a: lbl(keys[x]), b: lbl(keys[y]) };
+        if ((isClose || isUnder) && subName.startsWith("all")) pairClose.push({ mode, vis: isClose ? vis : "normal half", a: lbl(keys[x]), b: lbl(keys[y]), d0, d1 });
+      }
+      console.log(`| ${mode} | ${vis} | ${pairs} | ${big} | ${close} | ${half ? under : "n/a"} | ${worst ? `${worst.a} / ${worst.b}: ${fmt(worst.d0)} -> ${fmt(worst.d1)}` : "none"} |`);
+    }
+  }
+  console.log("");
+}
+if (pairClose.length) {
+  console.log("Every close pair, all plan colours:\n\n| theme | vision | pair | before | after |\n|---|---|---|---|---|");
+  for (const p of pairClose.sort((a, b) => a.d1 - b.d1)) console.log(`| ${p.mode} | ${p.vis} | ${p.a} / ${p.b} | ${fmt(p.d0)} | ${fmt(p.d1)} |`);
+}
+console.log("");
+
+// ── 바닥이 계획 색을 얼마나 옮겼나 ────────────────────────────────────────────
+const JEWEL = ["ruby", "sapphire", "emerald", "amber", "amethyst"];
+const rankName = (a) => { const r = Math.floor(a / 5), t = r === 0 ? 0 : (r % 2 ? 1 : -1) * Math.ceil(r / 2) * 20; return `${JEWEL[a % 5]}${t ? ` ${t > 0 ? "+" : ""}${t}` : ""}`; };
+console.log("## How far the floor moves the plan's colours (CIEDE2000 from the plan's colour)\n\n| theme | plan colours | moved | largest move | mean move (moved only) | mean move (all) |\n|---|---|---|---|---|---|");
+for (const mode of ["light", "dark"]) {
+  const before = rawColours(mode), after = planColours(mode).map((c) => c.hex), seen = new Set(), d = [];
+  before.forEach((h, i) => { if (seen.has(h)) return; seen.add(h); d.push(h === after[i] ? 0 : de2000(rgbOfHex(h), rgbOfHex(after[i]))); });
+  const mv = d.filter((x) => x > 0), mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+  console.log(`| ${mode} | ${d.length} | ${mv.length} | ${fmt(Math.max(0, ...d))} | ${fmt(mean(mv))} | ${fmt(mean(d))} |`);
+}
+console.log("\nThe area jewels by name (turn 0; ranks past 4 are the jewels turned by 20 degrees a round):\n\n| theme | rank | jewel | plan | after | move |\n|---|---|---|---|---|---|");
+for (const mode of ["light", "dark"]) { const before = rawColours(mode), after = planColours(mode);
+  for (let a = 0; a < AREAS; a++) { const b = before[a * TURNS], x = after[a * TURNS].hex; console.log(`| ${mode} | ${a} | ${rankName(a)} | ${b} | ${x} | ${b === x ? "unchanged" : fmt(de2000(rgbOfHex(b), rgbOfHex(x)))} |`); } }
+console.log("");
+
+console.log("\n## Ranks 0 to 11 (turn 0) per theme, OKLCH L C h\n\n| theme | rank | colour | OKLCH |\n|---|---|---|---|");
+for (const mode of ["light", "dark"]) for (const c of planColours(mode).filter((c) => c.turn === 0).slice(0, 12)) {
+  const [L, C, h] = oklch(rgbOfHex(c.hex)); console.log(`| ${mode} | ${c.rank} | ${c.hex} | ${L.toFixed(3)} ${C.toFixed(3)} ${h.toFixed(1)} |`);
+}
+console.log("\n## Agent and policy colours\n\n| theme | colour |\n|---|---|");
+for (const mode of ["light", "dark"]) console.log(`| ${mode} | ${agentColours(mode).map((c) => `${c.name} ${c.hex}`).join(", ")}, policy ${policyColour(mode)} |`);

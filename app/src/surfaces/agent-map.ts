@@ -10,7 +10,7 @@ import { COPY } from "../copy";
 import { esc } from "../components";
 import { edgeKindOf } from "../view-prefs";
 import { palette as signal, hexStr } from "../theme";
-import { topicJewels } from "../theme";
+import { planColour } from "../view-tint";
 import { layoutMap, mapHeight, policySlug, type MapAgent, type MapPolicy, type MapProcedure, type Props } from "../agent-ontology";
 import type { AgentRole } from "../lnb";
 import { announceRolesChanged } from "../role-composer";
@@ -28,14 +28,15 @@ let memo: { key: string; at: number; p: Promise<MapData | null> } | null = null;
 /** 쓰기 뒤에 부른다: 다음 읽기가 새로 읽는다. */
 export function invalidateAgentMap(): void { memo = null; }
 /** Agent 화면의 색은 주제가 아니라 **Agent** 다: Agent 마다 보석색 하나, 그 Agent 의 절차는 같은 색. 보드와 LNB 가 함께 쓴다.
- *  순서는 Maker · Checker · 그 밖(이름순)이고, 주제 색(agent 주제 = 사파이어)과 겹치지 않게 호박 · 에메랄드부터 쓴다. */
+ *  순서는 Maker · Checker · 그 밖(이름순)이고, 주제 색(agent 주제 = 사파이어)과 겹치지 않게 호박 · 에메랄드부터 쓴다.
+ *  색은 계획의 영역 색 그 자리(`planColour(보석, 0)`)라 마크 바닥을 거친다: 사이드바 Agent 점이 어느 줄 면에서도 비텍스트 바닥을 넘는다. */
 /** 정책의 색(자수정). Agent 색과 겹치지 않는다. 보드 · LNB 가 함께 쓴다. */
-export function policyColour(): string { const mode = document.documentElement.dataset.theme === "dark" ? "dark" : "light"; return `#${topicJewels[mode][4].toString(16).padStart(6, "0")}`; }
+export function policyColour(): string { const mode = document.documentElement.dataset.theme === "dark" ? "dark" : "light"; return planColour(4, 0, mode); }
 export function agentColours(agents: { id: string; title: string }[]): Map<string, string> {
-  const mode = document.documentElement.dataset.theme === "dark" ? "dark" : "light", J = topicJewels[mode], pick = [3, 2, 0, 1];   // 자수정(4)은 정책 몫
+  const mode = document.documentElement.dataset.theme === "dark" ? "dark" : "light", pick = [3, 2, 0, 1];   // 자수정(4)은 정책 몫
   const rank = (a: { title: string }) => { const i = ["maker", "checker"].indexOf(a.title.toLowerCase()); return i < 0 ? 9 : i; };
   const order = [...agents].sort((x, y) => rank(x) - rank(y) || x.title.localeCompare(y.title));
-  return new Map(order.map((a, i) => [a.id, `#${J[pick[i % pick.length]].toString(16).padStart(6, "0")}`]));
+  return new Map(order.map((a, i) => [a.id, planColour(pick[i % pick.length], 0, mode)]));
 }
 /** 같은 로스터로 잠깐 사이에 두 번 읽지 않는다(보드와 LNB 가 함께 부른다). 쓰기 뒤에는 로스터 판이 바뀌어 다시 읽힌다. */
 export function loadAgentMap(roles: AgentRole[]): Promise<MapData | null> {

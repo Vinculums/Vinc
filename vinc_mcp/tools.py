@@ -132,15 +132,32 @@ _KINDS_PROP = {"type": "array", "items": {"type": "string",
 #: MCP 결과만 줄이는 `lean_result` 를 끄는 스위치. 핸들러는 이 인자를 읽지 않는다 — REST v1·CLI 는
 #: 늘 전체 꼴이라 끌 것이 없다.
 _RAW_PROP = {"type": "boolean", "description": (
-    "true returns the full result; by default ranking diagnostics, empty fields and temporal "
-    "blocks with nothing set are left out."),
+    "true returns the full result; by default empty, default and duplicated fields and healthy "
+    "diagnostics are left out."),
     "x-reference": (
     (
-        "Over MCP the result is trimmed by default: ranking diagnostics are left out (`score` on "
-        "rows and `rrf_score` on node hits stay), a `temporal` block with no validity interval, "
-        "content time, supersession or conflict shrinks to `{updated_at}`, brief drops flat copies "
-        "of its temporal fields, and neighbors drop empty fields. A missing field means it was "
-        "empty or default. raw:true returns the result unchanged. REST v1 always returns it unchanged."
+        "Over MCP the result is trimmed by default and sent as compact JSON. Ranking diagnostics are "
+        "left out (`score` on rows and `rrf_score` on node hits stay). A `temporal` block lists only "
+        "what is set: valid_from, valid_until, content_time, superseded_by and holds_in_scope when not "
+        "null, supersession, supersedes and conflicts when not empty, interval_invalid when true, "
+        "claim_status when the claim was assessed (none means unscoped, or unassessed on vinc_node), "
+        "updated_at when set, and validity only when the dates do not give it: no validity means "
+        "unknown when interval_invalid is true or neither valid_from nor valid_until is set, and "
+        "current otherwise, so historical and future stay. interval_known is left out and is true "
+        "when valid_from or valid_until is set and interval_invalid is not. created_at and "
+        "claim_assessment_scope are left out. Search and brief leave out validity_note only when it "
+        "is the fixed sentence about nodes hidden as no longer current; any other validity_note "
+        "stays. Search also leaves out page, total_count_capped when false, and "
+        "node_window with node_semantic when the node arm completed with nothing stale, missing or "
+        "capped. Brief leaves out its flat copies of temporal fields (node.validity stays), "
+        "validity_best_dropped, cite_grounds when it equals grounds, null, empty and "
+        "false fields of relation items, and links.executed, offset and truncated at their defaults. "
+        "vinc_node leaves out sync_seq, owner_id, tenant_id, empty fields and temporal values the "
+        "node already holds; props are always whole. Neighbors leave out empty fields, rev, and on a "
+        "domain listing the domain each row repeats. A trimmed search or brief result carries "
+        "`omitted`, one sentence naming the kinds of key left out and the validity rule; a trimmed "
+        "vinc_node result carries a shorter `omitted` (it keeps validity whenever it is known). raw:true (or \"true\") returns the result "
+        "unchanged. REST v1 and the CLI always return the full result."
     ))}
 
 # F1 개방층: type enum 을 제거했다 — 서버가 라우팅 SSoT 이며 이제 *모든* 타입을
@@ -1208,7 +1225,7 @@ TOOLS: list[dict] = [
                 "vinc_ingest to find ids to reuse. Returns `rows` (chunk excerpts with doc_id and cite_id) "
                 "and, on the first page only, `node_hits`. Read whole documents with vinc_doc_get and cite "
                 "`cite_id`. Page with `cursor` set to `next_cursor` while `has_more` (rows only). "
-                "`node_window` and `node_semantic` report on the node arm. `vector_note` means the meaning "
+                "`node_window` and `node_semantic` appear when the node arm was not complete. `vector_note` means the meaning "
                 "arm did not fully run: right after a document write the index rebuilds (`arms` is \"fts\", the "
                 "call never waits, and this is benign); otherwise (a timeout, a missing index) the rows came "
                 "from text matching alone, so tell the user. A backend failure returns `error`. Read-only."
@@ -1324,12 +1341,14 @@ TOOLS: list[dict] = [
                 "{kind:'node', executed, found, node}. Retired claims are included, so check "
                 "valid_from/valid_until. found:false means no such id here; executed:false means the store "
                 "could not be read. Use vinc_brief for answer material and vinc_neighbors for relations. "
-                "Read-only."
+                "Over MCP, empty fields and the temporal values already in the node are left out "
+                "(interval_known is true when valid_from or valid_until is set and interval_invalid is "
+                "not); raw:true returns the stored shape. Read-only."
             )
             ),
         "inputSchema": {"type": "object", "properties": {
             "node_id": {"type": "string", "description": "Exact stored node id, including its type prefix."},
-            **_OWNER_PROP,
+            "raw": _RAW_PROP, **_OWNER_PROP,
         }, "required": ["node_id"]},
         "run": _t_node,
     },
@@ -2671,11 +2690,16 @@ SHRINKERS = {"vinc_search": _shrink_search_result,
 
 # ── MCP 읽기 결과 다이어트 ───────────────────────────────────────────────────
 # rpc 의 tools/call 결과에만 건다. 핸들러 출력은 그대로라 REST v1·SDK·`vinc call`·평가 하네스의
-# cli·v1 경로는 꼴이 바뀌지 않는다. `raw:true` 면 아무것도 빼지 않는다.
-#: 기본으로 빼는 순위 진단 칸. 키 ""는 결과 최상위, 나머지는 그 목록의 행이다.
+# cli·v1 경로는 꼴이 바뀌지 않는다. `raw` 가 참(true 나 문자열 "true")이면 아무것도 빼지 않는다.
+# 규칙은 하나다: 차 있지 않은 칸, 건강한 기본값, 같은 객체의 다른 칸에서 되찾을 수 있는 값은 뺀다.
+# 저장된 `props` 안은 어느 도구에서도 건드리지 않는다(쓰기가 props 를 통째로 갈아 끼운다).
+#: 줄이는 도구. vinc_node·vinc_neighbors 는 칸 규칙만 타고 LEAN_DROP 에 행이 없다.
+LEAN_TOOLS = ("vinc_search", "vinc_brief", "vinc_node", "vinc_neighbors")
+#: 기본으로 빼는 순위 진단. 키 ""는 결과 최상위, 나머지는 그 목록의 행이다.
 #: ⚠ rows 의 `score` 와 node_hits 의 `rrf_score` 는 빼지 않는다: OpenClaw 플러그인이 MCP 로 읽고
-#: minScore 로 거른다(integrations/openclaw/src/memory.ts). `page`·`total_count`·최상위 `arms` 는
-#: 축소기와 다음 커서가 읽는다(`_shrink_search_result`). `node_window`·`node_semantic` 은 도구 계약이 말한다.
+#: minScore 로 거른다(integrations/openclaw/src/memory.ts). `page` 는 축소기와 다음 커서가 읽으므로
+#: 축소가 끝난 뒤(`lean_finish`)에 뺀다. `node_window`·`node_semantic` 은 노드 팔이 건강할 때만 뺀다.
+#: `validity_note` 는 아무 일도 없었다는 고정 문장(`HIDDEN_NOTE`)일 때만 뺀다.
 LEAN_DROP: dict[str, dict[str, tuple[str, ...]]] = {
     "vinc_search": {
         "": ("node_rescore", "validity_best_dropped", "validity_best_dropped_distance"),
@@ -2684,24 +2708,148 @@ LEAN_DROP: dict[str, dict[str, tuple[str, ...]]] = {
                       "distance", "prod_rank", "colbert", "sem_lead", "sem_decisive"),
     },
     "vinc_brief": {
-        "": ("resolution",),
+        "": ("resolution", "validity_best_dropped"),
         "candidates": ("matched_in", "hit_tokens", "title_tokens"),
     },
 }
-#: 아무것도 모를 때 `store.search_temporal.metadata` 가 채우는 값. created_at·updated_at 은 늘 차 있어
-#: 기본인지 볼 때 세지 않는다. 모르는 키가 하나라도 있으면 기본 블록이 아니다(그대로 둔다).
-_TEMPORAL_DEFAULT = {"content_time": None, "valid_from": None, "valid_until": None,
-                     "superseded_by": None, "validity": "unknown", "interval_known": False,
-                     "interval_invalid": False, "holds_in_scope": None, "supersession": [],
-                     "supersedes": [], "claim_status": "unscoped", "conflicts": []}
+#: 줄인 결과에 붙는 한 줄. 도구 목록을 예전에 받아 둔 호스트는 새 설명을 못 읽으므로 빠진 칸의
+#: 뜻을 결과가 직접 말한다. 빠지는 칸은 모두 문장이 이름 붙인 종류 중 하나여야 하고(`OMITTED_KINDS`),
+#: validity 규칙은 `temporal_expand` 와 같아야 한다(둘 다 테스트가 대조한다).
+OMITTED_NOTE = ("Omitted: empty, default, derived, duplicate, diagnostic keys, fixed notes, page, "
+                "created_at. No validity: unknown if interval_invalid or no valid_from/until, else "
+                "current. raw:true has all.")
+#: vinc_node 의 한 줄. 노드는 알려진 validity 를 늘 남기므로 규칙을 싣지 않는다. 빠지는 것은 빈·기본값
+#: 칸, 내부 좌표(sync_seq·owner_id·tenant_id), 노드 칸과 겹치는 시간 값이다.
+OMITTED_NODE_NOTE = "Unset, internal, repeated keys omitted; raw:true gives all."
+#: 검색 팔이 숨긴 노드를 세어 알리는 고정 문장(vinc_rag.retrieval 이 오늘 범위에서 쓴다). 이 문장
+#: 그대로일 때만 `validity_note` 를 뺀다. 다른 문장은 무엇이 숨었거나 고르지 못했는지 말하므로 남긴다.
+#: ⚠ 사이드카 문장의 미러다. 두 사본의 일치는 tests/mcp/test_mcp_lean_reads.py 가 실제 검색으로 대조한다.
+HIDDEN_NOTE = "hid nodes whose claim is no longer current; pass historical=true to include them"
+#: 값이 비지 않았는데 빠지는 칸 전부: (도구, 자리, 키, 종류). 자리는 fnmatch 꼴이고 [] 는 목록의 원소다.
+#: 빈 값(None·""·[]·{})은 어느 칸이든 "empty" 라 여기 없다. 처음 맞는 줄이 이긴다. 종류는 search·brief 면
+#: `OMITTED_NOTE`, vinc_node 면 `OMITTED_NODE_NOTE` 가 부르는 말이다. 손으로 고치고, 테스트가 사본과
+#: 대조한다(빼는 칸을 늘리거나 종류를 바꾸면 그 사본도 사람이 고쳐야 한다).
+OMITTED_KINDS: tuple[tuple[str, str, str, str], ...] = (
+    ("vinc_search", "", "node_rescore", "diagnostic"),
+    ("vinc_search", "", "validity_best_dropped", "diagnostic"),
+    ("vinc_search", "", "validity_best_dropped_distance", "diagnostic"),
+    ("vinc_search", "", "node_window", "diagnostic"),
+    ("vinc_search", "", "node_semantic", "diagnostic"),
+    ("vinc_search", "", "validity_note", "fixed notes"),
+    ("vinc_search", "", "page", "page"),
+    ("vinc_search", "", "total_count_capped", "default"),
+    ("vinc_search", "/rows[]", "rrf_score", "diagnostic"),
+    ("vinc_search", "/rows[]", "arms", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "matched_in", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "hit_tokens", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "title_tokens", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "token_total", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "arms", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "distance", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "prod_rank", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "colbert", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "sem_lead", "diagnostic"),
+    ("vinc_search", "/node_hits[]", "sem_decisive", "diagnostic"),
+    ("vinc_brief", "", "resolution", "diagnostic"),
+    ("vinc_brief", "", "validity_best_dropped", "diagnostic"),
+    ("vinc_brief", "", "validity_note", "fixed notes"),
+    ("vinc_brief", "", "cite_grounds", "duplicate"),
+    ("vinc_brief", "/candidates[]", "matched_in", "diagnostic"),
+    ("vinc_brief", "/candidates[]", "hit_tokens", "diagnostic"),
+    ("vinc_brief", "/candidates[]", "title_tokens", "diagnostic"),
+    ("vinc_brief", "*links", "executed", "default"),
+    ("vinc_brief", "*links", "offset", "default"),
+    ("vinc_brief", "*links", "truncated", "default"),
+    ("vinc_brief", "*links/items[]", "evidence", "default"),
+    ("vinc_node", "/node", "sync_seq", "internal"),
+    ("vinc_node", "/node", "owner_id", "internal"),
+    ("vinc_node", "/node", "tenant_id", "internal"),
+    ("vinc_node", "/node/temporal", "created_at", "repeated"),
+    ("vinc_node", "/node/temporal", "updated_at", "repeated"),
+    ("vinc_node", "/node/temporal", "valid_from", "repeated"),
+    ("vinc_node", "/node/temporal", "valid_until", "repeated"),
+    ("vinc_node", "/node/temporal", "content_time", "repeated"),
+    ("vinc_node", "/node/temporal", "superseded_by", "repeated"),
+    ("vinc_node", "/node/temporal", "interval_known", "repeated"),
+    ("vinc_node", "/node/temporal", "validity", "unset"),
+    ("vinc_node", "/node/temporal", "claim_status", "unset"),
+    ("vinc_node", "/node/temporal", "claim_assessment_scope", "unset"),
+    ("vinc_node", "/node/temporal", "interval_invalid", "unset"),
+    ("vinc_neighbors", "/neighbors[]", "rev", "internal"),
+    ("vinc_neighbors", "/neighbors[]", "domain", "repeated"),
+    ("*", "*/temporal", "created_at", "created_at"),
+    ("*", "*/temporal", "claim_assessment_scope", "default"),
+    ("*", "*/temporal", "interval_invalid", "default"),
+    ("*", "*/temporal", "claim_status", "default"),
+    ("*", "*/temporal", "validity", "derived"),
+    ("*", "*/temporal", "interval_known", "derived"),
+    ("vinc_brief", "*", "created_at", "created_at"),
+    ("vinc_brief", "*", "updated_at", "duplicate"),
+    ("vinc_brief", "*", "content_time", "duplicate"),
+    ("vinc_brief", "*", "valid_from", "duplicate"),
+    ("vinc_brief", "*", "valid_until", "duplicate"),
+    ("vinc_brief", "*", "superseded_by", "duplicate"),
+    ("vinc_brief", "*", "validity", "derived"),
+)
 #: `stamp` 이 행에 평평하게 한 벌 더 쓰는 칸(`store.search_temporal.FLAT` 과 같다).
 _TEMPORAL_FLAT = ("created_at", "updated_at", "content_time", "valid_from", "valid_until",
                   "superseded_by", "validity")
+#: 시간 블록에서 값이 없을 때(null) 빠지는 칸.
+_TEMPORAL_VALUES = ("content_time", "valid_from", "valid_until", "superseded_by")
+#: 비었을 때 빠지는 목록 칸.
+_TEMPORAL_LISTS = ("supersession", "supersedes", "conflicts")
+#: 평가하지 않은 주장의 claim_status. 검색·brief 는 unscoped, vinc_node 는 unassessed 로 적는다.
+_CLAIM_NOT_ASSESSED = ("unscoped", "unassessed")
+#: vinc_node 가 노드에서 빼는 저장 열. 소유자·동기화 좌표는 읽는 쪽이 쓰지 않는다. `rev` 는 남긴다.
+_NODE_DROP = ("sync_seq", "owner_id", "tenant_id")
 
 
-def _default_temporal(t: dict) -> bool:
-    return (set(t) <= set(_TEMPORAL_DEFAULT) | {"created_at", "updated_at"}
-            and all(k in t and t[k] == v for k, v in _TEMPORAL_DEFAULT.items()))
+def _temporal_validity(t: dict) -> str:
+    """validity 가 빠진 블록에서 validity 를 되찾는다. 깨진 구간은 unknown, 구간 끝 하나라도 있으면
+    current, 없으면 unknown 이다(`store.search_temporal.metadata` 와 같은 계산)."""
+    if t.get("interval_invalid"):
+        return "unknown"
+    return "current" if (t.get("valid_from") or t.get("valid_until")) else "unknown"
+
+
+def temporal_expand(t: dict, *, claim_status: str = "unscoped") -> dict:
+    """줄인 블록을 계산 칸 셋(validity·interval_known·claim_status)과 기본값으로 되돌린다.
+    `OMITTED_NOTE` 와 도구 설명이 말하는 규칙 그 자체다. vinc_node 는 claim_status="unassessed"."""
+    out = {k: t.get(k) for k in _TEMPORAL_VALUES}
+    out.update({k: list(t.get(k) or []) for k in _TEMPORAL_LISTS})
+    out["interval_invalid"] = bool(t.get("interval_invalid"))
+    out["holds_in_scope"] = t.get("holds_in_scope")
+    out["validity"] = t.get("validity") or _temporal_validity(t)
+    out["interval_known"] = bool(t.get("valid_from") or t.get("valid_until")) \
+        and not out["interval_invalid"]
+    out["claim_status"] = t.get("claim_status") or claim_status
+    return out
+
+
+def _slim_temporal(t: dict) -> dict:
+    """시간 블록에서 차 있는 것만 남긴다. 모르는 칸은 그대로 둔다(뜻을 모르는 것은 빼지 않는다).
+    validity·interval_known 은 되찾을 수 있을 때만 뺀다: 저장된 날짜에서 계산한 값과 다르면 남는다."""
+    out = {}
+    for k, v in t.items():
+        if k in ("created_at", "claim_assessment_scope"):
+            continue
+        if k in _TEMPORAL_VALUES and v in (None, ""):
+            continue
+        if k in _TEMPORAL_LISTS and v == []:
+            continue
+        if (k == "interval_invalid" and v is False) or (k == "holds_in_scope" and v is None):
+            continue
+        if k == "validity" and v == _temporal_validity(t):
+            continue
+        if k == "interval_known" and v == (bool(t.get("valid_from") or t.get("valid_until"))
+                                           and not t.get("interval_invalid")):
+            continue
+        if k == "claim_status" and v in _CLAIM_NOT_ASSESSED:
+            continue
+        if k == "updated_at" and not v:
+            continue                    # 수정 시각은 늘 남긴다(되찾을 길이 없다)
+        out[k] = v
+    return out
 
 
 def _lean_temporal(row: dict, *, flat: bool) -> None:
@@ -2710,48 +2858,146 @@ def _lean_temporal(row: dict, *, flat: bool) -> None:
         return
     if flat:
         # brief 의 평평한 사본 중 블록과 같은 값만 뺀다(빈 문자열은 null 과 같다). `node.validity` 는
-        # 도구 계약이 읽으라고 말하는 칸이라 남긴다.
+        # 도구 계약이 읽으라고 말하는 칸이라 남긴다. 블록을 줄이기 **전에** 대조한다.
         for k in _TEMPORAL_FLAT:
             if k in row and k in t and (row[k] or None) == (t[k] or None):
                 if not (k == "validity" and "claim_validity" in row):
                     row.pop(k)
-    if _default_temporal(t):
-        # 다른 데 updated_at 이 남지 않으면 블록을 그 하나로 줄인다.
-        row["temporal"] = {"updated_at": t["updated_at"]} if t.get("updated_at") else {}
-        if not row["temporal"]:
-            row.pop("temporal")
+    slim = _slim_temporal(t)
+    if slim:
+        row["temporal"] = slim
+    else:
+        row.pop("temporal")
+
+
+def _lean_node(node: dict) -> None:
+    """vinc_node 의 노드: 시간 블록은 노드의 저장 칸에 이미 있는 값을 빼고, 노드는 빈 칸과 내부 좌표를
+    뺀다. props 는 통째로 둔다(비어 있어도). unknown 이 아닌 validity 는 남긴다."""
+    t = node.get("temporal")
+    if isinstance(t, dict):
+        kept = _slim_temporal(t)
+        # ⚠ 인용 매니페스트 갱신(api/refs.py)이 MCP 로 validity 를 읽고, 없으면 unknown 으로 적는다.
+        # 핸들러의 칸 순서를 지킨다(t 를 따라 걷는다).
+        slim = {k: v for k, v in t.items()
+                if k in kept or (k == "validity" and v not in (None, "unknown"))}
+        for k in [k for k, v in slim.items() if k in _TEMPORAL_VALUES + ("updated_at",)
+                  and (node.get(k) or None) == v]:
+            slim.pop(k)
+        if slim:
+            node["temporal"] = slim
+        else:
+            node.pop("temporal")
+    for k in _NODE_DROP:
+        node.pop(k, None)
+    for k in [k for k, v in node.items() if k != "props" and (v is None or v in ("", [], {}))]:
+        node.pop(k)
+
+
+def _node_arm_healthy(out: dict) -> bool:
+    """노드 팔이 다 돌았나: 의미 팔 complete·오류 없음·낡거나 빠진 후보 없음, node_error 없음,
+    어휘 후보가 상한에 안 걸림. 하나라도 아니면 `node_window`·`node_semantic` 을 통째로 남긴다."""
+    ns, nw = out.get("node_semantic"), out.get("node_window")
+    if not isinstance(ns, dict) or ns.get("state") != "complete" or ns.get("error") \
+            or ns.get("stale_candidates") or ns.get("missing_candidates") or out.get("node_error"):
+        return False
+    return nw is None or (isinstance(nw, dict) and not nw.get("lexical_candidates_capped"))
+
+
+def _lean_links(links: Any) -> None:
+    """brief 의 관계: 항목의 null·빈 문자열·false 칸, 그리고 건강한 기본값(executed:true·offset 0·
+    truncated:false)을 뺀다. 0.0 은 값이다(False 와 같다고 보지 않는다)."""
+    if not isinstance(links, dict):
+        return
+    for it in links.get("items") or []:
+        if isinstance(it, dict):
+            for k in [k for k, v in it.items() if v is None or v is False or v == ""]:
+                it.pop(k)
+    if links.get("executed") is True:
+        links.pop("executed")
+    if links.get("truncated") is False:
+        links.pop("truncated")
+    if type(links.get("offset")) is int and links["offset"] == 0:
+        links.pop("offset")
 
 
 def _walk_dicts(node: Any, fn: Callable[[dict], None]) -> None:
     if isinstance(node, dict):
         fn(node)
-        for v in node.values():
-            _walk_dicts(v, fn)
+        for k, v in node.items():
+            if k != "props":            # 저장된 props 안은 걷지 않는다
+                _walk_dicts(v, fn)
     elif isinstance(node, list):
         for v in node:
             _walk_dicts(v, fn)
 
 
-def lean_result(name: str, args: dict, out: Any) -> Any:
-    """MCP 로 내보낼 읽기 결과를 줄인 사본. 대상이 아니거나 `raw` 면 받은 것을 그대로 돌려준다."""
-    if (name not in LEAN_DROP and name != "vinc_neighbors") or not isinstance(out, dict) \
-            or (isinstance(args, dict) and args.get("raw") is True):
-        return out
+def _is_raw(args: Any) -> bool:
+    # 도구 목록을 예전에 받아 둔 호스트는 선언 안 된 불리언을 문자열로 보낸다.
+    raw = args.get("raw") if isinstance(args, dict) else None
+    return raw is True or raw == "true"
+
+
+def lean_project(name: str, args: dict, out: Any) -> Any:
+    """줄인 사본에서 `page` 를 빼기 전 단계. 대상이 아니거나 raw 면 None. 축소기는 이 단계의 사본을
+    받는다(`page` 로 다음 커서를 쓴다). 반환값은 새 사본이라 축소기가 고쳐도 핸들러 결과는 그대로다."""
+    if name not in LEAN_TOOLS or not isinstance(out, dict) or _is_raw(args):
+        return None
     import copy
     out = copy.deepcopy(out)        # 핸들러 결과를 캐시가 쥐고 있어도 건드리지 않는다
     if name == "vinc_neighbors":
+        listed = out.get("node") if isinstance(out.get("node"), str) else ""
+        dom = listed[len("domain:"):] if listed.startswith("domain:") else None
         for row in [out] + [r for r in out.get("neighbors") or [] if isinstance(r, dict)]:
             for k in [k for k, v in row.items() if v is None or v == ""]:
                 row.pop(k)
+            if row is not out:
+                row.pop("rev", None)    # 쓰기 토큰은 vinc_node 가 준다
+                if dom is not None and row.get("domain") == dom:
+                    row.pop("domain")   # 도메인 목록은 그 도메인을 행마다 되풀이하지 않는다
+        return out
+    if name == "vinc_node":
+        if isinstance(out.get("node"), dict):
+            _lean_node(out["node"])
         return out
     for where, keys in LEAN_DROP[name].items():
         rows = [out] if where == "" else [r for r in out.get(where) or [] if isinstance(r, dict)]
         for row in rows:
             for k in keys:
                 row.pop(k, None)
+    if out.get("validity_note") == HIDDEN_NOTE:
+        out.pop("validity_note")
+    if name == "vinc_search":
+        if out.get("total_count_capped") is False:
+            out.pop("total_count_capped")
+        if _node_arm_healthy(out):
+            out.pop("node_window", None)
+            out.pop("node_semantic", None)
+    else:
+        _lean_links(out.get("links"))
+        if isinstance(out.get("candidate_material"), dict):
+            _lean_links(out["candidate_material"].get("links"))
+        if "cite_grounds" in out and out.get("cite_grounds") == out.get("grounds"):
+            out.pop("cite_grounds")
     flat = name == "vinc_brief"
     _walk_dicts(out, lambda d: _lean_temporal(d, flat=flat))
     return out
+
+
+def lean_finish(name: str, projected: dict, original: Any) -> dict:
+    """`lean_project` (그리고 축소기) 뒤의 마지막 단계: 축소기만 읽는 `page` 를 빼고, 무엇이든
+    빠졌으면 `omitted` 한 줄을 붙인다(search·brief·node, neighbors 는 없다)."""
+    projected.pop("page", None)
+    if name != "vinc_neighbors" and projected != original:
+        projected["omitted"] = OMITTED_NODE_NOTE if name == "vinc_node" else OMITTED_NOTE
+    return projected
+
+
+def lean_result(name: str, args: dict, out: Any) -> Any:
+    """MCP 로 내보낼 읽기 결과를 줄인 사본. 대상이 아니거나 `raw` 면 받은 것을 그대로 돌려준다."""
+    projected = lean_project(name, args, out)
+    if projected is None:
+        return out
+    return lean_finish(name, projected, out)
 
 
 # ── 인자 검증(D5) ────────────────────────────────────────────────────────────
