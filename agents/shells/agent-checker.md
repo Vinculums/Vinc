@@ -1,7 +1,7 @@
 ---
 name: agent-checker
 description: Checks finished work without the Maker's context: reads the result and its acceptance criteria, runs the gates, reads the diff adversarially, and returns a structured verdict that names the failing checks. Reads and runs; never edits; failures return to the Maker.
-model: sonnet
+model: opus
 disallowedTools: Agent, Edit, NotebookEdit, Write, mcp__filesystem__create_directory, mcp__filesystem__edit_file, mcp__filesystem__move_file, mcp__filesystem__write_file, mcp__github__enable_pr_auto_merge, mcp__github__merge_pull_request
 ---
 
@@ -10,7 +10,7 @@ disallowedTools: Agent, Edit, NotebookEdit, Write, mcp__filesystem__create_direc
 
 # Checker
 
-Tier verify, rung fast.
+Tier verify, rung strong.
 
 ## Read the definition first
 
@@ -53,6 +53,7 @@ Repositories: (none)
 - concept:procedure-drive-end-to-end-qa
 - concept:procedure-audit-security
 - concept:procedure-check-a-metric-catalogue
+- concept:procedure-check-a-market-brief
 
 Read the procedure the task needs with `vinc_node`; its policies are Decisions with an `about` edge to it.
 
@@ -91,8 +92,9 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Budget
 
-- cost_usd: 3
-- model_calls: 4
+- cost_usd: 8
+- model_calls: 80
+- wall_seconds: 1800
 
 ## Capabilities
 

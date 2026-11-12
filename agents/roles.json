@@ -18,9 +18,11 @@
       "props": {
         "authority_note": "These lists are the agent-level invariants. Each procedure carries its source role's full lists under `sources`.",
         "budget": {
-          "cost_usd": 3,
-          "model_calls": 4
+          "cost_usd": 8,
+          "model_calls": 80,
+          "wall_seconds": 1800
         },
+        "budget_note": "Set 2026-11-12; cost is an estimate to revise after the next 10 packages. On reaching the budget the Checker stops and reports what is unchecked.",
         "capabilities": {
           "deny": [
             "fs.write",
@@ -101,23 +103,25 @@
           "concept:procedure-run-gates-and-acceptance",
           "concept:procedure-drive-end-to-end-qa",
           "concept:procedure-audit-security",
-          "concept:procedure-check-a-metric-catalogue"
+          "concept:procedure-check-a-metric-catalogue",
+          "concept:procedure-check-a-market-brief"
         ],
         "reads": [
           "vinc.reference.single-agent-loop-principles-2026-11-04",
           "vinc.plan.maker-checker-agent-redesign-2026-11-04",
           "vinc.reference.pstack-principles-2026-11-02"
         ],
-        "rung": "fast",
-        "rung_note": "hands.review in concept:model-routing-vincos.",
+        "rung": "strong",
+        "rung_note": "A blocking review runs at the implementer's rung or above since 2026-11-12 (decision:policy-review-scope-and-stop-rule-2026-11-12). Advisory notes and summaries run at fast, chosen per call by the orchestrating session.",
         "tier": "verify",
         "tools": [
           "vinc (graph MCP): read this role's node and the active procedure's node first; write what the role may author"
         ],
         "work_budget": {
-          "note": "the Checker never escalates and never re-runs its own verdict",
-          "rounds": 2,
-          "runs_per_work": 4
+          "note": "One full run and one re-check limited to the previous failing checks and the diff since that verdict (decision:policy-review-scope-and-stop-rule-2026-11-12). The Checker never escalates and never re-runs its own verdict.",
+          "recheck": 1,
+          "rounds": 1,
+          "runs_per_work": 2
         },
         "writes_graph": [
           "record"
@@ -142,9 +146,12 @@
       "props": {
         "authority_note": "These lists are the agent-level invariants: the structural person-only actions the gate can refuse and the tools no Maker run may use. Each procedure carries its own never, person_only, gates, capabilities and tools at its top level (union of its sources), and the harness applies the agent's and the active procedure's lists together (vinc.spec.maker-checker-harness section 2). Trimmed on 2026-11-04 from the union of all source roles, which had put every role's sign-offs on every run.",
         "budget": {
-          "cost_usd": 3,
-          "model_calls": 4
+          "cost_usd": 20,
+          "model_calls": 200,
+          "wall_seconds": 5400
         },
+        "budget_note": "Set 2026-11-12 from measured runs of 62 to 386 model calls; cost is an estimate to revise after the next 10 packages. On reaching the budget the Maker stops and reports what is unfinished.",
+        "delegate_rung": "cheapest",
         "disallowed_tools": [
           "mcp__vinc__vinc_delete",
           "mcp__vinc__vinc_merge_nodes",
@@ -175,7 +182,7 @@
           }
         ],
         "harness_spec": "vinc.spec.maker-checker-harness",
-        "isolation": "worktree",
+        "isolation_note": "No host-level worktree isolation since 2026-11-13 (decision:maker-shell-drops-worktree-isolation-2026-11-13). The Maker makes its own worktree from fresh origin/main in the repository the package names, as procedure-build-a-package says: one package, one branch, one worktree.",
         "mission": "Does the work in one context: loads the procedure the task needs by address, works inside the repositories and paths that procedure declares, and leaves one verifiable result for the Checker. Runs as several instances only when packages are independent.",
         "never": [
           "merge, deploy or push a tag without the person's approval for that action",
@@ -233,23 +240,26 @@
           "concept:procedure-keep-a-metric-catalogue",
           "concept:procedure-keep-the-graph-honest",
           "concept:procedure-plan-packages-and-waves",
-          "concept:procedure-decide-in-decided-form"
+          "concept:procedure-decide-in-decided-form",
+          "concept:procedure-write-a-market-brief",
+          "concept:procedure-review-the-market-week"
         ],
         "reads": [
           "vinc.reference.single-agent-loop-principles-2026-11-04",
           "vinc.plan.maker-checker-agent-redesign-2026-11-04",
           "vinc.reference.pstack-principles-2026-11-02"
         ],
-        "rung": "cheapest",
-        "rung_note": "Routed by task class (concept:model-routing-vincos: hands.default cheapest, hands.plan strong), escalating one rung once per task.",
+        "rung": "strong",
+        "rung_note": "Implementation runs at strong since 2026-11-12, as its source roles did (decision:policy-route-work-by-size-and-risk-2026-11-12). The orchestrating session may pass a lower rung per call for a narrow, well-specified package. Search and inventory are delegated at cheapest.",
         "tier": "execute",
         "tools": [
           "vinc (graph MCP): read this role's node and the active procedure's node first; write what the role may author"
         ],
         "work_budget": {
-          "note": "Maker, Checker, Maker, Checker; the second fail goes to the owner (decision:maker-checker-harness-rulings-2026-11-04)",
-          "rounds": 2,
-          "runs_per_work": 4
+          "note": "One Maker run, one full Checker run and one re-check of the failed checks; after a failed re-check the orchestrating session fixes narrow checks directly and anything else goes to the owner (decision:policy-review-scope-and-stop-rule-2026-11-12). Rework starts in a fresh context from a handoff file, not by resuming the earlier Maker.",
+          "recheck": 1,
+          "rounds": 1,
+          "runs_per_work": 3
         },
         "writes_graph": [
           "episode",

@@ -227,8 +227,15 @@ class Install(unittest.TestCase):
                 got = (claude / "agents" / f"{role['name']}.md").read_text(encoding="utf-8")
                 # 설치본은 추적 사본과 바이트가 같다 — CI 가 대조한 것이 곧 하네스가 읽는 것이다.
                 self.assertEqual(got, shell_path(role).read_text(encoding="utf-8"), role["name"])
-            self.assertIn("\nisolation: worktree\n",
-                          (claude / "agents" / "agent-maker.md").read_text(encoding="utf-8"))
+            # 격리 줄은 역할 노드를 그대로 따른다: 노드에 있으면 설치본에도 있고, 없으면 없다.
+            # Maker 는 격리를 뺐다(그래프의 Maker 노드 isolation_note 가 이유를 적는다).
+            for role in snap["roles"]:
+                text = (claude / "agents" / f"{role['name']}.md").read_text(encoding="utf-8")
+                iso = (role.get("props") or {}).get("isolation")
+                if iso:
+                    self.assertIn(f"\nisolation: {iso}\n", text, role["name"])
+                else:
+                    self.assertNotIn("\nisolation:", text, role["name"])
             self.assertTrue(mine.exists(), "사람이 둔 에이전트 파일을 지웠다")
             self.assertFalse(gone.exists(), "그래프에서 사라진 역할의 생성 껍데기가 남았다")
             self.assertEqual((claude / "launch.json").read_bytes(), launch)

@@ -1,8 +1,7 @@
 ---
 name: agent-maker
 description: Does the work in one context: loads the procedure the task needs by address, works inside the repositories and paths that procedure declares, and leaves one verifiable result for the Checker. Runs as several instances only when packages are independent.
-model: haiku
-isolation: worktree
+model: opus
 disallowedTools: mcp__vinc__vinc_delete, mcp__vinc__vinc_merge_nodes, vinc_delete, vinc_merge_nodes
 ---
 
@@ -11,7 +10,7 @@ disallowedTools: mcp__vinc__vinc_delete, mcp__vinc__vinc_merge_nodes, vinc_delet
 
 # Maker
 
-Tier execute, rung cheapest.
+Tier execute, rung strong, delegating at cheapest.
 
 ## Read the definition first
 
@@ -64,6 +63,8 @@ Repositories: (none)
 - concept:procedure-keep-the-graph-honest
 - concept:procedure-plan-packages-and-waves
 - concept:procedure-decide-in-decided-form
+- concept:procedure-write-a-market-brief
+- concept:procedure-review-the-market-week
 
 Read the procedure the task needs with `vinc_node`; its policies are Decisions with an `about` edge to it.
 
@@ -104,8 +105,9 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Budget
 
-- cost_usd: 3
-- model_calls: 4
+- cost_usd: 20
+- model_calls: 200
+- wall_seconds: 5400
 
 ## Writes to the graph
 
