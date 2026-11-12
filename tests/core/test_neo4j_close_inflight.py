@@ -7,7 +7,7 @@
 
 왜: neo4j 드라이버의 `close()` 는 빌려 간 연결까지 닫으며 GOODBYE 를 쓴다. 그 연결에서 다른 스레드가
 `sendall` 중이면 송신 버퍼(`Outbox._chunked_data`)를 늘리다 `BufferError: Existing exports of data` 가 난다
-(CI job 130934765746, `test_neo4j_location_open` 의 닫기). 서버 없이 가짜 드라이버로 그 순서를 고정한다:
+(`test_neo4j_location_open` 의 닫기에서 본 실패다). 서버 없이 가짜 드라이버로 그 순서를 고정한다:
 가짜는 질의를 사건(Event)으로 붙들고, 닫힐 때 열린 세션 수를 적는다.
 """
 from __future__ import annotations

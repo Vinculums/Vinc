@@ -215,7 +215,7 @@ class Neo4jBackend:
         #: 드라이버를 쓰는 중인 호출 수(:meth:`_in_use`). 닫기는 이것이 빠지기를 기다린 뒤 드라이버를
         #: 닫는다. 드라이버의 `close()` 는 다른 스레드가 빌려 쓰는 연결까지 닫으며 GOODBYE 를 쓰는데,
         #: 그 스레드가 같은 연결의 `sendall` 안에 있으면 송신 버퍼를 늘리다 `BufferError` 가 난다
-        #: (CI job 130934765746, 2026-11-12). 드라이버의 연결은 스레드 사이에서 안전하지 않다.
+        #: (`test_neo4j_location_open` 의 닫기에서 본 실패다). 드라이버의 연결은 스레드 사이에서 안전하지 않다.
         self._use = threading.Condition()
         self._users = 0
         self._closing = False
