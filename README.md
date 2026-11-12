@@ -92,10 +92,13 @@ npm run dev                       # 브라우저에서 화면 확인
 ### 게이트를 손으로 돌려 보기
 
 ```bash
-python -X utf8 scripts/gate_forbidden.py
-python -X utf8 scripts/gate_graph_refs.py
+python -X utf8 scripts/gates.py                    # origin/main 대비 바뀐 파일이 닿는 게이트 전부
+python -X utf8 scripts/gates.py --all              # 전부. --list 는 목록만 보여 줍니다
+python -X utf8 scripts/gates.py forbidden graph-refs
 python -X utf8 scripts/gate_pr_title.py "fix(scope): subject"
 ```
+
+게이트 목록은 `scripts/gates.py` 한 곳에 있고, CI(`ci.yml` 의 `changes`·`core` 잡)도 같은 목록을 돕니다.
 
 ## 6. 더 볼 곳
 

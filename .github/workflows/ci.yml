@@ -117,56 +117,25 @@ jobs:
           # 붙는다 — 안전하지만 이 잡의 목적이 사라진다.
           fetch-depth: 0
 
-      # 추적되는 모든 파일에 주인 팀이 있는가(.github/CODEOWNERS ← agents/teams.json).
-      # 여기 두는 이유는 분이다 — 이 잡은 PR 마다 이미 돌고, 잡을 새로 세우면 청구가
-      # 1분부터 시작한다. PR 에서는 BASE..HEAD 가 닿은 팀 목록도 남긴다(지표 원천이지 스위치가
-      # 아니다: 이 출력으로 테스트를 끄지 않는다. 그 스위치의 이력은 `core-pkns` 주석).
-      # 근거: Linear VIN-239, 계획서 vinc.plan.team-split.
-      - name: Ownership gate (every tracked file has an owning team)
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-          PY=$(command -v python3 || command -v python)
-          "$PY" -X utf8 scripts/gate_ownership.py
-
-      # 허브의 역할 출력 게이트(vinc_mcp/role_output_gate.py)는 SDK 원본
-      # (vinc_client/output_gate.py)에서 생성한 사본이다. 원본만 고치고 재생성을
-      # 잊은 PR 을 여기서 막는다. 표준 라이브러리만 쓴다.
-      - name: Role output gate copy is fresh
-        run: |
-          set -euo pipefail
-          PY=$(command -v python3 || command -v python)
-          "$PY" -X utf8 scripts/sync_output_gate.py --check
-
-      # 죽은 코드 게이트(VIN-546). 파이썬은 vulture 신뢰도 80 이상, 허용 목록은
-      # scripts/vulture-allow.txt(이름으로 불리는 훅만). 앱(TS)의 절반은 여기서 돌지
-      # 않는다: app/tsconfig.json 의 noUnusedLocals·noUnusedParameters 를 `app` 잡의
-      # `npm run build`(tsc)가 읽는다. 여기서 tsc 를 다시 돌리려면 npm ci 가 필요하다.
+      # 이 잡의 게이트는 scripts/gates.py 레지스트리가 돈다(`ci="changes"` 인 항목 전부): 소유권 ·
+      # 역할 출력 게이트 사본 · 죽은 파이썬(vulture) · 주석 이력 예산, 그리고 PR 에서만 러너 이동과
+      # 홈페이지 드리프트(알림). 각 게이트가 무엇을 보는지는 그 파일의 항목마다 적혀 있다.
+      # 여기 두는 이유는 분이다: 이 잡은 PR 마다 이미 돌고, base..head 를 가진 유일한 잡이라
+      # (`fetch-depth: 0`) 러너 이동 게이트는 다른 잡으로 못 간다. PR 전용 게이트는 BASE·HEAD 가
+      # 빈 이벤트(push · merge_group · 수동)에서 레지스트리가 건너뛰고 그 이유를 적는다.
       # setup-python 을 쓰는 이유: 러너의 시스템 파이썬은 PEP 668 이라 pip 설치를 거절한다.
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Dead Python gate (vulture, 80 percent confidence)
-        run: |
-          set -euo pipefail
-          pip install --quiet --disable-pip-version-check vulture==2.14
-          python -X utf8 scripts/gate_vulture.py
-
-      # 주석 속 이력 표지(날짜·이슈 키·PR 번호·경위 어휘)가 파일마다 기준선
-      # scripts/comment-history-baseline.json 을 넘지 않는가. 래칫이라 줄이는 것은 늘
-      # 통과하고, 낮아진 값은 `--write-baseline` 으로 다시 잠근다. 위 두 게이트와 같은
-      # 이유로 여기 붙인다. BASE·HEAD 는 위반 파일에서 이 PR 이 더한 줄만 골라 보이는 데 쓴다.
-      # 계약: [[vinc.canon.code-annotation]]
-      - name: Comment history budget gate
+      - name: Gates (registry, changes)
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          PY=$(command -v python3 || command -v python)
-          "$PY" -X utf8 scripts/gate_comment_history.py
+          pip install --quiet --disable-pip-version-check vulture==2.14 pyyaml
+          python -X utf8 scripts/gates.py --ci changes
 
       - id: f
         env:
@@ -243,52 +212,6 @@ jobs:
           # 러스트 셸. `app/src-tauri/` 밖의 변경이 컴파일을 깨뜨릴 길은 없다.
           has '^app/src-tauri/' \
             && echo "rust=true" >> "$GITHUB_OUTPUT" || echo "rust=false" >> "$GITHUB_OUTPUT"
-
-      # ── 러너 이동 게이트 ────────────────────────────────────────────────────
-      # 왜 여기인가: 이 잡이 이 워크플로에서 **base..head 를 가진 유일한 자리**다
-      # (`fetch-depth: 0` 이 위에 있다). 게이트가 두 리비전의 워크플로를 비교해야
-      # 하므로 다른 잡으로는 못 옮긴다.
-      #
-      # 무엇을 보나: `cancel-in-progress: false` 로 직렬화하는 워크플로의 `runs-on`
-      # 이 이 PR 에서 바뀌는가. 바뀌면 머지 전에 그 워크플로의 큐를 비우라고 말한다 —
-      # 머지 전에 만들어진 런은 옛 라벨을 기다리므로 그 러너가 없으면 영영 시작하지
-      # 못하고 뒤를 전부 막는다(`Vinc#129` 에서 배포 넷이 그렇게 밀렸다).
-      #
-      # ⚠ 이것은 **적어 두는 대신 검사하는** 쪽을 고른 것이다. 같은 종류의 함정을
-      # 레코드·계획서·PR 본문 세 곳에 적어 두고 십팔 분 뒤에 다시 밟은 이력이 있다:
-      # [[record:writing-a-trap-down-does-not-stop-it-a-check-does]].
-      #
-      # PR 에서만 돈다. main push 에는 비교할 base 가 없고, 그때는 이미 늦었다.
-      - uses: actions/setup-python@v5
-        if: github.event_name == 'pull_request'
-        with:
-          python-version: "3.12"
-      - name: Runner-move gate (serialising workflows)
-        if: github.event_name == 'pull_request'
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          pip install --quiet --disable-pip-version-check pyyaml
-          python -X utf8 scripts/gate_runner_move.py "$BASE" "$HEAD" --check-queues
-          echo "── 판정"; cat "$GITHUB_OUTPUT"
-
-      # 홈페이지가 이 PR 의 MCP 도구 목록과 REST 레퍼런스를 따라왔는가. 홈페이지 CI 는
-      # Vinc main 의 tool_reference.json·openapi_v1.json 으로 문서 페이지를 대조하므로,
-      # 여기서 미리 말하지 않으면 뒤처진 것이 다음 홈페이지 PR 이 빨개질 때 드러난다.
-      # 대조 대상은 공개된 문서 페이지다(홈페이지 리포는 비공개이고 읽을 토큰이 없다).
-      # 알림이다: 홈페이지는 이 PR 이 머지돼야 따라올 수 있으므로 막지 않고, 차이는 경고
-      # 주석과 스텝 요약으로 남긴다. 막을지는 소유자가 정한다. 셀프테스트를 먼저 돌린다.
-      - name: Homepage drift notice (MCP tools and REST reference, advisory)
-        if: github.event_name == 'pull_request'
-        continue-on-error: true
-        env:
-          BASE: ${{ github.event.pull_request.base.sha }}
-        run: |
-          set -euo pipefail
-          python -X utf8 scripts/gate_homepage_drift.py --selftest
-          python -X utf8 scripts/gate_homepage_drift.py
 
       # 결정 문(모델 없음): 이 PR 이 건드린 파일을 다스리는 기록·결정을 호스티드 그래프에서
       # 찾아 스텝 요약에 적는다. 알림이다: 막지 않고, 실패해도 잡을 빨갛게 하지 않는다.
@@ -432,115 +355,14 @@ jobs:
             exit 1
           fi
 
-      # 카피 보이스 하드 룰(F1 과금 식별자 · F2 학습 프레이밍 · F7 구 명칭).
-      # 정본은 Vinc-docs vinc/A/vinc.a.terms.md §4-6, 이 스크립트가 그 실행체다.
-      - name: Forbidden-terms gate
-        run: python scripts/gate_forbidden.py
-
-      # 코드가 `[[...]]` 로 가리키는 그래프 문서·노드가 실재하는가. 오프라인이다 —
-      # 대조 대상은 커밋된 scripts/graph-refs.json 이고 CI 에 그래프 키는 없다.
-      # 매니페스트 갱신은 scripts/refresh_graph_refs.py 가 로컬에서 한다.
-      # 이 게이트가 없던 동안 인용 24건 중 19건이 조용히 끊어져 있었다(2026-08-18).
-      - name: Graph citation gate
-        run: python -X utf8 scripts/gate_graph_refs.py
-      # LadybugDB 전용 구문이 어댑터 밖에서 늘지 않는가. 외부 엔진(Neo4j) 어댑터를
-      # 붙이려면 방언이 어댑터 안에만 있어야 한다. 허용 목록은 줄기만 한다.
-      - name: Engine dialect gate
-        run: python -X utf8 scripts/gate_engine_dialect.py
-      - name: OpenAPI v1 drift gate
-        run: python -X utf8 scripts/gen_openapi.py --check
-
-      # 그래프 유래 문자열이 esc() 없이 innerHTML 로 가는가(감사 2026-08-18 M9). 팩으로
-      # 들어온 노드 제목·태그가 공격자 통제 입력이라 이것이 HTML 주입이 된다. 오늘 코드
-      # 실행이 아닌 이유는 CSP 에 script-src 가 없고 withGlobalTauri:false 라서다 — 그
-      # 두 설정이 하중을 받고 있으므로 여기서 고정한다. contrast 게이트와 같은 이유로
-      # core 잡에 산다(프런트에 테스트 러너가 없다).
-      - name: Graph-value escape gate
-        run: python -X utf8 scripts/gate_escape.py
-
-      # View 마크 대비(WCAG 2.x AND APCA 이중). 여기 사는 이유: 프런트에는 테스트
-      # 러너가 없고 app 잡은 tsc 만 돈다. 이 게이트는 생성물 theme.ts 를 읽는 순수
-      # 파이썬이라 core 잡에서 도는 것이 맞다. 두 기준을 AND 로 거는 이유는 극성마다
-      # 엄격한 쪽이 뒤집히기 때문이다(다크=APCA · 라이트=WCAG).
-      - name: View contrast gate
-        run: python scripts/gate_contrast.py
-
-      # 토큰 생성물(scripts/design/build_tokens.py 가 만든 사본)이 손으로 고쳐졌는지.
-      # 헤더의 "Do not hand-edit" 은 강제력이 없어서, 여기서 고친 색이 다음 재생성
-      # 때 조용히 되돌아가고 그 사이 배포분만 토큰과 달랐다. 각인 해시만 보므로 교차
-      # 리포 PAT 이 필요 없다. 스냅샷이 앞서간 경우(동기화 누락)는 아래 스텝이 잡는다.
-      - name: Design sync gate
-        run: python scripts/gate_design_sync.py
-
-      # 소비 사본이 토큰 스냅샷(scripts/design/tokens.json)에서 다시 만든 것과 같은지.
-      # 위의 각인 게이트가 "사본을 손댔나"를 보고, 이쪽이 "스냅샷만 바꾸고 --apply 를
-      # 안 했나"를 본다. 값의 정본은 그래프지만 CI 는 그래프를 읽지 않는다(키가 없다):
-      # 스냅샷은 사람이 pull_tokens.py 로 내려받아 사본과 같은 커밋에 넣는다.
-      - name: Design token drift gate
-        run: python -X utf8 scripts/design/sync_out.py --check
-
-      # 하드코딩 색(D-S01). 토큰 생성물은 AUTO-GENERATED 헤더로 제외하고, 정당한
-      # 비-디자인 색(스프라이트 틴트 베이스 등)은 `ds-allow: <이유>` 주석으로 면제하되
-      # **건수와 이유가 항상 출력된다** — 조용한 예외를 만들지 않기 위해서다.
-      - name: Design surface gate (app)
-        run: python -X utf8 scripts/design/gate_surface.py app/src
-
-      # 글씨 크기는 토큰(--fs-*)에서 온다. 직접 쓴 크기와 정의되지 않은 토큰은 떨어지고,
-      # 예외는 `fs-allow: <이유>` 주석이 있는 줄뿐이며 건수와 이유가 늘 출력된다.
-      - name: Type scale gate (app)
-        run: python -X utf8 scripts/design/gate_type_scale.py app/src
-
-      # Figma 가 토큰을 따라오고 있는가(Figma 는 따라갈 뿐, decision:code-is-canon-figma-follows).
-      # CI 에는 Figma 자격증명이 없으므로 라이브를 못 본다 — 커밋된 덤프
-      # scripts/design/figma/figma-live.json 과 토큰 스냅샷을 대조한다. 그래서 이 게이트가 잡는 것은
-      # **"토큰을 고치고 Figma 를 갱신하지 않은 커밋"** 이다: 덤프를 초록으로 되돌리는
-      # 유일한 정상 경로가 라이브를 다시 뜨는 것이라, 초록이면 Figma 도 갱신됐다는 뜻이 된다.
-      # ⚠ 덤프를 손으로 고치면 이 추론이 깨진다(각인 게이트와 같은 종류의 한계다). 그래서
-      # 그 파일 $meta 에 "패치 금지, 다시 뜰 것"을 적어 두었다.
-      # 갱신법: 에이전트가 scripts/design/figma_diff.py docstring 의 JS 를 use_figma 로
-      # 돌려 덤프를 새로 쓰고, 차이가 있으면 --plan 대로 **Figma 를** 고친다(반대 아님).
-      - name: Figma token drift gate
-        run: python -X utf8 scripts/design/figma_diff.py
-
-      # 위 게이트가 토큰 **값**을 본다면 이쪽은 화면·모달·아이콘의 **목록**을 본다.
-      # 잡는 것은 "코드에 화면이나 모달을 늘리면서 Figma 대응을 선언하지 않은 커밋"이다.
-      # 아직 안 그린 것(2026-09-05 기준 31건)은 맵에 `None` 으로 **선언돼 있어** 실패로
-      # 세지 않고 매 실행 목록으로만 나온다 — 그리지 않았다고 빨갛게 만들면 게이트가
-      # 곧 꺼지기 때문이다. 그린 뒤 `None` 을 프레임 이름으로 바꾸면 그때부터 실재를 본다.
-      - name: Figma inventory gate (screens · modals · icons)
-        run: python -X utf8 scripts/design/figma_inventory.py
-
-      # ⚠ 사이트 문구 대조(`figma_copy.py --check`)는 **여기 없다**. 이 잡은 Vinc 만
-      # 체크아웃하므로 그 게이트는 영원히 SKIP 했고, 초록 스텝이 검사한 것처럼 읽혔다
-      # (2026-09-06 지적). 스냅샷과 대응표는 이 리포에 있고 사이트는 저쪽에 있으므로,
-      # 소비 리포 CI 가 Vinc 를 읽기 전용으로 체크아웃해 거기서 돌린다:
-      # Vinc-homepage/.github/workflows/site-ci.yml · site-deploy.yml.
-
-      # 사이트 문구가 위 게이트라면 이쪽은 **앱 보드**다. 보드는 실행 중인 앱의 캡처라
-      # 글자 대조는 물음이 아니고, 남는 물음은 캡처가 낡았는가다: 캡처 시점의 app/src
-      # 트리 지문과 지금이 다르면 낡았다. 위 체크아웃의 fetch-depth 0 이 커밋 목록의
-      # 전제다(판정 자체는 얕아도 선다). 사이트와 달리 Vinc-homepage 가 필요 없어 늘 돈다.
-      #
-      # ⚠ **여기서는 막지 않는다(2026-09-19 판정, VIN-74).** 처방이 재캡처 하나뿐인데
-      # 그것은 실행 중인 사이드카와 실제 데이터가 있어야 도는 60상태·약 7분짜리 사람
-      # 작업이다. CI 가 스스로 못 하는 일을 CI 가 요구하면 규칙이 지켜지지 않는다 —
-      # 실제로 #358 이 재캡처 없이 머지돼 main 이 이 게이트로 빨간 채였다. 한동안 릴리스
-      # 태그 앞(`release.yml` 의 `version-gate`)에서 막았는데, 2026-09-26 부터 거기서도
-      # 경고만 낸다(발주자: 릴리스마다 재캡처는 쓸모없는 일). 보드가 낡아서 생기는 손해는
-      # 디자이너가 옛 화면을 보는 것뿐이다. 여기서는 낡았다고 말만 하고 지나간다.
-      # 근거: [[decision:figma-app-boards-no-longer-gate-a-release-2026-09-26]]
-      - name: Figma app board copy gate (advisory)
-        continue-on-error: true
-        run: python -X utf8 scripts/design/figma_app_copy.py
-
-      # 역할 껍데기(agents/shells/*.md)가 손으로 고쳐졌는가. 정의의 정본은 그래프의
-      # vinc/agent 도메인이고, 하네스는 실행 시점에 파일을 읽으므로 둘 다 있어야 한다.
-      # 하네스가 읽는 사본은 리포 밖 워크스페이스 루트에 --install 이 쓰므로 CI 는 못 본다.
-      # 오프라인이다 — 대조 대상은 커밋된 agents/roles.json 이고 CI 에 그래프 키는
-      # 없다(그래프 인용 게이트와 같은 사유). 스냅샷 갱신은 토큰 있는 곳에서
-      # scripts/agents_sync.py --pull 이 하고, 그 diff 는 사람이 읽는다.
-      - name: Agent roster gate
-        run: python -X utf8 scripts/agents_sync.py --check
+      # 이 잡의 게이트는 scripts/gates.py 레지스트리가 돈다(`ci="core"` 인 항목 전부, 그 파일의
+      # 순서대로): 금지어 · 그래프 인용 · 엔진 방언 · OpenAPI 신선도 · 이스케이프 · 대비 · 디자인
+      # 동기화와 토큰 드리프트 · 하드코딩 색 · 글씨 크기 · Figma 토큰·목록 · 앱 보드(알림) · 역할
+      # 껍데기. 각 게이트가 무엇을 보는지는 그 파일의 항목마다 적혀 있다. 한 게이트가 떨어져도
+      # 나머지는 끝까지 돌고, 막는 게이트가 하나라도 FAIL 이면 이 스텝이 떨어진다.
+      # 사이트 문구 대조(`figma_copy.py --check`)는 Vinc-homepage 를 읽어야 해서 그쪽 CI 가 돈다.
+      - name: Gates (registry, core)
+        run: python -X utf8 scripts/gates.py --ci core
 
   # ── PK 네임스페이싱 플래그 ON ────────────────────────────────────────────────
   # v0.8.4 axis 1(design A)은 `VINC_PK_NAMESPACED` 뒤에 산다. `core` 잡은 플래그가
