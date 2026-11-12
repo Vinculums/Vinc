@@ -116,26 +116,6 @@ jobs:
           # 붙는다 — 안전하지만 이 잡의 목적이 사라진다.
           fetch-depth: 0
 
-      # PR 제목 계약 — 스쿼시 머지에서 **그 제목이 곧 main 의 커밋 제목**이다.
-      # 게이트의 자리는 이제 `pr-title.yml` 의 `pr-title` 잡이다. 이 워크플로는 제목
-      # 편집(`edited`)에 다시 돌지 않아서, 여기서만 보면 고친 제목이 다음 push 까지 빨갛게
-      # 남는다. 따로 세우면 PR 이벤트마다 청구 1분 남짓이 붙는데, 그 대가를 받아들였다.
-      # ⚠ 이 스텝은 `pr-title` 이 룰셋의 필수 체크가 된 뒤 후속 PR 에서 지운다. 지우기
-      # 전까지는 두 자리가 같은 스크립트를 돌린다.
-      #
-      # ⚠ 제목을 `run:` 안에 `${{ }}` 로 펼치지 않는다 — 제목은 사람이 쓰는 문자열이라
-      # 백틱이나 `$(…)` 가 들어오면 그대로 셸에서 돈다. `env:` 로 넘기면 셸이 값으로만 본다.
-      - name: PR title contract (type prefix, English, no dash)
-        if: github.event_name == 'pull_request'
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          set -euo pipefail
-          # setup-python 을 쓰지 않는다. 이 잡은 컨테이너가 아니라 러너에서 바로 돌고
-          # (#261 의 툴캐시 함정이 없는 자리다), 표준 라이브러리만 쓰는 스크립트다.
-          PY=$(command -v python3 || command -v python)
-          "$PY" -X utf8 scripts/gate_pr_title.py
-
       # 추적되는 모든 파일에 주인 팀이 있는가(.github/CODEOWNERS ← agents/teams.json).
       # 여기 두는 이유는 분이다 — 이 잡은 PR 마다 이미 돌고, 잡을 새로 세우면 청구가
       # 1분부터 시작한다. PR 에서는 BASE..HEAD 가 닿은 팀 목록도 남긴다(지표 원천이지 스위치가
@@ -308,7 +288,7 @@ jobs:
 
       # 결정 문(모델 없음): 이 PR 이 건드린 파일을 다스리는 기록·결정을 호스티드 그래프에서
       # 찾아 스텝 요약에 적는다. 알림이다: 막지 않고, 실패해도 잡을 빨갛게 하지 않는다.
-      # 잡을 따로 세우지 않은 이유는 위 PR 제목 게이트와 같다(청구가 1분부터, 이 잡은 이미
+      # 잡을 따로 세우지 않은 이유는 분이다(청구가 1분부터, 이 잡은 이미
       # base..head 를 갖는다). 키는 저장소 시크릿 VINC_GATE_READ_KEY(읽기 전용 vinc_ro_ 키)이고
       # 사람이 넣는다. 없으면(포크 PR 은 늘 없다) 알리고 건너뛴다. 스페이스는 저장소 변수
       # VINC_GATE_SPACE(없으면 개인 그래프). 쓰기 키가 들어 있으면 실행 하나가 실행 기록

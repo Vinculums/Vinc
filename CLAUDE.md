@@ -284,8 +284,8 @@ ci(release): pin the interpreter the container can run
 `pr-title` 잡이 PR 이 열리고·고쳐지고·다시 열리고·push 될 때마다 돌린다. 따로 세운 이유는
 **제목 편집이 CI 전체를 다시 돌리지 않고 게이트만 다시 돌리게** 하려는 것이다(`ci.yml` 에
 `edited` 를 더하면 제목 한 글자에 20분 CI 가 다시 돈다). 대가는 PR 이벤트마다 청구 1분
-남짓이고, 그것을 받아들였다. 머지 큐에서는 잡이 건너뛰어 통과로 센다. `ci.yml` 의 `changes`
-잡에 남은 같은 스텝은 `pr-title` 이 필수 체크가 된 뒤 지운다. 손으로 보려면:
+남짓이고, 그것을 받아들였다. 머지 큐에서는 잡이 건너뛰어 통과로 센다. `pr-title` 은 룰셋의
+필수 체크다. 손으로 보려면:
 
 ```bash
 python -X utf8 scripts/gate_pr_title.py "fix(share): unchecked documents stay behind"
