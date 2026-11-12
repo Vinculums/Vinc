@@ -699,6 +699,11 @@ def _restate(policy: dict, output: str, failed) -> dict:
     return {"claim": said[0], "next": "Restate claim as " + RESTATE + ". Then submit output again."}
 
 
+def _findings(result) -> list[dict]:
+    """걸린 것마다 검사·행동 id·걸린 구절·고치는 법. 응답에만 싣고 기록에는 남기지 않는다(기록은 출력의 해시만 갖는다)."""
+    return [dict(f) for f in result.findings]
+
+
 def _output(args, bridge, owner, eid, props, policy, flags=()) -> dict:
     output = args.get("output")
     if not isinstance(output, str) or not output.strip() or len(output) > OUTPUT_MAX:
@@ -736,7 +741,8 @@ def _output(args, bridge, owner, eid, props, policy, flags=()) -> dict:
         failed = _saved(bridge, owner, eid, props)
         return failed or {**_view(props, eid, policy, status="blocked",
                                   failed_checks=list(result.failed_checks),
-                                  evidence_sentences=list(result.evidence_sentences)),
+                                  evidence_sentences=list(result.evidence_sentences),
+                                  findings=_findings(result)),
                           **_restate(policy, output, result.failed_checks)}
     actions = list(dict.fromkeys(list(result.person_only_actions) + asks))
     if result.verdict == "interrupt" or actions:
@@ -762,6 +768,6 @@ def _output(args, bridge, owner, eid, props, policy, flags=()) -> dict:
             return failed
         # 저장된 대기만 알린다(계정 → 웹 푸시). 행동·질문은 싣지 않고, 실패해도 실행은 그대로다.
         run_notify.waiting(owner, eid, props)
-        return _view(props, eid, policy)
+        return _view(props, eid, policy, **({"findings": _findings(result)} if result.findings else {}))
     _end(props, "success", "gates passed")
     return _finish(bridge, owner, eid, props, status="passed")

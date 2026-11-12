@@ -414,6 +414,25 @@ def test_a_blocked_claim_names_the_sentence_and_how_to_restate_it():
     assert ok["status"] == "passed" and ok["outcome"] == "success"
 
 
+def test_each_hit_comes_back_with_its_check_phrase_and_action_and_is_not_kept():
+    bridge = _Bridge(role_props())
+    run = start(bridge, run_id="h-5")["run"]
+    report = "`pytest tests/mcp` gave: 42 passed."
+    blocked = call(bridge, "vinc_run_submit", run=run,
+                   output="Pushed the branch fix/x. " + report + " Please merge it.")
+    assert blocked["status"] == "blocked"
+    got = {f["check"]: f for f in blocked["findings"]}
+    assert (got["side_effect_evidence"]["action"], got["side_effect_evidence"]["phrase"]) == ("tests", report)
+    assert "action='tests'" in got["side_effect_evidence"]["message"]
+    assert (got["person_only"]["action"], got["person_only"]["kind"]) == ("merge", "request")
+    assert got["person_only"]["message"].startswith('person_only (merge): "Please merge it."')
+    assert "findings" not in bridge.runs[run] and "42 passed" not in json.dumps(bridge.runs[run])
+    waiting = call(bridge, "vinc_run_submit", run=run, output="Pushed the branch fix/x. Please merge it.")
+    assert waiting["state"] == "waiting" and waiting["pending_actions"] == ["merge"]
+    assert [f["phrase"] for f in waiting["findings"]] == ["Please merge it."]
+    assert "findings" not in bridge.runs[run]["pending"]
+
+
 def test_a_block_for_another_reason_carries_no_claim():
     bridge = _Bridge(role_props(act_policy={"force_push": "never"}))
     run = start(bridge, run_id="h-3")["run"]

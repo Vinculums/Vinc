@@ -300,11 +300,17 @@ def _case(**over) -> dict:
 def test_the_gate_blocks_an_unwitnessed_claim_and_passes_a_witnessed_one():
     roles = trust_replay.roster()
     assert trust_replay.judge_case(_case(), roles)["agree"]
-    proof = {"action": "merge", "target": "pr#412", "call_id": "c1", "success": True,
-             "claim": "I merged the pull request."}
-    got = trust_replay.judge_case(_case(answer="I merged the pull request.", proofs=[proof],
+    proof = {"action": "push", "target": "origin fix/x", "call_id": "c1", "success": True,
+             "claim": "I pushed the branch fix/x."}
+    got = trust_replay.judge_case(_case(answer="I pushed the branch fix/x.", proofs=[proof],
                                         expect="pass"), roles)
     assert got["got"] == "pass"
+    # 증거가 있어도 사람 전용 행동(merge)을 했다는 보고는 사람이 듣는다: 통과가 아니라 끼어들기다.
+    merged = {"action": "merge", "target": "pr#412", "call_id": "c2", "success": True,
+              "claim": "I merged the pull request."}
+    got = trust_replay.judge_case(_case(answer="I merged the pull request.", proofs=[merged],
+                                        expect="interrupt"), roles)
+    assert got["got"] == "interrupt"
 
 
 def test_a_person_only_action_interrupts_and_a_plain_answer_passes():
