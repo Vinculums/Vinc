@@ -151,8 +151,8 @@ export function mountSpaceSwitcher(deps: SpaceDeps = appDeps()): void {
 
   function openMenu(anchor: HTMLElement): void {
     const el = document.createElement("div");
-    // `ctx-menu` 를 달지 않는다: `openContextMenu`(components.ts)가 그 클래스를 전부 지워서, 달면 이 메뉴의
-    // 요소만 사라지고 문서에 건 듣기는 남는다. 판의 모양은 CSS 가 `.ctx-menu, .space-menu` 로 나눠 쓴다.
+    // `ctx-menu` 를 달지 않는다: 그 클래스는 우클릭 메뉴(components.ts)의 것이고, 단축키의 쉼과 시트가 열릴 때의
+    // 닫기는 이 메뉴를 `.space-menu` 와 연 단추로 따로 찾는다. 판의 모양은 CSS 가 `.ctx-menu, .space-menu` 로 나눠 쓴다.
     el.className = "space-menu";
     el.setAttribute("role", "dialog");
     el.setAttribute("aria-label", U.space);
