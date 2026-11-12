@@ -153,6 +153,10 @@ class StoreReadOnly(RuntimeError):
     """읽기 전용으로 연 프로세스의 쓰기. 서버의 AccessMode 오류 대신 왜 읽기 전용인지 말한다."""
 
 
+class StoreClosed(RuntimeError):
+    """닫는 중이거나 닫힌 어댑터로 온 질의. 드라이버의 연결 오류 대신 왜 못 하는지 말한다."""
+
+
 class Neo4jBackend:
     """Neo4j 어댑터. 읽기와 쓰기가 같은 드라이버를 쓴다(엔진이 동시 트랜잭션을 받는다)."""
 
@@ -161,6 +165,8 @@ class Neo4jBackend:
     scoped_chunk_search = True
     #: 마지막으로 못 연 사유(사람에게 보여도 되는 문장, 비밀번호 없음). `/health` 의 open_error 로 나간다.
     last_open_error: str = ""
+    #: 닫기가 다른 스레드의 진행 중인 드라이버 사용을 기다리는 상한(초). 넘기면 말하고 그대로 닫는다.
+    close_wait_s: float = 30.0
 
     @classmethod
     def open(cls, cfg) -> "Neo4jBackend | None":
@@ -206,6 +212,15 @@ class Neo4jBackend:
         #: 스레드마다 열린 쓰기 묶음과 그 트랜잭션(:meth:`write_batch`). 다른 스레드의 읽기는 끼지 않는다.
         self._batches = BatchSlot()
         self._batch_tx = threading.local()
+        #: 드라이버를 쓰는 중인 호출 수(:meth:`_in_use`). 닫기는 이것이 빠지기를 기다린 뒤 드라이버를
+        #: 닫는다. 드라이버의 `close()` 는 다른 스레드가 빌려 쓰는 연결까지 닫으며 GOODBYE 를 쓰는데,
+        #: 그 스레드가 같은 연결의 `sendall` 안에 있으면 송신 버퍼를 늘리다 `BufferError` 가 난다
+        #: (CI job 130934765746, 2026-11-12). 드라이버의 연결은 스레드 사이에서 안전하지 않다.
+        self._use = threading.Condition()
+        self._users = 0
+        self._closing = False
+        #: 이 스레드가 쥔 수. 묶음 안에서 닫는 스레드가 자기 자신을 기다리지 않게 뺀다.
+        self._mine = threading.local()
         self._driver = GraphDatabase.driver(
             uri, auth=(user, password),
             notifications_min_severity=NotificationMinimumSeverity.OFF)
@@ -227,8 +242,28 @@ class Neo4jBackend:
                                               daemon=True)
                 self._beat.start()
 
+    @contextmanager
+    def _in_use(self):
+        """드라이버를 쓰는 구간. 닫는 중이면 들이지 않고, 닫기는 열린 구간이 끝나기를 기다린다."""
+        with self._use:
+            if self._closing:
+                raise StoreClosed("this Neo4j store is closed")
+            self._users += 1
+        self._mine.n = getattr(self._mine, "n", 0) + 1
+        try:
+            yield
+        finally:
+            self._mine.n -= 1
+            with self._use:
+                self._users -= 1
+                self._use.notify_all()
+
     # ── 쓰기 임대 ─────────────────────────────────────────────────────────
     def _lease(self, query: str, prev: str | None = None) -> dict | None:
+        with self._in_use():
+            return self._lease_now(query, prev)
+
+    def _lease_now(self, query: str, prev: str | None = None) -> dict | None:
         # 임대 자체는 늘 쓰기 세션이다. `execute_write` 는 일시 오류(동시에 처음 노드를 만들 때의
         # 교착 감지 같은 TransientError)를 드라이버가 다시 시도한다 — 그냥 `run` 이면 진 쪽이 오류로 끝난다.
         def work(tx):
@@ -269,6 +304,8 @@ class Neo4jBackend:
                     print(f"[neo4j] {self.read_only_reason}; this process is read-only now",
                           file=sys.stderr, flush=True)
                     return
+            except StoreClosed:
+                return
             except Exception as exc:       # noqa: BLE001 — 끊김은 다음 박동이 다시 본다
                 print(f"[neo4j] lease renewal failed: {type(exc).__name__}: {exc}",
                       file=sys.stderr, flush=True)
@@ -293,7 +330,8 @@ class Neo4jBackend:
         from neo4j import READ_ACCESS, WRITE_ACCESS
         mode = READ_ACCESS if self.read_only else WRITE_ACCESS
         batch = Batch()
-        with self._driver.session(database=self.database, default_access_mode=mode) as s:
+        with self._in_use(), \
+                self._driver.session(database=self.database, default_access_mode=mode) as s:
             tx = s.begin_transaction()
             self._batch_tx.tx = tx
             self._batches.set(batch)
@@ -328,7 +366,8 @@ class Neo4jBackend:
         from neo4j import READ_ACCESS, WRITE_ACCESS
         mode = READ_ACCESS if self.read_only else WRITE_ACCESS
         try:
-            with self._driver.session(database=self.database, default_access_mode=mode) as s:
+            with self._in_use(), \
+                    self._driver.session(database=self.database, default_access_mode=mode) as s:
                 result = s.run(to_neo4j_cypher(query), params or {})
                 return _rows(result, raw=raw)
         except Exception as exc:
@@ -468,13 +507,24 @@ class Neo4jBackend:
         raise NotImplementedError("a Neo4j location is backed up with Neo4j's own tools")
 
     def close(self) -> None:
+        """박동을 멈추고, 새 질의를 막고, 다른 스레드에서 진행 중인 질의가 끝나기를 기다린 뒤
+        임대를 놓고 드라이버를 닫는다. 기다림은 `close_wait_s` 까지다(박동의 `join` 상한이 지나도
+        남은 임대 갱신도 여기서 기다린다). 넘기면 남은 수를 말하고 닫는다 — 닫기를 막지는 않는다."""
         self._stop.set()
         if self._beat is not None:
             self._beat.join(timeout=5)
+        with self._use:
+            self._closing = True
+            own = getattr(self._mine, "n", 0)
+            self._use.wait_for(lambda: self._users <= own, timeout=self.close_wait_s)
+            busy = self._users - own
+        if busy > 0:
+            print(f"[neo4j] closing while {busy} queries still run on other threads "
+                  f"(waited {self.close_wait_s:g}s)", file=sys.stderr, flush=True)
         if not self.read_only:
             try:
-                self._lease(_LEASE_RELEASE)   # 다음 프로세스가 만료를 기다리지 않게
-            except Exception:                 # noqa: BLE001 — 닫기는 막지 않는다
+                self._lease_now(_LEASE_RELEASE)   # 다음 프로세스가 만료를 기다리지 않게
+            except Exception:                     # noqa: BLE001 — 닫기는 막지 않는다
                 pass
         self._driver.close()
 
