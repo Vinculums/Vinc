@@ -134,16 +134,55 @@ def test_a_run_the_store_never_saw_keeps_its_questions_and_drops_its_answers(ope
     out = sync.apply_delta(owner=OWNER, bundle=_bundle(_run_node(incoming)), store=store)
     assert out["applied"] == 1 and out[run_state.CODE] == [RUN], out
     after = _stored_props(store)
-    # 질문은 남는다: 상태 값, 몇 번째 질문인가, 물은 때, 대기의 질문과 행동.
+    # 질문은 남는다: 상태 값, 몇 번째 질문인가, 물은 때, 대기의 행동과 그 행동의 설명.
     assert after["state"] == "waiting" and after["asks"] == 9
     assert after["last_asked_at"] == "2026-11-13T00:00:00Z"
-    assert after["pending"]["question"] == "Merge?" and after["pending"]["actions"] == ["merge"]
+    assert after["pending"]["actions"] == ["merge"]
+    assert after["pending"]["requests"] == [
+        {"action": "merge", "reason": "r", "kind": "person_only"}]
+    # 보낸 쪽이 쓴 질문 문장은 건너오지 않는다.
+    assert "question" not in after["pending"]
     # 답은 없다: 승인은 빈 목록이고 답 키는 하나도 없다. 대기는 사람만 답한다.
     assert after["approved"] == []
     assert not set(after) & (set(run_state.ANSWER_KEYS) - {"approved"}), after
     assert after["pending"]["kind"] == "person_only"
     assert [r["kind"] for r in after["pending"]["requests"]] == ["person_only"]
     assert after["role"] == "concept:agent-x"
+
+
+_SHOWN_ELSEWHERE = [
+    # 보이는 행동과 승인되는 행동이 다르다.
+    ({"actions": ["merge"], "question": "May the agent read the docs?",
+      "requests": [{"action": "read_docs", "reason": "harmless"}]}, ["merge"], [""]),
+    # 보이는 목록이 승인되는 목록의 일부다.
+    ({"actions": ["read_docs", "merge"],
+      "requests": [{"action": "read_docs", "reason": "harmless"}]},
+     ["read_docs", "merge"], ["harmless", ""]),
+    # 같은 행동의 설명이 둘이면 처음 것만, 문자열이 아닌 설명과 요청은 버린다.
+    ({"actions": ["merge", "merge", 7, ["send"]],
+      "requests": [{"action": "merge", "reason": "first"}, {"action": "merge", "reason": "second"},
+                   {"action": "merge", "reason": {"html": "x"}}, "merge", None]},
+     ["merge"], ["first"]),
+    # 행동 목록이 목록이 아니면 묻는 행동이 없다.
+    ({"actions": "merge", "requests": [{"action": "read_docs", "reason": "harmless"}]}, [], []),
+]
+
+
+@pytest.mark.parametrize("pending,actions,reasons", _SHOWN_ELSEWHERE,
+                         ids=["other-action", "subset", "duplicates-and-junk", "not-a-list"])
+def test_a_run_the_store_never_saw_shows_exactly_the_actions_an_answer_would_approve(
+        open_store, pending, actions, reasons):
+    store = open_store("receiver")
+    incoming = {"run_id": "sync-rule", "role": "concept:agent-x", "state": "waiting",
+                "pending": {**pending, "kind": "ask_first", "asked_at": "2026-11-13T00:00:00Z"}}
+    sync.apply_delta(owner=OWNER, bundle=_bundle(_run_node(incoming)), store=store)
+    after = _stored_props(store)["pending"]
+    # 답이 승인하는 것은 `actions` 이고 사람에게 보이는 것은 `requests` 다. 둘이 같아야 한다.
+    assert after["actions"] == actions
+    assert [r["action"] for r in after["requests"]] == actions
+    assert [r["reason"] for r in after["requests"]] == reasons
+    assert all(r["kind"] == "person_only" for r in after["requests"])
+    assert "question" not in after and after["asked_at"] == "2026-11-13T00:00:00Z"
 
 
 @pytest.mark.parametrize("pending", ["Merge?", ["merge"], None], ids=["string", "list", "null"])

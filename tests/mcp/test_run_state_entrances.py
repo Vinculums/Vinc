@@ -481,8 +481,14 @@ def _device_run(device: "Device", run_id: str) -> tuple[str, dict]:
 
 
 def _question_of(local: dict) -> dict:
-    """믿지 않는 쪽이 받은 기기 실행의 상태: 질문은 그대로, 승인은 빈 목록, 답 키는 없다."""
-    pending = {**local["pending"], "kind": "person_only"}
+    """믿지 않는 쪽이 받은 기기 실행의 상태: 묻는 행동은 그대로, 승인은 빈 목록, 답 키는 없다.
+
+    보이는 행동 목록은 묻는 행동에서 다시 만들어지고 보낸 쪽의 질문 문장은 없다."""
+    sent = {r["action"]: r.get("reason", "") for r in local["pending"].get("requests") or []}
+    pending = {**{k: v for k, v in local["pending"].items() if k not in ("question", "requests")},
+               "kind": "person_only",
+               "requests": [{"action": a, "reason": sent.get(a, ""), "kind": "person_only"}
+                            for a in local["pending"]["actions"]]}
     return {**{k: local[k] for k in run_state.QUESTION_KEYS if k in local},
             "pending": pending, "approved": []}
 
@@ -668,7 +674,8 @@ def test_push_everything_hands_the_hub_a_device_run_with_its_question_and_not_it
     assert any(w.startswith(run_state.CODE + ":") and eid in w for w in rep["warnings"]), rep
     r = _reads(hub, eid, "entr-push-all")
     assert _state(r["stored"]) == _question_of(local)
-    assert r["stored"]["pending"]["question"] == "Deploy?" and r["stored"]["asks"] == 2
+    assert r["stored"]["pending"]["actions"] == ["deploy"] and r["stored"]["asks"] == 2
+    assert "question" not in r["stored"]["pending"]
     _waits_for_a_person(r)
     _next_submit_waits(hub, eid)
     # 기기의 merge 승인은 허브의 승인이 되지 않는다. 허브의 사람이 deploy 에 답하면 그것만 승인된다.
@@ -727,7 +734,7 @@ def test_a_mode_switch_round_trip_keeps_the_question_and_not_the_local_approval(
     assert got == on_hub
     kept = {k: got[k] for k in ("state", "asks", "last_asked_at")}
     assert kept == {k: local[k] for k in ("state", "asks", "last_asked_at")}
-    assert got["pending"] == {**local["pending"], "kind": "person_only"}
+    assert got["pending"] == _question_of(local)["pending"]
     lost = {k for k in run_protocol.ANSWER_KEYS if got.get(k) != local.get(k)}
     assert lost == {"approved", "answer", "answered_at", "answered_actions", "answer_via",
                     "answered_by"}, lost
@@ -777,6 +784,30 @@ def test_a_forged_approval_on_a_run_the_hub_never_saw_reads_as_waiting_for_a_per
     _waits_for_a_person(r)
     _next_submit_waits(hub, eid)
     _waits_for_a_person(_reads(hub, eid, run_id))
+
+
+def test_a_person_approves_only_what_the_card_showed_on_a_run_the_hub_never_saw(hub):
+    run_id = "entr-unseen-shown"
+    eid = run_protocol.episode_id(run_id)
+    now = _stamp(0)
+    props = {"run_id": run_id, "role": ROLE, "task": "Review the change.", "outcome": "waiting",
+             "step": 1, "state": "waiting", "asks": 1, "last_asked_at": now,
+             "pending": {"actions": ["merge"], "kind": "person_only", "asked_at": now,
+                         "question": "May the agent read the docs?",
+                         "requests": [{"action": "read_docs", "reason": "harmless",
+                                       "kind": "person_only"}]}}
+    status, out = _push(hub, _episode(eid, props))
+    assert status == 200 and out["applied"] == 1, out
+    # 승인함의 카드는 `decision.requests` 와 질문을 그린다. 보낸 쪽이 적은 다른 행동과 질문은 없다.
+    shown = run_protocol.decision(hub.stored(eid)["pending"])
+    assert [r["action"] for r in shown["requests"]] == ["merge"] == shown["actions"], shown
+    assert "read" not in json.dumps(shown), shown
+    assert eid in hub.waiting_ids()
+    # 사람이 승인하면 승인되는 것은 카드가 보인 행동 그대로다.
+    answered = hub.proxy("run-answer", {"run": eid, "ask": 1, "answer": "approve"},
+                         auth="session")
+    assert answered.get("executed") is True, answered
+    assert hub.stored(eid)["approved"] == [r["action"] for r in shown["requests"]]
 
 
 def _push_with_trust_claims(hub: Hub, bundle: dict) -> tuple[int, dict]:

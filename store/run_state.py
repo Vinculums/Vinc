@@ -102,16 +102,30 @@ def questions_only(props) -> dict:
     """믿지 않는 쪽이 보낸 실행 상태에서 질문만 남긴다: 답 키는 없고 승인은 빈 목록이다.
 
     대기(`pending`)는 dict 일 때만 남기고, 그 종류와 행동마다의 종류를 사람만 답하는 것으로
-    바꾼다. 보낸 쪽이 `ask_first` 라고 적어 두면 에이전트 자격의 답이 그 대기를 승인할 수 있다."""
+    바꾼다. 보낸 쪽이 `ask_first` 라고 적어 두면 에이전트 자격의 답이 그 대기를 승인할 수 있다.
+
+    사람에게 보이는 것(`requests`, `question`)과 승인되는 것(`actions`)이 어긋나면 안 된다:
+    답은 `actions` 를 승인하므로, 보낸 쪽이 `requests` 에 다른 행동을 적어 두면 사람이 본 적
+    없는 행동이 승인된다. 그래서 `requests` 는 `actions` 에서 다시 만들고(같은 행동의 설명만
+    옮긴다), 보낸 쪽이 쓴 질문 문장은 버린다."""
     props = props_of(props)
     kept = {k: v for k, v in props.items() if k in QUESTION_KEYS}
     pending = kept.pop("pending", None)
     if isinstance(pending, dict):
-        requests = pending.get("requests")
-        kept["pending"] = {**pending, "kind": _PERSON_ONLY}
-        if isinstance(requests, list):
-            kept["pending"]["requests"] = [{**r, "kind": _PERSON_ONLY} if isinstance(r, dict) else r
-                                           for r in requests]
+        actions = pending.get("actions")
+        actions = (list(dict.fromkeys(a for a in actions if isinstance(a, str)))
+                   if isinstance(actions, list) else [])
+        reasons: dict[str, str] = {}
+        sent = pending.get("requests")
+        for r in sent if isinstance(sent, list) else []:
+            if (isinstance(r, dict) and isinstance(r.get("action"), str)
+                    and isinstance(r.get("reason"), str)):
+                reasons.setdefault(r["action"], r["reason"])
+        kept["pending"] = {
+            **{k: v for k, v in pending.items() if k not in ("question", "requests")},
+            "actions": actions, "kind": _PERSON_ONLY,
+            "requests": [{"action": a, "reason": reasons.get(a, ""), "kind": _PERSON_ONLY}
+                         for a in actions]}
     kept["approved"] = []
     return kept
 
