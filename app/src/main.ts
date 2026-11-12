@@ -349,11 +349,13 @@ export function applyTheme() {
   // ⚠ 설정 화면의 클릭 핸들러가 아니라 **여기**여야 한다: pref 가 "auto" 면 아래
   //   matchMedia 가 OS 를 따라 부르므로 설정 클릭이 아예 없는 경로가 생긴다.
   //   마운트 전 첫 호출은 `#lnb-body` 가 없어 paint 가 알아서 되돌아간다.
-  repaintLnb();
   // 열린 지도도 같은 사정이다(3D·2D·타임라인·번들 모두 마운트 때 색을 굳힌다). 다시
   // 그리는 것(route·show)이 아니라 **다시 칠하는 것**이라 읽던 문서 열과 카드가 남는다.
   // 근거: [[decision:a-theme-switch-repaints-the-open-view-in-place]]
+  // ⚠ 지도가 **먼저**다: 그래프 트리의 색은 나침반의 표(`gsrc.colour`)를 읽으므로, 트리를 먼저 그리면
+  //   나침반이 표를 새 모드로 다시 짓기 전의 색(반대 모드)이 트리에 남는다.
   repaintView();
+  repaintLnb();
 }
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
 // 웹 GNB 의 테마 토글(공홈 gnb.js)은 키만 쓰고 이 이벤트를 쏜다. 받아서 같은 길로 다시 칠한다.

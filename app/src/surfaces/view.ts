@@ -10,7 +10,6 @@ import { mountCompass, compassDataFrom, type CompassHandle, type CompassState } 
 import { openShareSheet } from "../sheets";
 import { sayings, statedStart, decisionSteps, type ItemLink, type Step } from "../item-page";
 import { isHistorical, conflictIds } from "../node-validity";
-import { tintMap } from "../view-tint";
 import { esc, openContextMenu, confirmDestructive } from "../components";
 import { hostOf } from "../storage-mode";
 import { blocksSurfaceShortcuts } from "../keys";
@@ -118,7 +117,7 @@ function bindCopyLink(btn: Element | null, make: () => string): void {
  *  넘기기 시작하면 그 줄이 본문보다 커진다(관계 카드의 `relsMore` 와 같은 태도). */
 const READER_CHIPS = 6;
 
-// 런타임 테마 모드 — 주제 틴트(`tintMap`)가 모드에 따라 고른다.
+// 런타임 테마 모드 — 테마 전환(retheme)이 칠한 모드와 견준다.
 import { type ThemeMode } from "../theme";
 import { loaderBlock, loaderInline } from "../vinc-loaders.js";
 const curMode = (): ThemeMode =>
@@ -129,10 +128,6 @@ const curMode = (): ThemeMode =>
 let liveGen = 0;
 let disposeView: (() => void) | undefined;
 export function leaveView(): void { disposeView?.(); disposeView = undefined; ++liveGen; }
-
-/** 지금 지도가 칠한 주제 색 — 마운트가 짓고 노드 카드가 읽는다. 주제 틴트를 끄면 null
- *  이라 카드의 표식도 잉크 그대로다(지도와 같다). */
-let shownTints: Map<string, string> | null = null;
 
 /** 살아 있는 마운트의 테마 재칠 — renderView 가 걸고, 표면이 떠나면 스스로 물러난다. */
 let themeRepaint: (() => void) | null = null;
@@ -212,15 +207,9 @@ export async function renderView(el: HTMLElement, resume = false) {
   // 지금 그린 노드들 — focusNode 가 id 만 받고도 라벨·주제를 알아야 한다(D70).
   // 렌더러에서 꺼내지 않고 마운트 시점에 한 벌 챙겨 둔다.
   let curNodes: GraphNode[] = [];
-  /** 지금 그려진 노드를 갈아 끼운다. 주제 색 표가 이 집합 위에서 정의되므로 대입을
-   *  한 곳으로 모은다(곳마다 대입하면 그중 하나에서 옛 표가 남는다). */
+  /** 지금 그려진 노드를 갈아 끼운다. 대입은 이 한 곳에서만 한다. */
   function setCurNodes(next: GraphNode[]): void {
     curNodes = next;
-    // 주제 색은 **여기서 한 벌**만 짓는다 — 지도와 노드 카드가 같은 표를 읽는다.
-    // 색은 주제의 순위로 매겨지므로 표를 짓는 목록이 곳마다 다르면(고아 숨김으로 걸러진
-    // 목록, 주제 하나짜리 목록) 같은 주제가 곳마다 다른 색이 된다.
-    // 근거: [[decision:a-node-keeps-its-own-colour-in-every-state]]
-    shownTints = tintMap(next.map((n) => n.domain), curMode());
   }
   /** 지금 렌더러들이 칠해진 모드. 새 마운트는 언제나 그때의 모드로 칠하므로, 이 값은
    *  테마가 뒤집힐 때만 바뀐다 — 같은 값을 다시 쓰는 applyTheme(설정에서 같은 칸을 다시
@@ -228,17 +217,16 @@ export async function renderView(el: HTMLElement, resume = false) {
   let paintedMode = curMode();
   /** 테마 전환을 **색에만** 반영한다. `show()` 를 부르지 않는 것이 요점이다 — 그 길은
    *  읽던 문서 열과 노드 카드를 닫고(detail.hidden · closeFloatPanel) 카메라·점등까지
-   *  되감는다. 표는 여기서 한 벌 다시 짓고, 렌더러마다 자기 굳은 값만 갈아 끼운다.
+   *  되감는다. 주제 색 표는 나침반이 다시 짓고, 떠 있는 카드는 그 표에서 자기 굳은 값만 갈아 끼운다.
    *  근거: [[decision:a-theme-switch-repaints-the-open-view-in-place]] */
   function retheme(): void {
     const mode = curMode();
     if (mode === paintedMode) return;
     paintedMode = mode;
-    shownTints = tintMap(curNodes.map((n) => n.domain), mode);
     compass?.retheme();
-    // 떠 있는 노드 카드의 주제 표식(openRelsCard) — 지도와 같은 표를 읽는다.
+    // 떠 있는 노드 카드의 주제 표식(openRelsCard) — 나침반이 다시 지은 표를 읽는다.
     document.querySelectorAll<HTMLElement>(".float-mark[data-domain]").forEach((mk) => {
-      const t = shownTints?.get(mk.dataset.domain || "");
+      const t = compass?.colour(mk.dataset.domain || "");
       if (t) mk.style.color = t; else mk.style.removeProperty("color");
     });
   }
@@ -1010,10 +998,10 @@ export async function renderView(el: HTMLElement, resume = false) {
       title: nd.label, x: home.x, y: home.y, closeLabel: V.railClose,
     });
     // 머리의 표식 — 지도가 그리는 마크 그대로(채운 원 = 개념), 색은 그 노드의 주제 색.
-    // 지도와 **같은 표**에서 읽는다. 주제 하나만 넣어 표를 새로 지으면 순위가 늘 0 이라
-    // 모든 카드가 같은 색(색상각 0)이 됐고, 지도의 그 노드와 한 번도 맞지 않았다.
+    // 나침반의 **그 표**(`compass.colour`, 사이드바 그래프 트리도 읽는다)에서 읽는다. 표를 여기서 따로 지으면
+    // 넣는 집합(조상 경로 포함 여부)이 갈려 순위가 밀리고, 같은 주제가 카드와 지도에서 두 색이 된다.
     // `data-domain` 은 테마 전환(retheme)이 이 표식을 다시 칠할 때 읽는다.
-    const tint = nd.domain ? shownTints?.get(nd.domain.trim()) : undefined;
+    const tint = nd.domain ? compass?.colour(nd.domain.trim()) || undefined : undefined;
     card.el.querySelector(".float-title")?.insertAdjacentHTML("beforebegin",
       `<span class="float-mark" aria-hidden="true"${
         nd.domain ? ` data-domain="${esc(nd.domain.trim())}"` : ""}${

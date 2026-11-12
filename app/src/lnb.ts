@@ -92,6 +92,10 @@ const tintStyle = (domain: string): string => {
   const c = tintOf(domain);
   return c ? `;--tint:${c}` : "";
 };
+/** 사이드바가 지금 칠하는 주제 색(그 주제 줄의 고리 · 점과 같은 값, 뿌리와 표에 없는 주제는 ""). 홈 문서 목록이
+ *  자기 집합으로 표를 따로 지으면 순위가 갈려 한 주제가 목록과 사이드바에서 두 색이 된다 — 그래서 이 표를 읽는다.
+ *  표가 바뀌면(트리를 다시 그림 · 테마 전환) `vinc:lnb-tints` 를 낸다. */
+export function lnbTopicTint(domain: string): string { return tintOf(domain); }
 /** 문서 트리의 색 표: 나침반과 같게 주제 경로의 모든 조상까지 넣어 tintPlan 을 돌린다(넣는 집합이 같아야 같은 색이 나온다). */
 function planTints(domains: string[]): Map<string, string> {
   const all = new Set<string>(), tops = new Set<string>();
@@ -340,6 +344,8 @@ let lastDomains: string[] = [];   // 문서 트리가 마지막으로 받은 주
 let agentMapLoading = false;
 let agentPick = "";
 let agentCol = new Map<string, string>(), polCol = "";   // Agent 화면의 색 = Agent 단위(보드와 같은 표, agent-map.agentColours)
+/** Agent · 정책 색을 **지금 모드로** 다시 매긴다. 색은 모드마다 다른 HEX 라 paint 마다 부른다(테마를 뒤집고 다시 그릴 때 반대 모드 색이 남지 않게). */
+let colourAgents: (() => void) | null = null;
 const AGENT_POL = "agent-policies";
 function paintAgentTree(): string {
   const L = COPY.ui.lnb;
@@ -412,7 +418,7 @@ export async function refreshLnb(opts: { quiet?: boolean } = {}): Promise<void> 
       agentMapLoading = true;
       try { const m = await import("./surfaces/agent-map"); const d = await m.loadAgentMap(agentRoster);
         if (stale()) return; agentMap = d ? { agents: d.agents, procedures: d.procedures, policies: d.policies } : null;
-        agentCol = d ? m.agentColours(d.agents) : new Map(); polCol = m.policyColour();
+        colourAgents = () => { agentCol = d ? m.agentColours(d.agents) : new Map(); polCol = m.policyColour(); };
         if (!agentPick) agentPick = m.pickedInAgentMap(); }
       catch { agentMap = null; }
       agentMapLoading = false;
@@ -743,6 +749,7 @@ function paint() {
     if (agentMapLoading) { paintHead(); body.innerHTML = loaderRows(COPY.ui.lnb.loading, { count: 3, compact: true }); return; }
     const doms = lastDomains.length ? lastDomains : agentMap ? [...agentMap.agents, ...agentMap.procedures, ...agentMap.policies].map((x) => x.domain) : agentRoster.map((r) => r.domain);
     tints = planTints(doms);   // 주제 색은 문서 트리와 같은 표로(같은 주제 = 같은 색)
+    colourAgents?.();
     paintHead(agentMap ? agentMap.agents.length : agentRoster.length, COPY.ui.lnb.agents);
     body.innerHTML = paintAgentTree();
     return;
@@ -752,6 +759,7 @@ function paint() {
   // 색은 paint 마다 한 번 만든다(줄마다 만들면 같은 답을 n 번 낸다). 토글이 꺼져
   // 있으면 null 이고, 그때 줄에는 --tint 가 아예 안 실려 CSS 의 잉크가 그대로 쓰인다.
   tints = planTints(groups.map((g) => g.domain));
+  window.dispatchEvent(new Event("vinc:lnb-tints"));
   paintHead((tree?.domains || []).length);
   let html = "";
   // ③ 고른 것이 있으면 **말한다**. 켜진 배경만으로는 몇 개인지도, 어떻게 푸는지도

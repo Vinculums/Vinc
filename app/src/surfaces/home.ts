@@ -4,11 +4,9 @@ import { docTitle } from "../doc-title";
 import { esc, confirmDestructive } from "../components";
 import { icon } from "../icons";
 import { dayOf } from "../view-prefs";
-import { tintMap } from "../view-tint";
-import type { ThemeMode } from "../theme";
 import type { DocEditorHandle } from "../doc-editor";
 import { setTopbarLead, setViewHooks } from "../topbar";
-import { agentRoleCount, setLnbActive, setLnbDocOpener, setLnbTopicPicker, setLnbScopeClearer, refreshLnb } from "../lnb";
+import { agentRoleCount, lnbTopicTint, setLnbActive, setLnbDocOpener, setLnbTopicPicker, setLnbScopeClearer, refreshLnb } from "../lnb";
 import { setLiveRefresher } from "../live";
 import { loaderRows } from "../vinc-loaders.js";
 import { namedDecisions, docMirrorId } from "../doc-graph";
@@ -67,8 +65,13 @@ export function leaveHome(): void {
   setLnbScopeClearer(null);
 }
 
-const themeMode = (): ThemeMode =>
-  document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+/** 목록의 주제 점은 사이드바와 같은 색이다(`lnbTopicTint`). 사이드바 표가 늦게 오거나 테마가 뒤집혀 바뀌면 따라 칠한다. */
+window.addEventListener("vinc:lnb-tints", () => {
+  document.querySelectorAll<HTMLElement>(".home-dot[data-topic]").forEach((el) => {
+    const c = lnbTopicTint(el.dataset.topic || "");
+    if (c) el.style.setProperty("--tint", c); else el.style.removeProperty("--tint");
+  });
+});
 const inScope = (d: Doc, topics: string[]): boolean => !topics.length
   || topics.some((t) => !!d.topic && (d.topic === t || d.topic.startsWith(t + "/")));
 
@@ -157,7 +160,6 @@ async function paintList(el: HTMLElement, gen: number): Promise<void> {
   setLnbActive({ domains: scope });
   // 뷰 머리 앞자리 — 목록에서는 자리 이름 하나다(주제 경로는 아래 주제 줄이 갖는다).
   setTopbarLead(`<span class="tb-lead-name">${esc(H.back)}</span>`);
-  const tints = tintMap(docs.map((d) => d.topic || ""), themeMode());
   const q = query.trim().toLowerCase();
   const picked = docs.filter((d) => inScope(d, scope)
     && (!q || docTitle(d.title).toLowerCase().includes(q)));
@@ -173,10 +175,10 @@ async function paintList(el: HTMLElement, gen: number): Promise<void> {
 
   const row = (d: Doc) => {
     const t = d.topic || "";
-    const tint = tints?.get(t);
+    const tint = lnbTopicTint(t);
     const day = dayOf(d.updated_at || "");
     return `<a class="home-row" href="#home/doc/${encodeURIComponent(d.doc_id)}">
-      <span class="home-dot" aria-hidden="true"${tint ? ` style="--tint:${tint}"` : ""}></span>
+      <span class="home-dot" aria-hidden="true" data-topic="${esc(t)}"${tint ? ` style="--tint:${tint}"` : ""}></span>
       <span class="home-rtitle">${esc(docTitle(d.title))}</span>
       <span class="home-rmeta">${esc(t || H.noTopic)}${day ? ` · ${esc(H.updated(day))}` : ""}</span>
     </a>`;

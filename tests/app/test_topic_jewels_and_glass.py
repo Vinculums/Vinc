@@ -74,7 +74,7 @@ class AlwaysOnTests(unittest.TestCase):
 
     def test_색표는_보석을_순서대로_쓰고_섞지_않는다(self):
         tint = _read("view-tint.ts")
-        self.assertIn("const list = topicJewels[mode];", tint)
+        self.assertIn("jewelAt(topicJewels[mode], a)", tint)
         self.assertIn("rotateHue(base, turn)", tint)
         self.assertNotIn("GOLDEN", tint)
 
@@ -84,8 +84,8 @@ class AlwaysOnTests(unittest.TestCase):
         self.assertIn('import { areaKeys } from "./area-key";', tint)
         self.assertIn('export { areaKeys };', _read("view-layout-spatial.ts"))
         self.assertIn("const TOPIC_TURN = [0, 4, -4, 8, -8, 12, -12];", tint)
-        self.assertIn("export function tintMap(", tint)
-        self.assertIn("return tintPlan(domains, mode).topics;", tint)
+        # 표를 짓는 길은 하나다(별칭이 있으면 호출측마다 다른 집합으로 표를 따로 지어 한 주제가 두 색이 된다).
+        self.assertNotIn("export function tintMap(", tint)
 
 
 if __name__ == "__main__":
