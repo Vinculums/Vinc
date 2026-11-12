@@ -78,6 +78,49 @@ _KO_COMMENT = re.compile(r"(korean|한국어|한글)[^.\n]{0,40}(comment|주석)
 _HEDGE = re.compile(r"\b(?:fine|allowed|allows|acceptable|okay|ok|not a defect|no [\w ]{0,20}needed|per (?:the )?rules?|forbids flagging|is allowed)\b|문제없|허용", re.I)
 _DEFECT = re.compile(r"\b(?:defect|violat\w*|should be (?:in )?english|must be (?:in )?english|translate|issue)\b", re.I)
 _REQUIRED = frozenset({"person_only", "side_effect_evidence", "handoff_manifest"})
+# 이름 붙은 작업 브랜치의 push 는 tag push 가 아니다. 이 읽기는 person_only 의 push_tag 걸림을 거두기만 하고
+# 새로 걸지 않는다. push 하나라도 대상을 읽지 못하거나 보호·태그 꼴이 보이면 위 규칙 그대로 걸린다.
+_REF_PART = r"[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*"
+_REF = rf"\+?(?:{_REF_PART}(?:/{_REF_PART})*:)?{_REF_PART}(?:/{_REF_PART})*"
+_REF_END = r"(?![A-Za-z0-9_/@~^-]|[.:][A-Za-z0-9])"
+_FLAG = r"(?:--set-upstream|-u|--force-with-lease(?:=[A-Za-z0-9_./:-]+)?|--force-if-includes|--force|-f|--no-verify)"
+_REMOTE = r"(?:origin|upstream)"
+_BRANCH_WORD = r"(?:(?:working|work|feature|topic|pr)\s+)?branch"
+_PUSH_EN = re.compile(r"(?<![A-Za-z0-9_/.-])(?:force[- ]?)?push(?:ed|es|ing)?(?![A-Za-z0-9_/-])", re.I)
+# 영어는 동사 뒤에서 대상을 읽는다: 플래그·원격·관사 다음의 이름, 그 뒤의 "to origin"·플래그까지.
+_PUSH_AFTER = re.compile(
+    rf"(?:\s+(?:{_FLAG}|{_REMOTE}|the|my|our|up|to|(?P<word>{_BRANCH_WORD}))(?=\s))*"
+    rf"(?:\s*:)?\s+[`'\"“‘]?(?P<name>{_REF}){_REF_END}[`'\"”’]?(?:\s+branch\b)?"
+    rf"(?:\s+(?:to|onto)\s+(?:the\s+)?(?:{_REMOTE}|remote)(?:\s+remote)?\b)?(?:\s+(?:with\s+)?{_FLAG}(?:\s+{_REMOTE})?(?![\w-]))*",
+    re.I)
+# 동사 뒤에 대상이 없으면 바로 앞을 읽는다("Branch fix/x is pushed", "fix/x (pushed)").
+_PUSH_BEFORE = re.compile(
+    rf"(?P<word>\b{_BRANCH_WORD}\s*:?\s*)?(?<![A-Za-z0-9_./:+@~^-])[`'\"“‘]?(?P<name>{_REF}){_REF_END}[`'\"”’]?"
+    r"\s*(?:\(\s*|:\s*|(?:is|was|has been|got|now|just)\s+)*$", re.I)
+_BEFORE_REACH = 160
+_REF_TOKEN = re.compile(rf"(?<![A-Za-z0-9_./:+@~^-])[`'\"“‘]?(?P<name>{_REF}){_REF_END}[`'\"”’]?")
+_KO_NAMED = re.compile(rf"브랜치\s*:?\s*[`'\"“‘]?(?P<name>{_REF}){_REF_END}[`'\"”’]?|"
+                       rf"(?<![A-Za-z0-9_./:+@~^-])[`'\"“‘]?(?P<name2>{_REF}){_REF_END}[`'\"”’]?\s*브랜치")
+_PROTECTED = frozenset({"main", "master", "trunk", "head", "production", "prod", "release", "releases",
+                        "gh-pages", "stable", "develop", "default", "live"})
+_VERSION_PART = re.compile(r"v?\d+(?:\.\d+)*", re.I)
+# 읽은 이름을 지운 나머지에 이것이 있으면 이름 붙은 브랜치만의 push 가 아니다.
+_PUSH_REST = re.compile(
+    r"tag|push|태그|푸시|refs/|--(?:all|mirror|delete|prune)\b|\bHEAD\b|@\{"
+    r"|\b(?:main|master|trunk|production|prod|releases?|gh-pages|stable|develop|live|default branch|protected branch"
+    r"|all|every\w*|both|branches)\b|메인|기본 브랜치|운영"
+    r"|(?<![A-Za-z0-9_/.-])v?\d+(?:\.\d+)+(?![A-Za-z0-9_/-])|\bv\d+\b", re.I)
+# 거절·끼어들기가 권하는 말. 모두 이 게이트를 통과해야 한다. 브랜치 자리에 보호·태그 이름을 넣은 꼴은 위 규칙대로
+# 걸리고, 위 규칙이 원래 놓치는 꼴은 시험이 목록으로 붙잡아 둔다.
+_ADVICE = {
+    "merge": ("did not merge", "merging is left to the owner"),
+    "push_tag": ("did not push a tag", "the tag push is left to the owner"),
+    "publish": ("did not publish", "publishing is left to the owner"),
+    "send": ("did not send it", "sending is left to the owner"),
+    "migration": ("did not run the migration", "running the migration is left to the owner"),
+}
+BRANCH_PUSH_EXAMPLE = "pushed branch fix/x to origin"
+RESTATE_EXAMPLE = "Attempted to run the tests; the result is in the pull request checks"
 
 
 @dataclass(frozen=True)
@@ -116,6 +159,69 @@ class OutputGateStopped(RuntimeError):
 
 def _sentences(text: str) -> list[str]:
     return [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", text) if s.strip()]
+
+
+def _ordinary_ref(ref: str, bare: bool) -> bool:
+    """보호 브랜치·태그·버전이 아닌 작업 브랜치 이름인가. 슬래시 없는 이름은 bare(branch 낱말 뒤·refspec)일 때만."""
+    ref = ref[1:] if ref.startswith("+") else ref
+    if ":" in ref:
+        src, dst = ref.split(":", 1)
+        return bool(src) and (src == "HEAD" or _ordinary_ref(src, True)) and _ordinary_ref(dst, True)
+    low = ref.lower()
+    if low.startswith("refs/"):
+        if not low.startswith("refs/heads/"):
+            return False
+        ref = ref[len("refs/heads/"):]
+    elif low.startswith(("origin/", "upstream/")):
+        ref = ref.split("/", 1)[1]
+    parts = ref.split("/")
+    # 슬래시 없는 이름은 구분자(-, _)가 있어야 이름으로 본다("the branch and ..." 의 and 는 이름이 아니다).
+    return ((len(parts) > 1 or (bare and bool(re.search(r"[-_]", ref))))
+            and not any(p.lower() in _PROTECTED or _VERSION_PART.fullmatch(p) for p in parts))
+
+
+def _branch_push_only(sentence: str) -> bool:
+    """문장의 push 가 모두 이름 붙은 작업 브랜치의 push 이고, 그 이름을 지운 나머지에 태그·보호 브랜치 꼴이 없는가.
+
+    영어 push 는 하나하나 대상을 읽고, 한국어 푸시는 같은 문장(표의 한 줄)에 이름 붙은 브랜치가 있어야 한다.
+    """
+    spans: list[tuple[int, int]] = []
+    verbs = list(_PUSH_EN.finditer(sentence))
+    korean = [m.span() for m in re.finditer("푸시", sentence)]
+    if not verbs and not korean:
+        return False
+    for verb in verbs:
+        after = _PUSH_AFTER.match(sentence, verb.end())
+        if after and _ordinary_ref(after.group("name"), bool(after.group("word")) or ":" in after.group("name")):
+            spans.append((verb.start(), after.end()))
+            continue
+        # 앞은 가까운 글자만 읽는다. 동사마다 문장 앞 전체를 다시 읽으면 긴 출력에서 제곱이 된다.
+        lo = max(0, verb.start() - _BEFORE_REACH)
+        before = _PUSH_BEFORE.search(sentence[lo:verb.start()])
+        if before and _ordinary_ref(before.group("name"), bool(before.group("word"))):
+            spans.append((lo + before.start(), verb.end()))
+            continue
+        return False
+    if korean:
+        named = [(m.span(), m.group("name")) for m in _REF_TOKEN.finditer(sentence)
+                 if "/" in m.group("name")] if "/" in sentence else []
+        if "브랜치" in sentence:
+            named += [(m.span(), m.group("name") or m.group("name2")) for m in _KO_NAMED.finditer(sentence)]
+        if not named or not all(_ordinary_ref(name, True) for _, name in named):
+            return False
+        spans += korean + [span for span, _ in named]
+    # 읽은 구간을 빈칸 하나로 바꾼 나머지. 겹치는 구간(한국어 이름과 영어 대상)은 한 번만 지운다.
+    pieces, at = [], 0
+    for start, end in sorted(spans):
+        if start > at:
+            pieces.append(sentence[at:start])
+        pieces.append(" ")
+        at = max(at, end)
+    pieces.append(sentence[at:])
+    remainder = "".join(pieces)
+    if "/" in remainder and any(not _ordinary_ref(m.group("name"), False) for m in _REF_TOKEN.finditer(remainder) if "/" in m.group("name")):
+        return False
+    return not _PUSH_REST.search(remainder)
 
 
 def _rendered(answer: str) -> list[tuple[str, str]]:
@@ -298,6 +404,9 @@ class OutputGate:
                                   and re.search(_ACTIONS[action], present, re.I))
                         decision = ((agency or _MARKER.search(present)) and any(
                             word in present.lower() for word in _DECISION_WORDS.get(action, ())))
+                        # push_tag 걸림만, 그것도 문장의 push 가 모두 이름 붙은 작업 브랜치일 때만 거둔다.
+                        if decision and action == "push_tag" and _branch_push_only(sentence):
+                            decision = False
                         if direct or decision:
                             pending.add(action)
                             evidence.add(sentence[:160])
@@ -393,6 +502,31 @@ class OutputGate:
         """A copy of the contract's person-only actions and their reasons."""
         person = self._props.get("person_only")
         return copy.deepcopy(person) if isinstance(person, list) else []
+
+    def advice(self, result: GateResult) -> tuple[str, ...]:
+        """걸린 사람 전용 행동과 완료 주장 검사마다 고쳐 쓰는 법 한 문장. 결과는 바꾸지 않는다.
+
+        예문("for example '...'")은 이 게이트를 통과하는 말이어야 한다(시험이 본다).
+        """
+        kinds = {g["id"]: g["check"]["type"] for g in list(self._props.get("gates") or []) + self._extra
+                 if isinstance(g, dict) and isinstance(g.get("check"), dict) and isinstance(g.get("id"), str)}
+        failed = {kinds.get(c, c[len("never_"):] if c.startswith("never_") else c) for c in result.failed_checks}
+        out = []
+        if "person_only" in failed:
+            for action in result.person_only_actions or ("person_only",):
+                undone, left = _ADVICE.get(action, ("did not do it", "it is left to the owner"))
+                out.append(f"person_only ({action}): a person decides this before the run goes on. If it did not "
+                           f"happen, say so with the verb, for example '{undone}'; if it is the person's step, "
+                           f"say that, for example '{left}'."
+                           + (" A push of a named working branch is not a tag push: name the branch, for "
+                              f"example '{BRANCH_PUSH_EXAMPLE}'." if action == "push_tag" else ""))
+        if "side_effect_evidence" in failed:
+            out.append("side_effect_evidence: a sentence claims a side effect with no host proof. Say what was "
+                       f"attempted and where the result can be read, for example '{RESTATE_EXAMPLE}'. A person-only "
+                       "action (merge, tag push, publish, send, live migration) is not restated as attempted: say "
+                       "it was not done and is left to the person, for example "
+                       "'did not merge; merging is left to the owner'.")
+        return tuple(out)
 
     def require_pass(self, answer: str, **kwargs: Any) -> GateResult:
         """Strict: anything but ``pass`` raises, an interrupt included."""

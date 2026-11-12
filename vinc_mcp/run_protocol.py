@@ -730,13 +730,18 @@ def _output(args, bridge, owner, eid, props, policy, flags=()) -> dict:
         return failed or _view(props, eid, policy, status="blocked", failed_checks=uncited,
                                **({"missing_ids": list(missing)} if missing else {}))
     props.pop("citations_missing", None)
-    result = role_output_gate.OutputGate(policy).evaluate(output, person_only_requests=gate_requests)
+    gate = role_output_gate.OutputGate(policy)
+    result = gate.evaluate(output, person_only_requests=gate_requests)
     props["gate_results"] = {"verdict": result.verdict, "failed_checks": list(result.failed_checks)}
+    # 고쳐 쓰는 법은 응답에만 싣고 실행 기록에는 남기지 않는다. 호스트가 스스로 이름 댄 행동에는 붙이지 않는다.
+    named = tuple(f"person_only ({g['action']})" for g in gate_requests)
+    advice = [line for line in gate.advice(result) if not line.startswith(named)]
     if result.verdict == "block":
         failed = _saved(bridge, owner, eid, props)
         return failed or {**_view(props, eid, policy, status="blocked",
                                   failed_checks=list(result.failed_checks),
-                                  evidence_sentences=list(result.evidence_sentences)),
+                                  evidence_sentences=list(result.evidence_sentences),
+                                  **({"advice": advice} if advice else {})),
                           **_restate(policy, output, result.failed_checks)}
     actions = list(dict.fromkeys(list(result.person_only_actions) + asks))
     if result.verdict == "interrupt" or actions:
@@ -762,6 +767,6 @@ def _output(args, bridge, owner, eid, props, policy, flags=()) -> dict:
             return failed
         # 저장된 대기만 알린다(계정 → 웹 푸시). 행동·질문은 싣지 않고, 실패해도 실행은 그대로다.
         run_notify.waiting(owner, eid, props)
-        return _view(props, eid, policy)
+        return _view(props, eid, policy, **({"advice": advice} if advice else {}))
     _end(props, "success", "gates passed")
     return _finish(bridge, owner, eid, props, status="passed")
