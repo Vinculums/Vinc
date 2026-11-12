@@ -8,9 +8,10 @@
 이 시험은 파이썬 쪽을 소스 문자열이 아니라 **실제로 조립한 파서**에서 읽는다. `_main` 이
 파서를 다 만든 뒤 `parse_args` 를 부르는 순간 멈추게 하므로, 동사를 실행하지 않는다.
 
-`UNDECIDED_DESKTOP_OR_HUB_ONLY` 는 파이썬에는 있고 Rust 목록에는 없는 동사 중, 데스크톱에서도
-CLI 로 보낼지(배열에 넣는다) 허브·운영 전용으로 둘지(여기 남긴다) 아직 정하지 않은 것이다.
-정하는 것은 사람이고 이 시험은 정하지 않는다. 새 동사는 둘 중 한 곳에 적어야 통과한다.
+`HUB_ONLY_BY_DECISION` 은 파이썬에는 있고 Rust 목록에는 일부러 없는 동사다. 허브나 오프라인
+스토어 사본에서 운영자가 부르는 유지보수 동사라 앱 바이너리로는 넘기지 않는다. 동사마다 이유를
+한 줄 적는다. 어느 쪽에 둘지는 사람이 정하고 이 시험은 정하지 않는다. 새 동사는 Rust 배열이나 이
+집합 중 한 곳에 적어야 통과한다.
 """
 from __future__ import annotations
 
@@ -25,12 +26,14 @@ from unittest import mock
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MAIN_RS = os.path.join(ROOT, "app", "src-tauri", "src", "main.rs")
 
-# 데스크톱 CLI 로 보낼지, 허브 전용으로 둘지 아직 정하지 않은 동사. 정해지면 여기서 빼고
-# Rust 배열에 넣거나, 허브 전용이라는 이름의 집합을 새로 두어 옮긴다(첫 검사가 그 집합도 보게 한다).
-UNDECIDED_DESKTOP_OR_HUB_ONLY = frozenset({
-    "edges", "eval", "events", "gate", "migrate-body-mentions", "migrate-lex", "operation",
-    "role", "run", "selfhost", "shim", "storage", "store-probe", "store-rebuild",
-})
+# 앱 바이너리가 번들 CLI 로 넘기지 않는 동사와 그 이유. 앱 바이너리로 부르면 창이 뜬다.
+HUB_ONLY_BY_DECISION: dict[str, str] = {
+    "migrate-lex": "rebuilds the text index on an offline copy of a store before a hub switches to it",
+    "migrate-body-mentions": "opt-in schema change an operator runs against a store file",
+    "store-probe": "child the engine starts on itself to open and close a store before WAL replay",
+    "store-rebuild": "rebuilds a read-only store into an empty directory during a hub migration",
+    "selfhost": "passwords, people and seats of a self-hosted hub, run inside the hub container",
+}
 
 
 class _Built(Exception):
@@ -89,11 +92,11 @@ class CliVerbsMatchTests(unittest.TestCase):
         if entries:
             self.fail("\n".join(entries))
 
-    def test_every_python_verb_is_listed_or_undecided(self) -> None:
+    def test_every_python_verb_is_listed_or_hub_only(self) -> None:
         self._no_entries([
             f"python CLI verb {verb!r} is neither in CLI_VERBS (app/src-tauri/src/main.rs) nor in "
-            "UNDECIDED_DESKTOP_OR_HUB_ONLY; decide whether the desktop binary forwards it"
-            for verb in sorted(self.python - self.rust_verbs - UNDECIDED_DESKTOP_OR_HUB_ONLY)])
+            "HUB_ONLY_BY_DECISION; decide whether the desktop binary forwards it"
+            for verb in sorted(self.python - self.rust_verbs - set(HUB_ONLY_BY_DECISION))])
 
     def test_rust_names_only_python_verbs(self) -> None:
         self._no_entries([
@@ -106,15 +109,21 @@ class CliVerbsMatchTests(unittest.TestCase):
             f"CLI_VERBS names {flag!r}, which is not an option of the python CLI root parser"
             for flag in sorted(self.rust_flags - options)])
 
-    def test_no_verb_is_both_listed_and_undecided(self) -> None:
+    def test_no_verb_is_both_listed_and_hub_only(self) -> None:
         self._no_entries([
-            f"{verb!r} is in CLI_VERBS and in UNDECIDED_DESKTOP_OR_HUB_ONLY; remove it from the undecided set"
-            for verb in sorted(self.rust_verbs & UNDECIDED_DESKTOP_OR_HUB_ONLY)])
+            f"{verb!r} is in CLI_VERBS and in HUB_ONLY_BY_DECISION; keep it in one of them"
+            for verb in sorted(self.rust_verbs & set(HUB_ONLY_BY_DECISION))])
 
-    def test_undecided_verbs_still_exist(self) -> None:
+    def test_hub_only_verbs_still_exist(self) -> None:
         self._no_entries([
-            f"undecided verb {verb!r} is no longer a python CLI verb; remove it from the set"
-            for verb in sorted(UNDECIDED_DESKTOP_OR_HUB_ONLY - self.python)])
+            f"hub-only verb {verb!r} is no longer a python CLI verb; remove it from the set"
+            for verb in sorted(set(HUB_ONLY_BY_DECISION) - self.python)])
+
+    def test_every_hub_only_verb_has_a_reason(self) -> None:
+        self._no_entries([
+            f"hub-only verb {verb!r} has no reason; write one line saying why it stays off the desktop"
+            for verb, reason in sorted(HUB_ONLY_BY_DECISION.items()) if not reason.strip()])
+
 
 if __name__ == "__main__":
     unittest.main()
