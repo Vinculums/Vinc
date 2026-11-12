@@ -136,7 +136,7 @@ def list_runs(store, *, owner: str, cited: str | None = None, role: str | None =
             if read is not props:
                 # 저장된 제목은 아직 waiting 이다. 읽는 쪽에는 끝난 실행의 제목을 보인다.
                 if read.get("role") and read.get("run_id"):
-                    title = rp._title(read)
+                    title = rp._title(read, pkns.strip(row["id"]))
                 props = read
         run_role = events.role_id(props.get("role")) or ""
         if want_role and run_role != want_role:

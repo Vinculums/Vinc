@@ -150,3 +150,30 @@ def test_a_pending_with_neither_actions_nor_checks_says_so():
 
 def test_a_stored_question_is_kept():
     assert run_protocol.decision({"actions": ["merge"], "question": "Q"})["question"] == "Q"
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf"), "3", True, None,
+                                   [1], {"a": 1}], ids=repr)
+def test_usage_keeps_only_finite_numbers(value):
+    props = {**WAITING, "used": {"tool_calls": value, "tokens_in": 7, "cost_usd": 0.5,
+                                 "tokens_out": 10 ** 40}}
+    read = run_state.readable(props)
+    assert read["used"] == {"tokens_in": 7, "cost_usd": 0.5, "tokens_out": 10 ** 40}
+    assert run_state.number(value) is None
+
+
+def test_capability_flags_keep_entries_whose_id_and_flag_are_text():
+    flags = [{"id": "github.pr.merge", "flag": "denied", "step": 1}, {"id": ["x"], "flag": "denied"},
+             {"id": "a", "flag": {"b": 2}}, {"id": {"a": 1}}, "x", 5]
+    read = run_state.readable({**WAITING, "capability_flags": flags})
+    assert read["capability_flags"] == [{"id": "github.pr.merge", "flag": "denied", "step": 1}]
+    assert len({(f["id"], f["flag"]) for f in read["capability_flags"]}) == 1
+
+
+def test_the_prop_names_cover_every_key_the_reader_rewrites():
+    """생성 시험이 쓰는 이름 목록에 `readable` 이 고쳐 읽는 키가 모두 있다."""
+    odd = {k: "x" for k in run_state.PROPS}
+    odd["state"] = "waiting"
+    read = run_state.readable(odd)
+    rewritten = {k for k in read if read[k] != odd.get(k)}
+    assert rewritten <= set(run_state.PROPS), rewritten

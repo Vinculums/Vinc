@@ -46,7 +46,7 @@ def payload(owner: str, eid: str, props: dict) -> dict | None:
         return None
     from .run_protocol import _title, expires_at
     return {"owner": owner, "run": eid, "ask": props["asks"],
-            "title": _title(props)[:TITLE_MAX], "expires_at": expires_at(pending)}
+            "title": _title(props, eid)[:TITLE_MAX], "expires_at": expires_at(pending)}
 
 
 def _assertion(seed: bytes, owner: str, raw: bytes) -> str:

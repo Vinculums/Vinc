@@ -67,6 +67,8 @@ TASK_MAX = 4000
 SUBJECT_MAX = 500
 #: 실행한 호스트 이름(예 "codex-cli 0.162.1"). 실행 기록의 host 가 된다.
 HOST_MAX = 120
+#: 실행 기록 제목의 최대 길이. 정상 기록의 제목은 이보다 훨씬 짧다.
+TITLE_CHARS = 300
 OUTPUT_MAX = 131072
 CITED_MAX = 200
 #: 역할 props.cites 가 이 값이면 출력 단계마다 그래프에 실재하는 근거 id 가 있어야 한다.
@@ -201,6 +203,38 @@ def _no_state() -> dict:
                     "go on and nothing changed. Start a new run with another run_id.")
 
 
+def _no_role() -> dict:
+    """역할을 이 그래프에서 찾을 수 없는 실행 기록. 정책 없이는 이어 가지 않으므로 아무것도 바꾸지 않는다."""
+    return _failure("invalid_run_state", "Invalid: this run record names no role this graph has, "
+                    "so it cannot go on and nothing changed. A person can decline it in "
+                    + PERSON_PATH + ". Start a new run with another run_id.")
+
+
+def _text(value) -> str:
+    return value if isinstance(value, str) else ""
+
+
+def _role_of(props: dict) -> str | None:
+    """기록이 가리키는 역할 id. 역할 id 모양의 문자열이 아니면 None(역할을 묻지 않는다)."""
+    role = props.get("role")
+    if isinstance(role, str) and role.startswith(ROLE_PREFIX) and len(role) > len(ROLE_PREFIX):
+        return role
+    return None
+
+
+def _record_role(bridge, owner: str, props: dict) -> tuple[dict | None, dict | None]:
+    """(기록의 역할 계약, 실패). 역할을 못 읽거나 그래프에 없으면 `_no_role`, 읽기 실패는 그대로."""
+    role = _role_of(props)
+    if role is None:
+        return None, _no_role()
+    got = _fresh_role(bridge, owner, role)
+    if not got.get("executed"):
+        return None, {**got, "kind": "run"}
+    if not got.get("found"):
+        return None, _no_role()
+    return got, None
+
+
 def _resolve(run) -> str | None:
     """episode id 로 온 것은 그대로, 호스트의 run id 는 episode id 로 바꾼다. 못 읽으면 None."""
     text = str(run or "").strip()
@@ -218,59 +252,83 @@ def _load(bridge, owner: str, eid: str) -> dict | None:
     for item in got.get("runs") or []:
         if item.get("id") == eid:
             # 잘못된 모양의 값(수가 아닌 step·asks 등)은 읽는 한 벌로 고쳐 읽는다. 다음 저장이 고친 값을 쓴다.
-            return _run_rule.readable(item.get("props"))
+            props = _run_rule.readable(item.get("props"))
+            if not isinstance(props.get("outcome"), str):
+                # outcome 을 못 읽는 기록은 열린 실행의 outcome 으로 읽는다.
+                props["outcome"] = OPEN_OUTCOME
+            return props
     return None
 
 
 def _save(bridge, owner: str, eid: str, props: dict, *, title: str) -> dict:
     node = {"id": eid, "type": "episode", "title": title, "date": _stamp(_now())[:10],
             "domain": DOMAIN, "tags": ["agent-run"], "props": props}
-    role = props["role"]
+    # 역할을 못 읽는 기록(사람이 거절해 닫는 것)은 역할 노드와 about 엣지 없이 저장한다.
+    role = _role_of(props)
     return bridge.request("POST", "/ingest/fragment", body={
-        "owner": owner, "nodes": [node, {"id": role, "type": "concept"}],
-        "edges": [{"from": eid, "to": role, "type": "about"}]})
+        "owner": owner, "nodes": [node] + ([{"id": role, "type": "concept"}] if role else []),
+        "edges": [{"from": eid, "to": role, "type": "about"}] if role else []})
 
 
-def _title(props: dict) -> str:
-    slug = props["role"][len("concept:"):]
-    tail = props["outcome"] if props["state"] == "done" else props["state"]
-    return f"Run {props['run_id']} of {slug}: {tail}"
+def _title(props: dict, eid: str = "") -> str:
+    """실행 기록의 제목. run_id·역할·상태를 못 읽어도 만든다(run_id 모양이 아니면 episode id).
+
+    길이는 `TITLE_CHARS` 안이다: 저장은 너무 긴 제목의 노드를 경고 하나만 남기고 건너뛴다."""
+    role = _role_of(props)
+    state = props.get("state")
+    tail = (_text(props.get("outcome")) or OPEN_OUTCOME) if state == "done" else _text(state)
+    run_id = _text(props.get("run_id"))
+    head = f"Run {run_id if _RUN_ID.fullmatch(run_id) else eid}"
+    title = f"{head} of {role[len('concept:'):]}: {tail}" if role else f"{head}: {tail}"
+    return title[:TITLE_CHARS]
 
 
 def _saved(bridge, owner: str, eid: str, props: dict) -> dict | None:
-    """저장하고, 실패하면 그 결과를 돌려준다. 성공은 None."""
-    out = _save(bridge, owner, eid, props, title=_title(props))
-    if not out.get("executed") or out.get("error"):
+    """저장하고, 실패하면 그 결과를 돌려준다. 성공은 None.
+
+    저장은 크기 상한을 넘는 노드를 거절하지 않고 건너뛰며 경고에 그 id 를 적는다. 그 경고가 이
+    실행을 가리키면 저장되지 않은 것이다: 성공으로 돌려주면 사람은 반영되지 않은 답을 본다."""
+    out = _save(bridge, owner, eid, props, title=_title(props, eid))
+    skipped = [w for w in out.get("warnings") or []
+               if isinstance(w, str) and "skipped" in w and f"id={eid}" in w]
+    if not out.get("executed") or out.get("error") or skipped:
+        detail = out.get("error") or out.get("note") or (skipped[0] if skipped else None)
         return _failure("run_not_saved", "The run state could not be saved, so nothing advanced. "
-                        "Call again with the same arguments.", detail=out.get("error") or out.get("note"))
+                        "Call again with the same arguments.", detail=detail)
     return None
 
 
 def _budget_left(policy: dict, props: dict) -> dict:
-    budget = policy.get("budget") or {}
-    used = props.get("used") or {}
+    # 예산과 사용량은 유한한 수만 센다(`run_state.number`). 수가 아닌 예산 항목은 남은 양이 없다고 적지 않는다.
+    budget = policy.get("budget") if isinstance(policy.get("budget"), dict) else {}
+    used = props.get("used") if isinstance(props.get("used"), dict) else {}
     left = {}
-    if "model_calls" in budget:
-        left["model_calls"] = max(0, int(budget["model_calls"]) - int(props.get("step", 0)))
-    if "tool_calls" in budget:
-        left["tool_calls"] = max(0, int(budget["tool_calls"]) - int(used.get("tool_calls", 0)))
+    calls = _run_rule.number(budget.get("model_calls"))
+    if calls is not None:
+        left["model_calls"] = max(0, int(calls) - _run_rule.count(props.get("step")))
+    tools_max = _run_rule.number(budget.get("tool_calls"))
+    if tools_max is not None:
+        left["tool_calls"] = max(0, int(tools_max) - int(_run_rule.number(used.get("tool_calls")) or 0))
     return left
 
 
 def _view(props: dict, eid: str, policy: dict | None = None, **extra) -> dict:
-    out = {"kind": "run", "executed": True, "run": eid, "run_id": props["run_id"],
-           "role": props["role"], "state": props["state"], "outcome": props["outcome"],
+    # 저장된 값을 못 읽어도 보기는 만든다: run_id 는 episode id 로, outcome 은 열린 실행의 것으로 읽는다.
+    state = props.get("state")
+    out = {"kind": "run", "executed": True, "run": eid,
+           "run_id": _text(props.get("run_id")) or eid, "role": _text(props.get("role")),
+           "state": _text(state), "outcome": _text(props.get("outcome")) or OPEN_OUTCOME,
            "step": _run_rule.count(props.get("step")), **extra}
     if props.get("capability_flags"):
         out["capability_flags"] = list(props["capability_flags"])
-    if props.get("answer") and props["state"] != "waiting":
+    if props.get("answer") and state != "waiting":
         # 마지막 답. reply 의 글은 여기서만 호스트에게 간다.
         last = {"answer": props["answer"], "answered_at": props.get("answered_at", ""),
                 "via": props.get("answer_via") or "agent"}
         if props.get("answer_text"):
             last["text"] = props["answer_text"]
         out["last_answer"] = last
-    if props["state"] == "waiting":
+    if state == "waiting":
         pending = props.get("pending") or {}
         out["decision"] = decision(pending, policy)
         out["question"] = out["decision"]["question"]
@@ -288,7 +346,7 @@ def _view(props: dict, eid: str, policy: dict | None = None, **extra) -> dict:
             out["next"] = ("A person decides first. Show the question, then call vinc_run_submit "
                            "with answer approve or decline as the person chose, or the person "
                            "answers in " + PERSON_PATH + ". No output is accepted while it waits.")
-    elif props["state"] == "working":
+    elif state == "working":
         out["next"] = ("Do this step, then call vinc_run_submit with output. Name an action in "
                        "person_only_requests before taking it when the role lists it as person "
                        "only or asks first. Report done work as " + RESTATE + ".")
@@ -347,6 +405,8 @@ def start(args: dict, bridge, owner: str) -> dict:
     if existing and "_error" in existing:
         return {**existing["_error"], "kind": "run"}
     if existing:
+        if _role_of(existing) is None:
+            return _no_role()
         if existing.get("role") != got["id"]:
             return _failure("run_id_in_use", "Invalid: this run_id belongs to another role.")
         if existing.get("state") not in STATES:
@@ -373,7 +433,7 @@ def _end(props: dict, outcome: str, reason: str) -> None:
 def _over_budget(policy: dict, props: dict) -> str:
     budget = policy.get("budget") or {}
     used = props.get("used") or {}
-    if "model_calls" in budget and props["step"] >= int(budget["model_calls"]):
+    if "model_calls" in budget and _run_rule.count(props.get("step")) >= int(budget["model_calls"]):
         return "budget_model_calls"
     if "tool_calls" in budget and used.get("tool_calls", 0) > budget["tool_calls"]:
         return "budget_tool_calls"
@@ -559,10 +619,10 @@ def _expire(bridge, owner: str, eid: str, props: dict) -> dict:
     """만료된 요청을 닫는다: 실행은 막힌 채 끝나고 그 사실을 돌려준다."""
     props["expired_at"] = _stamp(_now())
     _end(props, "blocked", EXPIRED_REASON)
-    failed = _saved(bridge, owner, eid, props)
-    return failed or _failure(
+    refused = _failure(
         "request_expired", "Refused: the request expired before anyone answered, so the run "
         "ended as blocked. Start a new run to ask again.", run_state=_view(props, eid))
+    return _saved(bridge, owner, eid, props) or refused
 
 
 def _submit(args: dict, bridge, owner: str, eid: str, mode: str) -> dict:
@@ -576,9 +636,9 @@ def _submit(args: dict, bridge, owner: str, eid: str, mode: str) -> dict:
         return _no_state()
     if props.get("state") == "done":
         return _view(props, eid)
-    got = _fresh_role(bridge, owner, props["role"])
-    if not got.get("executed") or not got.get("found"):
-        return {**got, "kind": "run"}
+    got, failed = _record_role(bridge, owner, props)
+    if failed:
+        return failed
     policy = got["props"]
     used, bad = _used_capabilities(args)
     if bad:
@@ -615,8 +675,9 @@ def _submit(args: dict, bridge, owner: str, eid: str, mode: str) -> dict:
 
 
 def _finish(bridge, owner, eid, props, **extra) -> dict:
-    failed = _saved(bridge, owner, eid, props)
-    return failed or _view(props, eid, **extra)
+    # 보기를 먼저 만들고 저장한다. 저장 뒤에 예외가 나면 저장된 답이 오류로 보인다.
+    view = _view(props, eid, **extra)
+    return _saved(bridge, owner, eid, props) or view
 
 
 def _answer(args, bridge, owner, eid, props, policy, *, via: str, by: str = "",
@@ -650,8 +711,9 @@ def _answer(args, bridge, owner, eid, props, policy, *, via: str, by: str = "",
 
 
 def _resume(bridge, owner, eid, props, policy) -> dict:
-    failed = _saved(bridge, owner, eid, props)
-    return failed or _view(props, eid, policy, approved=list(props.get("approved") or []))
+    # `_finish` 와 같이 보기를 먼저 만든다: 저장된 승인 뒤에는 예외가 날 곳이 없다.
+    view = _view(props, eid, policy, approved=list(props.get("approved") or []))
+    return _saved(bridge, owner, eid, props) or view
 
 
 def person_answer(args: dict, bridge, owner: str, *, actor: str) -> dict:
@@ -694,17 +756,28 @@ def person_answer(args: dict, bridge, owner: str, *, actor: str) -> dict:
                     "run_state": _view(props, eid)}
         if expired(props.get("pending") or {}):
             return {**_expire(bridge, owner, eid, props), "kind": "run.answer"}
-        got = _fresh_role(bridge, owner, props["role"])
-        if not got.get("executed") or not got.get("found"):
-            return {**got, **base}
-        out = _answer({"answer": answer}, bridge, owner, eid, props, got["props"], via="person",
+        policy: dict = {}
+        if answer != "decline":
+            # 승인과 글 답은 역할의 정책과 견준다. 역할이 없으면 견줄 것이 없어 아무것도 승인하지 않는다.
+            # 거절은 역할도 run_id 도 읽지 않는다: 목록에 보이는 대기는 무엇이든 사람이 닫는다.
+            got, failed = _record_role(bridge, owner, props)
+            if failed:
+                if failed.get("error") == "invalid_run_state":
+                    failed["note"] = (
+                        "Refused: this run record names no role this graph has, so there is no "
+                        "policy to check an approval against and nothing was approved. Decline it "
+                        "to close the run.")
+                return {**failed, **base, "run_state": _view(props, eid)}
+            policy = got["props"]
+        out = _answer({"answer": answer}, bridge, owner, eid, props, policy, via="person",
                       by=actor, text=text)
         if not out.get("executed"):
             return {**out, "kind": "run.answer"}
-        return {"kind": "run.answer", "executed": True, "run": eid, "run_id": props["run_id"],
-                "ask": ask, "answer": answer, "answered_at": props["answered_at"],
-                "answered_by": actor, "via": "person", "state": props["state"],
-                "outcome": props["outcome"]}
+        # 여기부터는 저장이 끝난 뒤다. 이미 만든 보기의 값만 옮긴다.
+        return {"kind": "run.answer", "executed": True, "run": eid, "run_id": out.get("run_id"),
+                "ask": ask, "answer": answer, "answered_at": props.get("answered_at"),
+                "answered_by": actor, "via": "person",
+                "state": out.get("state"), "outcome": out.get("outcome")}
 
 
 def _restate(policy: dict, output: str, failed) -> dict:

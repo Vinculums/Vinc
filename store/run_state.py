@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import math
 
 RUN_PREFIX = "episode:run-"
 #: 질문 쪽 상태: 실행이 지금 무엇을 묻는가. 실행 프로토콜의 출력 단계(`_output`)와 작업 닫기
@@ -42,6 +43,15 @@ EXPIRES_MAX_S = 43200
 _STAMP = "%Y-%m-%dT%H:%M:%SZ"
 #: 정수로 읽는 횟수 문자열의 최대 자릿수. 더 긴 문자열은 수로 읽지 않는다.
 _COUNT_DIGITS = 18
+#: 실행 프로토콜과 읽는 쪽(승인함·실행 목록·이벤트·알림·Tasks)이 읽는 실행 기록의 props 이름.
+#: 생성 시험(`tests/mcp/test_run_record_property.py`)이 이 이름마다 잘못된 모양의 값을 넣어 본다.
+PROPS = ("run_id", "role", "outcome", "state", "step", "asks", "task", "subject", "host",
+         "started_at", "ended_at", "end_reason", "expired_at", "last_asked_at", "used",
+         "cited_ids", "citations_missing", "capabilities_used", "capability_flags", "pending",
+         "approved", "answer", "answered_at", "answered_actions", "answered_by", "answer_via",
+         "answer_text", "task_cancelled")
+#: 그중 대기(`pending`) 안에서 읽는 이름.
+PENDING_PROPS = ("actions", "checks", "question", "asked_at", "expires_at", "kind", "requests")
 
 
 def run_id(nid) -> str | None:
@@ -77,6 +87,17 @@ def count(value) -> int:
     return max(value, 0) if isinstance(value, int) else 0
 
 
+def number(value) -> int | float | None:
+    """사용량 같은 수 하나를 읽는다. 유한한 수(bool 이 아닌 int·float)만 그대로, 나머지는 None.
+
+    NaN·무한은 JSON 의 수가 아니고 `int()` 에서 예외를 낸다. 큰 정수는 float 로 바꾸지 않고 둔다."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    return value if isinstance(value, float) and math.isfinite(value) else None
+
+
 def _strings(value) -> list[str]:
     return [v for v in value if isinstance(v, str)] if isinstance(value, list) else []
 
@@ -85,12 +106,19 @@ def _dicts(value) -> list[dict]:
     return [v for v in value if isinstance(v, dict)] if isinstance(value, list) else []
 
 
+def _flags(value) -> list[dict]:
+    """능력 감사 표지: id 와 표지가 문자열인 dict 만. 다음 제출이 (id, 표지) 쌍을 집합에 넣는다."""
+    return [v for v in _dicts(value)
+            if isinstance(v.get("id"), str) and isinstance(v.get("flag"), str)]
+
+
 def readable(props) -> dict:
     """실행 기록 props 를 읽는 쪽이 그대로 변환해도 되는 모양의 사본으로 읽는다. 원본은 그대로다.
 
     승인함(`api/runs.py`), 실행 목록, 이벤트(`api/events.py`), 알림(`run_notify`), 실행 프로토콜이
     모두 이것을 지난다. 기록 하나의 값이 수가 아니거나 목록이 아니어도 읽기가 예외로 멈추면 같은
-    소유자의 다른 대기까지 보이지 않는다. 그래서 못 읽는 값은 0 이나 빈 목록으로 읽는다.
+    소유자의 다른 대기까지 보이지 않는다. 그래서 못 읽는 값은 0 이나 빈 목록으로 읽고, 사용량에는
+    유한한 수만 남긴다.
     대기 중인 실행은 늘 dict 인 대기와 1 이상의 질문 번호를 갖는다: 사람이 그 번호로 답해 닫는다.
     대기의 행동은 문자열만 남으므로 보이는 행동과 승인되는 행동이 같은 목록이다."""
     out = dict(props_of(props))
@@ -99,13 +127,12 @@ def readable(props) -> dict:
             out[key] = count(out[key])
     for key, read in (("cited_ids", _strings), ("capabilities_used", _strings),
                       ("approved", _strings), ("answered_actions", _strings),
-                      ("capability_flags", _dicts)):
+                      ("capability_flags", _flags)):
         if key in out:
             out[key] = read(out[key])
     if "used" in out:
         used = out["used"] if isinstance(out["used"], dict) else {}
-        out["used"] = {k: v for k, v in used.items()
-                       if isinstance(v, (int, float)) and not isinstance(v, bool)}
+        out["used"] = {k: v for k, v in used.items() if number(v) is not None}
     pending = out.get("pending")
     if out.get("state") == "waiting":
         out["asks"] = max(count(out.get("asks")), 1)
