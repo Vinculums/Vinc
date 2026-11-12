@@ -293,25 +293,37 @@ def test_cimd_rejects_http_client_ids():
 def test_cimd_fetch_names_itself_instead_of_python_urllib(monkeypatch):
     """claude.ai 앞단은 `Python-urllib/*` 를 403(Cloudflare 1010)으로 막는다 — Claude Code 의
     CIMD 등록이 그 때문에 `CIMD fetch failed: HTTP Error 403` 으로 죽었다(2026-09-30)."""
+    import socket
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
     from vinc_mcp import oauth
     seen = {}
 
-    class _Resp:
-        def __enter__(self):
-            return self
+    class _H(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
 
-        def __exit__(self, *a):
-            return False
+        def do_GET(self):  # noqa: N802
+            seen["ua"] = self.headers.get("User-Agent")
+            raw = json.dumps({"redirect_uris": ["http://localhost/callback"]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
 
-        def read(self, n):
-            return json.dumps({"redirect_uris": ["http://localhost/callback"]}).encode()
-
-    def _urlopen(req, timeout):
-        seen["ua"] = req.get_header("User-agent")
-        return _Resp()
-
-    monkeypatch.setattr(oauth.urllib.request, "urlopen", _urlopen)
-    oauth.fetch_cimd("https://claude.ai/oauth/claude-code-client-metadata")
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), _H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        # 공인 주소로 풀린 것으로 하고, 연결만 이 가짜 서버(평문)로 보낸다.
+        monkeypatch.setattr(oauth, "_cimd_resolve", lambda host, port, *a, **kw: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port))])
+        monkeypatch.setattr(oauth, "_cimd_connect", lambda ip, port, host, timeout:
+                            socket.create_connection(srv.server_address, timeout=timeout))
+        oauth.fetch_cimd("https://claude.ai/oauth/claude-code-client-metadata")
+    finally:
+        srv.shutdown()
+        srv.server_close()
     assert seen["ua"] and not seen["ua"].startswith("Python-urllib")
     assert seen["ua"].startswith("Vinc-MCP/")
 

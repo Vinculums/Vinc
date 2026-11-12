@@ -23,15 +23,15 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import http.client
 import json
 import secrets
+import socket
 import sys
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 
-from . import __version__
+from . import __version__, netguard
 from .store import REFRESH_REUSE_GRACE_S, Store
 
 CODE_TTL = 300
@@ -62,36 +62,97 @@ def _check_cimd_url(url: str) -> None:
                          "and no fragment or user info")
 
 
+class CimdError(ValueError):
+    """CIMD 문서를 못 쓴 이유. `/authorize` 가 400 본문에 그대로 싣는다.
+
+    메시지는 종류마다 고정 문장이다. urllib·소켓·TLS 의 글이나 상대가 보낸 본문은 싣지 않는다
+    (어느 주소에 무엇이 열려 있는지를 밖에 알려 주는 창이 된다). `invalid` 만 고정된 사유를
+    콜론 뒤에 붙인다. `ValueError` 의 자식이라 400 으로 바꾸는 자리는 그대로다."""
+
+    MESSAGES = {"unreachable": "client metadata document is not reachable",
+                "not_allowed": "client metadata URL is not allowed",
+                "invalid": "client metadata document is not valid"}
+
+    def __init__(self, kind: str, reason: str = ""):
+        super().__init__(self.MESSAGES[kind] + (f": {reason}" if reason else ""))
+        self.kind = kind
+
+
+#: CIMD 를 가져올 때의 이름 풀기와 연결. 시험이 바꿔 끼운다(부를 때 읽는다).
+_cimd_resolve = socket.getaddrinfo
+_cimd_connect = netguard.tls_connect
+
+
+def _cimd_get(url: str) -> bytes:
+    """공인 주소로만, 확인한 주소로 붙어 GET 한 번. 리다이렉트는 따르지 않는다.
+
+    이름이 푼 주소 가운데 하나라도 공인이 아니면 붙지 않는다. 붙는 것은 확인한 주소들뿐이다
+    (다시 풀지 않는다). 3xx 는 `not_allowed`, 2xx 가 아닌 답과 전송 실패는 `unreachable` 이다."""
+    parts = urllib.parse.urlsplit(url)
+    host = parts.hostname or ""
+    try:
+        port = parts.port or 443
+    except ValueError:
+        raise CimdError("not_allowed") from None
+    try:
+        ips = netguard.public_ips(host, port, _cimd_resolve)
+    except netguard.Unresolved:
+        raise CimdError("unreachable") from None
+    except netguard.NotPublic:
+        raise CimdError("not_allowed") from None
+    target = (parts.path or "/") + (("?" + parts.query) if parts.query else "")
+    sock = None
+    for ip in ips:
+        try:
+            sock = _cimd_connect(ip, port, host, _CIMD_TIMEOUT)
+            break
+        except (OSError, ValueError):   # 인증서 이름 불일치는 ValueError 이기도 하다
+            continue
+    if sock is None:
+        raise CimdError("unreachable")
+    conn = http.client.HTTPSConnection(host, port, timeout=_CIMD_TIMEOUT)
+    conn.sock = sock
+    try:
+        conn.request("GET", target, headers={"Accept": "application/json",
+                                             "User-Agent": _CIMD_UA})
+        resp = conn.getresponse()
+        if 300 <= resp.status < 400:
+            raise CimdError("not_allowed")
+        if not 200 <= resp.status < 300:
+            raise CimdError("unreachable")
+        return resp.read(_CIMD_MAX_BYTES + 1)
+    except CimdError:
+        raise
+    except (OSError, ValueError, http.client.HTTPException):
+        raise CimdError("unreachable") from None
+    finally:
+        conn.close()
+
+
 def fetch_cimd(url: str) -> dict:
-    """CIMD 문서를 가져온다. https 만, 크기·시간 상한.
+    """CIMD 문서를 가져온다. https 만, 공인 주소만, 리다이렉트 없이, 크기·시간 상한.
 
     ChatGPT 는 `client_id` 자리에 이 URL 을 넣고 DCR 을 건너뛴다
     (`client_id_metadata_document_supported`). 디렉터리 트래픽이
     연결마다 클라이언트를 늘리지 않게 하려는 자리다.
     문서 안의 `client_id` 대조는 여기가 아니라 `OAuthGate._client_of` 가 한다 —
     가져오는 함수를 갈아끼워도(테스트·캐시) 대조가 빠지지 않게.
+    실패는 `CimdError` 하나이고 메시지는 종류마다 고정이다.
     근거: [[vinc.spec.remote-profile]]
     """
     _check_cimd_url(url)
-    req = urllib.request.Request(url, method="GET",
-                                 headers={"Accept": "application/json",
-                                          "User-Agent": _CIMD_UA})
-    try:
-        with urllib.request.urlopen(req, timeout=_CIMD_TIMEOUT) as resp:
-            raw = resp.read(_CIMD_MAX_BYTES + 1)
-    except urllib.error.URLError as exc:
-        raise ValueError(f"CIMD fetch failed: {exc}") from exc
+    raw = _cimd_get(url)
     if len(raw) > _CIMD_MAX_BYTES:
-        raise ValueError("CIMD document too large")
+        raise CimdError("invalid", "document too large")
     try:
         doc = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError("CIMD document is not JSON") from exc
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise CimdError("invalid", "document is not JSON") from None
     if not isinstance(doc, dict):
-        raise ValueError("CIMD document must be an object")
+        raise CimdError("invalid", "document must be an object")
     uris = doc.get("redirect_uris")
     if not isinstance(uris, list) or not uris or not all(isinstance(u, str) for u in uris):
-        raise ValueError("CIMD redirect_uris (non-empty list) is required")
+        raise CimdError("invalid", "redirect_uris (non-empty list) is required")
     return doc
 
 

@@ -20,10 +20,8 @@ import os
 import random
 import threading
 import time
-import urllib.error
-import urllib.request
 
-from . import edverify, selfhost
+from . import edverify, hubhttp, selfhost
 
 #: 계정의 좌석 서명 공개키(base64, 32바이트). 계정 `SELF_HOSTED_ED25519_SEED` 에서 나온 값을 여기
 #: 굽는다. 비어 있으면 `VINC_SEAT_PUBLIC_KEY` 가 있어야 답을 믿는다 — 없으면 늘 무료다.
@@ -142,20 +140,23 @@ def entitlement(now: float | None = None) -> dict:
 
 def _post(url: str, body: dict | None = None, *, bearer: str | None = None,
           timeout: float = 20.0) -> tuple[int, dict]:
+    """계정에 POST 하고 (상태, JSON 본문)을 준다. 4xx·5xx 도 상태와 본문으로 돌려준다.
+
+    리다이렉트는 따르지 않는다. 따르면 인스턴스 키가 Location 의 호스트로 가고 POST 가 본문 없는
+    GET 으로 바뀐다. 3xx 와 답이 없었던 실패는 `HubHTTPError` 로 올라가 호출부에서 계정에 닿지
+    않은 것(`unreachable`)과 같게 다뤄진다. 근거: [[record:hub-http-clients-refuse-redirects-2026-10-16]]"""
     data = json.dumps(body or {}).encode("utf-8")
-    headers = {"Content-Type": "application/json", "Accept": "application/json",
-               "User-Agent": "vinc-selfhost-hub"}
-    if bearer:
-        headers["Authorization"] = f"Bearer {bearer}"
-    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.status, json.loads(r.read().decode("utf-8") or "{}")
-    except urllib.error.HTTPError as e:
+        resp = hubhttp.request(url, token=bearer, data=data, timeout=timeout,
+                               headers={"User-Agent": "vinc-selfhost-hub"})
+        return resp.status, json.loads(resp.text or "{}")
+    except hubhttp.HubHTTPError as e:
+        if e.status is None or 300 <= e.status < 400:
+            raise
         try:
-            return e.code, json.loads(e.read().decode("utf-8") or "{}")
+            return e.status, json.loads(e.body or "{}")
         except ValueError:
-            return e.code, {}
+            return e.status, {}
 
 
 def check_once(now: float | None = None) -> str:
