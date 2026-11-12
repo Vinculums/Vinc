@@ -32,9 +32,9 @@ test("search reads the trimmed MCP default text: a slim temporal block, no page 
       { id: "doc.c#00002", score: 1.0, snippet: "no block", truncated: true, doc_id: "doc.c", doc_title: "Doc C" },
     ],
     node_hits: [{ id: "concept:a", title: "A", kind: "concept", domain: "vinc/x", rrf_score: 0.03,
-      temporal: { valid_from: "2026-01", updated_at: "2026-02-01T00:00:00Z" }, cite_id: "concept:a" }],
+      temporal: { valid_from: "2026-01", updated_at: "2026-02-01T00:00:00Z" } }],
     arms: "fts+vector", total_count: 2, has_more: false, next_cursor: null, validity_filtered: 3,
-    omitted: "Omitted: empty, default, derived, duplicate, diagnostic keys, fixed notes, page, created_at. No validity: unknown if interval_invalid or no valid_from/until, else current. raw:true has all.",
+    omitted: "Omitted: empty, default, derived, duplicate, diagnostic, created_at. …=cut title. No cite_id: id. No validity: unknown if interval_invalid or no valid_from/until, else current. raw:true=all",
   }));
   const out = await supplement.search({ query: "Marker" });
   assert.deepEqual(out.map((r) => [r.path, r.score]), [
