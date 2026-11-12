@@ -20,7 +20,6 @@ import datetime
 import hashlib
 import hmac
 import http.client
-import ipaddress
 import json
 import os
 import re
@@ -34,6 +33,9 @@ import urllib.parse
 from dataclasses import dataclass, field
 
 from store.envflag import truthy
+
+from .netguard import NotPublic, Unresolved, public_address, public_ips  # noqa: F401 — public_address 는 이 이름으로도 들인다
+from .netguard import tls_connect as _tls_connect
 
 #: 따르는 초안의 고정점. 두 문서가 어긋나는 곳은 계약 정본 §1 이 정한다.
 EVENTS_SPEC = ("modelcontextprotocol/experimental-ext-triggers-events "
@@ -283,40 +285,12 @@ def check_url(url) -> tuple[str, int, str]:
     return parts.hostname, 443, target
 
 
-def public_address(text: str) -> bool:
-    """전 세계에서 닿는 주소인가. 사설·루프백·링크로컬·멀티캐스트·예약은 아니다."""
-    try:
-        ip = ipaddress.ip_address(text.split("%", 1)[0])
-    except ValueError:
-        return False
-    if ip.version == 6:
-        for inner in (ip.ipv4_mapped, ip.sixtofour, (ip.teredo or (None, None))[1]):
-            if inner is not None and not public_address(str(inner)):
-                return False
-    return bool(ip.is_global and not (ip.is_multicast or ip.is_private or ip.is_loopback
-                                      or ip.is_link_local or ip.is_reserved
-                                      or ip.is_unspecified))
-
-
 def resolve_public(host: str, port: int, resolver=socket.getaddrinfo) -> str:
     """주소 하나. 풀린 주소 가운데 하나라도 공인이 아니면 거절한다(풀리지 않은 것과 같은 답)."""
     try:
-        infos = resolver(host, port, type=socket.SOCK_STREAM)
-    except (OSError, UnicodeError):
+        return public_ips(host, port, resolver)[0]
+    except (Unresolved, NotPublic):
         raise CallbackFailure("connection_refused") from None
-    addrs = list(dict.fromkeys(info[4][0] for info in infos))
-    if not addrs or not all(public_address(a) for a in addrs):
-        raise CallbackFailure("connection_refused")
-    return addrs[0]
-
-
-def _tls_connect(ip: str, port: int, host: str, timeout: float):
-    raw = socket.create_connection((ip, port), timeout=timeout)
-    try:
-        return ssl.create_default_context().wrap_socket(raw, server_hostname=host)
-    except Exception:
-        raw.close()
-        raise
 
 
 class Sender:
