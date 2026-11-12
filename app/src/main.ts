@@ -271,6 +271,16 @@ async function openCheatsheet() {
       .join("");
 }
 
+// ⌘/Ctrl ⇧ K 가 쉬는 동안은 잡기 단계에서 멈춘다. 편집기는 같은 키를 "줄 지우기"로 쓰는데, 아래 거품 단계의
+// 처리기보다 먼저 받아 `[[` · 슬래시 메뉴를 글자째 지우고 닫아 버린다: 그러면 메뉴가 떠 있던 동안에도 팔레트가 열린다.
+// 쉬지 않을 때는 손대지 않는다(아무것도 안 떠 있을 때의 동작은 그대로다).
+document.addEventListener("keydown", (e) => {
+  if (!((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "k")) return;
+  if (!shortcutsRest("command", e.target, document.activeElement)) return;
+  e.preventDefault();
+  e.stopPropagation();
+}, true);
+
 document.addEventListener("keydown", (e) => {
   // 판정은 keys.ts 한 벌뿐이다. 여기 `tagName` 검사를 다시 적으면 표면 쪽 가드와
   // 또 갈리고, 그 틈으로 지도 단축키가 문서 본문에 떨어진다(2026-09-07 실측).
