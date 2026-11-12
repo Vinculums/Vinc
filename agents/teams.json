@@ -80,6 +80,7 @@
         ".dockerignore",
         ".gitattributes",
         ".gitignore",
+        ".test_durations",
         "Dockerfile.hub",
         "Dockerfile.m3probe",
         "CHANGELOG.md",
