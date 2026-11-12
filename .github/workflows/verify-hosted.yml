@@ -30,7 +30,7 @@ on:
   workflow_dispatch:
     inputs:
       core:
-        description: "core — verify.py + 게이트 8종"
+        description: "core — verify.py + scripts/gates.py --ci core"
         type: boolean
         default: true
       core_pkns:
@@ -63,7 +63,10 @@ jobs:
     if: inputs.core
     runs-on: ubuntu-latest
     steps:
+      # 앱 보드 게이트가 캡처 뒤의 커밋 목록을 읽는다(ci.yml 의 core 잡과 같다).
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -100,28 +103,9 @@ jobs:
           # 런 요약에 건수를 남긴다 — 이 워크플로의 존재 이유가 기록이므로 숫자가
           # 로그 안에만 있으면 안 된다.
           echo "verify.py: **${ran}건** 실행" >> "$GITHUB_STEP_SUMMARY"
-      - name: Forbidden-terms gate
-        run: python scripts/gate_forbidden.py
-      - name: Graph citation gate
-        run: python -X utf8 scripts/gate_graph_refs.py
-      - name: OpenAPI v1 drift gate
-        run: python -X utf8 scripts/gen_openapi.py --check
-      - name: Graph-value escape gate
-        run: python -X utf8 scripts/gate_escape.py
-      - name: View contrast gate
-        run: python scripts/gate_contrast.py
-      - name: Design sync gate
-        run: python scripts/gate_design_sync.py
-      - name: Design token drift gate
-        run: python -X utf8 scripts/design/sync_out.py --check
-      - name: Design surface gate (app)
-        run: python -X utf8 scripts/design/gate_surface.py app/src
-      - name: Figma token drift gate
-        run: python -X utf8 scripts/design/figma_diff.py
-      - name: Figma inventory gate (screens · modals · icons)
-        run: python -X utf8 scripts/design/figma_inventory.py
-      - name: Agent roster gate
-        run: python -X utf8 scripts/agents_sync.py --check
+      # 게이트 목록을 여기 다시 적지 않는다: ci.yml 의 core 잡과 같은 레지스트리 호출이다.
+      - name: Gates (registry, core)
+        run: python -X utf8 scripts/gates.py --ci core
 
   core-pkns:
     name: core (hosted, VINC_PK_NAMESPACED=on)
@@ -301,7 +285,7 @@ jobs:
             echo
             echo "| 잡 | 결과 |"
             echo "|---|---|"
-            echo "| core (verify.py + 게이트 8종) | $(say "$R_CORE") |"
+            echo "| core (verify.py + scripts/gates.py --ci core) | $(say "$R_CORE") |"
             echo "| core-pkns (플래그 ON) | $(say "$R_PKNS") |"
             echo "| app (typecheck + dev checks) | $(say "$R_APP") |"
             echo "| rust linux (cargo check/test) | $(say "$R_RSL") |"

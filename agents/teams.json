@@ -105,6 +105,7 @@
         "scripts/gate_comment_history.py",
         "scripts/comment-history-baseline.json",
         "scripts/gate_homepage_drift.py",
+        "scripts/gates.py",
         "scripts/setup_runner.sh",
         "scripts/hub_deploy_pick.py",
         "scripts/integrations_publish_select.py",

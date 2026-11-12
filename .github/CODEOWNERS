@@ -68,6 +68,7 @@
 /scripts/gate_ownership.py                       @Vinculums/platform
 /scripts/gate_pr_title.py                        @Vinculums/platform
 /scripts/gate_runner_move.py                     @Vinculums/platform
+/scripts/gates.py                                @Vinculums/platform
 /scripts/graph-refs.json                         @Vinculums/platform
 /scripts/hub_deploy_pick.py                      @Vinculums/platform
 /scripts/integrations_publish_select.py          @Vinculums/platform
