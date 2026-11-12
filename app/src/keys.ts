@@ -71,7 +71,7 @@ function live(): LayerOpts[] {
 }
 
 /** Esc 를 맨 위 층에 준다. 받을 층이 있었으면 참: 부르는 쪽은 그 키를 멈춰 뒤의 누구도 듣지 않게 한다.
- *  층이 없으면 거짓이고, 그때 Esc 는 main 과 같이 화면의 처리기(레일 닫기 · 그래프 뿌리 · 검색 칸)로 간다. */
+ *  층이 없으면 거짓이다: 이 Esc 는 main 과 같이 화면의 처리기(레일 닫기 · 그래프 뿌리 · 검색 칸)로 간다. */
 export function escapeTop(): boolean {
   const s = live();
   const top = s[s.length - 1];
