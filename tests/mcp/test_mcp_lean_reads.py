@@ -2,7 +2,9 @@
 
 줄이는 것: 순위 진단(rows 의 score, node_hits 의 rrf_score 는 남는다), 시간 블록의 차 있지 않은 칸과
 날짜에서 되찾을 수 있는 칸, brief 의 평평한 시간 사본과 관계의 빈 칸, 노드 팔이 건강할 때의 진단,
-vinc_node 의 빈 칸과 노드에 이미 있는 시간 값, neighbors 의 빈 칸·rev·되풀이한 도메인.
+vinc_node 의 빈 칸과 노드에 이미 있는 시간 값, neighbors 의 빈 칸·rev·되풀이한 도메인, search 의
+id 와 같은 node hit cite_id 와 한 응답 안에서 되풀이한 문서 제목. search·neighbors 에서 120자를
+넘는 제목은 "…" 로 자른다. vinc_brief 의 기본 본문은 main 과 바이트까지 같다.
 `raw:true`(또는 "true")면 그대로 나간다. 합성 데이터만 쓴다.
 """
 import copy
@@ -163,10 +165,13 @@ def test_undated_block_keeps_updated_at_and_scores_and_envelope_say_only_what_is
     for row in out["rows"]:
         assert row["temporal"] == UPD
         assert row["score"] == 4.1 and "rrf_score" not in row and "arms" not in row
+        # 행의 cite_id 는 남는다(행의 id 는 청크 id 라 인용할 수 없다).
         assert row["truncated"] is True and row["snippet"] and row["cite_id"]
-        assert row["doc_id"] == "doc.a" and row["doc_title"] == "Doc A"
+        assert row["doc_id"] == "doc.a"
+    # 같은 문서의 제목은 첫 행에만 실린다.
+    assert [r.get("doc_title") for r in out["rows"]] == ["Doc A", None]
     hit = out["node_hits"][0]
-    assert hit["rrf_score"] == 0.03 and hit["temporal"] == UPD
+    assert hit["rrf_score"] == 0.03 and hit["temporal"] == UPD and "cite_id" not in hit
     assert (hit["id"], hit["title"], hit["kind"], hit["domain"]) == ("concept:a", "A", "concept",
                                                                      "vinc/x")
     for k in ("matched_in", "hit_tokens", "title_tokens", "token_total", "arms", "distance",
@@ -179,7 +184,7 @@ def test_undated_block_keeps_updated_at_and_scores_and_envelope_say_only_what_is
     for k in ("kind", "executed", "total_count", "arms", "has_more", "next_cursor",
               "validity_filtered"):
         assert out[k] == src[k], k
-    assert out["omitted"] == tools.OMITTED_NOTE
+    assert out["omitted"] == tools.OMITTED_SEARCH_NOTE
 
 
 def test_a_default_block_without_updated_at_goes_away():
@@ -379,7 +384,11 @@ def test_the_note_states_the_validity_rule_the_slim_block_relies_on():
     """`omitted` 의 validity 문장을 그대로 따라 읽으면 모든 구간 꼴에서 저장 쪽 validity 가 나온다."""
     from store import search_temporal
     clause = "No validity: unknown if interval_invalid or no valid_from/until, else current."
-    assert clause in tools.OMITTED_NOTE and "raw:true" in tools.OMITTED_NOTE
+    for note in (tools.OMITTED_NOTE, tools.OMITTED_SEARCH_NOTE):
+        assert clause in note and "raw:true" in note
+    # search 의 줄은 잘린 제목과 node hit 의 빠진 cite_id 를 읽는 법도 말한다. brief 의 줄은 말하지 않는다.
+    assert "…=cut title" in tools.OMITTED_SEARCH_NOTE and "No cite_id: id." in tools.OMITTED_SEARCH_NOTE
+    assert "…" not in tools.OMITTED_NOTE and "cite_id" not in tools.OMITTED_NOTE
 
     def read_as_the_note_says(t):
         if "validity" in t:
@@ -398,8 +407,19 @@ def test_the_note_states_the_validity_rule_the_slim_block_relies_on():
     assert "raw:true" in tools.OMITTED_NODE_NOTE and len(tools.OMITTED_NODE_NOTE) <= 70
 
 
+#: search·neighbors 기본 본문이 자를 수 있는 제목 칸. 다른 칸의 값은 바뀌면 안 된다.
+TITLE_KEYS = ("title", "doc_title")
+
+
+def _is_cut(raw, lean):
+    """lean 이 raw 를 규칙대로 자른 것인가: 120자를 넘던 값이 120자 이하로 "…" 에 끝나고 앞부분이 같다."""
+    return (isinstance(raw, str) and isinstance(lean, str) and len(raw) > 120
+            and len(lean) <= 120 and lean.endswith("…") and raw.startswith(lean[:-1]))
+
+
 def _dropped(raw, lean, where=""):
-    """raw 에 있고 lean 에 없는 칸을 (자리, 키, 값)으로 모은다. 남은 칸의 값이 바뀌었으면 그것도 낸다."""
+    """raw 에 있고 lean 에 없는 칸을 (자리, 키, 값)으로 모은다. 남은 칸의 값이 바뀌었으면 그것도 낸다.
+    제목 칸만은 규칙대로 잘렸을 수 있다(`_is_cut`)."""
     if isinstance(raw, dict) and isinstance(lean, dict):
         for k, v in raw.items():
             if k not in lean:
@@ -408,6 +428,8 @@ def _dropped(raw, lean, where=""):
                 assert lean[k] == v, where
             elif k == "temporal" or isinstance(v, (dict, list)):
                 yield from _dropped(v, lean[k], f"{where}/{k}")
+            elif k in TITLE_KEYS and lean[k] != v:
+                assert _is_cut(v, lean[k]), (where, k, v, lean[k])
             else:
                 assert lean[k] == v, (where, k, v, lean[k])
     elif isinstance(raw, list) and isinstance(lean, list):
@@ -427,6 +449,8 @@ def _rich_results():
     search["node_hits"].append({**copy.deepcopy(search["node_hits"][0]), "id": "record:c",
                                 "temporal": cur, "cite_id": "record:c"})
     search["page"]["row_offsets"] = {"doc.a#00000": 0}
+    search["node_hits"][0]["title"] = LONG
+    search["rows"][0]["doc_title"] = search["rows"][1]["doc_title"] = LONG
     choose = _choose_brief()
     choose["candidate_material"]["excerpts"] = [{"doc_id": "d", "excerpt": "e", "temporal": _block(),
                                                  **_flat(_block())}]
@@ -442,7 +466,7 @@ def _rich_results():
 
 #: "default" 로 빠지는 칸이 가질 수 있는 값. 다른 값이 빠지면 그것은 기본값이 아니다.
 DEFAULTS = {"interval_invalid": (False,), "claim_status": ("unscoped", "unassessed"),
-            "validity": ("unknown",),
+            "validity": ("unknown",), "validity_note": (tools.HIDDEN_NOTE,),
             "claim_assessment_scope": ("stored_fields", "retrieved_candidates"),
             "total_count_capped": (False,), "executed": (True,), "offset": (0,),
             "truncated": (False,), "evidence": (False,)}
@@ -461,11 +485,13 @@ DROP_TABLE = (
     ("vinc_search", "", "validity_best_dropped_distance", "diagnostic"),
     ("vinc_search", "", "node_window", "diagnostic"),
     ("vinc_search", "", "node_semantic", "diagnostic"),
-    ("vinc_search", "", "validity_note", "fixed notes"),
-    ("vinc_search", "", "page", "page"),
+    ("vinc_search", "", "validity_note", "default"),
+    ("vinc_search", "", "page", "diagnostic"),
     ("vinc_search", "", "total_count_capped", "default"),
     ("vinc_search", "/rows[]", "rrf_score", "diagnostic"),
     ("vinc_search", "/rows[]", "arms", "diagnostic"),
+    ("vinc_search", "/rows[]", "doc_title", "duplicate"),
+    ("vinc_search", "/node_hits[]", "cite_id", "derived"),
     ("vinc_search", "/node_hits[]", "matched_in", "diagnostic"),
     ("vinc_search", "/node_hits[]", "hit_tokens", "diagnostic"),
     ("vinc_search", "/node_hits[]", "title_tokens", "diagnostic"),
@@ -519,6 +545,20 @@ DROP_TABLE = (
 )
 
 
+def _still_readable(raw, lean, where, key, value):
+    """"duplicate" 로 빠진 값을 응답의 다른 자리에서 되읽을 수 있는가."""
+    here = _at(lean, where)
+    if value in ((here.get("temporal") or {}).get(key), lean.get("grounds")):
+        return True
+    if key == "doc_title":
+        # 같은 doc_id 의 앞선 행이 (잘렸을 수 있는) 그 제목을 싣는다.
+        i = int(where.rsplit("[", 1)[1][:-1])
+        doc = raw["rows"][i]["doc_id"]
+        return any(r.get("doc_id") == doc and r.get("doc_title") in (value, tools.cut_title(value))
+                   for r in lean["rows"][:i])
+    return False
+
+
 def _kind(tool, where, key):
     import fnmatch
     for t, pat, k, kind in tools.OMITTED_KINDS:
@@ -543,7 +583,7 @@ def test_every_lean_drop_key_is_in_the_drop_table():
 
 
 def test_every_key_left_out_falls_under_a_kind_the_note_names():
-    notes = {"vinc_search": tools.OMITTED_NOTE.lower(), "vinc_brief": tools.OMITTED_NOTE.lower(),
+    notes = {"vinc_search": tools.OMITTED_SEARCH_NOTE.lower(), "vinc_brief": tools.OMITTED_NOTE.lower(),
              "vinc_node": tools.OMITTED_NODE_NOTE.lower()}
     for tool, _w, _k, kind in DROP_TABLE:
         for t in ((tool,) if tool != "*" else ("vinc_search", "vinc_brief")):
@@ -567,9 +607,7 @@ def test_every_key_left_out_falls_under_a_kind_the_note_names():
                            for d in DEFAULTS[key]), (where, key, value)
             if kind == "duplicate":
                 # 같은 값이 남은 자리에서 한 번은 읽힌다(같은 객체의 블록이거나 봉투의 grounds).
-                here = _at(lean, where)
-                assert value in ((here.get("temporal") or {}).get(key), lean.get("grounds")), \
-                    (where, key, value)
+                assert _still_readable(raw, lean, where, key, value), (where, key, value)
             seen.add(kind)
     kinds = seen
     assert kinds >= {kind for _t, _w, _k, kind in DROP_TABLE}, \
@@ -593,24 +631,261 @@ def test_node_drops_only_unset_internal_and_repeated_keys():
 LONG = "Measured 2026-10-07 on the owner's laptop: " + "one epoch takes nine minutes " * 10 + "end"
 
 
-def test_long_titles_and_ids_come_back_unchanged():
+def _words(n):
+    """정확히 n 자인 영어 제목(단어 사이 빈칸)."""
+    text = ("word " * n)[:n]
+    return text[:-1] + "x" if text.endswith(" ") else text
+
+
+def test_a_title_of_120_stays_and_121_is_cut_at_a_word_boundary():
+    at, over = _words(120), _words(121)
+    assert len(at) == 120 and len(over) == 121
+    assert tools.cut_title(at) == at
+    cut = tools.cut_title(over)
+    assert _is_cut(over, cut) and len(cut) <= 120
+    # 단어 경계: "…" 앞은 단어 하나가 통째로 끝난 자리다.
+    assert over[len(cut) - 1] == " " and not cut[:-1].endswith(" ")
+    assert tools.cut_title(LONG) != LONG and _is_cut(LONG, tools.cut_title(LONG))
+    for v in (None, 3, ""):
+        assert tools.cut_title(v) == v
+
+
+def test_a_title_without_a_late_word_boundary_is_cut_hard_at_119():
+    # 빈칸 없는 긴 낱말, 그리고 빈칸이 남길 몫의 앞 절반에만 있는 제목.
+    assert tools.cut_title("x" * 300) == "x" * 119 + "…"
+    early = "a " + "x" * 200
+    assert tools.cut_title(early) == early[:119] + "…"
+
+
+def test_a_title_that_would_cut_to_nothing_is_cut_hard_and_never_to_an_ellipsis_alone():
+    # 경계에서 자르면 문장부호만 남는 제목: 글자 자리에서 잘라 낱말이 남는다.
+    dots = "." * 70 + " " + "x" * 100
+    assert tools.cut_title(dots) == dots[:119] + "…"
+    # 빈칸·문장부호뿐인 제목도 "…" 하나가 되지 않는다(제목 앞부분 119자가 남는다).
+    for text in (" " * 200, "!" * 200, ", " * 100):
+        cut = tools.cut_title(text)
+        assert cut == text[:119] + "…" and len(cut) == 120, repr(text[:4])
+
+
+def test_long_titles_are_cut_in_neighbors_and_search_only():
+    nb = _neighbors()
+    nb["neighbors"][0]["title"] = LONG
+    nb["neighbors"][1]["title"] = _words(120)
+    out = tools.lean_result("vinc_neighbors", {}, nb)
+    assert out["neighbors"][0]["title"] == tools.cut_title(LONG)
+    assert out["neighbors"][1]["title"] == _words(120)
     search = _search_result()
     search["rows"][0]["doc_title"] = LONG
     search["node_hits"][0]["title"] = LONG
     out = tools.lean_result("vinc_search", {}, search)
-    assert out["rows"][0]["doc_title"] == LONG and out["node_hits"][0]["title"] == LONG
-    assert out["node_hits"][0]["cite_id"] == out["node_hits"][0]["id"]
+    assert out["rows"][0]["doc_title"] == tools.cut_title(LONG)
+    assert out["node_hits"][0]["title"] == tools.cut_title(LONG)
+    # brief 와 vinc_node 의 제목은 어느 자리든 자르지 않는다(아래 brief 테스트가 더 넓게 본다).
     choose = _choose_brief()
     choose["candidates"][0]["title"] = LONG
     out = tools.lean_result("vinc_brief", {}, choose)
     assert out["candidates"][0]["title"] == LONG
-    assert all(c["cite_id"] == c["id"] and c["kind"] == "concept" for c in out["candidates"])
-    resolved = _resolved_brief()
-    resolved["node"]["title"] = LONG
-    out = tools.lean_result("vinc_brief", {}, resolved)
-    assert out["node"]["title"] == LONG and out["node"]["cite_id"] == "concept:n"
     node = _record_node(title=LONG)
     assert tools.lean_result("vinc_node", {}, node)["node"]["title"] == LONG
+
+
+def test_raw_returns_the_whole_titles_and_ids():
+    search = _search_result()
+    search["node_hits"][0]["title"] = LONG
+    search["rows"][0]["doc_title"] = LONG
+    nb = _neighbors()
+    nb["neighbors"][0]["title"] = LONG
+    for name, src in (("vinc_search", search), ("vinc_neighbors", nb)):
+        out = tools.lean_result(name, {"raw": True}, src)
+        assert out is src
+    assert search["node_hits"][0]["title"] == LONG and search["rows"][1]["doc_title"] == "Doc A"
+    assert search["node_hits"][0]["cite_id"] == "concept:a"
+
+
+def test_korean_and_combining_titles_are_cut_by_characters():
+    ko = "측정 결과: " + "한국어 제목은 글자 수로 자른다 " * 12
+    cut = tools.cut_title(ko)
+    assert len(ko) > 120 and _is_cut(ko, cut) and len(cut) <= 120
+    assert cut[-2] != " " and len(cut.encode("utf-8")) > 120, "바이트가 아니라 글자로 센다"
+    # 결합 부호(é = e + U+0301)와 조합형 한글(ᄒ+ᅡ+ᆫ) 가운데서는 자르지 않는다.
+    for unit in ("e\u0301", "\u1112\u1161\u11ab", "\U0001F468\u200d\U0001F469"):
+        text = unit * 200
+        cut = tools.cut_title(text)
+        assert len(cut) <= 120 and cut.endswith("…")
+        body = cut[:-1]
+        assert len(body) % len(unit) == 0 and body == unit * (len(body) // len(unit)), unit
+
+
+def test_a_flag_is_not_split_and_a_skin_tone_keeps_its_base():
+    flag, wave = "\U0001F1F0\U0001F1F7", "\U0001F44B\U0001F3FD"
+    for unit in (flag, wave):
+        body = tools.cut_title(unit * 100)[:-1]
+        assert body == unit * 59, unit     # 119 자리는 짝의 가운데라 118 에서 자른다
+    # 지역 표시 문자는 줄의 처음부터 둘씩 짝이다: 앞에 한 글자가 있으면 119 자리가 짝의 경계다.
+    body = tools.cut_title("x" + flag * 100)[:-1]
+    assert body == "x" + flag * 59 and len(body) == 119
+    # 수식자 하나만 남거나 바탕 글자 없이 시작하는 일이 없다.
+    for n in range(118, 125):
+        body = tools.cut_title("y" * (n - 119) + wave * 100 if n > 119 else wave * 100)[:-1]
+        assert not body.endswith("\U0001F44B") and body.count("\U0001F3FD") == body.count("\U0001F44B")
+
+
+def test_neighbors_say_once_that_a_title_was_cut():
+    nb = _neighbors()
+    nb["neighbors"][0]["title"] = LONG
+    nb["neighbors"][1]["title"] = LONG + " too"
+    out = tools.lean_result("vinc_neighbors", {}, nb)
+    assert out["omitted"] == tools.CUT_TITLE_NOTE and len(tools.CUT_TITLE_NOTE) < 60
+    assert "vinc_node" in tools.CUT_TITLE_NOTE and "raw:true" in tools.CUT_TITLE_NOTE
+    assert json.dumps(out, ensure_ascii=False).count(tools.CUT_TITLE_NOTE) == 1
+    # 잘린 제목이 없으면 neighbors 는 여전히 `omitted` 를 싣지 않는다.
+    assert "omitted" not in tools.lean_result("vinc_neighbors", {}, _neighbors())
+    assert "omitted" not in tools.lean_result("vinc_neighbors", {"raw": True}, nb)
+
+
+def test_doc_title_is_sent_once_per_document():
+    src = _search_result(rows=3)
+    other = copy.deepcopy(src["rows"][0])
+    other.update(id="doc.b#00000", doc_id="doc.b", doc_title="Doc B", cite_id="concept:doc.doc.b")
+    src["rows"].insert(1, other)
+    out = tools.lean_result("vinc_search", {}, src)
+    assert [(r["doc_id"], r.get("doc_title")) for r in out["rows"]] == [
+        ("doc.a", "Doc A"), ("doc.b", "Doc B"), ("doc.a", None), ("doc.a", None)]
+    # 행에 제목이 없던 문서는 그대로 없다.
+    src["rows"][0].pop("doc_title")
+    out = tools.lean_result("vinc_search", {}, src)
+    assert out["rows"][2].get("doc_title") == "Doc A"
+
+
+def test_search_leaves_out_only_a_node_hit_cite_id_equal_to_its_id():
+    src = _search_result(rows=3)
+    src["rows"][1]["cite_id"] = None
+    src["rows"][1]["cite_unavailable"] = "document mirror missing or unreadable"
+    src["rows"][2]["cite_id"] = "concept:doc.somewhere-else"
+    src["node_hits"].append({**copy.deepcopy(src["node_hits"][0]), "id": "concept:b",
+                             "cite_id": "concept:other"})
+    src["node_hits"].append({**copy.deepcopy(src["node_hits"][0]), "id": "concept:c",
+                             "cite_id": None, "cite_unavailable": "mirror missing"})
+    out = tools.lean_result("vinc_search", {}, src)
+    rows, hits = out["rows"], out["node_hits"]
+    # 행의 cite_id 는 어느 꼴이든 그대로다(행의 id 는 청크 id 라 인용할 수 없다).
+    assert [r["cite_id"] for r in rows] == [r["cite_id"] for r in src["rows"]]
+    assert rows[0]["cite_id"] == "concept:doc.doc.a" and rows[1]["cite_unavailable"]
+    assert "cite_id" not in hits[0] and hits[0]["id"] == src["node_hits"][0]["cite_id"]
+    assert hits[1]["cite_id"] == "concept:other"
+    assert hits[2]["cite_id"] is None and hits[2]["cite_unavailable"]
+
+
+#: main 의 brief `omitted` 줄. brief 기본 본문은 main 과 바이트까지 같아야 하므로 상수를 읽지 않고
+#: 글자로 박아 둔다(이 줄을 바꾸는 일은 brief 의 꼴을 바꾸는 일이라 따로 잰 뒤에 한다).
+MAIN_BRIEF_NOTE = ("Omitted: empty, default, derived, duplicate, diagnostic keys, fixed notes, page, "
+                   "created_at. No validity: unknown if interval_invalid or no valid_from/until, else "
+                   "current. raw:true has all.")
+T300 = (LONG * 3)[:300]
+_TITLE_LIKE = ("title", "doc_title", "source", "body_cite")
+
+
+def _quotes(n):
+    return [{"doc_id": "d", "source": LONG, "section": "2.1", "cite_id": "concept:doc.d",
+             "text": f"q{i}", "widened": i % 2 == 1} for i in range(n)]
+
+
+def _brief_cases():
+    """brief 의 여러 꼴: 재료가 있는 choose, 절이 있는 choose, 관계와 인용이 있는 resolved, none,
+    모든 제목이 300자인 brief, 축소기가 발췌를 덜어낸 brief."""
+    material = _choose_brief()
+    material["candidate_material"].update(
+        cite_id="concept:c0", one_liner="The text.", body_src="doc", body_cite=LONG + " · 2.1",
+        excerpts=[{"doc_id": "d", "doc_title": LONG, "excerpt": "The text. ", "cite_id": "concept:doc.d",
+                   "temporal": _block(), **_flat(_block())}],
+        links={"executed": True, "offset": 0, "truncated": False,
+               "items": [{**_link_item(1), "title": LONG}]})
+    for c in material["candidates"]:
+        c["quotes"] = _quotes(2)
+    yield "choose with material", material
+    section = _choose_brief()
+    section["section"] = {"node_id": "concept:c1", "cite_id": "concept:c1", "doc_id": "d",
+                          "title": LONG, "text": "section body"}
+    section["grounds"] = ["concept:c1"]
+    yield "choose with section", section
+    resolved = _resolved_brief()
+    resolved["links"]["items"][0]["title"] = LONG
+    resolved["excerpts"][0].update(doc_title=LONG, cite_id="concept:doc.d")
+    resolved["quotes"] = _quotes(3)
+    yield "resolved with links and quotes", resolved
+    yield "none", {"kind": "brief", "executed": True, "query": "nothing here", "status": "none",
+                   "candidates": [], "grounds": [], "arms": "fts+vector", "validity_filtered": 2,
+                   "validity_note": tools.HIDDEN_NOTE, "validity_best_dropped": [0, 0],
+                   "resolution": {"rule": "v3", "p": 0.0}}
+    everywhere = copy.deepcopy(material)
+    everywhere["section"] = copy.deepcopy(section["section"])
+    _walk_all(everywhere, lambda d, _w: d.update({k: T300 for k in ("title", "doc_title", "source")
+                                                  if k in d}))
+    yield "300-character titles everywhere", everywhere
+    shrunk = _resolved_brief()
+    shrunk["node"]["title"] = T300
+    shrunk["quotes"] = _quotes(4)
+    shrunk["excerpts"] = [{"doc_id": f"d{i}", "doc_title": T300, "cite_id": f"concept:doc.d{i}",
+                           "text": "x" * 3000} for i in range(40)]
+    yield "shrunk", shrunk
+
+
+def _walk_all(node, fn, where=()):
+    """모든 dict 에 `fn(dict, 자리)` 를 건다. 자리는 키와 번호의 튜플이다."""
+    if isinstance(node, dict):
+        fn(node, where)
+        for k, v in node.items():
+            _walk_all(v, fn, where + (k,))
+    elif isinstance(node, list):
+        for i, v in enumerate(node):
+            _walk_all(v, fn, where + (i,))
+
+
+def _at_path(node, path):
+    for step in path:
+        try:
+            node = node[step]
+        except (KeyError, IndexError, TypeError):
+            return None
+    return node
+
+
+def _strings(node):
+    if isinstance(node, str):
+        yield node
+    elif isinstance(node, dict):
+        for v in node.values():
+            yield from _strings(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from _strings(v)
+
+
+@pytest.mark.parametrize("label,src", list(_brief_cases()), ids=lambda v: v if isinstance(v, str) else "")
+def test_brief_default_text_is_as_on_main(label, src):
+    """vinc_brief 의 기본 본문은 main 과 같다: 어느 제목도 "…" 로 자르지 않고, `widened` 는 값과 함께
+    남고, `omitted` 줄은 main 의 글자 그대로다. 호스트가 받는 길(줄이기와 축소기)을 그대로 지난다."""
+    text = rpc._mcp_text("vinc_brief", {}, src)
+    reply = rpc._result_text(text, "vinc_brief", {}, src)
+    assert not reply["isError"], reply
+    out = json.loads(reply["content"][0]["text"])
+    assert out["omitted"] == MAIN_BRIEF_NOTE == tools.OMITTED_NOTE
+    assert ("shrunk" in out) == (label == "shrunk")
+    before = set(_strings(src))
+    assert all(t in before for t in _strings(out) if "\u2026" in t), label
+    widened, titles = [], []
+    _walk_all(src, lambda d, w: widened.append((w, d["widened"])) if "widened" in d else None)
+    _walk_all(src, lambda d, w: titles.extend((w + (k,), d[k]) for k in _TITLE_LIKE if k in d))
+    assert widened or label in ("choose with section", "none")
+    for where, value in widened:
+        got = _at_path(out, where)
+        assert isinstance(got, dict) and got.get("widened") is value, (label, where)
+    for where, value in titles:
+        got = _at_path(out, where)
+        # 축소기가 덜어낸 발췌만 없을 수 있다. 남은 제목은 받은 그대로다.
+        assert got == value or (got is None and label == "shrunk" and where[0] == "excerpts"), \
+            (label, where)
+    assert "\u2026" not in json.dumps(out, ensure_ascii=False)
 
 
 def test_failures_and_notes_in_the_envelope_survive():
@@ -752,6 +1027,13 @@ def _dated(i):
                   created_at="2026-10-06T17:42:28.155Z")
 
 
+#: 실제 그래프의 긴 제목 꼴(주장 문장인 제목, 200자). 제목을 자르는 몫이 크기 목표에 드러나게 한다.
+T200 = ("Measured 2026-10-07 on the owner's laptop: one epoch of the Laya model takes nine minutes on "
+        "CPU torch with sixteen gigabytes, and the loss it reports is a raw score rather than a "
+        "probability, so the curve is not comparable")[:200]
+assert len(T200) == 200
+
+
 def _realistic_search():
     rows = [{"id": f"vinc.plan.some-plan-{i % 7}#{i:05d}", "score": 7.86 - i / 10,
              "rrf_score": 0.095 - i / 1000, "arms": ["keyword", "semantic"],
@@ -759,12 +1041,10 @@ def _realistic_search():
                         "authored content and prompt injection through hydrated graph text is the "
                         "report's most concrete security point, confirmed by the house rule.",
              "truncated": True, "doc_id": f"vinc.plan.some-plan-{i % 7}", "temporal": _dated(i),
-             "doc_title": "MCP surface for agents: verifying the external report, and the three "
-                          "packages worth building",
+             "doc_title": T200,
              "cite_id": f"concept:doc.vinc.plan.some-plan-{i % 7}"} for i in range(20)]
     hits = [{"id": f"record:measured-something-about-the-graph-{i}-2026-09-05",
-             "title": "Measured 2026-09-05: the seventeen roles now sit in vinc/agent/roles, but "
-                      "prompts/list reads only the direct members",
+             "title": T200,
              "kind": "record", "domain": "vinc/agent/orchestration", "matched_in": "title",
              "hit_tokens": 6, "title_tokens": 2, "token_total": 8, "rrf_score": 0.0292,
              "arms": ["semantic", "title"], "distance": 0.52, "temporal": _dated(i + 1),
@@ -817,24 +1097,25 @@ def _realistic_choose():
                               "temporal": ex_t, **_flat(ex_t)} for _ in range(2)]}}
 
 
-#: 이 두 픽스처의 직전 기본 본문 바이트 수(main 의 lean_result 로 잰 값). 픽스처를 고치면 다시 잰다.
-BEFORE = {"search": 27078, "choose": 4737}
+#: 이 두 픽스처를 search 제목 단계 없이 줄인 기본 본문 바이트 수(choose 는 main 의 lean_result 로 잰 값).
+#: 픽스처를 고치면 다시 잰다. search 상한은 지금 규칙으로 잰 비율(0.726)이다.
+BEFORE = {"search": 23239, "choose": 4737}
 
 
 @pytest.mark.parametrize("label,name,result,ceiling", [
-    ("search", "vinc_search", _realistic_search(), 0.80),
+    ("search", "vinc_search", _realistic_search(), 0.73),
     ("choose", "vinc_brief", _realistic_choose(), 0.75),
 ])
 def test_the_default_text_is_smaller_by_the_package_target(label, name, result, ceiling):
     out = json.loads(rpc._mcp_text(name, {}, result))
     # 목표는 `omitted` 한 줄을 빼고 센다(명세의 목표가 그 줄을 셈에 넣지 않았다). 그 줄의 길이는 따로 묶는다.
-    assert out.pop("omitted") == tools.OMITTED_NOTE
+    assert out.pop("omitted") == (tools.OMITTED_SEARCH_NOTE if label == "search" else tools.OMITTED_NOTE)
     size = len(json.dumps(out, ensure_ascii=False, separators=(",", ":")).encode())
     assert size <= ceiling * BEFORE[label], (size, BEFORE[label])
 
 
 def test_the_notes_stay_short():
-    assert len(tools.OMITTED_NOTE) <= 190
+    assert len(tools.OMITTED_NOTE) <= 190 and len(tools.OMITTED_SEARCH_NOTE) <= 190
     assert len(tools.OMITTED_NODE_NOTE) <= 70
 
 
@@ -866,7 +1147,7 @@ def test_shrink_still_pages_after_the_trim():
     assert len(text) <= rpc.MAX_RESULT_CHARS and ", " not in text[:300]
     out = json.loads(text)
     assert "page" not in out and "row_offsets" not in text
-    assert out["omitted"] == tools.OMITTED_NOTE
+    assert out["omitted"] == tools.OMITTED_SEARCH_NOTE
     kept = len(out["rows"])
     assert 0 < kept < 100 and out["has_more"] and out["next_cursor"]
     cursor = json.loads(__import__("base64").urlsafe_b64decode(out["next_cursor"] + "==="))
@@ -878,6 +1159,35 @@ def test_shrink_still_pages_after_the_trim():
     raw = json.loads(d_raw.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {
         "name": "vinc_search", "arguments": {"query": "x", "raw": True}}})["result"]["content"][0]["text"])
     assert len(raw["rows"]) < kept and "rrf_score" in raw["rows"][0] and raw["page"]
+
+
+def test_a_shrunk_page_keeps_the_doc_title_on_the_first_row_of_each_document():
+    big = _search_result(rows=100)
+    for i, row in enumerate(big["rows"]):
+        doc = f"doc.{i % 7}"
+        row.update(id=f"{doc}#{i:05d}", doc_id=doc, cite_id=f"concept:doc.{doc}",
+                   doc_title=f"{doc} " + T200, snippet=f"{i} " + "x" * 900)
+    big["node_hits"][0]["title"] = T200
+    big["page"]["row_offsets"] = {r["id"]: i for i, r in enumerate(big["rows"])}
+    assert len(json.dumps(tools.lean_result("vinc_search", {}, big))) > rpc.MAX_RESULT_CHARS
+    reply = rpc.Dispatcher(_BigBridge(big)).handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                                                    "params": {"name": "vinc_search",
+                                                               "arguments": {"query": "x"}}})
+    assert not reply["result"]["isError"], reply
+    out = json.loads(reply["result"]["content"][0]["text"])
+    kept = len(out["rows"])
+    assert 7 < kept < 100 and out["has_more"] and out["next_cursor"]
+    cursor = json.loads(__import__("base64").urlsafe_b64decode(out["next_cursor"] + "==="))
+    assert cursor["off"] == kept and cursor["eid"] == big["rows"][kept]["id"]
+    seen = set()
+    for row in out["rows"]:
+        first = row["doc_id"] not in seen
+        seen.add(row["doc_id"])
+        assert ("doc_title" in row) == first, row["id"]
+        if first:
+            assert row["doc_title"] == tools.cut_title(f'{row["doc_id"]} ' + T200)
+        assert row["cite_id"] == f'concept:doc.{row["doc_id"]}'  # 행의 cite_id 는 남는다
+    assert out["node_hits"][0]["title"] == tools.cut_title(T200)
 
 
 def test_the_deploy_probe_reads_the_full_shape():

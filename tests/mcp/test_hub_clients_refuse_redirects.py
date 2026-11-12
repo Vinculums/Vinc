@@ -201,7 +201,9 @@ def test_cimd_fetch_refuses_a_literal_non_public_address(url, monkeypatch):
 @pytest.mark.parametrize("resolved", [("10.0.0.5",), ("192.168.1.10",), ("127.0.0.1",),
                                       (PUBLIC_IP, "10.0.0.5")])
 def test_cimd_fetch_refuses_a_name_that_resolves_to_a_non_public_address(resolved, monkeypatch):
-    """이름이 공인 주소와 사설 주소로 함께 풀리면 거절한다(하나라도 공인이 아니면 거절)."""
+    """이름이 공인 주소와 사설 주소로 함께 풀리면 거절한다(하나라도 공인이 아니면 거절).
+
+    문장은 못 풀린 이름과 같은 "not reachable" 이다. 밖에서 이름 풀이를 가를 수 없어야 한다."""
     never = _NoConnect()
     monkeypatch.setattr(oauth, "_cimd_resolve",
                         lambda host, port, *a, **kw: [(socket.AF_INET, socket.SOCK_STREAM, 6, "",
@@ -209,7 +211,7 @@ def test_cimd_fetch_refuses_a_name_that_resolves_to_a_non_public_address(resolve
     monkeypatch.setattr(oauth, "_cimd_connect", never)
     with pytest.raises(ValueError) as exc:
         oauth.fetch_cimd(CIMD_URL)
-    assert str(exc.value) == NOT_ALLOWED
+    assert str(exc.value) == UNREACHABLE
     assert never.calls == []
 
 
@@ -296,13 +298,16 @@ def test_authorize_says_not_reachable_on_an_error_status(authorize, servers, mon
     assert "0xdead" not in body["error"]
 
 
-def test_authorize_says_not_allowed_for_a_private_address(authorize, monkeypatch):
+def test_authorize_says_not_reachable_for_a_name_that_resolves_to_a_private_address(authorize,
+                                                                                    monkeypatch):
+    never = _NoConnect()
     monkeypatch.setattr(oauth, "_cimd_resolve",
                         lambda host, port, *a, **kw: [(socket.AF_INET, socket.SOCK_STREAM, 6, "",
                                                        ("10.0.0.5", port))])
-    monkeypatch.setattr(oauth, "_cimd_connect", _NoConnect())
+    monkeypatch.setattr(oauth, "_cimd_connect", never)
     code, body = authorize()
-    assert (code, body["error"]) == (400, NOT_ALLOWED)
+    assert (code, body["error"]) == (400, UNREACHABLE)
+    assert never.calls == []
 
 
 def test_authorize_says_not_valid_for_a_document_that_is_not_json(authorize, servers, monkeypatch):

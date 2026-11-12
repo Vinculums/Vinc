@@ -1,4 +1,4 @@
-import { api, cfg, WEB, teamsApi, isCommunitySpace, canWriteHere, viewScope, viewAccess, docMidWrite, spaceName, storeDownReason, messageOf, isWriteConflict, storage, restartSidecar, type GraphEdge, type GraphNode,
+import { api, cfg, WEB, teamsApi, isCommunitySpace, canWriteHere, viewScope, viewAccess, docMidWrite, spaceName, spaceKey, storeDownReason, messageOf, isWriteConflict, storage, restartSidecar, type GraphEdge, type GraphNode,
          type NodeLinks, type NodeContext } from "../api";
 import { COPY } from "../copy";
 import { docTitle } from "../doc-title";
@@ -693,13 +693,13 @@ export async function renderView(el: HTMLElement, resume = false) {
       let ready = false;
       const restore = compassKeep; compassKeep = null;
       compass = mountCompass(canvas, compassDataFrom(nodes, curEdges), { startPath: chain, restore,
-        store: `${cfg.owner}|${cfg.team || ""}`,
+        store: spaceKey(),
         onTree: (o) => repaintLnbGraph(o),
         onOpen: (id) => openFromCompass(id),
         onChange: () => { if (ready && compass) setLnbGraphActive(compass.centre()); },
         onDestroy: () => { setLnbGraphSource(null); setTopbarTools(null); } });
       const cmp = compass;
-      setLnbGraphSource({ groups: () => cmp.tree(), open: (id) => cmp.open(id), mark: (k) => cmp.mark(k), colour: (d) => cmp.colour(d), dock: cmp.side });
+      setLnbGraphSource({ groups: () => cmp.tree(), open: (id) => cmp.open(id), mark: (k) => cmp.mark(k), dock: cmp.side });
       setTopbarTools(cmp.tools);
       ready = true;
       setLnbGraphActive(cmp.centre());

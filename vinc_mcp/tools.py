@@ -159,6 +159,15 @@ _RAW_PROP = {"type": "boolean", "description": (
         "vinc_node result carries a shorter `omitted` (it keeps validity whenever it is known). raw:true (or \"true\") returns the result "
         "unchanged. REST v1 and the CLI always return the full result."
     ))}
+#: vinc_search·vinc_neighbors 의 `raw`. 두 도구만 긴 제목을 자르므로 그 규칙을 공용 설명 뒤에 덧붙인다.
+#: ⚠ vinc_brief·vinc_node 는 `_RAW_PROP` 그대로다(제목을 자르지 않는다).
+_RAW_PROP_TITLES = {**_RAW_PROP, "x-reference": _RAW_PROP["x-reference"] + (
+    " A title longer than 120 characters is cut to at most 120 ending in \"…\", at a word boundary "
+    "when one is in its second half: neighbors row title, search node_hits title and rows "
+    "doc_title; vinc_brief and vinc_node never cut a title, so read the node for the whole title. A "
+    "neighbors result with a cut title carries a short `omitted`. Search sends a row's doc_title "
+    "only on the first row of each doc_id in the response and leaves out a node hit's cite_id "
+    "when it equals its id (cite `id` then).")}
 
 # F1 개방층: type enum 을 제거했다 — 서버가 라우팅 SSoT 이며 이제 *모든* 타입을
 # 영속한다(6종 전용 테이블 / 그 외 Entity·TYPED 캐리어). 스키마 수준 거부는
@@ -646,24 +655,9 @@ def _t_decide_paths(args, bridge):
 
 
 def _run_state_writes(nodes) -> list[str]:
-    """실행 기록의 프로토콜 상태 필드를 고치려는 노드 id 들.
-
-    대기·승인·답은 실행 프로토콜만 쓴다. 도구로 `state`·`approved`·`answer` 를 바꿀 수 있으면
-    에이전트 자격이 사람만 답하는 대기를 스스로 풀 수 있다. host·trace_ref 같은 나머지 필드는
-    그대로 `props_patch` 로 더한다."""
-    from . import run_protocol
-    blocked = []
-    for node in nodes if isinstance(nodes, list) else []:
-        nid = node.get("id") if isinstance(node, dict) else None
-        if not isinstance(nid, str) or not nid.startswith(run_protocol.RUN_PREFIX):
-            continue
-        keys = set()
-        for field in ("props", "props_patch"):
-            if isinstance(node.get(field), dict):
-                keys |= set(node[field])
-        if keys & set(run_protocol.STATE_KEYS):
-            blocked.append(nid)
-    return blocked
+    """실행 기록의 프로토콜 상태 필드를 고치려는 노드 id 들. 규칙은 `run_state.writes` 한 벌이다."""
+    from . import run_state
+    return run_state.writes(nodes)
 
 
 def _t_ingest(args, bridge):
@@ -1224,7 +1218,8 @@ TOOLS: list[dict] = [
                 "Hybrid keyword and vector search over this graph's documents and nodes; use it before "
                 "vinc_ingest to find ids to reuse. Returns `rows` (chunk excerpts with doc_id and cite_id) "
                 "and, on the first page only, `node_hits`. Read whole documents with vinc_doc_get and cite "
-                "`cite_id`. Page with `cursor` set to `next_cursor` while `has_more` (rows only). "
+                "`cite_id` (a node hit without one: cite its `id`). Page with `cursor` set to "
+                "`next_cursor` while `has_more` (rows only). "
                 "`node_window` and `node_semantic` appear when the node arm was not complete. `vector_note` means the meaning "
                 "arm did not fully run: right after a document write the index rebuilds (`arms` is \"fts\", the "
                 "call never waits, and this is benign); otherwise (a timeout, a missing index) the rows came "
@@ -1254,7 +1249,7 @@ TOOLS: list[dict] = [
             "detail": {"type": "string", "enum": ["summary", "full"],
                        "default": "summary"},
             "historical": _HISTORICAL_PROP,
-            "as_of": _AS_OF_SEARCH_PROP, "raw": _RAW_PROP, "kinds": _KINDS_PROP,
+            "as_of": _AS_OF_SEARCH_PROP, "raw": _RAW_PROP_TITLES, "kinds": _KINDS_PROP,
             "owner": {"type": "string"},
         }, "required": ["query"]},
         "run": _t_search,
@@ -1538,7 +1533,7 @@ TOOLS: list[dict] = [
                                                       "or a topic address (e.g. domain:vinc)."},
             "limit": {"type": "integer", "default": 50, "minimum": 1, "maximum": 500,
                       "description": "Max neighbors returned. If cut, `neighbors_truncated` is true."},
-            "raw": _RAW_PROP, "owner": {"type": "string"},
+            "raw": _RAW_PROP_TITLES, "owner": {"type": "string"},
         }, "required": ["node"]}, "run": _t_neighbors,
     },
     {
@@ -2692,6 +2687,8 @@ SHRINKERS = {"vinc_search": _shrink_search_result,
 # rpc 의 tools/call 결과에만 건다. 핸들러 출력은 그대로라 REST v1·SDK·`vinc call`·평가 하네스의
 # cli·v1 경로는 꼴이 바뀌지 않는다. `raw` 가 참(true 나 문자열 "true")이면 아무것도 빼지 않는다.
 # 규칙은 하나다: 차 있지 않은 칸, 건강한 기본값, 같은 객체의 다른 칸에서 되찾을 수 있는 값은 뺀다.
+# 값을 바꾸는 것은 하나뿐이다: search·neighbors 에서 120자를 넘는 제목은 "…" 로 자른다(`cut_title`,
+# 노드 제목은 vinc_node 가 준다). vinc_brief 의 기본 본문은 제목을 자르지 않는다.
 # 저장된 `props` 안은 어느 도구에서도 건드리지 않는다(쓰기가 props 를 통째로 갈아 끼운다).
 #: 줄이는 도구. vinc_node·vinc_neighbors 는 칸 규칙만 타고 LEAN_DROP 에 행이 없다.
 LEAN_TOOLS = ("vinc_search", "vinc_brief", "vinc_node", "vinc_neighbors")
@@ -2714,10 +2711,15 @@ LEAN_DROP: dict[str, dict[str, tuple[str, ...]]] = {
 }
 #: 줄인 결과에 붙는 한 줄. 도구 목록을 예전에 받아 둔 호스트는 새 설명을 못 읽으므로 빠진 칸의
 #: 뜻을 결과가 직접 말한다. 빠지는 칸은 모두 문장이 이름 붙인 종류 중 하나여야 하고(`OMITTED_KINDS`),
-#: validity 규칙은 `temporal_expand` 와 같아야 한다(둘 다 테스트가 대조한다).
+#: validity 규칙은 `temporal_expand` 와 같아야 한다(둘 다 테스트가 대조한다). 이 줄은 vinc_brief 의 것이다.
 OMITTED_NOTE = ("Omitted: empty, default, derived, duplicate, diagnostic keys, fixed notes, page, "
                 "created_at. No validity: unknown if interval_invalid or no valid_from/until, else "
                 "current. raw:true has all.")
+#: vinc_search 의 한 줄. 잘린 제목("…")과 node hit 의 빠진 cite_id 를 읽는 법도 말한다.
+#: ⚠ 190자 상한 안에 둔다(호출마다 실린다).
+OMITTED_SEARCH_NOTE = ("Omitted: empty, default, derived, duplicate, diagnostic, created_at. …=cut title. "
+                       "No cite_id: id. No validity: unknown if interval_invalid or no valid_from/until, "
+                       "else current. raw:true=all")
 #: vinc_node 의 한 줄. 노드는 알려진 validity 를 늘 남기므로 규칙을 싣지 않는다. 빠지는 것은 빈·기본값
 #: 칸, 내부 좌표(sync_seq·owner_id·tenant_id), 노드 칸과 겹치는 시간 값이다.
 OMITTED_NODE_NOTE = "Unset, internal, repeated keys omitted; raw:true gives all."
@@ -2735,11 +2737,13 @@ OMITTED_KINDS: tuple[tuple[str, str, str, str], ...] = (
     ("vinc_search", "", "validity_best_dropped_distance", "diagnostic"),
     ("vinc_search", "", "node_window", "diagnostic"),
     ("vinc_search", "", "node_semantic", "diagnostic"),
-    ("vinc_search", "", "validity_note", "fixed notes"),
-    ("vinc_search", "", "page", "page"),
+    ("vinc_search", "", "validity_note", "default"),
+    ("vinc_search", "", "page", "diagnostic"),
     ("vinc_search", "", "total_count_capped", "default"),
     ("vinc_search", "/rows[]", "rrf_score", "diagnostic"),
     ("vinc_search", "/rows[]", "arms", "diagnostic"),
+    ("vinc_search", "/rows[]", "doc_title", "duplicate"),
+    ("vinc_search", "/node_hits[]", "cite_id", "derived"),
     ("vinc_search", "/node_hits[]", "matched_in", "diagnostic"),
     ("vinc_search", "/node_hits[]", "hit_tokens", "diagnostic"),
     ("vinc_search", "/node_hits[]", "title_tokens", "diagnostic"),
@@ -2920,6 +2924,101 @@ def _lean_links(links: Any) -> None:
         links.pop("offset")
 
 
+#: search·neighbors 기본 본문에서 제목 칸이 갖는 최대 글자 수("…" 포함). vinc_node 와 vinc_brief 의
+#: 제목은 자르지 않는다.
+TITLE_MAX = 120
+_ELLIPSIS = "\u2026"
+#: neighbors 는 `omitted` 줄이 없다. 제목을 하나라도 잘랐을 때만 이 줄을 붙인다(⚠ 60자 미만).
+CUT_TITLE_NOTE = "…=cut title; vinc_node or raw:true has it whole"
+
+
+def _glued(ch: str) -> bool:
+    """앞 글자에 붙어 한 글자로 읽히는 코드 포인트: 결합 부호, ZWJ, 이체 선택자, 피부색 수식자,
+    태그 문자, 짝 잃은 뒤 서로게이트, 한글 조합형 중성·종성."""
+    import unicodedata
+    return (unicodedata.combining(ch) != 0 or unicodedata.category(ch) in ("Mn", "Mc", "Me")
+            or ch == "\u200d" or "\ufe00" <= ch <= "\ufe0f"
+            or "\U0001f3fb" <= ch <= "\U0001f3ff" or "\U000e0020" <= ch <= "\U000e007f"
+            or "\udc00" <= ch <= "\udfff" or "\u1160" <= ch <= "\u11ff" or "\ud7b0" <= ch <= "\ud7ff")
+
+
+def _regional(ch: str) -> bool:
+    """국기를 이루는 지역 표시 문자(둘이 한 글자다)."""
+    return "\U0001f1e6" <= ch <= "\U0001f1ff"
+
+
+def _whole_end(text: str, end: int) -> int:
+    """`text[:end]` 가 한 글자를 가르면 그 글자가 시작하는 자리까지 `end` 를 당긴다."""
+    while 0 < end < len(text):
+        if _glued(text[end]) or text[end - 1] == "\u200d" or "\ud800" <= text[end - 1] <= "\udbff":
+            end -= 1
+            continue
+        if _regional(text[end]) and _regional(text[end - 1]):
+            run = 0
+            while run < end and _regional(text[end - 1 - run]):
+                run += 1
+            if run % 2:     # 앞에서부터 둘씩 짝이므로 홀수 개 뒤에서 자르면 국기 하나를 가른다
+                end -= 1
+                continue
+        break
+    return end
+
+
+def cut_title(text: Any, limit: int = TITLE_MAX) -> Any:
+    """`limit` 자를 넘는 제목을 잘라 "…" 로 끝낸다(결과는 "…" 까지 `limit` 자 이하). 단어 경계가
+    남길 몫의 뒤쪽 절반에 있으면 거기서, 없거나 거기서 자르면 글자·숫자가 하나도 안 남으면
+    `limit - 1` 자 자리에서 자른다. 글자 수는 코드 포인트로 세고 한 글자(결합 부호·ZWJ 연쇄·피부색
+    수식자·국기 짝·서로게이트 쌍)를 가르지 않는다. 문자열이 아니거나 짧으면 그대로 돌려준다."""
+    if not isinstance(text, str) or len(text) <= limit:
+        return text
+    room = limit - len(_ELLIPSIS)
+    end = room
+    if not text[room].isspace():
+        space = max(text.rfind(" ", 0, room), text.rfind("\t", 0, room), text.rfind("\n", 0, room))
+        if space > room // 2:
+            end = space
+    head = text[:_whole_end(text, end)].rstrip(" \t\n,;:")
+    if not any(ch.isalnum() for ch in head):
+        # 경계에서 자르면 "…" 만 남거나 문장부호만 남는다: 글자 자리에서 그대로 자른다.
+        head = text[:_whole_end(text, room) or room]
+    return head + _ELLIPSIS
+
+
+def _cut_key(rows: Any, key: str) -> bool:
+    """목록의 행마다 `key` 제목을 자른다. 하나라도 잘랐으면 참."""
+    cut = False
+    for row in rows if isinstance(rows, list) else []:
+        if isinstance(row, dict) and isinstance(row.get(key), str) and len(row[key]) > TITLE_MAX:
+            row[key] = cut_title(row[key])
+            cut = True
+    return cut
+
+
+def _lean_titles(name: str, out: dict) -> None:
+    """neighbors·search 의 긴 제목 자르기와 search 의 문서 제목 한 번만·node hit 의 id 와 같은 cite_id
+    빼기. ⚠ vinc_brief·vinc_node 에는 걸지 않는다(brief 기본 본문은 main 과 바이트까지 같다)."""
+    if name == "vinc_neighbors":
+        if _cut_key(out.get("neighbors"), "title"):
+            out["omitted"] = CUT_TITLE_NOTE
+        return
+    if name == "vinc_search":
+        seen: set = set()
+        for row in out.get("rows") or []:
+            if not isinstance(row, dict) or "doc_title" not in row or not row.get("doc_id"):
+                continue
+            # 응답 안에서 문서 제목은 그 문서의 첫 행만 싣는다(행은 점수 순이라 첫 행이 앞선다).
+            if row["doc_id"] in seen:
+                row.pop("doc_title")
+            else:
+                seen.add(row["doc_id"])
+        _cut_key(out.get("rows"), "doc_title")
+        _cut_key(out.get("node_hits"), "title")
+        # 행의 cite_id 는 남긴다: 행의 id 는 청크 id 라 인용할 수 없다.
+        for hit in out.get("node_hits") or []:
+            if isinstance(hit, dict) and hit.get("cite_id") and hit["cite_id"] == hit.get("id"):
+                hit.pop("cite_id")
+
+
 def _walk_dicts(node: Any, fn: Callable[[dict], None]) -> None:
     if isinstance(node, dict):
         fn(node)
@@ -2954,6 +3053,7 @@ def lean_project(name: str, args: dict, out: Any) -> Any:
                 row.pop("rev", None)    # 쓰기 토큰은 vinc_node 가 준다
                 if dom is not None and row.get("domain") == dom:
                     row.pop("domain")   # 도메인 목록은 그 도메인을 행마다 되풀이하지 않는다
+        _lean_titles(name, out)
         return out
     if name == "vinc_node":
         if isinstance(out.get("node"), dict):
@@ -2978,6 +3078,8 @@ def lean_project(name: str, args: dict, out: Any) -> Any:
             _lean_links(out["candidate_material"].get("links"))
         if "cite_grounds" in out and out.get("cite_grounds") == out.get("grounds"):
             out.pop("cite_grounds")
+    if name == "vinc_search":
+        _lean_titles(name, out)
     flat = name == "vinc_brief"
     _walk_dicts(out, lambda d: _lean_temporal(d, flat=flat))
     return out
@@ -2985,10 +3087,12 @@ def lean_project(name: str, args: dict, out: Any) -> Any:
 
 def lean_finish(name: str, projected: dict, original: Any) -> dict:
     """`lean_project` (그리고 축소기) 뒤의 마지막 단계: 축소기만 읽는 `page` 를 빼고, 무엇이든
-    빠졌으면 `omitted` 한 줄을 붙인다(search·brief·node, neighbors 는 없다)."""
+    빠졌으면 `omitted` 한 줄을 붙인다(search·brief·node). neighbors 는 제목을 잘랐을 때만
+    `_lean_titles` 가 붙인 `CUT_TITLE_NOTE` 를 싣는다."""
     projected.pop("page", None)
     if name != "vinc_neighbors" and projected != original:
-        projected["omitted"] = OMITTED_NODE_NOTE if name == "vinc_node" else OMITTED_NOTE
+        projected["omitted"] = {"vinc_node": OMITTED_NODE_NOTE,
+                                "vinc_search": OMITTED_SEARCH_NOTE}.get(name, OMITTED_NOTE)
     return projected
 
 

@@ -440,6 +440,25 @@ def test_degraded_states_are_named_not_just_listed():
     assert "incomplete" in doc_get, "무결성 실패의 결과(본문이 잘림)를 안 말한다"
 
 
+def test_the_reference_says_what_the_default_shape_cuts_and_what_to_cite():
+    """기본 본문은 search·neighbors 의 긴 제목만 자르고 search node hit 의 id 와 같은 cite_id 만 뺀다.
+    그 규칙은 두 도구의 `raw` 참조문만 말하고, brief·vinc_node 의 `raw` 참조문은 공용 문장 그대로다."""
+    from vinc_mcp.tools import TOOLS, _RAW_PROP, _RAW_PROP_TITLES
+    assert "a node hit without one: cite its `id`" in REF["vinc_search"]
+    assert "cite `cite_id`." in REF["vinc_brief"] and "where it is missing" not in REF["vinc_brief"]
+    raw = _RAW_PROP_TITLES["x-reference"]
+    for phrase in ("cut to at most 120", "never cut", "first row of each doc_id",
+                   "node hit's cite_id when it equals its id",
+                   "neighbors result with a cut title carries a short `omitted`"):
+        assert phrase in raw and phrase not in _RAW_PROP["x-reference"], phrase
+    for gone in ("concept:doc.<doc_id>", "section", "one_liner", "body_cite", "widened", "quote source"):
+        assert gone not in raw, gone
+    props = {t["name"]: t["inputSchema"]["properties"]["raw"] for t in TOOLS
+             if "raw" in t.get("inputSchema", {}).get("properties", {})}
+    assert props["vinc_search"] is _RAW_PROP_TITLES and props["vinc_neighbors"] is _RAW_PROP_TITLES
+    assert props["vinc_brief"] is _RAW_PROP and props["vinc_node"] is _RAW_PROP
+
+
 class _AnswerBridge:
     owner = "user:local"
 

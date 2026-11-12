@@ -8,6 +8,7 @@
   - `public_ips(host, port, resolver)` — 이름을 풀어 주소들을 돌려준다. 못 풀면 `Unresolved`,
     풀린 주소 가운데 **하나라도** 공인이 아니면 `NotPublic` 이다.
   - `tls_connect(ip, port, host, timeout)` — 확인한 주소로 붙고 인증서는 이름으로 본다.
+    `timeout` 은 연결과 TLS 악수를 합친 상한이다.
 
 하면 안 되는 것:
 
@@ -21,6 +22,7 @@ from __future__ import annotations
 import ipaddress
 import socket
 import ssl
+import time
 
 
 class Unresolved(Exception):
@@ -61,9 +63,17 @@ def public_ips(host: str, port: int, resolver=socket.getaddrinfo) -> list[str]:
 
 
 def tls_connect(ip: str, port: int, host: str, timeout: float):
+    """`timeout` 은 TCP 연결과 TLS 악수를 **합친** 상한(초)이다. 넘기면 `TimeoutError`.
+
+    악수에 거는 소켓 시간 초과는 악수 전체의 상한이다(ssl 문서, 바이트마다 다시 재지 않는다).
+    그래서 연결에 쓰고 남은 시간을 악수 전에 건다. 돌려주는 소켓의 시간 초과는 `timeout` 이다."""
+    end = time.monotonic() + timeout
     raw = socket.create_connection((ip, port), timeout=timeout)
     try:
-        return ssl.create_default_context().wrap_socket(raw, server_hostname=host)
+        raw.settimeout(max(0.001, end - time.monotonic()))
+        tls = ssl.create_default_context().wrap_socket(raw, server_hostname=host)
     except Exception:
         raw.close()
         raise
+    tls.settimeout(timeout)
+    return tls

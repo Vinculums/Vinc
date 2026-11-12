@@ -24,10 +24,12 @@ from __future__ import annotations
 import base64
 import hashlib
 import http.client
+import ipaddress
 import json
 import secrets
 import socket
 import sys
+import threading
 import time
 import urllib.parse
 
@@ -41,6 +43,10 @@ CONNECT_TTL = 600      # 회원 승인 대기(B-B3) — 10분
 #: 모든 발급에 갱신 토큰이 붙는다. 그래도 적는 이유: ChatGPT 는 `offline_access` 가
 #: 안 보이면 갱신을 못 하는 서버로 보고 토큰 만료(TOKEN_TTL) 때 연결을 끊는다(VIN-269).
 SCOPES = ["offline_access"]
+#: CIMD 가져오기 전체(풀기·연결·TLS·헤더·본문)의 상한(초). `/authorize` 는 사람이 브라우저에서
+#: 기다리는 리다이렉트이고, 무인증으로 불려 서버 스레드를 붙잡는 시간도 이 값이 정한다.
+_CIMD_DEADLINE = 10.0
+#: 읽기 한 번의 상한(초). 마감보다 작아야 한다.
 _CIMD_TIMEOUT = 5
 _CIMD_MAX_BYTES = 64 * 1024
 #: CIMD 를 가져올 때 쓰는 이름. urllib 기본값(`Python-urllib/3.x`)은 claude.ai 앞단이
@@ -82,34 +88,96 @@ class CimdError(ValueError):
 _cimd_resolve = socket.getaddrinfo
 _cimd_connect = netguard.tls_connect
 
+#: 직접 붙는다는 것을 운영자에게 알리는 꼬리말. 프록시로만 밖에 나가는 허브는 여기서 막힌다.
+_DIRECT = "the client metadata fetch connects directly and does not use HTTPS_PROXY"
+
+
+def _refuse(kind: str, why: str, parts, port) -> CimdError:
+    """거절 사유를 서버 로그에 한 줄 남기고, 호출부에 돌려줄 고정 문장의 오류를 만든다.
+
+    로그에는 스킴·호스트·포트만 싣는다. 경로·쿼리에는 비밀이 실릴 수 있다."""
+    sys.stdout.write("[oauth] client metadata fetch refused: %s (scheme=%s host=%r port=%s)\n"
+                     % (why, parts.scheme, parts.hostname or "", port))
+    return CimdError(kind)
+
+
+def _resolve_before(host: str, port: int, deadline: float) -> list[str]:
+    """이름 풀기를 마감까지만 기다린다. 넘기면 풀이 스레드는 두고 `TimeoutError` 를 올린다.
+
+    `getaddrinfo` 는 시간 상한을 받지 않아서 따로 돈다. 남은 풀이는 리졸버 설정의 상한에서 끝난다."""
+    box: dict = {}
+
+    def run():
+        try:
+            box["ips"] = netguard.public_ips(host, port, _cimd_resolve)
+        except BaseException as e:   # 스레드 밖으로 그대로 넘긴다
+            box["err"] = e
+
+    t = threading.Thread(target=run, name="cimd-resolve", daemon=True)
+    t.start()
+    t.join(max(0.0, deadline - time.monotonic()))
+    if t.is_alive():
+        raise TimeoutError("name resolution did not finish in time")
+    if "err" in box:
+        raise box["err"]
+    return box["ips"]
+
 
 def _cimd_get(url: str) -> bytes:
     """공인 주소로만, 확인한 주소로 붙어 GET 한 번. 리다이렉트는 따르지 않는다.
 
     이름이 푼 주소 가운데 하나라도 공인이 아니면 붙지 않는다. 붙는 것은 확인한 주소들뿐이다
-    (다시 풀지 않는다). 3xx 는 `not_allowed`, 2xx 가 아닌 답과 전송 실패는 `unreachable` 이다."""
+    (다시 풀지 않는다). 풀기·연결·TLS·헤더·본문 전체가 `_CIMD_DEADLINE` 하나 안에 끝나야 한다.
+
+    호출부가 받는 문장: 3xx 와 찾아보기 전에 모양으로 막는 주소(포트가 깨졌거나 사설 주소를 글자로
+    적은 것)는 `not_allowed`, 나머지(못 풀림·공인이 아닌 이름·연결 실패·마감·2xx 아닌 답)는 전부
+    `unreachable` 이다. 이름이 사설 주소로 풀리는 것과 안 풀리는 것을 밖에서 가를 수 없어야
+    내부 DNS 가 있는 셀프호스트 허브의 이름을 밖에서 더듬지 못한다. 진짜 사유는 로그에만 남는다."""
+    deadline = time.monotonic() + _CIMD_DEADLINE
     parts = urllib.parse.urlsplit(url)
     host = parts.hostname or ""
     try:
         port = parts.port or 443
     except ValueError:
-        raise CimdError("not_allowed") from None
+        raise _refuse("not_allowed", "port is not a number", parts, "?") from None
+    if _ip_literal(host) and not netguard.public_address(host):
+        raise _refuse("not_allowed", "address is not public", parts, port)
     try:
-        ips = netguard.public_ips(host, port, _cimd_resolve)
+        ips = _resolve_before(host, port, deadline)
     except netguard.Unresolved:
-        raise CimdError("unreachable") from None
+        raise _refuse("unreachable", "name did not resolve", parts, port) from None
     except netguard.NotPublic:
-        raise CimdError("not_allowed") from None
+        raise _refuse("unreachable", "name resolves to a non-public address", parts, port) from None
+    except TimeoutError:
+        raise _refuse("unreachable", "name resolution passed the deadline", parts, port) from None
     target = (parts.path or "/") + (("?" + parts.query) if parts.query else "")
     sock = None
     for ip in ips:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            break
         try:
-            sock = _cimd_connect(ip, port, host, _CIMD_TIMEOUT)
+            sock = _cimd_connect(ip, port, host, min(_CIMD_TIMEOUT, left))
             break
         except (OSError, ValueError):   # 인증서 이름 불일치는 ValueError 이기도 하다
             continue
     if sock is None:
-        raise CimdError("unreachable")
+        raise _refuse("unreachable", "connection or TLS failed; " + _DIRECT, parts, port)
+    expired = threading.Event()
+
+    def cut():
+        # 마감이 오면 읽고 있던 자리를 끊는다. SSLSocket.shutdown 은 TLS 상태를 비우므로
+        # 바탕 소켓의 shutdown 을 부른다(진행 중인 읽기는 EOF 로 끝난다).
+        expired.set()
+        try:
+            socket.socket.shutdown(sock, socket.SHUT_RDWR)
+        except OSError:
+            pass
+
+    watchdog = threading.Timer(max(0.0, deadline - time.monotonic()), cut)
+    watchdog.daemon = True
+    watchdog.start()
+    sock.settimeout(min(_CIMD_TIMEOUT, max(0.001, deadline - time.monotonic())))
     conn = http.client.HTTPSConnection(host, port, timeout=_CIMD_TIMEOUT)
     conn.sock = sock
     try:
@@ -117,16 +185,30 @@ def _cimd_get(url: str) -> bytes:
                                              "User-Agent": _CIMD_UA})
         resp = conn.getresponse()
         if 300 <= resp.status < 400:
-            raise CimdError("not_allowed")
+            raise _refuse("not_allowed", "answered with a redirect", parts, port)
         if not 200 <= resp.status < 300:
-            raise CimdError("unreachable")
-        return resp.read(_CIMD_MAX_BYTES + 1)
+            raise _refuse("unreachable", "answered with status %d" % resp.status, parts, port)
+        raw = resp.read(_CIMD_MAX_BYTES + 1)
     except CimdError:
         raise
-    except (OSError, ValueError, http.client.HTTPException):
-        raise CimdError("unreachable") from None
+    except (OSError, ValueError, http.client.HTTPException) as e:
+        why = "passed the deadline" if expired.is_set() else "transfer failed: " + type(e).__name__
+        raise _refuse("unreachable", why + "; " + _DIRECT, parts, port) from None
     finally:
+        watchdog.cancel()
         conn.close()
+    # 마감에 끊긴 본문은 EOF 로 끝나 짧은 바이트로 돌아올 수 있다. 그것을 문서로 쓰지 않는다.
+    if expired.is_set():
+        raise _refuse("unreachable", "passed the deadline; " + _DIRECT, parts, port)
+    return raw
+
+
+def _ip_literal(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host.split("%", 1)[0])
+    except ValueError:
+        return False
+    return True
 
 
 def fetch_cimd(url: str) -> dict:
@@ -138,6 +220,10 @@ def fetch_cimd(url: str) -> dict:
     문서 안의 `client_id` 대조는 여기가 아니라 `OAuthGate._client_of` 가 한다 —
     가져오는 함수를 갈아끼워도(테스트·캐시) 대조가 빠지지 않게.
     실패는 `CimdError` 하나이고 메시지는 종류마다 고정이다.
+
+    ⚠ 확인한 주소로 직접 붙으므로 `HTTPS_PROXY` 를 쓰지 않는다. 프록시로만 밖에 나가는 허브에서는
+    CIMD 클라이언트가 인가를 못 받는다(DCR 클라이언트는 그대로다). 프록시를 따르게 하면 주소 확인이
+    프록시 쪽으로 넘어간다. 좌석 확인(`hubhttp`)은 urllib 의 프록시 설정을 그대로 따른다.
     근거: [[vinc.spec.remote-profile]]
     """
     _check_cimd_url(url)

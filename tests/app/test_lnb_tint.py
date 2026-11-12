@@ -39,10 +39,19 @@ class LnbTintTests(unittest.TestCase):
 
     def test_주제_색은_늘_켜져_있다(self):
         """토글이 없다(2026-09-26) — 기기별 저장값이 같은 그래프를 기기마다 다른 색으로 만들었다."""
-        # 색 표는 조상 경로까지 넣어 나침반과 같은 색을 낸다(planTints → tintPlan, 2026-11-05)
-        self.assertIn("tints = planTints(groups.map((g) => g.domain));", LNB)
+        # 색 표는 앱 전체에 하나다(topic-tint-table.ts): 트리는 자기 주제를 더하고 그 표에서 읽는다.
+        self.assertIn("feedTints((tree?.domains || []).map((g) => g.domain));", LNB)
+        self.assertIn("topicTint(domain, themeMode())", LNB)
         self.assertNotIn("domainTint", LNB)
-        self.assertRegex(LNB, r"tints\?\.get\(")      # 없으면 조회가 아니라 강제다
+
+    def test_주제_색_표를_짓는_곳은_하나다(self):
+        """트리와 나침반이 각자 tintPlan 을 돌리면 넣는 주제 집합이 달라 한 주제가 두 색이 된다."""
+        compass = (SRC / "surfaces" / "view-compass.ts").read_text(encoding="utf-8")
+        table = (SRC / "topic-tint-table.ts").read_text(encoding="utf-8")
+        for name, src in (("lnb.ts", LNB), ("view-compass.ts", compass)):
+            self.assertNotIn("tintPlan(", src, f"{name} 가 색 표를 따로 짓는다")
+        self.assertIn("tintPlan([...known], mode)", table)
+        self.assertIn("addTopics(ctx.store ?? '', topics.keys());", compass)
 
     def test_CSS_는_토큰_대체값을_들고_색을_읽는다(self):
         for rule in ('border: 1px solid var(--tint, hsl(var(--muted-foreground)))',
@@ -70,8 +79,7 @@ class LnbTintTests(unittest.TestCase):
             MAIN, "OS 추종 경로가 applyTheme 를 거치지 않으면 위 보장이 반쪽이 된다")
 
     def test_지도를_먼저_다시_칠하고_트리를_그린다(self):
-        """그래프 트리의 색은 나침반의 표(`gsrc.colour`)다. 트리가 먼저 그려지면 나침반이 표를 새 모드로
-        다시 짓기 전이라 트리에 반대 모드 색이 남는다(배경 대비 1.6~1.8:1)."""
+        """지도와 트리는 같은 표를 지금 모드로 읽는다. 지도를 먼저 다시 칠해 두 표면이 같은 모드의 색으로 함께 바뀌게 한다."""
         head = MAIN.index("export function applyTheme() {")
         body = MAIN[head:MAIN.index(chr(10) + "}", head)]
         self.assertLess(body.index("repaintView();"), body.index("repaintLnb();"))
