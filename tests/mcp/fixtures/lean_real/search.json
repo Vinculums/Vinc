@@ -1,0 +1,263 @@
+{
+ "kind": "search",
+ "executed": true,
+ "rows": [
+  {
+   "id": "vinc.plan.mcp-agent-surface#00013",
+   "score": 7.861831400752399,
+   "rrf_score": 0.09523809523809523,
+   "arms": [
+    "keyword",
+    "semantic"
+   ],
+   "snippet": "…as untrusted data, not instructions — because record notes and props are authored content and prompt injection through hydrated graph text is the report's most concrete security point, confirmed by the house rule that graph content is data.",
+   "truncated": true,
+   "doc_id": "vinc.plan.mcp-agent-surface",
+   "temporal": {
+    "created_at": "2026-08-28T03:05:21.810Z",
+    "updated_at": "2026-08-28T04:20:06.577Z",
+    "content_time": null,
+    "valid_from": null,
+    "valid_until": null,
+    "superseded_by": null,
+    "validity": "unknown",
+    "interval_known": false,
+    "interval_invalid": false,
+    "holds_in_scope": null,
+    "supersession": [],
+    "supersedes": [],
+    "claim_status": "unscoped",
+    "conflicts": []
+   },
+   "doc_title": "MCP surface for agents: verifying the external report, and the three packages worth building",
+   "cite_id": null,
+   "cite_unavailable": "document mirror missing or unreadable"
+  },
+  {
+   "id": "vinc.plan.mcp-agent-surface#00011",
+   "score": 6.441139952227548,
+   "rrf_score": 0.08166666666666667,
+   "arms": [
+    "keyword",
+    "semantic"
+   ],
+   "snippet": "**Mission.** `prompts/list` returns the roster; `prompts/get` returns one role's contract — mission, ordered reads, gates, prohibitions, and the traps attached to that role — hydrated from the graph, so any MCP host (not only Claude Code wi",
+   "truncated": true,
+   "doc_id": "vinc.plan.mcp-agent-surface",
+   "temporal": {
+    "created_at": "2026-08-28T03:05:21.810Z",
+    "updated_at": "2026-08-28T04:20:06.577Z",
+    "content_time": null,
+    "valid_from": null,
+    "valid_until": null,
+    "superseded_by": null,
+    "validity": "unknown",
+    "interval_known": false,
+    "interval_invalid": false,
+    "holds_in_scope": null,
+    "supersession": [],
+    "supersedes": [],
+    "claim_status": "unscoped",
+    "conflicts": []
+   },
+   "doc_title": "MCP surface for agents: verifying the external report, and the three packages worth building",
+   "cite_id": null,
+   "cite_unavailable": "document mirror missing or unreadable"
+  },
+  {
+   "id": "vinc.book.07-agents#00003",
+   "score": 5.41797441476928,
+   "rrf_score": 0.07919254658385093,
+   "arms": [
+    "keyword",
+    "semantic"
+   ],
+   "snippet": "…as a decision node recording what was replaced. The role's definition stays current; its history stays queryable. ## 4. Wiring the traps to the roles that must not repeat them The half of the work the plan calls graph engineering proper is ",
+   "truncated": true,
+   "doc_id": "vinc.book.07-agents",
+   "temporal": {
+    "created_at": "2026-08-27T17:25:56.092Z",
+    "updated_at": "2026-08-27T17:25:56.092Z",
+    "content_time": null,
+    "valid_from": null,
+    "valid_until": null,
+    "superseded_by": null,
+    "validity": "unknown",
+    "interval_known": false,
+    "interval_invalid": false,
+    "holds_in_scope": null,
+    "supersession": [],
+    "supersedes": [],
+    "claim_status": "unscoped",
+    "conflicts": []
+   },
+   "doc_title": "Roles as nodes: orchestration is graph engineering",
+   "cite_id": "concept:doc.vinc.book.07-agents"
+  }
+ ],
+ "node_hits": [
+  {
+   "id": "concept:doc.vinc.book.21-agents",
+   "title": "A role is a node",
+   "kind": "concept",
+   "domain": "vinc/product/book/part1-interface",
+   "matched_in": "graph",
+   "hit_tokens": 0,
+   "title_tokens": 0,
+   "rrf_score": 0.03252247488101534,
+   "arms": [
+    "graph",
+    "semantic"
+   ],
+   "distance": 0.41319000720977783,
+   "temporal": {
+    "created_at": "2026-09-06T16:09:07.063Z",
+    "updated_at": "2026-09-06T16:09:07.068Z",
+    "content_time": null,
+    "valid_from": null,
+    "valid_until": null,
+    "superseded_by": null,
+    "validity": "unknown",
+    "interval_known": false,
+    "interval_invalid": false,
+    "holds_in_scope": null,
+    "supersession": [],
+    "supersedes": [],
+    "claim_status": "unscoped",
+    "conflicts": []
+   },
+   "cite_id": "concept:doc.vinc.book.21-agents"
+  },
+  {
+   "id": "concept:agent-orchestration",
+   "title": "Agent orchestration, roles as nodes rather than prompt prose",
+   "kind": "concept",
+   "domain": "vinc/agent/orchestration",
+   "matched_in": "graph",
+   "hit_tokens": 0,
+   "title_tokens": 0,
+   "rrf_score": 0.031544957774465976,
+   "arms": [
+    "graph",
+    "semantic"
+   ],
+   "distance": 0.4120197892189026,
+   "sem_lead": 0.00117,
+   "temporal": {
+    "created_at": "2026-08-23T04:30:59.735Z",
+    "updated_at": "2026-09-06T16:08:59.884Z",
+    "content_time": null,
+    "valid_from": null,
+    "valid_until": null,
+    "superseded_by": null,
+    "validity": "unknown",
+    "interval_known": false,
+    "interval_invalid": false,
+    "holds_in_scope": null,
+    "supersession": [],
+    "supersedes": [],
+    "claim_status": "unscoped",
+    "conflicts": []
+   },
+   "cite_id": "concept:agent-orchestration"
+  },
+  {
+   "id": "record:fourteen-documents-were-rekeyed-to-their-declared-ids",
+   "title": "Measured 2026-08-28: fourteen documents moved from generated ids to their declared doc_ids with byte-identical bodies, and the graph-internal references followed in a second pass",
+   "kind": "record",
+   "domain": "vinc/governance/docs-canon",
+   "matched_in": "title",
+   "hit_tokens": 7,
+   "title_tokens": 2,
+   "token_total": 8,
+   "rrf_score": 0.01639344262295082,
+   "arms": [
+    "title"
+   ],
+   "temporal": {
+    "created_at": "2026-08-28T03:09:14.671Z",
+    "updated_at": "2026-09-06T16:10:09.881Z",
+    "content_time": "2026-08-28",
+    "valid_from": null,
+    "valid_until": null,
+    "superseded_by": null,
+    "validity": "unknown",
+    "interval_known": false,
+    "interval_invalid": false,
+    "holds_in_scope": null,
+    "supersession": [],
+    "supersedes": [],
+    "claim_status": "unscoped",
+    "conflicts": []
+   },
+   "cite_id": "record:fourteen-documents-were-rekeyed-to-their-declared-ids"
+  },
+  {
+   "id": "record:mcp-gaps-from-the-1400-node-retopic-2026-09-05",
+   "title": "Measured 2026-09-05 during a ~1400-node re-topic and product cleanup: five MCP gaps surfaced from real bulk use - the 72K result cap aborts a bulk vinc_ingest WRITE ('Nothing was changed') rather than truncating its stored read-back, no read tool lists nodes by domain column so column/edge drift is invisible, there is no bulk re-topic tool, doc_extract mints orphan heading-concepts that accumulate across re-extraction, and the #view domain-lens url returns nothing through vinc_graph",
+   "kind": "record",
+   "domain": "vinc/mcp/efficiency",
+   "matched_in": "title",
+   "hit_tokens": 6,
+   "title_tokens": 4,
+   "token_total": 8,
+   "rrf_score": 0.016129032258064516,
+   "arms": [
+    "title"
+   ],
+   "temporal": {
+    "created_at": "2026-09-06T16:10:25.664Z",
+    "updated_at": "2026-09-06T16:10:25.671Z",
+    "content_time": "2026-09-05",
+    "valid_from": null,
+    "valid_until": null,
+    "superseded_by": null,
+    "validity": "unknown",
+    "interval_known": false,
+    "interval_invalid": false,
+    "holds_in_scope": null,
+    "supersession": [],
+    "supersedes": [],
+    "claim_status": "unscoped",
+    "conflicts": []
+   },
+   "cite_id": "record:mcp-gaps-from-the-1400-node-retopic-2026-09-05"
+  }
+ ],
+ "arms": "fts+vector",
+ "total_count": 200,
+ "has_more": true,
+ "next_cursor": "eyJ2IjoxLCJvZmYiOjIwLCJxaCI6IjBkOWQzNTk3MmIzMCIsImVpZCI6InZpbmMucGxhbi5hZ2VudC1kb21haW4jMDAwMTQiLCJ0YyI6MjAwLCJhcm1zIjoiZnRzK3ZlY3RvciJ9",
+ "validity_filtered": 7,
+ "validity_best_dropped": [
+  4,
+  1
+ ],
+ "validity_note": "hid nodes whose claim is no longer current; pass historical=true to include them",
+ "node_window": {
+  "pagination": "first_page_only",
+  "total_count_scope": "chunks",
+  "limit": 20,
+  "lexical_candidates": 901,
+  "lexical_candidates_capped": false,
+  "candidate_limit": 2000,
+  "returned": 20
+ },
+ "total_count_capped": true,
+ "page": {
+  "offset": 0,
+  "limit": 20,
+  "fingerprint": "0d9d35972b30"
+ },
+ "node_semantic": {
+  "state": "complete",
+  "freshness": "checked_candidates",
+  "refresh": "release_boundary",
+  "scope": "returned_candidates",
+  "stale_candidates": 0,
+  "missing_candidates": 0,
+  "check": "source_text"
+ },
+ "vector_note": "stored vectors have unknown encoder runtime; re-embed to verify compatibility",
+ "encoder_runtime_warning": true
+}

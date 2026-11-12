@@ -1,0 +1,169 @@
+{
+ "kind": "brief",
+ "executed": true,
+ "query": "was code signing ever going to be done",
+ "status": "resolved",
+ "candidates": [],
+ "grounds": [
+  "concept:doc.vinc.ops.deployment",
+  "concept:doc.vinc.plan.code-signing",
+  "vinc.plan.code-signing"
+ ],
+ "arms": "fts+vector",
+ "vector_note": "stored vectors have unknown encoder runtime; re-embed to verify compatibility",
+ "encoder_runtime_warning": true,
+ "validity_filtered": 7,
+ "validity_note": "hid nodes whose claim is no longer current; pass historical=true to include them",
+ "validity_best_dropped": [
+  3,
+  2
+ ],
+ "node": {
+  "id": "concept:doc.vinc.plan.code-signing",
+  "cite_id": "concept:doc.vinc.plan.code-signing",
+  "title": "Code signing, a plan that was reversed and still has not landed",
+  "domain": "vinc/infra/deploy",
+  "kind": "concept",
+  "valid_from": "",
+  "valid_until": "",
+  "validity": "current",
+  "superseded_by": "",
+  "temporal": {
+   "created_at": "2026-08-01T16:20:53.376Z",
+   "updated_at": "2026-08-09T06:38:04.643Z",
+   "content_time": null,
+   "valid_from": null,
+   "valid_until": null,
+   "superseded_by": null,
+   "validity": "unknown",
+   "interval_known": false,
+   "interval_invalid": false,
+   "holds_in_scope": null,
+   "supersession": [],
+   "supersedes": [],
+   "claim_status": "unscoped",
+   "conflicts": []
+  },
+  "created_at": "2026-08-01T16:20:53.376Z",
+  "updated_at": "2026-09-06T16:08:48.851Z",
+  "content_time": null,
+  "validity_basis": "legacy_visibility",
+  "claim_validity": "unknown"
+ },
+ "one_liner": "--- doc_id: vinc.plan.code-signing layer: plan domain: vinc/infra authority: record title: Code signing, a plan that was reversed and still has not landed updated: 2026-08-07 inherits_from: [vinc.ops.deployment] tags: [plan, infra, record,",
+ "body_src": "doc",
+ "body_cite": "Code signing, a plan that was reversed and still has not landed · Code signing, a plan that was reversed and still has not landed",
+ "excerpts": [
+  {
+   "doc_id": "vinc.plan.code-signing",
+   "doc_title": "Code signing, a plan that was reversed and still has not landed",
+   "section": "Code signing, a plan that was reversed and still has not landed",
+   "excerpt": "--- doc_id: vinc.plan.code-signing layer: plan domain: vinc/infra authority: record title: Code signing, a plan that was reversed and still has not landed updated: 2026-08-07 inherits_from: [vinc.ops.deployment] tags: [plan, infra, record, ",
+   "method": "title",
+   "cite_id": "concept:doc.vinc.plan.code-signing",
+   "temporal": {
+    "created_at": "2026-08-01T16:20:53.376Z",
+    "updated_at": "2026-08-09T06:38:04.643Z",
+    "content_time": null,
+    "valid_from": null,
+    "valid_until": null,
+    "superseded_by": null,
+    "validity": "unknown",
+    "interval_known": false,
+    "interval_invalid": false,
+    "holds_in_scope": null,
+    "supersession": [],
+    "supersedes": [],
+    "claim_status": "unscoped",
+    "conflicts": []
+   },
+   "created_at": "2026-08-01T16:20:53.376Z",
+   "updated_at": "2026-08-09T06:38:04.643Z",
+   "content_time": null,
+   "valid_from": null,
+   "valid_until": null,
+   "superseded_by": null,
+   "validity": "unknown"
+  }
+ ],
+ "links": {
+  "degree": 1,
+  "out": 1,
+  "in": 0,
+  "attached": 0,
+  "total": 1,
+  "executed": true,
+  "items": [
+   {
+    "id": "concept:doc.vinc.ops.deployment",
+    "title": "The deployment runbook as built",
+    "domain": "vinc/infra/deploy",
+    "type": "INHERITS_FROM",
+    "dir": "out",
+    "evidence": false,
+    "confidence": null,
+    "note": "",
+    "valid_from": "",
+    "valid_until": "",
+    "evidence_text": "",
+    "kind": "concept",
+    "temporal": {
+     "created_at": "2026-08-01T16:20:41.780Z",
+     "updated_at": "2026-08-09T06:38:02.722Z",
+     "content_time": null,
+     "valid_from": null,
+     "valid_until": null,
+     "superseded_by": null,
+     "validity": "unknown",
+     "interval_known": false,
+     "interval_invalid": false,
+     "holds_in_scope": null,
+     "supersession": [],
+     "supersedes": [],
+     "claim_status": "unscoped",
+     "conflicts": []
+    },
+    "created_at": "2026-08-01T16:20:41.780Z",
+    "updated_at": "2026-08-09T06:38:02.722Z",
+    "content_time": null,
+    "superseded_by": null,
+    "validity": "unknown",
+    "cite_id": "concept:doc.vinc.ops.deployment"
+   }
+  ],
+  "truncated": false,
+  "offset": 0
+ },
+ "cite_grounds": [
+  "concept:doc.vinc.ops.deployment",
+  "concept:doc.vinc.plan.code-signing"
+ ],
+ "quotes": [
+  {
+   "doc_id": "vinc.plan.code-signing",
+   "source": "Code signing, a plan that was reversed and still has not landed",
+   "section": "Code signing, a plan that was reversed and still has not landed",
+   "text": "title: Code signing, a plan that was reversed and still has not landed",
+   "widened": false
+  },
+  {
+   "doc_id": "vinc.plan.code-signing",
+   "source": "Code signing, a plan that was reversed and still has not landed",
+   "section": "Code signing, a plan that was reversed and still has not landed",
+   "text": "signing was a later milestone and that the secrets would be injected into the build step when they",
+   "widened": false
+  }
+ ],
+ "section": {
+  "node_id": "concept:doc.vinc.plan.code-signing",
+  "cite_id": "concept:doc.vinc.plan.code-signing",
+  "doc_id": "vinc.plan.code-signing",
+  "section": "Code signing, a plan that was reversed and still has not landed",
+  "chunk_ids": [
+   "vinc.plan.code-signing#00000"
+  ],
+  "text": "---\ndoc_id: vinc.plan.code-signing\nlayer: plan\ndomain: vinc/infra\nauthority: record\ntitle: Code signing, a plan that was reversed and still has not landed\nupdated: 2026-08-07\ninherits_from: [vinc.ops.deployment]\ntags: [plan, infra, record, signing, notarization, release, superseded]\n---\n\n# Code signing, a plan that was reversed and still has not landed\n\n> **History, not intent.** This was written as an execution plan for signing and notarizing the\n> desktop builds along the paid route. `adr-infra-044` then reversed the direction to a zero-cost\n> route, which made the plan obsolete before any of it was wired.\n>\n> **Measured 2026-08-07: neither route is in force.** Neither platform is signed, and the\n> zero-cost route's own precondition does not hold either. What is worth keeping from the\n> document is the procurement comparison and the wiring locations, and both are recorded below\n> in the past tense they now deserve.\n\n## 1. The problem it was written for\n\nAn unsigned build warns on first launch: the operating system says the developer cannot be\nverified on one platform and that it protected the machine on the other. The friction sits between\ndownload and first run, which is the worst place to put it, because the user has already decided\nto try the product and the machine is telling them not to.\n\nThe pipeline had been built to leave a hole for this. The release workflow said in a comment that\nsigning was a later milestone and that the secrets would be injected into the build step when they\nexisted. **The wiring was absent and the procurement was the whole blocker**, which is why the plan\nwas mostly a schedule for a person rather than for code.\n\n## 2. What the paid route proposed\n\nTwo independent procurements, one per platform, each with its own lead time.\n\n",
+  "truncated": false,
+  "basis": "vector"
+ }
+}

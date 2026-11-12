@@ -1,0 +1,77 @@
+{
+ "kind": "neighbors",
+ "executed": true,
+ "found": true,
+ "node": "concept:agent-orchestration",
+ "neighbors": [
+  {
+   "rel": "ABOUT",
+   "dir": "in",
+   "id": "decision:agent-model-ladder",
+   "title": "Role nodes carry a rung, not a model name, and one decision maps the rungs",
+   "domain": "vinc/agent/roles",
+   "one_liner": "",
+   "rev": 3,
+   "updated_at": "2026-09-06T16:09:40.964Z",
+   "valid_from": "",
+   "valid_until": ""
+  },
+  {
+   "rel": "ABOUT",
+   "dir": "in",
+   "id": "decision:community-agent-packs-are-per-discipline-without-an-orchestrator",
+   "title": "Community Agent packs are one independent pack per discipline, three to five roles each with their handoffs inside the pack, and none of them ships an orchestrator",
+   "domain": "vinc/agent/orchestration",
+   "one_liner": "",
+   "rev": 1,
+   "updated_at": "2026-09-06T16:09:45.582Z",
+   "valid_from": "",
+   "valid_until": ""
+  },
+  {
+   "rel": "ABOUT",
+   "dir": "in",
+   "id": "decision:default-agent-pack-is-four-graph-native-roles",
+   "title": "Every new space starts with four graph-native Agent roles, steward, researcher, curator and reviewer, and no discipline role and no orchestrator",
+   "domain": "vinc/agent/orchestration",
+   "one_liner": "",
+   "rev": 1,
+   "updated_at": "2026-09-06T16:09:45.496Z",
+   "valid_from": "",
+   "valid_until": ""
+  },
+  {
+   "rel": "ABOUT",
+   "dir": "in",
+   "id": "decision:default-agents-provision-at-space-birth-from-the-gallery-row",
+   "title": "The account backend writes the Default Agents pack into a space at its birth, first sign-in for a personal graph and creation for a team, by reading the gallery's official pack row and sending it through the existing ingest-pack proxy",
+   "domain": "vinc/agent/orchestration",
+   "one_liner": "",
+   "rev": 1,
+   "updated_at": "2026-09-06T16:09:45.657Z",
+   "valid_from": "",
+   "valid_until": ""
+  },
+  {
+   "rel": "ABOUT",
+   "dir": "in",
+   "id": "decision:release-doc-points-at-role-nodes",
+   "title": "A release execution document carries the package to role mapping and release-specific instructions only; the role definition stays in the node",
+   "domain": "vinc/agent/roles",
+   "one_liner": "",
+   "rev": 4,
+   "updated_at": "2026-09-06T16:09:41.040Z",
+   "valid_from": "",
+   "valid_until": ""
+  }
+ ],
+ "by_rel": {
+  "ABOUT": 20,
+  "ATTACHES_TO": 17,
+  "DERIVES_FROM": 1,
+  "INHERITS_FROM": 2,
+  "RELATED_TO": 3
+ },
+ "count": 43,
+ "neighbors_truncated": false
+}
