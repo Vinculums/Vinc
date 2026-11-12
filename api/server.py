@@ -408,8 +408,8 @@ class VincApp:
         self.packs_dir = packs_dir
         self.profile_path = profile_path
         self.ingest = ingest if ingest is not None else dict(DEFAULT_INGEST)
-        self._sync_running = False            # 동시 sync 거부 플래그(S2, 커서 경합 방지)
-        self._sync_lock = threading.Lock()    # 깃발의 검사와 세우기를 한 번에(요청마다 스레드다)
+        self._sync_job = None                 # 받아 둔 sync·이동 잡. 끝나기 전엔 다음을 거부(S2, 커서 경합 방지)
+        self._sync_lock = threading.Lock()    # 검사와 접수를 한 번에(요청마다 스레드다)
         # 열린 화면이 다시 읽을 때를 아는 값(VIN-129). 메모리에만 있다(`api.changes`).
         self.changes = changes.ChangeMarker()
         # 같은 소유자·인자·변경 표식의 전체 그래프 읽기를 다시 계산하지 않는다(`api.graph_cache`).
@@ -2807,24 +2807,14 @@ class VincApp:
         return self._submit_exclusive(name, fn, "a sync or move is already in progress")
 
     def _submit_exclusive(self, name: str, fn, busy: str):
-        """sync·이동 잡을 하나만 받는다. 깃발은 접수 때 잠금 안에서 세우고 잡이 끝나면
-        (예외여도) 내린다. 이미 서 있으면 409 와 `busy` 로 답한다."""
+        """sync·이동 잡을 하나만 받는다. 잠금 안에서 검사하고 접수까지 한다. 받아 둔 잡이
+        어떻게 끝나든(예외, 실행 전 가드 거절 포함) 워커가 `_done` 을 세우고, 그러면 풀린다.
+        아직 안 끝났으면 409 와 `busy` 로 답한다."""
         with self._sync_lock:
-            if self._sync_running:
+            held = self._sync_job
+            if held is not None and not held._done.is_set():
                 return 409, {"error": busy}
-            self._sync_running = True
-
-        def _job():
-            try:
-                return fn()
-            finally:
-                self._sync_running = False
-
-        try:
-            job = self.jobs.submit(name, _job)
-        except Exception:
-            self._sync_running = False
-            raise
+            self._sync_job = job = self.jobs.submit(name, fn)
         return 202, job.to_dict()
 
     def submit_config_move(self, body):

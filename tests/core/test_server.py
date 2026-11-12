@@ -2195,5 +2195,17 @@ class SyncFlagTests(unittest.TestCase):
             first = app.submit_sync({"token": "k"})
             self.assertEqual(first[0], 202)
             self.assertEqual(self._wait(app, first).status, "error")
-            self.assertFalse(app._sync_running)
             self.assertEqual(app.submit_sync({"token": "k"})[0], 202)
+
+    def test_a_job_refused_before_it_runs_still_clears_the_flag(self):
+        # 실행 전 가드(on_before_run)가 거절하면 잡 함수는 불리지 않는다.
+        from api.jobs import JobQueue
+
+        def refuse(job):
+            raise RuntimeError("write refused")
+
+        app = VincApp(store=_EmptyStore(), auth=SessionAuth(_TOKEN),
+                      jobs=JobQueue(on_before_run=refuse))
+        first = app.submit_sync({"token": "k"})
+        self.assertEqual(self._wait(app, first).status, "error")
+        self.assertEqual(app.submit_sync({"token": "k"})[0], 202)
