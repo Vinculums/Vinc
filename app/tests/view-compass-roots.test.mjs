@@ -26,6 +26,8 @@ const { mountCompass, compassDataFrom } = await loadTs('surfaces/view-compass.ts
   '../view-tint': tintUrl,
   '../theme': THEME_STUB,
   './view-compass-state': await tsUrl('surfaces/view-compass-state.ts'),
+  './view-compass-whole': await tsUrl('surfaces/view-compass-whole.ts'),
+  '../keys': await tsUrl('keys.ts'),
 });
 
 /** [domain, 제목, 종류?] 목록 → 마운트. 허브가 주는 모양(kind·domain·ts·degree)으로 만든다. */

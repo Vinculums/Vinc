@@ -2585,7 +2585,7 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
    이름(아이콘이 남는다) → 검색 칸의 고정 폭(내용 폭으로) → 검색의 이름(아이콘 · 단축키).
    손잡이는 하나도 사라지지 않는다. 경로는 그 사이 내내 앞자리 안에서 말줄임으로 준다. */
 @container topbar (max-width: 760px) {
-  .tb-seg-name { display: none; }
+  .tb-seg-name, #tb-graph-tools .cmp-tname { display: none; }
   .tb-seg { padding: 0 var(--space-2, .5rem); }
   .tb-find-open { width: auto; }
 }
@@ -2594,6 +2594,8 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
   /* 공간 이름이 남을 폭을 위해 뒤 묶음과 공간 단추의 여백을 한 단 줄인다(손잡이는 그대로 다 선다). */
   .tb-trail, #tb-graph-tools .cmp-tools { gap: var(--space-1); }
   #tb-graph-tools .cmp-tbtn, .tb-seg { padding: 0 var(--space-2); }
+  /* 전체 보기 단추는 범례 창 맨 위로 접힌다(view-compass.ts wholeFolded): 공간 이름 · 전환이 이 폭에서 자리를 지킨다 */
+  #tb-graph-tools .cmp-twhole { display: none; }
   .space-switch { gap: var(--space-1); margin-left: calc(var(--space-1) * -1); padding: 0 var(--space-1); }
 
   #tb-find[data-expanded] { width: calc(100cqi - var(--sb-w, 0px) - var(--page-inset) * 2); }
@@ -3962,6 +3964,32 @@ details.pe-group[open] > summary::before { transform: rotate(90deg); }
 .cmp-tbtn:hover { color: hsl(var(--foreground)); background: hsl(var(--muted-foreground) / .1); }
 .cmp-tbtn[aria-expanded="true"] { color: hsl(var(--point-text)); border-color: hsl(var(--point) / .6); }
 .cmp-tbtn:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+/* 전체 보기(view-compass-whole.ts): 선은 화면 px 로 고정(확대해도 무거워지지 않는다). 글자 크기는 배치가 재는 그림 단위와 같아야 한다 */
+.cmp-twhole { display: inline-flex; align-items: center; gap: var(--space-1); }
+.cmp-twhole .cmp-tic { flex: none; }
+.cmp-tbtn[aria-pressed="true"] .cmp-tic { color: hsl(var(--point-text)); }
+.cmp-lk.cmp-rels { width: 100%; margin-bottom: var(--space-2); } .cmp-lk.cmp-rels .cmp-tic { width: 14px; height: 14px; }
+.cmp-lk.cmp-rels[aria-pressed="true"] { color: hsl(var(--point-text)); border-color: hsl(var(--point) / .6); }
+.cmp .cmp-note { position: absolute; left: var(--space-3); bottom: var(--space-3); white-space: nowrap; pointer-events: none; opacity: .92; padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); background: var(--c-card); border: 1px solid var(--c-line); color: var(--c-soft); font-size: var(--fs-xs); }
+.cmp .cmp-note[hidden] { display: none; }
+.cmp .cmp-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.cmp .cmp-pan { position: absolute; inset: 0; transform-origin: 0 0; } .cmp .cmp-pan:has(svg.g.whole) { will-change: transform; }
+.cmp svg.g.whole:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+.cmp svg.g.whole .wtrunk, .cmp svg.g.whole .wstem, .cmp svg.g.whole .wsp, .cmp svg.g.whole .wbun, .cmp svg.g.whole .wl { fill: none; stroke-linejoin: round; stroke-linecap: round; }
+.cmp svg.g.whole .wtrunk { stroke-width: calc(1.6px * var(--wk, 1)); } .cmp svg.g.whole .wstem { stroke-width: calc(1.1px * var(--wk, 1)); } .cmp svg.g.whole .wsp { stroke-width: calc(.8px * var(--wk, 1)); opacity: .6; }
+.cmp svg.g.whole .wbun { opacity: .5; } .cmp svg.g.whole .wbun:hover { opacity: .95; } .cmp svg.g.whole.far #cmp-wstem { display: none; }
+.cmp svg.g.whole .node.wf circle { r: calc(1.5px * var(--wk, 1)); } .cmp svg.g.whole .wfhub { r: calc(2.3px * var(--wk, 1)); fill: none; stroke-width: calc(.9px * var(--wk, 1)); }
+.cmp svg.g.whole .node text.whub.wfname { font-size: calc(12px * var(--wk, 1)); stroke-width: calc(3px * var(--wk, 1)); dominant-baseline: central; }
+.cmp svg.g.whole .node.wmove { transition: transform var(--dur-fast) var(--ease-out); }
+.cmp svg.g.whole .wl { stroke: var(--c-point); stroke-width: calc(1.5px * var(--wk, 1)); } .cmp svg.g.whole .wl.cross { stroke: var(--c-mute); stroke-dasharray: calc(4px * var(--wk, 1)) calc(3px * var(--wk, 1)); } .cmp svg.g.whole .wl.br { stroke-dasharray: calc(6px * var(--wk, 1)) calc(3px * var(--wk, 1)); }
+.cmp svg.g.whole .wpart { fill: none; stroke: var(--c-point); stroke-width: calc(1.2px * var(--wk, 1)); }
+.cmp svg.g.whole .wsel { fill: none; stroke: var(--c-point); stroke-width: calc(1.6px * var(--wk, 1)); } .cmp svg.g.whole .wsel.on { stroke-width: calc(2.4px * var(--wk, 1)); }
+.cmp svg.g.whole .node text { font-size: 11px; stroke-width: 3px; }  /* fs-allow: 전체 보기 그림 단위. 배치가 FONT.leaf 로 잰다 */
+.cmp svg.g.whole .node text.whub { font-size: 15px; font-weight: 700; }  /* fs-allow: 전체 보기 그림 단위. 배치가 FONT.hub 로 잰다 */
+.cmp svg.g.whole text.whead { font-size: 11px; font-weight: 700; fill: var(--c-soft); }  /* fs-allow: 전체 보기 그림 단위. 배치가 FONT.head 로 잰다 */
+.cmp svg.g.whole text.wname { font-weight: 600; pointer-events: none; }
+.cmp svg.g.whole .out { opacity: .16; } .cmp svg.g.whole .node { transition: none; cursor: inherit; }
+.cmp svg.g.whole #cmp-whl, .cmp svg.g.whole #cmp-wsp, .cmp svg.g.whole #cmp-wstat { pointer-events: none; }
 /* 그래프 트리의 노드 줄: 문서 줄과 같은 줄에 도트 자리만 종류 모양(주제 색) */
 .lnb-gmark { flex: 0 0 auto; display: inline-flex; width: 12px; height: 12px; color: var(--tint, hsl(var(--muted-foreground))); }
 .lnb-gmark svg, .lnb-gmark .cmp-mk { width: 12px; height: 12px; overflow: visible; color: inherit; vertical-align: 0; }
