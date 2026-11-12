@@ -259,8 +259,8 @@ def _frozen_clock(monkeypatch):
         revstamp._meta_set(store, "last_hlc", cur)
         return revstamp._fmt(cur)
     monkeypatch.setattr(revstamp, "hlc_now", hlc_now)
-    # 벽시계도 같은 값에 둔다: 묶음의 스탬프가 실제 시각보다 앞서면 상한으로 잘리고, 잘린 값은
-    # 적용할 때의 시각이라 두 스토어가 달라진다.
+    # 벽시계도 같은 값에 둔다: 스탬프가 벽시계 + 허용 스큐보다 뒤인 항목은 받지 않으므로(`clock_skew`),
+    # 실제 시각을 읽으면 어느 항목이 두 스토어에 들어가는지가 테스트를 돌리는 날에 따라 달라진다.
     monkeypatch.setattr(revstamp, "_wall_ms", lambda: 1_800_000_000_000)
 
 

@@ -364,6 +364,104 @@ def test_local_stamp_order_holds_when_the_wall_clock_steps_back(store, wall, ste
     assert _ua(st, A, "concept:a") > before
 
 
+def _trusted_pull(store, owner, clock, *nodes):
+    """기기가 자기 허브에서 받는 pull 한 쪽. `clock` 은 허브가 답에 실은 자기 벽시계다."""
+    return sync.apply_delta(owner=owner, store=store, trusted_sender=True, bundle={
+        "nodes": list(nodes), "edges": [], "tombstones": [], "edge_tombstones": [],
+        "clock": clock})
+
+
+@pytest.mark.parametrize("mark", [None, T0 + 2 * HOUR], ids=["no-hub-clock", "hub-clock-below"])
+def test_a_clock_poisoned_by_2999_comes_back_with_or_without_a_hub_clock_below_it(store, mark):
+    st = store()
+    if mark is not None:
+        assert _trusted_pull(st, A, _at(mark))["executed"]
+    _poison(st, Y2999_MS)
+    _write(st, A, "concept:first")
+    assert _ua(st, A, "concept:first") <= _top()
+    assert _last(st) <= revstamp.ceiling_ms()
+
+
+def test_a_2999_item_from_the_hub_does_not_hold_the_device_clock(store):
+    """허브에 남은 먼 스탬프 하나를 받아도 기기의 다음 쓰기는 벽시계 근처에 찍힌다(허브 시계가 기준이다)."""
+    st = store()
+    out = _trusted_pull(st, A, _at(T0), _pushed("concept:old", Y2999, title="Kept from before"))
+    assert out["executed"] and _ua(st, A, "concept:old") == Y2999, out
+    _write(st, A, "concept:next")
+    assert _at(T0) <= _ua(st, A, "concept:next") <= _top()
+
+
+def test_an_untrusted_upload_cannot_hold_a_poisoned_clock(store):
+    """허브는 믿는 출처가 없다. 업로드가 실은 시계 값은 읽지 않으므로 오염된 시계는 다음 쓰기에서 돌아온다."""
+    st = store()
+    _poison(st, Y2999_MS)
+    out = sync.apply_delta(owner=A, store=st, bundle={
+        "nodes": [], "edges": [], "tombstones": [], "edge_tombstones": [], "clock": Y2999})
+    assert out["executed"], out
+    docsync.import_docs(st, owner=A, payload={"docs": [], "tombstones": [], "clock": Y2999})
+    _write(st, B, "concept:mine")
+    assert _ua(st, B, "concept:mine") <= _top()
+
+
+@pytest.mark.parametrize("behind", [26 * HOUR, 400 * DAY], ids=["26h", "400d"])
+def test_a_device_that_followed_its_hub_keeps_stamping_after_the_hub(store, behind):
+    st = store()
+    hub_now = T0 + behind
+    _write(st, A, "concept:n", title="Device copy")
+    out = _trusted_pull(st, A, _at(hub_now), _pushed("concept:n", _at(hub_now), title="From hub"))
+    assert out["merged"] == 1 and _last(st) >= hub_now, out
+    _write(st, A, "concept:n", title="Device edit")
+    assert _ua(st, A, "concept:n") > _at(hub_now)
+
+
+def test_the_upload_scan_names_what_apply_refuses(store):
+    """청크째 실패를 정하는 검사(`skewed_upload_items`·`skewed_upload_docs`)는 적용이 거절하는 것과 같은 것을 같은 순서로 꼽는다."""
+    st = store()
+    _write(st, A, "concept:kept")
+    bundle = {"nodes": [_pushed("concept:far", Y2999), _pushed("concept:near", _at(T0)),
+                        {**_pushed("decision:wrong", Y2999), "type": "concept"},
+                        {**_pushed("concept:odd", Y2999), "type": "nonesuch"},
+                        _pushed("concept:int", 5)],
+              "edges": [],
+              "tombstones": [{"node_id": "concept:kept", "label": "Concept", "deleted_at": Y9999,
+                              "rev": 1}, {"node_id": "", "label": "Concept", "deleted_at": Y9999}],
+              "edge_tombstones": [{"src": "concept:a", "rel": "RELATED_TO", "dst": "concept:b",
+                                   "deleted_at": Y2999},
+                                  {"src": "concept:a", "rel": "NOT_A_REL", "dst": "concept:b",
+                                   "deleted_at": Y2999}]}
+    named = sync.skewed_upload_items(bundle)
+    assert named == sync.apply_delta(owner=A, store=st, bundle=bundle)[SKEW]
+    assert named == ["concept:far", "concept:int", "concept:kept",
+                     sync.edge_ref("concept:a", "RELATED_TO", "concept:b")]
+    payload = _docs_payload(("doc:far", Y2999, "far"), ("doc:near", _at(T0), "near"),
+                            tombstones=[("doc:gone", Y9999)])
+    docs = docsync.skewed_upload_docs(payload)
+    assert docs == ["doc:far", "doc:gone"] == docsync.import_docs(st, owner=A, payload=payload)[SKEW]
+
+
+def test_an_undeclared_upload_with_a_far_item_applies_nothing(store):
+    st = store()
+    bundle = {"nodes": [_pushed("concept:far", Y2999), _pushed("concept:near", _at(T0))],
+              "edges": []}
+    out = sync.apply_upload(owner=A, store=st, bundle=bundle)
+    assert out["executed"] is False and out[SKEW] == ["concept:far"], out
+    assert out["note"] == revstamp.clock_skew_warning(1)
+    assert _row(st, A, "concept:near") is None
+    declared = sync.apply_upload(owner=A, store=st, bundle={**bundle, revstamp.HANDLES: [SKEW]})
+    assert declared["executed"] is True and declared[SKEW] == ["concept:far"], declared
+    assert _row(st, A, "concept:near")["title"] == "Pushed"
+    # 상한을 넘은 항목이 없으면 밝히지 않은 업로드도 그대로 적용된다.
+    plain = sync.apply_upload(owner=A, store=st, bundle={"nodes": [
+        _pushed("concept:plain", _at(T0))], "edges": []})
+    assert plain["executed"] is True and SKEW not in plain, plain
+    payload = _docs_payload(("doc:far", Y2999, "far"), ("doc:near", _at(T0), "near"))
+    res = docsync.import_upload(st, owner=A, payload=payload)
+    assert res["error"] == revstamp.clock_skew_warning(1) and res[SKEW] == ["doc:far"], res
+    assert _doc(st, "doc:near") is None
+    res = docsync.import_upload(st, owner=A, payload={**payload, revstamp.HANDLES: [SKEW]})
+    assert "error" not in res and res[SKEW] == ["doc:far"] and _doc(st, "doc:near"), res
+
+
 def test_observe_bounds_a_stamp_whose_digits_sort_low_but_read_far():
     """문자열로는 상한 아래로 정렬되지만 밀리초 칸이 길어 읽으면 먼 값도 믿지 않는 길에서는 시계를 밀지 못한다."""
     class _Meta:

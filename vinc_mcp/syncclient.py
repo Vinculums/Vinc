@@ -25,6 +25,12 @@ class SyncError(RuntimeError):
     pass
 
 
+#: 업로드마다 허브에 밝히는, 이 클라이언트가 알아듣는 답(`api/revstamp.py` `HANDLES`). `clock_skew` 를 밝히지
+#: 않은 업로드는 허브가 받지 않은 항목이 있으면 청크째 실패시킨다. 이 클라이언트는 그 목록을 돌려주고 부르는
+#: 쪽이 다시 보낸다.
+HANDLES = {"handles": ["clock_skew"]}
+
+
 def _post(base: str, path: str, token: str, payload: dict, *, timeout: float) -> dict:
     try:
         return hubhttp.post_json(base.rstrip("/") + path, token=token, payload=payload,
@@ -54,7 +60,7 @@ def push(bundle_chunks: list[dict], *, token: str, base: str = DEFAULT_URL,
     warnings: list[str] = []
     refused: list = []
     for i, ch in enumerate(bundle_chunks):
-        out = _post(base, "/sync/push", token, {"bundle": ch}, timeout=timeout)
+        out = _post(base, "/sync/push", token, {"bundle": {**ch, **HANDLES}}, timeout=timeout)
         if not out.get("executed"):
             raise SyncError(f"chunk {i + 1}/{len(bundle_chunks)} rejected: "
                             f"{out.get('note') or out.get('error') or 'unknown'}")
@@ -106,7 +112,8 @@ def docs_push(payload: dict, *, token: str, base: str = DEFAULT_URL,
               timeout: float = TIMEOUT) -> dict:
     """문서 정본 delta 전송. 조각내기는 호출부(api/sync._chunk_docs) 책임 —
     4MB 바디 상한을 넘기면 서버가 빈 바디 400 으로 **조용히** 거절한다."""
-    out = _post(base, "/sync/docs-push", token, {"payload": payload}, timeout=timeout)
+    out = _post(base, "/sync/docs-push", token, {"payload": {**payload, **HANDLES}},
+                timeout=timeout)
     if out.get("error"):
         raise SyncError(str(out["error"]))
     return out
