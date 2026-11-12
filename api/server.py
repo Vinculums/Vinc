@@ -409,6 +409,7 @@ class VincApp:
         self.profile_path = profile_path
         self.ingest = ingest if ingest is not None else dict(DEFAULT_INGEST)
         self._sync_running = False            # 동시 sync 거부 플래그(S2, 커서 경합 방지)
+        self._sync_lock = threading.Lock()    # 깃발의 검사와 세우기를 한 번에(요청마다 스레드다)
         # 열린 화면이 다시 읽을 때를 아는 값(VIN-129). 메모리에만 있다(`api.changes`).
         self.changes = changes.ChangeMarker()
         # 같은 소유자·인자·변경 표식의 전체 그래프 읽기를 다시 계산하지 않는다(`api.graph_cache`).
@@ -1263,7 +1264,7 @@ class VincApp:
             try:
                 nodes = json.loads(nodes)
             except ValueError:
-                return {"executed": False, "error": "invalid nodes JSON array"}
+                return 400, {"executed": False, "error": "invalid nodes JSON array"}
         return self._read(lambda r: q.node_edges(
             p.get("node"), nodes=nodes, owner=_req(p, "owner"),
             type=p.get("type"), dir=p.get("dir", "both"),
@@ -1275,7 +1276,7 @@ class VincApp:
             limit = int(p["limit"]) if p.get("limit") is not None else None
             offset = int(p.get("offset", 0))
         except (TypeError, ValueError):
-            return {"executed": False, "error": "invalid role pagination"}
+            return 400, {"executed": False, "error": "invalid role pagination"}
         return self._read(lambda r: read(p.get("role"), owner=_req(p, "owner"), store=r,
             limit=limit, offset=offset,
             roster=p.get("roster") == "1", detail=p.get("detail") == "procedures"))
@@ -2597,20 +2598,11 @@ class VincApp:
         token = body.get("token")
         if not token:
             return 400, {"error": "missing field: token (member key)"}
-        if self._sync_running:
-            return 409, {"error": "a sync is already in progress"}
         owner = body.get("owner") or "user:local"   # 앱이 자기 로컬 owner 를 실어 보낸다
         remote = sync.RemoteHTTP(token, body.get("base"))
-
-        def _job():
-            self._sync_running = True
-            try:
-                return sync.run(self.store, self.cfg, owner=owner, remote=remote)
-            finally:
-                self._sync_running = False
-
-        job = self.jobs.submit("sync", _job)
-        return 202, job.to_dict()
+        return self._submit_exclusive(
+            "sync", lambda: sync.run(self.store, self.cfg, owner=owner, remote=remote),
+            "a sync is already in progress")
 
     # ── 저장 위치와 모드 전환(VIN-130) ─────────────────────────────────────────
     # 데스크톱의 저장 설정은 `~/.vinc/config.json` 한 곳이다(`store.config`). 앱은 여기로
@@ -2812,9 +2804,15 @@ class VincApp:
         """모드 전환의 데이터 이동을 잡으로. 동기화 세션과 같은 깃발을 쓴다(커서는 안
         건드리지만 같은 원격에 같은 소유자로 쓰므로 겹치면 안 된다). 깃발은 **접수 때**
         세운다: 잡 안에서 세우면 연달아 두 번 누른 요청이 둘 다 통과한다."""
-        if self._sync_running:
-            return 409, {"error": "a sync or move is already in progress"}
-        self._sync_running = True
+        return self._submit_exclusive(name, fn, "a sync or move is already in progress")
+
+    def _submit_exclusive(self, name: str, fn, busy: str):
+        """sync·이동 잡을 하나만 받는다. 깃발은 접수 때 잠금 안에서 세우고 잡이 끝나면
+        (예외여도) 내린다. 이미 서 있으면 409 와 `busy` 로 답한다."""
+        with self._sync_lock:
+            if self._sync_running:
+                return 409, {"error": busy}
+            self._sync_running = True
 
         def _job():
             try:
