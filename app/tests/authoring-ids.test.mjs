@@ -28,6 +28,7 @@ const SHEET = COMPONENTS_STUB + `
 export const armsNotice = () => null;
 export const openContextMenu = () => {};
 export const showNotice = async () => {};
+export const layerWhileShown = () => {};
 export const sheetActions = (...acts) => acts.filter(Boolean).map((a) => '<button id="' + a.id + '">' + a.label + '</button>').join('');
 export function openSheet(o) {
   const el = document.createElement('div');
