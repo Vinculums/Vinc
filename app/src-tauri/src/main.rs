@@ -223,19 +223,21 @@ fn b64(bytes: &[u8]) -> String {
 //
 // 정본은 그래프의 `vinc.plan.vinc-command-on-path`.
 
-/// 앱 바이너리가 번들 CLI 로 넘기는 최상위 동사. `api/cli.py` 가 조립한 파서의 최상위
-/// 동사 전부가 아니라 일부다. 나머지는 `tests/app/test_cli_verbs_match.py` 의
-/// `UNDECIDED_DESKTOP_OR_HUB_ONLY`(데스크톱으로 보낼지 허브 전용으로 둘지 정하지 않은 동사)에
-/// 적혀 있고, 그 시험이 실제 파서와 대조한다: 파이썬 동사가 두 곳 어디에도 없거나, 이 배열에
-/// 파서에 없는 동사가 있거나, 한 동사가 두 곳에 다 있으면 실패한다.
-/// ⚠ 여기에 없는 첫 인자는 **전부 창을 여는 쪽**으로 간다. 미정 집합의 동사도 앱 바이너리로
-/// 부르면 창이 뜬다. 동사를 이 배열에 넣을 때는 그 집합에서 같이 뺀다.
-/// `--help`·`-h`·`--version`·`-V` 도 창 없이 번들 CLI 가 직접 출력한다.
-const CLI_VERBS: [&str; 39] = [
+/// 앱 바이너리가 번들 CLI 로 넘기는 최상위 동사. 사용자가 데스크톱에서 부르는 동사는 모두
+/// 여기 있고, 운영자가 허브나 오프라인 스토어 사본에서만 부르는 유지보수 동사는 없다. 빠진 동사와
+/// 그 이유는 `tests/app/test_cli_verbs_match.py` 의 `HUB_ONLY_BY_DECISION` 에 적혀 있고, 그 시험이
+/// 실제 파서와 대조한다: 파이썬 동사가 두 곳 어디에도 없거나, 이 배열에 파서에 없는 동사가 있거나,
+/// 한 동사가 두 곳에 다 있으면 실패한다.
+/// ⚠ 여기에 없는 첫 인자는 **전부 창을 여는 쪽**으로 간다. 허브 전용 동사를 앱 바이너리로 부르면
+/// 창이 뜬다. 새 동사는 이 배열이나 그 집합 중 한 곳에 넣는다.
+/// 동사는 알파벳 순서로 두고, 루트 옵션 `--help`·`-h`·`--version`·`-V` 는 끝에 둔다. 이 옵션도
+/// 창 없이 번들 CLI 가 직접 출력한다.
+const CLI_VERBS: [&str; 48] = [
     "activate", "backup", "brief", "call", "conventions", "decide", "delete", "diagnose",
-    "doc", "domain-backfill", "domains", "edge", "export", "graph", "graph-md", "import", "ingest",
-    "learner", "mcp", "merge", "migrate-dim", "node", "onboard", "path", "pin", "plan",
-    "recall", "refs", "search", "serve", "share", "tag", "ties", "touch", "whoami", "--help", "-h",
+    "doc", "domain-backfill", "domains", "edge", "edges", "eval", "events", "export", "gate",
+    "graph", "graph-md", "import", "ingest", "learner", "mcp", "merge", "migrate-dim", "node",
+    "onboard", "operation", "path", "pin", "plan", "recall", "refs", "role", "run", "search",
+    "serve", "share", "shim", "storage", "tag", "ties", "touch", "whoami", "--help", "-h",
     "--version", "-V",
 ];
 
@@ -920,7 +922,8 @@ mod tests {
         for v in ["mcp", "serve", "search", "doc", "import", "share", "graph-md", "onboard",
                   "brief", "migrate-dim", "whoami", "conventions", "node", "path", "ties",
                   "diagnose", "ingest", "delete", "edge", "merge", "call", "export", "refs",
-                  "--help", "-h", "--version", "-V"] {
+                  "edges", "operation", "role", "gate", "shim", "events", "run", "eval",
+                  "storage", "--help", "-h", "--version", "-V"] {
             assert!(CLI_VERBS.contains(&v), "{v} 가 목록에 없다");
         }
         assert!(!CLI_VERBS.contains(&"install"), "install 은 mcp 의 하위라 최상위가 아니다");
