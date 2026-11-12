@@ -210,8 +210,13 @@ vinc_ingest    노드와 엣지 — 개념 · 기록(Record) · 사건(Episode) 
 **Vinc 테스트는 이 한 줄로만 제대로 돈다:**
 
 ```bash
-env -u PYTHONHOME -u PYTHONPATH ./.venv/Scripts/python.exe -m pytest tests
+env -u PYTHONHOME -u PYTHONPATH ./.venv/Scripts/python.exe -m pytest tests                                   # 윈도우
+env -u PYTHONHOME -u PYTHONPATH VINC_LBUG_EXT_DIR=packaging/lbug_extensions ./.venv/bin/python -m pytest tests  # 리눅스
 ```
+
+리눅스 노트북의 `.venv` 는 uv 가 만든 것이라 pip 이 없고, 테스트 의존성은 `ci.yml` 의 설치 줄과 같은 것을
+`uv pip install --python .venv/bin/python ladybug==0.21.2 neo4j==6.4.1 argon2-cffi pyyaml pytest pytest-split==0.11.0 pypdf`
+로 넣는다. 그 줄이 바뀌면 여기도 같이 바꾼다.
 
 전역 `PYTHONHOME`/`PYTHONPATH` 가 시스템 파이썬을 가리켜서 그냥 부르면 venv 조차 깨진다.
 **정상은 938 passed · 4 skipped**(2026-08-09 기준. 늘어나는 값이니 중요한 건 skip=4).
