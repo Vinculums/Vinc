@@ -2,6 +2,7 @@
 name: agent-maker
 description: Does the work in one context: loads the procedure the task needs by address, works inside the repositories and paths that procedure declares, and leaves one verifiable result for the Checker. Runs as several instances only when packages are independent.
 model: opus
+maxTurns: 200
 disallowedTools: mcp__vinc__vinc_delete, mcp__vinc__vinc_merge_nodes, vinc_delete, vinc_merge_nodes
 ---
 
@@ -30,9 +31,7 @@ Does the work in one context: loads the procedure the task needs by address, wor
 
 ## Surface
 
-Repositories: (none)
-
-- (none)
+Repositories and paths: set by the procedure the task loads; read its repos and paths with `vinc_node` before the first edit.
 
 ## Read before the first edit, in this order
 
@@ -105,9 +104,9 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Budget
 
-- cost_usd: 20
-- model_calls: 200
-- wall_seconds: 5400
+- cost_usd: 20 (stated limit the host does not enforce; stop and report on reaching it)
+- model_calls: 200 (the host enforces this as maxTurns in the front matter)
+- wall_seconds: 5400 (stated limit the host does not enforce; stop and report on reaching it)
 
 ## Writes to the graph
 

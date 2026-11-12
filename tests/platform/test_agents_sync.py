@@ -22,11 +22,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 # 여기서 그 자리를 그대로 임포트하는 이유는, 재수출로 가리면 사본이 둘이 됐을 때도
 # 이 파일이 계속 초록이기 때문이다.
 from scripts.agents_sync import (GENERATED_MARK, HOOK_SRC,  # noqa: E402
-                                 _manifest_docs, dangling_reads, install,
-                                 main, main_checkout, read_snapshot,
-                                 shell_path)
-from vinc_mcp.roles import (RUNG_TO_MODEL, build_payload,  # noqa: E402
-                            render_shell, works_with)
+                                 LADDER_ID, STOP_HOOK_SRC, _manifest_docs,
+                                 dangling_reads, install, ladder_payload,
+                                 main, main_checkout, parse_ladder,
+                                 read_ladder, read_snapshot,
+                                 render_stop_hook, shell_path)
+from vinc_mcp.roles import (RUNG_TO_MODEL, SURFACE_FROM_PROCEDURE,  # noqa: E402
+                            build_payload, render_shell, works_with)
 
 _NODE = {
     "id": "concept:agent-example",
@@ -333,3 +335,113 @@ class Denylist(unittest.TestCase):
             denied = set(role["props"].get("disallowed_tools") or [])
             self.assertTrue({"Edit", "Write", "NotebookEdit"} <= denied,
                             f"{role['name']} 이 편집 도구를 거부하지 않는다: {sorted(denied)}")
+
+
+class ModelLadder(unittest.TestCase):
+    """`RUNG_TO_MODEL` 은 사다리 결정의 실행 사본이다. 리포 안의 결정 사본(`agents/model-ladder.json`,
+    `--pull` 이 쓴다)과 다르면 어느 rung 이 다른지 말하고 실패한다."""
+
+    def test_rung_to_model_matches_the_ladder_decision_snapshot(self):
+        snap = read_ladder()
+        self.assertEqual(snap["decision"], LADDER_ID)
+        ladder = parse_ladder(snap["ladder"])
+        differ = [f"{rung}: RUNG_TO_MODEL has {RUNG_TO_MODEL.get(rung)!r}, "
+                  f"{LADDER_ID} has {ladder.get(rung)!r}"
+                  for rung in sorted(set(ladder) | set(RUNG_TO_MODEL))
+                  if RUNG_TO_MODEL.get(rung) != ladder.get(rung)]
+        self.assertFalse(differ, "rung differs from agents/model-ladder.json: " + "; ".join(differ))
+
+    def test_the_ladder_sentence_parses_to_lowercase_aliases(self):
+        self.assertEqual(parse_ladder("strongest = Fable; strong = Opus;"),
+                         {"strongest": "fable", "strong": "opus"})
+        with self.assertRaises(ValueError):
+            parse_ladder("strong Opus")
+
+    def test_the_pulled_copy_keeps_the_sentence_verbatim(self):
+        got = ladder_payload({"props": {"ladder": "fast = Sonnet", "valid_from": "2026-08-23"}})
+        self.assertEqual((got["decision"], got["ladder"]), (LADDER_ID, "fast = Sonnet"))
+        with self.assertRaises(SystemExit):
+            ladder_payload({"props": {}})
+
+    def test_pull_ladder_reads_the_decision_node_and_writes_the_copy(self):
+        from unittest import mock
+
+        import scripts.agents_sync as sync
+        seen, written = [], []
+
+        def call(tool, args):
+            seen.append((tool, args))
+            return {"found": True, "node": {"id": LADDER_ID, "props": {"ladder": "strong = Opus"}}}
+
+        with mock.patch("vinc_mcp.remote.call", side_effect=call), \
+                mock.patch.object(sync, "write_ladder", written.append):
+            self.assertEqual(sync.cmd_pull_ladder(), 0)
+        self.assertEqual(seen, [("vinc_node", {"node_id": LADDER_ID})])
+        self.assertEqual(written[0]["ladder"], "strong = Opus")
+        with mock.patch("vinc_mcp.remote.call", return_value={"isError": True, "error": "x"}), \
+                self.assertRaises(SystemExit):
+            sync.cmd_pull_ladder()
+
+
+class Limits(unittest.TestCase):
+    """하네스가 집행하는 한도만 프런트매터에 낸다. 값은 역할의 budget 에서 오고 생성기 상수가 아니다."""
+
+    def _render(self, **props):
+        node = dict(_NODE, props=dict(_NODE["props"], **props))
+        return render_shell(build_payload([node])["roles"][0])
+
+    def test_model_calls_becomes_max_turns_and_the_rest_is_labelled_unenforced(self):
+        text = self._render(budget={"cost_usd": 3, "model_calls": 37, "wall_seconds": 60},
+                            disallowed_tools=["Edit"])
+        front = text.split("---")[1]
+        keys = [ln.split(":")[0] for ln in front.strip().splitlines()]
+        self.assertEqual(keys, ["name", "description", "model", "maxTurns", "disallowedTools"])
+        self.assertIn("\nmaxTurns: 37\n", front)
+        self.assertIn("- model_calls: 37 (the host enforces this as maxTurns in the front matter)", text)
+        for line in ("- cost_usd: 3 (stated limit the host does not enforce",
+                     "- wall_seconds: 60 (stated limit the host does not enforce"):
+            self.assertIn(line, text)
+
+    def test_a_role_without_a_usable_model_call_budget_gets_no_turn_cap(self):
+        self.assertNotIn("maxTurns", self._render())
+        for bad in ({"cost_usd": 3}, {"model_calls": 0}, {"model_calls": "200"},
+                    {"model_calls": True}, {"model_calls": -1}):
+            self.assertNotIn("maxTurns", self._render(budget=bad), bad)
+
+    def test_the_committed_shells_carry_each_role_s_own_turn_cap(self):
+        for role in read_snapshot()["roles"]:
+            calls = (role["props"].get("budget") or {}).get("model_calls")
+            text = shell_path(role).read_text(encoding="utf-8")
+            if calls:
+                self.assertIn(f"\nmaxTurns: {calls}\n", text.split("---")[1], role["name"])
+            else:
+                self.assertNotIn("maxTurns", text, role["name"])
+
+
+class Surface(unittest.TestCase):
+    def _render(self, **props):
+        node = dict(_NODE, props=dict(_NODE["props"], **props))
+        return render_shell(build_payload([node])["roles"][0])
+
+    def test_no_repos_and_no_paths_is_one_line_naming_the_procedure(self):
+        text = self._render()
+        self.assertIn("## Surface\n\n" + SURFACE_FROM_PROCEDURE + "\n\n## Read before", text)
+        self.assertNotIn("Repositories: (none)", text)
+
+    def test_declared_repos_and_paths_keep_their_lines(self):
+        text = self._render(repos=["Vinc"], paths=["store/", "api/"])
+        self.assertIn("## Surface\n\nRepositories: Vinc\n\n- store/\n- api/\n", text)
+
+
+class StopHookSnippet(unittest.TestCase):
+    def test_the_snippet_matches_only_roster_agents_and_cannot_block_on_time(self):
+        snap = {"roles": [{"name": "agent-maker"}, {"name": "agent-checker"}]}
+        body = json.loads(render_stop_hook(snap))
+        (group,) = body["hooks"]["SubagentStop"]
+        self.assertEqual(group["matcher"], "^(agent-checker|agent-maker)$")
+        (hook,) = group["hooks"]
+        self.assertEqual(hook["type"], "command")
+        self.assertLessEqual(hook["timeout"], 10)
+        self.assertIn(STOP_HOOK_SRC.name, hook["command"])
+        self.assertTrue(STOP_HOOK_SRC.is_file())
+        self.assertEqual(render_stop_hook(snap), render_stop_hook(snap))

@@ -2,6 +2,7 @@
 name: agent-checker
 description: Checks finished work without the Maker's context: reads the result and its acceptance criteria, runs the gates, reads the diff adversarially, and returns a structured verdict that names the failing checks. Reads and runs; never edits; failures return to the Maker.
 model: opus
+maxTurns: 80
 disallowedTools: Agent, Edit, NotebookEdit, Write, mcp__filesystem__create_directory, mcp__filesystem__edit_file, mcp__filesystem__move_file, mcp__filesystem__write_file, mcp__github__enable_pr_auto_merge, mcp__github__merge_pull_request
 ---
 
@@ -30,9 +31,7 @@ Checks finished work without the Maker's context: reads the result and its accep
 
 ## Surface
 
-Repositories: (none)
-
-- (none)
+Repositories and paths: set by the procedure the task loads; read its repos and paths with `vinc_node` before the first edit.
 
 ## Read before the first edit, in this order
 
@@ -92,9 +91,9 @@ the missing server instead of substituting another tool. Reasoning:
 
 ## Budget
 
-- cost_usd: 8
-- model_calls: 80
-- wall_seconds: 1800
+- cost_usd: 8 (stated limit the host does not enforce; stop and report on reaching it)
+- model_calls: 80 (the host enforces this as maxTurns in the front matter)
+- wall_seconds: 1800 (stated limit the host does not enforce; stop and report on reaching it)
 
 ## Capabilities
 
