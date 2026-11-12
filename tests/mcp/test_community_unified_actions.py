@@ -332,8 +332,8 @@ def test_feed_read_in_a_community_that_is_not_the_unified_space(service):
     error = {"code": "bad_request", "message": UNIFIED_ONLY, "request_id": "req-2"}
     service["answer"] = (400, {"error": error})
     result = call(service, "feed", {"limit": 10})
-    # 지금의 연결 규칙 그대로다: 읽기 도구는 계정 거절을 봉투의 isError 로 올리지 않고 본문에만 싣는다(쓰기 도구만 올린다).
-    assert result["isError"] is False
+    # 계정의 거절은 쓰기처럼 읽기도 봉투의 isError 로 올라간다: 거절된 피드 읽기가 빈 피드로 읽히면 안 된다.
+    assert result["isError"] is True
     assert parsed(result) == {"executed": False, "isError": True, "status": 400, "error": error}
     status, body = rest(service, "/v1/community/read", {"action": "feed", "payload": {"limit": 10}})
     assert status == 400 and body["error"]["code"] == "invalid_argument"
