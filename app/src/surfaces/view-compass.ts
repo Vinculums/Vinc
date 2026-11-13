@@ -9,31 +9,18 @@
 import { COPY } from "../copy";
 import { esc } from "../components";
 import { topicRing } from "../view-tint";
-import { addTopics, rootTopicOf, topicTint, topicTintPlan, TOPIC_TINTS_EVENT } from "../topic-tint-table";
+import { addTopics, topicTint, topicTintPlan, TOPIC_TINTS_EVENT } from "../topic-tint-table";
 import { topicJewels } from "../theme";
 import * as LS from "./view-compass-state";
 import type { LensState, CompassState, Box, Point } from "./view-compass-state";
 import { layoutWhole, lodTier, labelShown, placeLabels, gridIndex, farArrange, farPlan, attribution, fitChoice, FONT, RING_SEP,
   type WLayout, type WTopicIn, type WItem, type FarArr, type Pt as WPt } from "./view-compass-whole";
 import { shortcutsRest } from "../keys";
-import type { GraphNode } from "../api";
+import { compassModel, topicOf, isMean, kindKey, when, type CompassData, type DNode, type TNode, type LNode, type Edge } from "./view-compass-model";
+export { compassDataFrom } from "./view-compass-model";
+export type { CompassNode, CompassData } from "./view-compass-model";
 export type { CompassState } from "./view-compass-state";
 
-/** 나침반이 읽는 그래프 노드(compassDataFrom 의 모양). k: 종류('doc' 은 문서 미러), t: 이름, d: 주제 경로(빈 값이면 뿌리), ts · ct · vf · vu: 날짜들,
- *  g: 이음 수, m: 뜻의 관계 수 */
-export interface CompassNode { id: string; k: string; t: string; d: string; ts: string; ct?: string; vf?: string; vu?: string; g: number; m: number }
-export interface CompassData { nodes: CompassNode[]; edges: [string, string, string][] }
-/** compassDataFrom 이 읽는 그래프 읽기의 칸(GraphNode · GraphEdge 와, 읽기에 따라 함께 오는 title · updated_at · 객체 끝). */
-type GraphNodeIn = Pick<GraphNode, "id" | "kind" | "label" | "domain" | "degree" | "ts" | "content_ts" | "valid_from" | "valid_until" | "props"> & { title?: string; updated_at?: string };
-type GraphEnd = string | { id: string };
-type GraphEdgeIn = { source: GraphEnd; target: GraphEnd; type: string; presentation?: boolean };
-/** 나침반 안의 노드: 그래프 노드(DNode)와 domain 사슬로 지은 주제(TNode, k 는 'topic'). 한쪽에만 있는 칸은 다른 쪽에서 비어 있다. */
-interface DNode extends CompassNode { path?: undefined; direct?: undefined; sub?: undefined; count?: undefined }
-interface TNode { id: string; k: "topic"; path: string; direct: DNode[]; sub: Set<string>; count: number; ts?: string; t?: string;
-  d?: undefined; ct?: undefined; vf?: undefined; vu?: undefined; g?: undefined; m?: undefined }
-type LNode = DNode | TNode;
-/** 두 그래프 노드 사이의 관계 하나(a → b, 종류 t). */
-interface Edge { a: DNode; b: DNode; t: string }
 type Pt = [number, number];
 /** 한 층에 놓을 이웃 하나: 노드와 관계 이름(rel), 그 관계(e). 다리는 잇는 하위 주제(subs)와 층 밖으로도 잇는지(outside)를 든다. */
 interface Unit { n: LNode; rel?: string; e?: Edge; main?: boolean; label?: string; farEnds?: string[] }
@@ -76,7 +63,7 @@ type Meas = Map<string, Partial<Record<"v" | "u" | "h", { top: number; dep: numb
 /** 정해진 자리(팔)의 결과: 주제 층의 자리와 주제마다 고른 팔. */
 interface Plan { out: Placement; arms: Map<string, number> }
 /** 배치 한 번이 읽는 것(curS · measS). */
-interface LayoutIn { mode: string; path: LNode[]; place: Placement | null; dirs: Placement | null; canon: boolean; range: [string, string] | null; koff: Set<string>;
+interface LayoutIn { mode: string; path: LNode[]; place: Placement | null; dirs: Placement | null; canon: boolean; koff: Set<string>;
   more: [string, number][]; pins: Set<string>; pinChain: Set<string>; filt?: Map<string, unknown>; cps?: Map<string, Cp> }
 export interface CompassCtx { startPath?: string[]; restore?: CompassState | null; store?: string; onChange?: () => void; onOpen?: (id: string) => void; onDestroy?: () => void;
   onTree?: (o: { reveal: string[]; reset: boolean }) => void }
@@ -85,22 +72,6 @@ export interface CompassHandle { destroy: () => void; side: HTMLElement; tools: 
   snapshot: () => CompassState; retheme: () => void }
 
 const themeMode = () => (document.documentElement.dataset.theme === "dark" ? "dark" : "light");
-
-/** 그래프 탭의 읽기(GraphNode·GraphEdge)를 나침반이 읽는 모양으로. 주제(domain) 노드는 노드의 domain 사슬에서 다시 만든다. */
-const idDate = (id: string) => { const m = /-(20\d\d-\d\d-\d\d)$/.exec(String(id)); return m ? m[1] : ""; };
-export function compassDataFrom(nodes: readonly GraphNodeIn[], edges: readonly GraphEdgeIn[]): CompassData {
-  const out: CompassNode[] = nodes.filter((n) => n.kind !== "domain" && n.kind !== "area").map((n) => ({
-    id: n.id, k: String(n.id).startsWith("concept:doc.") ? "doc" : n.kind as string, t: n.label || n.title || n.id, d: n.domain || "",   // 주제 없는 노드는 빈 값 그대로 둔다: 어느 뿌리에 설지는 mountCompass 가 정한다
-    // 날짜: 사건은 그래프 읽기의 ts 가 곧 그 일이 있었던 날이다(updated_at 은 마지막으로 고친 때라 뒤에 둔다).
-    // 결정은 내용 시간 칸이 없어 props.valid_from(결정한 날)을, 그것도 없으면 id 끝의 날짜(…-2026-09-20, 이 그래프의 이름 관례)를 쓴다.
-    ts: String(n.ts || n.updated_at || "").slice(0, 10), ct: String(n.content_ts || "").slice(0, 10) || idDate(n.id) || undefined,
-    vf: String(n.valid_from || n.props?.valid_from || "").slice(0, 10) || undefined, vu: n.valid_until || undefined, g: n.degree || 0, m: 0 }));
-  const byId = new Map(out.map((n) => [n.id, n])), M = new Set(["RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM", "RETURNS_TO", "CONNECTS"]);
-  const es: [string, string, string][] = [];
-  for (const e of edges) { const a = typeof e.source === "object" ? e.source.id : e.source, b = typeof e.target === "object" ? e.target.id : e.target;
-    if (!byId.has(a) || !byId.has(b) || e.presentation) continue; es.push([a, b, e.type]); if (M.has(e.type)) { byId.get(a)!.m++; byId.get(b)!.m++; } }
-  return { nodes: out, edges: es };
-}
 
 /** 고정 핀(압정). 45° 기운 머리 · 목 · 깃 · 바늘. 채움은 currentColor 라 놓인 자리의 색을 따른다. */
 const PIN_PATHS = `<g transform="rotate(45 12 12)"><rect x="7.2" y="1.6" width="9.6" height="4" rx="2" fill="currentColor"/><path d="M9.3 5.4h5.4v3.9l3.4 3.9H5.9l3.4-3.9z" fill="currentColor"/><path d="M12 13.2V21.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></g>`;
@@ -117,8 +88,6 @@ const TOOLS_HTML = () => `<button class="cmp-tbtn" type="button" data-pop="time"
 const C0 = () => COPY.ui.compass;
 /** 층의 실제 크기(measureCross)를 데이터별로 한 번만 잰다. 다시 그릴 때(새로고침 · 쓰고 난 뒤 마운트) 같은 주제 나무면 그대로 쓴다. */
 const MEAS_CACHE = new Map<string, Meas>();
-/** 데이터의 값 하나를 처음 쓸 때 한 번 센다. */
-const memo = <T,>(f: () => T): (() => T) => { let done = false, v: T; return () => { if (!done) { v = f(); done = true; } return v; }; };
 /** 마운트 하나의 효과(리스너의 신호 · 이름 붙은 프레임과 타이머와 유휴 콜백 · 관찰자)를 한 곳에 든다. 이름 하나에 하나씩이고 release 가 모두 놓는다.
  *  유휴 콜백은 requestIdleCallback 이 없을 때만 setTimeout(300ms)이고, 지울 때도 그 짝(cancelIdleCallback, 없으면 clearTimeout)으로만
  *  지운다: 유휴 콜백의 번호를 clearTimeout 에 넘기면 번호가 같은 남의 타이머가 지워진다 */
@@ -155,42 +124,15 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   const pop = document.createElement("div"); pop.className = "cmp-side cmp-pop"; pop.setAttribute("role", "dialog"); pop.hidden = true; document.body.append(pop);
   const $id = (k: string) => { const sel = k === "g" ? "#cmp-g" : `#cmp-${k.replace(/^cmp-/, "")}`; return root.querySelector(sel) || side.querySelector(sel) || pop.querySelector(sel); };
 
-  const W0 = data;
-  const ATTACH = new Set(['ABOUT', 'ATTACHES_TO', 'MENTIONS']);
-  // 뿌리: 이 그래프의 최상위 주제가 하나뿐이면 그 주제가 뿌리다('vinc' 만 쓰는 그래프는 예전과 같다). 둘 이상이거나 하나도 없으면
-  // 이름 없는 가상 뿌리('')가 모든 최상위 주제를 품는다. 주제 없는 노드는 뿌리에 직접 서고, 이름을 지어 붙이지 않는다.
-  // RD 는 뿌리가 경로에서 차지하는 칸 수다(영역 = 뿌리 다음 칸을 자를 때 쓴다). 규칙은 색 표와 같은 `rootTopicOf` 하나다.
-  const ROOT = rootTopicOf(W0.nodes.map((n) => n.d)), RD = ROOT ? 1 : 0;
-  const nodes: DNode[] = W0.nodes.map((n) => (n.d ? n : { ...n, d: ROOT })), byId = new Map(nodes.map((n) => [n.id, n]));
-  const edges = W0.edges.map(([a, b, t]) => ({ a: byId.get(a), b: byId.get(b), t })).filter((e) => e.a && e.b) as Edge[];
-  const adj = new Map<string, Edge[]>(nodes.map((n) => [n.id, []])); for (const e of edges) { adj.get(e.a.id)!.push(e); adj.get(e.b.id)!.push(e); }
-  // 다리는 주제를 갖지 않는다(여러 주제 사이에 있다). 그래서 다리를 끝들이 만나는 주제, 곧 끝 노드들 주제의 가장 가까운 공통 조상에 둔다.
-  // 같은 영역 안의 끝들을 잇는 다리는 그 영역 층에 서고, 영역을 넘는 다리만 뿌리에 남는다. 끝마다의 주제(BENDS)는 끝 층에서 다리를 보일 때 쓴다
-  const BENDS = new Map<string, string[]>();
-  for (const b of nodes) { if (b.k !== 'bridge') continue; const raw = W0.nodes.find((n) => n.id === b.id);
-    const ds = [...new Set(adj.get(b.id)!.filter((e) => e.t === 'CONNECTS').map((e) => (e.a === b ? e.b : e.a).d).filter((d) => d && d !== ROOT))];
-    BENDS.set(b.id, ds); if (raw && raw.d || !ds.length) continue;
-    const seg = ds.map((d) => d.split('/')); let k = 0; while (seg.every((x) => k < x.length && x[k] === seg[0][k])) k++;
-    if (k > RD) b.d = seg[0].slice(0, k).join('/'); }
-  const fresh = (n: LNode) => { const w = when(n); return !!w && (Date.parse(newestW()) - Date.parse(w)) / 864e5 <= 7; };   // '최근' = 내용 시간으로 7일 안
-  const newestW = memo(() => nodes.map(when).filter(Boolean).sort().pop() || '');
-  // 주제: 노드의 domain 사슬에서 만든다. 'vinc/agent/roles' → vinc, vinc/agent, vinc/agent/roles (가상 뿌리면 '' 가 맨 앞에 붙는다)
-  const topics = new Map<string, TNode>();
-  const tget = (p: string): TNode => { if (!topics.has(p)) topics.set(p, { id: `topic:${p}`, path: p, k: 'topic', direct: [], sub: new Set(), count: 0 }); return topics.get(p)!; };
-  const chainOf = (d: string | undefined) => { const o: string[] = ROOT ? [] : [''], s = d ? d.split('/') : []; for (let i = 1; i <= s.length; i++) o.push(s.slice(0, i).join('/')); return o; };
-  const rootTopic = tget(ROOT); if (!ROOT) rootTopic.t = C.rootTopic;   // 뿌리는 노드가 없어도 늘 있다. 가상 뿌리만 이름표(t)를 갖는다
-  for (const n of nodes) { const ch = chainOf(n.d);
-    ch.forEach((p, i) => { const t = tget(p); t.count++; if ((n.ts || '') > (t.ts || '')) t.ts = n.ts; if (i < ch.length - 1) t.sub.add(ch[i + 1]); });
-    tget(ch[ch.length - 1]).direct.push(n); }
+  // 데이터의 모델(뿌리 · 노드와 관계 · 이웃 · 주제 사슬)은 마운트 때 한 번 짓고 읽기만 한다(view-compass-model.ts)
+  const { ATTACH, ROOT, RD, nodes, edges, adj, topics, fresh, bridgeEnds, byAny, chainTo } = compassModel(data, C);
   // ── 주제 색: 앱 전체의 표 하나(topic-tint-table)에서 읽는다. 이 그래프의 주제를 그 표에 더하고, 그리기는 지금 상태의 테마로 읽는다 ──
   // 표가 바뀌면(문서 트리가 주제를 더함) 아래의 TOPIC_TINTS_EVENT 구독이 다시 그린다. 문서 트리와 같은 주제는 같은 색이다
   addTopics(ctx.store ?? '', topics.keys());
   const topicColour = (p: string | undefined) => topicTint(p, st.theme) || 'hsl(var(--muted-foreground))';   // 뿌리와 표에 없는 주제는 중립색
-  const topicOf = (n: LNode) => (n.k === 'topic' ? n.path : n.d);
   // 섞기: 주제 색을 카드색 쪽으로 바랜다. 라이트는 카드가 거의 흰색이고 보석 토큰의 대비 바닥도 3:1(다크 5.5:1)이라
   // 같은 비율로 바래면 빛살 끝이 배경 대비 1.3 안팎으로 사라진다. 그래서 라이트에서는 바래는 몫을 45%만 쓴다(30% → 69%, 55% → 80%)
   const colv = (n: LNode) => topicColour(topicOf(n)), mix = (c: string, p: number) => `color-mix(in srgb, ${c} ${st.theme === 'light' ? Math.round(100 - (100 - p) * .45) : p}%, var(--c-card))`;
-  const isMean = (n: LNode) => ['concept', 'doc', 'bridge'].includes(n.k) || n.m! > 0;
   const titleOf = (n: LNode): string => { if (n.k === 'topic') return n.path ? n.path.split('/').pop()! : C.rootTopic; const s = (n.t || n.id).replace(/\s*\((?:\d{4}-\d\d-\d\d|pstack principle|Anthropic)[^)]*\)/g, '');
     return ['concept', 'doc', 'bridge'].includes(n.k) ? s.replace(/^([^:]{3,40}):.*$/, '$1') : s; };
   const short = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
@@ -236,7 +178,6 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   //    9시 = 뜻의 관계(노드) / 이 주제에 직접 속한 개념(주제)
   //    3시 = 그 아래 구성(하위 주제와 그 사이를 잇는 다리) / 여기서 나온 것·물려받은 것·뒤의 것·옛것(노드)
   //    6시 = 줄기가 곧게 내려가 붙은 결정·기록·사건·문서의 목록으로(최신순)
-  const bridgeEnds = (b: LNode) => adj.get(b.id)!.filter((e) => e.t === 'CONNECTS').map((e) => (e.a === b ? e.b : e.a));
   function gather(c: LNode): Gathered {
     const up: Unit[] = [], left: Unit[] = [], right: Unit[] = [], bridges: Gathered['bridges'] = [], shelf: Shelf = { decision: [], record: [], episode: [], doc: [] };
     if (c.k === 'topic') {
@@ -286,14 +227,9 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   const pathOf = (s: LensState) => s.path.map(byAny) as LNode[];
   // 배치 한 번이 읽는 것(S). 그리기는 상태에서 만든 S(curS)로, 재기 · 정해진 자리 짓기는 따로 만든 S 로 부른다.
   // place: 주제 층의 허브를 이 표의 자리에 둔다(하나씩 열기의 묶음 배치). dirs: 부모 기준으로 놓는 층의 방향(th12)을 읽는 표.
-  // canon: 정해진 자리를 처음 짓는 중(거르기 · 밀어내기를 하지 않는다). range 는 늘 비어 있다(기간은 흐리기만 한다).
+  // canon: 정해진 자리를 처음 짓는 중(거르기 · 밀어내기를 하지 않는다). 기간은 배치에 들지 않는다(흐리기만 한다).
   // koff · more · pins: 범례에서 끈 종류 · 더 연 목록 · 고정. pinChain: 고정 노드로 가는 길에만 있는 층
-  const curS = (s: LensState, pinChain: Set<string>): LayoutIn => ({ mode: 'path', path: pathOf(s), place: null, dirs: armsOf(s).out, canon: false, range: null, koff: new Set(s.koff), more: s.more, pins: new Set(s.pins), pinChain });
-  const kindKey = (n: LNode) => (n.k === 'decision' || n.k === 'record' || n.k === 'episode' || n.k === 'bridge' ? n.k : n.k === 'doc' ? 'doc' : 'concept');   // 범례의 종류 키(끄고 켜는 단위)
-  const fullDate = (s: string) => (!s ? '' : s.length === 4 ? s + '-01-01' : s.length === 7 ? s + '-01' : s.slice(0, 10));   // '2026' · '2026-03' 같은 덜 적힌 날짜는 그 첫날로
-  // 날짜 = 그 일이 있었던 날: 내용 시간 → 유효 시작(→ 사건은 그날). 마지막으로 고친 때만 있는 노드는 날짜가 없는 것으로 본다(막대에 넣지 않고 흐리지도 않는다).
-  const when = (n: LNode) => fullDate(n.ct || n.vf || (n.k === 'episode' ? n.ts : '') || '');
-  const inRange = (n: LNode, rg: [string, string] | null = null) => { const w = when(n); return !rg || !w || (w >= rg[0] && w <= rg[1]); };
+  const curS = (s: LensState, pinChain: Set<string>): LayoutIn => ({ mode: 'path', path: pathOf(s), place: null, dirs: armsOf(s).out, canon: false, koff: new Set(s.koff), more: s.more, pins: new Set(s.pins), pinChain });
   type Pos = { u: Unit; ang: number; x: number; y: number };
   function fanPlace(list: Unit[], center: { x: number; y: number }, a0: number, a1: number, rMin: number, gap: number, size: (u: Unit) => number): { R: number; pos: Pos[] } {
     const need = list.reduce((s, u) => s + 2 * size(u) + gap, 0), span = rad(a1 - a0), R = Math.max(rMin, need / span);
@@ -314,8 +250,8 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   function compassOf(node: LNode, parentId: string | null, S: LayoutIn): Cp {
     const G = gather(node), drop = (l: Unit[]) => l.filter((u) => u.n.id !== parentId);
     G.up = drop(G.up); G.left = drop(G.left); G.right = drop(G.right);
-    // 기간: 시간 막대에서 고른 구간 밖의 노드는 뺀다(주제와 지나온 길의 노드는 남긴다)
-    const keep = (n: LNode) => S.canon || n.k === 'topic' || S.path.some((q) => q.id === n.id) || S.pins.has(n.id) || (inRange(n, S.range) && !S.koff.has(kindKey(n)));
+    // 범례에서 끈 종류의 노드는 뺀다(주제 · 지나온 길 · 고정 노드는 남긴다). 기간은 빼지 않고 흐리기만 한다
+    const keep = (n: LNode) => S.canon || n.k === 'topic' || S.path.some((q) => q.id === n.id) || S.pins.has(n.id) || !S.koff.has(kindKey(n));
     G.up = G.up.filter((u) => keep(u.n)); G.left = G.left.filter((u) => keep(u.n)); G.right = G.right.filter((u) => keep(u.n));
     for (const k of Object.keys(G.shelf)) G.shelf[k] = G.shelf[k].filter(keep);
     G.bridges = G.bridges.filter((b) => keep(b.n));
@@ -694,7 +630,6 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   }
 
   // ── 다니기: 누르면 그 자리에서 펼친다. 지나온 층의 노드를 누르면 그 층으로 접고 거기서 새로 펼친다 ─────────────────
-  const byAny = (id: string): LNode | null | undefined => byId.get(id) || byId.get(String(id).split('@@')[0]) || (id.startsWith('topic:') ? topics.get(id.slice(6)) : null);   // 'id@@…' 별칭은 앞의 id 로 찾는다
   const ids = (ns: LNode[]) => ns.map((n) => n.id);
   const canon = (id: string) => { const n = byAny(id); return n ? n.id : null; };   // 이 데이터의 정본 id(없으면 null)
   // 길(노드의 사슬)을 바꾸고 다시 그린다. push 면 앞뒤 기록에 남긴다
@@ -729,8 +664,6 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
     // Esc: 전체 보기에서는 고른 노드만 푼다. 전체 보기에서 바로 들어온 층이면 전체 보기로, 그 밖은 뿌리 층으로(LS.escapeStep)
     else if (e.key === 'Escape') { if (st.whole.on) { if (st.whole.sel) { set(LS.escapeStep(st, topics.get(ROOT)!.id)); wholeSelChanged(); } } else redraw(LS.escapeStep(st, topics.get(ROOT)!.id)); }
     else if (e.key === 'Backspace' && !st.whole.on && st.path.length > 1) redraw(LS.upOne(st)); });
-  // 찾기: 주제 사슬을 따라 펼친 다음 그 노드를 편다
-  const chainTo = (n: LNode): LNode[] => { const out: LNode[] = chainOf(topicOf(n)).map((p) => topics.get(p)!); if (n.k !== 'topic') out.push(n); return out; };
   const norm = (s: unknown) => String(s || '').toLowerCase();
   const matchQ = (n: LNode, q: string) => !q || norm(n.t || n.path || n.id).includes(q) || norm(n.id).includes(q);
   // 찾기는 사이드바 트리와 창의 수를 거른다. 층 보기의 그림은 흐리지 않고, 전체 보기는 맞지 않는 노드를 흐린다
@@ -995,7 +928,7 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   const allExpand = () => { const m = new Map<string, Set<string>>(); for (const tp of topics.values()) { const set = new Set<string>(); for (const s2 of tp.sub) set.add(`topic:${s2}`); m.set(tp.id, set); } return m; };
   // 재기 · 정해진 자리 짓기의 상태: 전부 펼치고 거르기 없이(지금 화면의 상태는 읽지도 바꾸지도 않는다)
   // cps: 층마다의 나침반(compassOf). 거르기가 없으니 정해진 자리 짓기와 세 방향 재기가 같은 것을 한 번만 모은다
-  const MCPS = new Map<string, Cp>(), measS = (place: Placement | null, canon = false): LayoutIn => ({ mode: 'all', path: [topics.get(ROOT)!], place, dirs: place, canon, range: null, koff: new Set(), filt: new Map(), cps: MCPS, more: st.more, pins: new Set(st.pins), pinChain: new Set() });
+  const MCPS = new Map<string, Cp>(), measS = (place: Placement | null, canon = false): LayoutIn => ({ mode: 'all', path: [topics.get(ROOT)!], place, dirs: place, canon, koff: new Set(), filt: new Map(), cps: MCPS, more: st.more, pins: new Set(st.pins), pinChain: new Set() });
   { CANONL = layoutTree(topics.get(ROOT)!, allExpand(), null, measS(null, true)); PLAN_EST = crossCanon(CANONL); }
   // 팔 정하기: 층의 실제 크기를 재서 팔을 한 번 고른다. 어림한 크기로 고르면 배치가 3할 넘게 넓어지고, 뒤늦게 다시
   // 고르면 그 뒤 하나씩 열기의 방향이 바뀐다. 그래서 마운트 직후 한가할 때 잰다(같은 주제 나무는 MEAS_CACHE).
