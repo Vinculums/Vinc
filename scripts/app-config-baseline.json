@@ -105,7 +105,7 @@
     ],
     "volumes": []
   },
-  "vinc-hub": {
+  "vinc-hub-vnet": {
     "auth": null,
     "containers": [
       "vinc-hub"
@@ -164,7 +164,8 @@
       "mcp-ed25519-seed",
       "mcp-token",
       "oauth-admin-key",
-      "sidecar-token"
+      "sidecar-token",
+      "vincacrazurecrio-vincacr"
     ],
     "volumes": [
       {

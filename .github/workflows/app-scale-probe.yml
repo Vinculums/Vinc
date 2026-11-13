@@ -54,6 +54,22 @@ jobs:
         run: |
           echo "::error::이 워크플로를 손으로 돌릴 수 있는 계정은 PROD_OPERATORS 에 있는 것뿐이다(지금 $ACTOR). 필요하면 소유자에게 요청할 것."
           exit 1
+      # 읽을 앱 목록은 드리프트 게이트의 목록(scripts/gate_app_config.py 의 APPS)이다. 허브 앱은 대상 설정을
+      # hub-deploy 의 표로 푼 이름이라 그 계산에 드는 파일만 가져온다.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/container-apps-target.env
+            .github/workflows/hub-deploy.yml
+            scripts/hub_target.py
+            scripts/gate_app_config.py
+          sparse-checkout-cone-mode: false
+      - name: 게이트의 앱 목록을 읽는다
+        run: |
+          set -euo pipefail
+          apps=$(cd scripts && python3 -c 'import gate_app_config as g; print(" ".join(g.APPS))')
+          echo "APPS=$apps" >> "$GITHUB_ENV"
+          echo "앱: $apps"
       # az 설정을 이 런에 가둔다 — 러너는 홈이 공유라 다른 런의 세션과 섞인다
       # (hub-deploy.yml 이 같은 이유로 같은 줄을 갖는다).
       - name: az 설정을 이 런에 가둔다
@@ -63,10 +79,10 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: 세 앱의 scale 을 읽는다
+      - name: 게이트의 앱마다 scale 을 읽는다
         run: |
           set -euo pipefail
-          for app in vinc-hub vinc-account vinc-layout; do
+          for app in $APPS; do
             echo "== $app"
             az containerapp show -n "$app" -g vincsRG \
               --query "properties.template.scale" -o json

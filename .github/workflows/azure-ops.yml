@@ -13,17 +13,17 @@ on:
   workflow_dispatch:
     inputs:
       app:
-        description: "대상 컨테이너 앱"
+        description: "대상. hub 는 대상 설정(.github/container-apps-target.env)에서 푼 허브 앱이다"
         type: choice
-        options: [vinc-account, vinc-hub]
-        default: vinc-account
+        options: [account, hub]
+        default: account
       action:
         description: "동작"
         type: choice
         options: [restart]
         default: restart
       confirm:
-        description: "대상 앱 이름을 그대로 다시 적는다(실수 방지)"
+        description: "풀린 대상 앱 이름을 그대로 적는다(실수 방지). 허브면 대상 설정의 앱 이름이다"
         type: string
         default: ""
       reason:
@@ -32,7 +32,7 @@ on:
         default: ""
 # 허브 재시작은 배포·수리와 한 줄에 선다. 겹치면 내려 둔 허브가 다시 뜨거나 두 리비전이 겹친다.
 concurrency:
-  group: ${{ inputs.app == 'vinc-hub' && 'hub-deploy' || 'azure-ops-account' }}
+  group: ${{ inputs.app == 'hub' && 'hub-deploy' || 'azure-ops-account' }}
   cancel-in-progress: false
 permissions:
   id-token: write
@@ -51,7 +51,18 @@ jobs:
         run: |
           echo "::error::이 워크플로는 PROD_OPERATORS 에 있는 계정만 돌린다(지금 $ACTOR)."
           exit 1
+      # 허브 앱은 대상 설정을 hub-deploy 의 표로 푼 이름이다(HUB_APP). 그 계산에 드는 파일만 가져온다.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/container-apps-target.env
+            .github/workflows/hub-deploy.yml
+            scripts/hub_target.py
+          sparse-checkout-cone-mode: false
+      - name: 허브 앱을 대상 설정에서 푼다
+        run: python3 scripts/hub_target.py >> "$GITHUB_ENV"
       # 입력은 env 로만 넘긴다. 문자열 입력을 셸 본문에 바로 끼우면 그 값이 명령이 된다.
+      # 대상 앱 이름(TARGET_APP)은 여기서 한 번 정하고 뒤 스텝은 그것만 쓴다. confirm 은 그 이름과 같아야 한다.
       - name: Guard
         env:
           APP: ${{ inputs.app }}
@@ -60,14 +71,19 @@ jobs:
           REASON: ${{ inputs.reason }}
         run: |
           set -euo pipefail
-          case "$APP" in vinc-account|vinc-hub) ;; *) echo "::error::허용되지 않은 앱: $APP"; exit 1 ;; esac
+          case "$APP" in
+            hub) target="$HUB_APP" ;;
+            account) target=vinc-account ;;
+            *) echo "::error::허용되지 않은 앱: $APP"; exit 1 ;;
+          esac
           case "$ACTION" in restart) ;; *) echo "::error::허용되지 않은 동작: $ACTION"; exit 1 ;; esac
-          if [ "$CONFIRM" != "$APP" ]; then
-            echo "::error::confirm 에 대상 앱 이름($APP)을 그대로 적을 것" >&2; exit 1
+          if [ "$CONFIRM" != "$target" ]; then
+            echo "::error::confirm 에 대상 앱 이름($target)을 그대로 적을 것" >&2; exit 1
           fi
           if [ -z "${REASON// /}" ] || [ "${#REASON}" -gt 200 ]; then
             echo "::error::reason 은 비울 수 없고 200자 안이어야 한다" >&2; exit 1
           fi
+          echo "TARGET_APP=$target" >> "$GITHUB_ENV"
       - name: Azure profile for this run only
         run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
       - uses: azure/login@v2
@@ -77,28 +93,29 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Restart the latest revision
         id: restart
-        env:
-          APP: ${{ inputs.app }}
         run: |
           set -euo pipefail
-          rev=$(az containerapp show --name "$APP" -g vincsRG --query "properties.latestRevisionName" -o tsv)
+          rev=$(az containerapp show --name "$TARGET_APP" -g vincsRG --query "properties.latestRevisionName" -o tsv)
           if [ -z "$rev" ]; then echo "::error::현재 리비전 이름을 못 읽었다" >&2; exit 1; fi
-          echo "restarting $APP revision $rev"
-          az containerapp revision restart --name "$APP" -g vincsRG --revision "$rev" --output none
+          echo "restarting $TARGET_APP revision $rev"
+          az containerapp revision restart --name "$TARGET_APP" -g vincsRG --revision "$rev" --output none
           echo "revision=$rev" >> "$GITHUB_OUTPUT"
       - name: Verify the hub answers tools/list
-        if: inputs.app == 'vinc-hub'
+        if: inputs.app == 'hub'
         env:
           MCP_TOKEN: ${{ secrets.VINC_MCP_TOKEN }}
         run: |
           set -euo pipefail
+          # 주소는 재시작한 앱의 인그레스에서 읽는다(hub-deploy 의 "배포 대상" 과 같다).
+          fqdn=$(az containerapp show --name "$TARGET_APP" -g vincsRG --query properties.configuration.ingress.fqdn -o tsv)
+          [ -n "$fqdn" ] || { echo "::error::$TARGET_APP 의 인그레스 주소를 못 읽었다" >&2; exit 1; }
           sleep 15
           deadline=$(( $(date +%s) + 360 ))
           i=0
           while [ "$(date +%s)" -lt "$deadline" ]; do
             i=$((i + 1))
             code=$(curl -s -o "$RUNNER_TEMP/tools.json" -w '%{http_code}' --max-time 100 \
-              https://vinc-hub.grayplant-559d42e3.koreacentral.azurecontainerapps.io/mcp \
+              "https://$fqdn/mcp" \
               -X POST -H "Authorization: Bearer $MCP_TOKEN" -H "Content-Type: application/json" \
               -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' || true)
             if [ "$code" = "200" ] && grep -q '"tools"' "$RUNNER_TEMP/tools.json"; then
@@ -111,7 +128,7 @@ jobs:
           exit 1
       # 계정 앱의 직접 FQDN 은 401 이 정상이라 정적 웹 앱을 거쳐 묻는다(account-deploy 와 같다).
       - name: Verify the account health
-        if: inputs.app == 'vinc-account'
+        if: inputs.app == 'account'
         env:
           REV: ${{ steps.restart.outputs.revision }}
         run: |
@@ -138,7 +155,7 @@ jobs:
         run: |
           {
             echo "### azure-ops"
-            echo "- app: \`$APP\`, action: \`$ACTION\`, revision: \`${REV:-none}\`"
+            echo "- app: \`$APP\` (\`${TARGET_APP:-unresolved}\`), action: \`$ACTION\`, revision: \`${REV:-none}\`"
             echo "- actor: \`$ACTOR\`, status: \`$STATUS\`"
             echo "- reason: $REASON"
           } >> "$GITHUB_STEP_SUMMARY"

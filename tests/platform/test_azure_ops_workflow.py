@@ -59,7 +59,7 @@ def test_dispatch_only_with_the_fixed_choices():
     assert set(on) == {"workflow_dispatch"}, "손으로만 돈다. push·schedule·workflow_run 은 없다"
     inputs = on["workflow_dispatch"]["inputs"]
     assert inputs["app"]["type"] == "choice"
-    assert sorted(inputs["app"]["options"]) == ["vinc-account", "vinc-hub"]
+    assert sorted(inputs["app"]["options"]) == ["account", "hub"]
     assert inputs["action"]["type"] == "choice"
     assert inputs["action"]["options"] == ["restart"]
 
@@ -72,7 +72,7 @@ def test_the_operator_gate_comes_first():
 
 def test_the_hub_shares_the_deploy_line():
     group = _doc()["concurrency"]["group"]
-    assert "'hub-deploy'" in group and "inputs.app == 'vinc-hub'" in group
+    assert "'hub-deploy'" in group and "inputs.app == 'hub'" in group
     assert _doc()["concurrency"]["cancel-in-progress"] is False
 
 
@@ -101,8 +101,22 @@ def test_every_input_is_checked_by_the_guard():
     guard = next(s for s in _steps() if s.get("name") == "Guard")
     assert set(guard["env"]) >= {"APP", "ACTION", "CONFIRM", "REASON"}
     body = guard["run"]
-    assert '"$CONFIRM" != "$APP"' in body
-    assert "vinc-account|vinc-hub" in body and "restart)" in body
+    assert '"$CONFIRM" != "$target"' in body
+    assert 'hub) target="$HUB_APP" ;;' in body and "restart)" in body
+    assert 'echo "TARGET_APP=$target" >> "$GITHUB_ENV"' in body
+
+
+def test_the_hub_is_the_app_the_target_setting_names():
+    """허브는 대상 설정을 hub-deploy 의 표로 푼 앱이다. 앱 이름이나 주소를 여기 적으면 대상 설정이 바뀌어도 그 앱이 재시작된다."""
+    steps = _steps()
+    resolve = next(i for i, s in enumerate(steps) if s.get("run") == 'python3 scripts/hub_target.py >> "$GITHUB_ENV"')
+    guard = next(i for i, s in enumerate(steps) if s.get("name") == "Guard")
+    assert resolve < guard
+    text = "\n".join(_runs())
+    assert not re.search(r"(-n|--name)\s+\"?vinc-hub\b", text)
+    assert "azurecontainerapps.io" not in text, "허브 주소는 재시작한 앱의 인그레스에서 읽는다"
+    restart = next(s for s in steps if s.get("name") == "Restart the latest revision")
+    assert '--name "$TARGET_APP"' in restart["run"] and "env" not in restart
 
 
 def test_the_azure_profile_is_per_run_and_removed():

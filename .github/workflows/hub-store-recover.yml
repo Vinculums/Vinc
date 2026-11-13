@@ -43,7 +43,6 @@ permissions:
   contents: read
 
 env:
-  APP: "--name vinc-hub -g vincsRG"
   ACCOUNT: vinchubssd01
   SHARE: hub-data
 
@@ -61,6 +60,15 @@ jobs:
           echo "::error::이 워크플로를 손으로 돌릴 수 있는 계정은 PROD_OPERATORS 에 있는 것뿐이다(지금 $ACTOR). 필요하면 소유자에게 요청할 것."
           exit 1
       - uses: actions/checkout@v4
+      # 허브 앱은 대상 설정(.github/container-apps-target.env)을 hub-deploy 의 표로 푼 이름이다(HUB_APP).
+      # APP 은 아래 az 호출이 그대로 펼쳐 쓰는 인자 묶음이다. 앱 이름을 여기 적으면 대상 설정이 바뀌어도 그 이름의 앱이 바뀐다.
+      - name: 허브 앱을 대상 설정에서 푼다
+        run: |
+          set -euo pipefail
+          line=$(python3 scripts/hub_target.py)
+          echo "$line" >> "$GITHUB_ENV"
+          echo "APP=--name ${line#HUB_APP=} -g vincsRG" >> "$GITHUB_ENV"
+          echo "허브 앱: ${line#HUB_APP=}"
 
       - name: Guard
         run: |

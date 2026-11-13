@@ -5,7 +5,7 @@
 # 통과 조건: 끝내 실패한 쓰기 0, 성공으로 답한 쓰기 가운데 전환 뒤 사라진 것 0, 그리고
 # 리허설 공유의 표식이 마지막 리비전을 writer 로, 그 앞 리비전을 넘긴 쪽으로 적고 있다.
 #
-# 운영 앱(vinc-hub)은 이미지 이름을 읽기만 한다. 운영 공유(hub-data)는 열지 않는다.
+# 운영 허브 앱(대상 설정에서 푼 HUB_APP)은 이미지 이름을 읽기만 한다. 운영 공유(hub-data)는 열지 않는다.
 # 임시 앱·공유·환경 스토리지는 이 런의 이름을 달고 생기며 마지막 스텝이 늘 지운다.
 # 설계: [[vinc.plan.hub-writer-handoff-2026-10-17]]
 name: hub-handoff-rehearsal
@@ -72,6 +72,10 @@ jobs:
           case "$SWITCHES" in [1-5]) ;; *) echo "::error::switches must be 1 to 5" >&2; exit 1 ;; esac
 
       - uses: actions/checkout@v4
+      # 허브 앱은 대상 설정(.github/container-apps-target.env)을 hub-deploy 의 표로 푼 이름이다(HUB_APP).
+      # 앱 이름을 여기 적으면 대상 설정이 바뀌어도 그 이름의 앱을 읽거나 바꾼다. 컨테이너 이름과 이미지 저장소 이름은 앱 이름과 따로다.
+      - name: 허브 앱을 대상 설정에서 푼다
+        run: python3 scripts/hub_target.py >> "$GITHUB_ENV"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -95,7 +99,7 @@ jobs:
             echo "$v=$t" >> "$GITHUB_ENV"
           done
           case "$IMAGE_INPUT" in
-            "") img=$(az containerapp show -n vinc-hub -g "$RG" --query 'properties.template.containers[0].image' -o tsv) ;;
+            "") img=$(az containerapp show -n "$HUB_APP" -g "$RG" --query 'properties.template.containers[0].image' -o tsv) ;;
             */*) img="$IMAGE_INPUT" ;;
             *) img="vincacr.azurecr.io/vinc-hub:$IMAGE_INPUT" ;;
           esac

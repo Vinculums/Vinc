@@ -25,6 +25,10 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && !contains(format(',{0},', vars.PROD_OPERATORS), format(',{0},', github.triggering_actor))
         run: exit 1
       - uses: actions/checkout@v4
+      # 허브 앱은 대상 설정(.github/container-apps-target.env)을 hub-deploy 의 표로 푼 이름이다(HUB_APP).
+      # 앱 이름을 여기 적으면 대상 설정이 바뀌어도 그 이름의 앱을 읽거나 바꾼다. 컨테이너 이름과 이미지 저장소 이름은 앱 이름과 따로다.
+      - name: 허브 앱을 대상 설정에서 푼다
+        run: python3 scripts/hub_target.py >> "$GITHUB_ENV"
       - name: Isolate Azure profile
         run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
       - uses: azure/login@v2
@@ -36,7 +40,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
-          az containerapp show -n vinc-hub -g vincsRG > "$RUNNER_TEMP/hub.json"
+          az containerapp show -n "$HUB_APP" -g vincsRG > "$RUNNER_TEMP/hub.json"
           python - "$RUNNER_TEMP/hub.json" "$EXPECTED_SHA" <<'PY'
           import json, sys
           app = json.load(open(sys.argv[1]))
@@ -61,7 +65,7 @@ jobs:
           # az exec splits whitespace; a short base64 shell command avoids its query-length limit.
           b64=$(printf '%s' "$command" | base64 -w0)
           [ "${#b64}" -lt 2000 ]
-          timeout 1500 script -qec "az containerapp exec -n vinc-hub -g vincsRG --command 'sh -c echo\${IFS}$b64|base64\${IFS}-d|sh'" /dev/null > "$RUNNER_TEMP/probe.raw" 2>&1
+          timeout 1500 script -qec "az containerapp exec -n $HUB_APP -g vincsRG --command 'sh -c echo\${IFS}$b64|base64\${IFS}-d|sh'" /dev/null > "$RUNNER_TEMP/probe.raw" 2>&1
           python - "$RUNNER_TEMP/probe.raw" <<'PY'
           import json, re, sys
           raw = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', open(sys.argv[1]).read())
