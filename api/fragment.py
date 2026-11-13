@@ -457,6 +457,108 @@ def _stored_nodes(store, types: dict[str, str], owner: str,
     return out, dropped
 
 
+def _screen_node(node: dict) -> str | None:
+    """노드 형태 검사. 건너뛸 이유(경고 문장)를, 통과하면 None 을 돌려준다.
+
+    스토어를 읽지 않는다. 검사 순서가 곧 경고다: 타입·id 없음, U+001F, 접두사 불일치,
+    제목 없는 Entity, 크기 상한 셋(제목·태그·props). 먼저 걸린 하나만 말한다.
+    타입·id 는 `_merge_node` 와 같은 식으로 읽는다(앞뒤 공백을 벗긴 문자열)."""
+    ntype = (node.get("type") or "").strip()
+    nid = (node.get("id") or "").strip()
+    if not ntype:
+        return f"node without type — skipped ({nid or '?'})"
+    if not nid:
+        return f"node without id — skipped (type={ntype})"
+    if pkns.has_sep(node):
+        # PK 네임스페이싱(design A) 의 물리 키 판별자가 U+001F 존재 여부다
+        # (strip 이 이 바이트로 owner 를 잘라낸다). 사용자 입력에 이 바이트가
+        # 섞이면 나중에 물리 키로 오인되므로 지금 이 노드만 스킵한다.
+        # 근거: [[vinc.plan.node-pk-namespacing]] §7
+        return f"node contains U+001F (reserved for PK namespacing) — skipped (id={nid})"
+    mismatch = prefix_mismatch(ntype, nid)
+    if mismatch:
+        return (
+            f"node type {ntype!r} disagrees with its id prefix {mismatch!r}: skipped "
+            f"(id={nid}). The prefix names the table, so this would store a second row "
+            f"under the same id. Send type {mismatch!r} or use an id without that prefix.")
+    if _is_open(ntype) and not (node.get("title") or "").strip():
+        return f"entity node.title required: id={nid} (type={ntype})"
+    # L1(감사 2026-08-18) — 필드 크기 상한. 본문 4MB 안에서도 단일 노드에 거대
+    # 페이로드를 반복해 심어 스토어·메모리를 부풀릴 수 있다. 상한은 정상 데이터가
+    # 절대 안 닿게 넉넉히 잡고, 넘으면 **자르지 않고 이 노드만 스킵**한다(props 를
+    # 자르면 구조가 깨진다). 큰 원문은 props 가 아니라 문서(Chunk=SSoT)로 가야 한다.
+    _t = node.get("title")
+    if isinstance(_t, str) and len(_t) > 16_384:
+        return f"node.title too large — skipped (id={nid}, {len(_t)} chars > 16384)"
+    _tg = node.get("tags")
+    if isinstance(_tg, list) and (len(_tg) > 256
+            or any(isinstance(t, str) and len(t) > 2048 for t in _tg)):
+        return f"node.tags too large — skipped (id={nid})"
+    _pr = node.get("props")
+    if _pr is not None:
+        try:
+            if len(json.dumps(_pr, ensure_ascii=False)) > 512 * 1024:
+                return f"node.props too large — skipped (id={nid}, >512KB serialized)"
+        except (TypeError, ValueError):
+            # 직렬화 불가 props 는 여기서 거르지 않는다. 이 노드의 props 를 쓰는 자리의
+            # 직렬화가 같은 예외를 입구 밖으로 낸다(알려진 결함, 경고가 아니다).
+            pass
+    return None
+
+
+def _owner_conflict(current: dict, owner: str, nid: str, *, owner_scoped: bool,
+                    owner_explicit: bool, matched: bool) -> str | None:
+    """소유 충돌 관문. 이 노드를 쓰면 안 되면 그 경고 문장을, 아니면 None 을 돌려준다.
+
+    명시 owner 로 이미 있는 owner-스코프 행에 쓰는데 그 행의 owner 가 호출자와 다를
+    때만 걸린다. `current` 는 그 행에서 읽은 `owner_id` 를 담는다. 호출부는 SET·MERGE
+    전에 부르고, 걸리면 그 id 를 `id_conflicts` 에 더한 뒤 이 노드를 건너뛴다."""
+    # SEC-3: PK 충돌 소유권 탈취 차단. ID(concept:*)는 콘텐츠기반 공유 PK라, 강제 owner
+    # 경로(owner_explicit=호스티드/원격/웹)에서 **남이 이미 소유한** 노드에 MERGE 하면
+    # owner_id 재스탬핑(탈취) + 내용 덮어쓰기가 된다. 소유자가 다르면 노드를 건너뛴다
+    # (SET/MERGE 전에). 로컬(owner_explicit=False)이나 신규(not matched)는 현행 유지.
+    # 🔴 빈 owner(''·NULL) 행도 남의 것으로 본다 — 통과시키면 그 행을 호출자 owner 로
+    # 다시 찍고 덮어써 조용히 가져간다(VIN-234). 기기의 레거시 빈 owner 행은 기동 때
+    # `api/owner_fold.py` 가 먼저 `tenant:local` 로 접으므로 기기 편집은 막히지 않는다.
+    # 근거: [[record:an-explicit-owner-write-claimed-ownerless-nodes-2026-09-30]]
+    if not (owner_scoped and owner_explicit and matched):
+        return None
+    existing_owner = current.get("owner_id") or ""
+    if existing_owner == owner:
+        return None
+    # ⚠ 이 스킵은 **조용한 데이터 손실**이었다(감사 2026-08-18 H1). 저작자는
+    # owner 로 걸러진 검색을 먼저 돌려 "없음"을 보고 이 노드를 지었는데, 쓰기가
+    # 사라지고 응답은 executed:true 로 온다. 그리고 다시 시도해도 영원히 같다
+    # — 노드 PK 가 전역 네임스페이스라 그 슬러그의 물리 노드는 허브에 하나뿐이다.
+    # 그래서 이유·영속성·다음 행동을 한 문장에 싣고, 호출부가 `id_conflicts` 로
+    # **구조화해서** 낸다(warnings 배열은 호스트가 안 보여 주기도 한다).
+    # 근본 처방(PK 를 owner 로 네임스페이스)은 [[vinc.plan.node-pk-namespacing]].
+    held = "owned by another tenant" if existing_owner else "has no owner (a legacy row)"
+    return (f"id {nid} {held} — skipped. Nothing was written for "
+            f"this node, and every retry will be skipped the same way: node ids are "
+            f"one global namespace, so this slug is not available to you. Author it "
+            f"under a different id.")
+
+
+def _tri_state(raw, source: str, nid: str, warnings: list[str]) -> str | None:
+    """시점 열(`content_time`·`valid_from`·`valid_until`·사건 `date`)에 보낸 값을 세 갈래로 가른다.
+
+    - 없음(None): None 을 돌려준다. 쓰지 않는다(부분 재전송은 저장된 값을 보존한다).
+    - 빈 값(공백뿐): "" 를 돌려준다. 명시적 지우기다.
+    - 있음: 정규형 `YYYY[-MM[-DD]]` 를 돌려준다. 형식을 어기면 쓰지 않고 경고한 뒤 None 을
+      돌려준다. SET 하면 오타 한 번이 저장된 시점을 지운다.
+
+    ``source`` 는 경고 문장의 앞머리다. 클라이언트가 읽는 문장이라 글자를 바꾸지 않는다."""
+    if raw is None:
+        return None
+    norm = node_schema.normalize_time(str(raw))
+    if norm or not str(raw).strip():
+        return norm
+    warnings.append(f"{source} '{raw}' is not YYYY[-MM[-DD]] — kept the stored "
+                    f"value (id={nid})")
+    return None
+
+
 def _merge_node(store, node: dict, owner: str, warnings: list[str],
                 *, owner_explicit: bool = False, theme_id: str = "",
                 theme_explicit: bool = False,
@@ -478,52 +580,11 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
     if getattr(store, "_topic_conversion_guard", False):
         from .topic_conversion import check_write
         check_write(store, owner, node)
-    if not ntype:
-        warnings.append(f"node without type — skipped ({nid or '?'})")
-        return None
-    if not nid:
-        warnings.append(f"node without id — skipped (type={ntype})")
-        return None
-    if pkns.has_sep(node):
-        # PK 네임스페이싱(design A) 의 물리 키 판별자가 U+001F 존재 여부다
-        # (strip 이 이 바이트로 owner 를 잘라낸다). 사용자 입력에 이 바이트가
-        # 섞이면 나중에 물리 키로 오인되므로 지금 이 노드만 스킵한다.
-        # 근거: [[vinc.plan.node-pk-namespacing]] §7
-        warnings.append(
-            f"node contains U+001F (reserved for PK namespacing) — skipped (id={nid})")
-        return None
-    mismatch = prefix_mismatch(ntype, nid)
-    if mismatch:
-        warnings.append(
-            f"node type {ntype!r} disagrees with its id prefix {mismatch!r}: skipped "
-            f"(id={nid}). The prefix names the table, so this would store a second row "
-            f"under the same id. Send type {mismatch!r} or use an id without that prefix.")
+    skip = _screen_node(node)
+    if skip:
+        warnings.append(skip)
         return None
     is_entity = _is_open(ntype)
-    if is_entity and not (node.get("title") or "").strip():
-        warnings.append(f"entity node.title required: id={nid} (type={ntype})")
-        return None
-    # L1(감사 2026-08-18) — 필드 크기 상한. 본문 4MB 안에서도 단일 노드에 거대
-    # 페이로드를 반복해 심어 스토어·메모리를 부풀릴 수 있다. 상한은 정상 데이터가
-    # 절대 안 닿게 넉넉히 잡고, 넘으면 **자르지 않고 이 노드만 스킵**한다(props 를
-    # 자르면 구조가 깨진다). 큰 원문은 props 가 아니라 문서(Chunk=SSoT)로 가야 한다.
-    _t = node.get("title")
-    if isinstance(_t, str) and len(_t) > 16_384:
-        warnings.append(f"node.title too large — skipped (id={nid}, {len(_t)} chars > 16384)")
-        return None
-    _tg = node.get("tags")
-    if isinstance(_tg, list) and (len(_tg) > 256
-            or any(isinstance(t, str) and len(t) > 2048 for t in _tg)):
-        warnings.append(f"node.tags too large — skipped (id={nid})")
-        return None
-    _pr = node.get("props")
-    if _pr is not None:
-        try:
-            if len(json.dumps(_pr, ensure_ascii=False)) > 512 * 1024:
-                warnings.append(f"node.props too large — skipped (id={nid}, >512KB serialized)")
-                return None
-        except (TypeError, ValueError):
-            pass   # 직렬화 불가 props 는 아래 기존 경로가 경고로 처리한다
     label, pk = (_ENTITY_LABEL, _ENTITY_ID) if is_entity else _NODE_MAP[ntype]
     _warn_unkept_fields(node, label, nid, warnings)
     # owner_id 를 가진 라벨 — Bridge(v2)·Entity(F1) 편입으로 SEC-3 가드·스탬프 규칙 승계.
@@ -551,33 +612,14 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
         matched = bool(exists and exists[0].get("c"))
         current = {}
 
-    # SEC-3: PK 충돌 소유권 탈취 차단. ID(concept:*)는 콘텐츠기반 공유 PK라, 강제 owner
-    # 경로(owner_explicit=호스티드/원격/웹)에서 **남이 이미 소유한** 노드에 MERGE 하면
-    # owner_id 재스탬핑(탈취) + 내용 덮어쓰기가 된다. 소유자가 다르면 노드를 건너뛴다
-    # (SET/MERGE 전에). 로컬(owner_explicit=False)이나 신규(not matched)는 현행 유지.
-    # 🔴 빈 owner(''·NULL) 행도 남의 것으로 본다 — 통과시키면 그 행을 호출자 owner 로
-    # 다시 찍고 덮어써 조용히 가져간다(VIN-234). 기기의 레거시 빈 owner 행은 기동 때
-    # `api/owner_fold.py` 가 먼저 `tenant:local` 로 접으므로 기기 편집은 막히지 않는다.
-    # 근거: [[record:an-explicit-owner-write-claimed-ownerless-nodes-2026-09-30]]
-    if owner_scoped and owner_explicit and matched:
-        existing_owner = current.get("owner_id") or ""
-        if existing_owner != owner:
-            # ⚠ 이 스킵은 **조용한 데이터 손실**이었다(감사 2026-08-18 H1). 저작자는
-            # owner 로 걸러진 검색을 먼저 돌려 "없음"을 보고 이 노드를 지었는데, 쓰기가
-            # 사라지고 응답은 executed:true 로 온다. 그리고 다시 시도해도 영원히 같다
-            # — 노드 PK 가 전역 네임스페이스라 그 슬러그의 물리 노드는 허브에 하나뿐이다.
-            # 그래서 이유·영속성·다음 행동을 한 문장에 싣고, 아래 `id_conflicts` 로
-            # **구조화해서** 낸다(warnings 배열은 호스트가 안 보여 주기도 한다).
-            # 근본 처방(PK 를 owner 로 네임스페이스)은 [[vinc.plan.node-pk-namespacing]].
-            if conflicts is not None:
-                conflicts.append(nid)
-            held = "owned by another tenant" if existing_owner else "has no owner (a legacy row)"
-            warnings.append(
-                f"id {nid} {held} — skipped. Nothing was written for "
-                f"this node, and every retry will be skipped the same way: node ids are "
-                f"one global namespace, so this slug is not available to you. Author it "
-                f"under a different id.")
-            return None
+    # 소유 충돌 관문(`_owner_conflict`). 걸린 id 는 경고와 함께 `id_conflicts` 로도 낸다.
+    skip = _owner_conflict(current, owner, nid, owner_scoped=owner_scoped,
+                           owner_explicit=owner_explicit, matched=matched)
+    if skip:
+        if conflicts is not None:
+            conflicts.append(nid)
+        warnings.append(skip)
+        return None
 
     # Agent 역할이면 작성 계약과 어긋난 곳을 말한다(쓰기는 그대로 한다). 신규인지는
     # 여기서야 알므로 이 자리다 — 신규가 아니면 보내지 않은 필드는 보존되니 묻지 않는다.
@@ -711,18 +753,11 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
                 _cand = _cp.get("content_time")
                 _raw = _cand if isinstance(_cand, str) else None
                 _promoted = _raw is not None
-            if _raw is not None:
-                _norm = node_schema.normalize_time(str(_raw))
-                if _promoted and _norm:
-                    _promote("content_time", _norm, "props.content_time")
-                elif _promoted and not str(_raw).strip():
-                    pass      # 빈 props 값은 승격할 것이 없다. 지우기는 top-level 로만 한다
-                elif _norm or not str(_raw).strip():
-                    _set("content_time", _norm)
-                else:
-                    warnings.append(
-                        f"content_time '{_raw}' is not YYYY[-MM[-DD]] — kept the stored "
-                        f"value (id={nid})")
+            _norm = _tri_state(_raw, "content_time", nid, warnings)
+            if _norm is not None and not _promoted:
+                _set("content_time", _norm)
+            elif _norm:      # 빈 props 값은 승격할 것이 없다. 지우기는 top-level 로만 한다
+                _promote("content_time", _norm, "props.content_time")
         if label == "Record":
             # v15(W13) — **유효구간** [valid_from, valid_until). 규칙은 content_time
             # 과 같다: 키가 있을 때만 쓰고(부분 재전송은 보존), 형식 위반은 쓰지 않고
@@ -732,16 +767,9 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
             # 쓴다 — 그래서 보존 가드가 이 필드의 핵심이다.
             # 근거: [[vinc.plan.0-9-0-open-decisions §2]] · 형식 계약은 content_time 동형.
             for _vcol in ("valid_from", "valid_until"):
-                _vraw = node.get(_vcol)
-                if _vraw is None:
-                    continue
-                _vnorm = node_schema.normalize_time(str(_vraw))
-                if _vnorm or not str(_vraw).strip():
+                _vnorm = _tri_state(node.get(_vcol), _vcol, nid, warnings)
+                if _vnorm is not None:
                     _set(_vcol, _vnorm)
-                else:
-                    warnings.append(
-                        f"{_vcol} '{_vraw}' is not YYYY[-MM[-DD]] — kept the stored "
-                        f"value (id={nid})")
             # 뒤집힌 구간은 **저장하되 말한다** — 두 값이 각자 합법이라 거부하면
             # 잃는 쪽을 고르는 일이 되고, 침묵하면 "T 에 유효한가" 질의가 전부
             # 거짓이 된다. 유효값은 방금 실은 것, 없으면 저장된 것(사전식 비교 —
@@ -780,12 +808,8 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
                 if _col == "date":
                     # 날짜는 content_time 과 같은 형식 계약이다. 틀리면 쓰지 않고 저장된
                     # 값을 남긴다 — 정렬·시점 읽기가 이 열을 사전식으로 비교한다.
-                    _dn = node_schema.normalize_time(_val)
-                    if not _dn and _val.strip():
-                        _src = "props.date" if _promoted else "date"
-                        warnings.append(
-                            f"{_src} '{_val}' is not YYYY[-MM[-DD]] — kept the stored "
-                            f"value (id={nid})")
+                    _dn = _tri_state(_val, "props.date" if _promoted else "date", nid, warnings)
+                    if _dn is None:
                         continue
                     _val = _dn
                 if _promoted:
