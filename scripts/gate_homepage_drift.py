@@ -53,6 +53,7 @@ SITE = "https://vincs.io"
 TOOLS_PAGE = "/docs/mcp/tools/"
 API_PAGE = "/docs/api/"
 #: 도구 페이지에서 Vinc 계약이 들어가는 자리. 홈페이지 build_tool_reference.py 와 같은 표지다.
+#: 배포본에서는 주석이 걷혀 없다. 그때는 `_tool_block` 이 section.tref 로 자리를 찾는다.
 START, END = "<!-- tool-reference:start -->", "<!-- tool-reference:end -->"
 #: 홈페이지 build_page.py 가 연산으로 세는 메서드.
 METHODS = ("get", "post", "put", "patch", "delete")
@@ -119,10 +120,30 @@ def ops_expected(document: dict) -> dict[tuple[str, str], dict]:
 
 # ── 실제값: 공개 페이지 ───────────────────────────────────────────────────────
 
-def tools_on_page(page: str) -> list[dict]:
-    if page.count(START) != 1 or page.count(END) != 1:
+def _tool_block(page: str) -> str:
+    """도구 페이지에서 생성된 도구 참조 자리.
+
+    원본 페이지에는 주석 표지 한 쌍이 있다. 배포본은 홈페이지 scripts/minify_deploy.mjs 가 HTML
+    주석을 걷어 표지가 없으므로, build_tool_reference.py 가 절마다 다는 `section.tref` 가 사이에
+    다른 내용 없이 잇달아 놓인 한 덩어리를 그 자리로 읽는다. 덩어리가 갈라져 있거나 표지가 한쪽만
+    있으면 어디까지가 생성된 자리인지 모르므로 결론 없음이다."""
+    starts, ends = page.count(START), page.count(END)
+    if starts == 1 and ends == 1:
+        return page.split(START, 1)[1].split(END, 1)[0]
+    if starts or ends:
         raise Unreadable("도구 페이지에 tool-reference 표지가 한 쌍 있지 않다")
-    block = page.split(START, 1)[1].split(END, 1)[0]
+    sections = list(_TREF.finditer(page))
+    if not sections:
+        raise Unreadable("도구 페이지에서 도구 절(section.tref)을 하나도 못 읽었다")
+    for before, after in zip(sections, sections[1:]):
+        if page[before.end():after.start()].strip():
+            raise Unreadable("주석 표지가 없는 도구 페이지에서 도구 절(section.tref)이 한 덩어리로 "
+                             "이어져 있지 않다")
+    return page[sections[0].start():sections[-1].end()]
+
+
+def tools_on_page(page: str) -> list[dict]:
+    block = _tool_block(page)
     out = []
     for name, body in _TREF.findall(block):
         mode = re.search(r'<span class="tref-mode">(.*?)</span>', body, re.S)
@@ -412,8 +433,17 @@ def selftest() -> int:
             bad += 1
         except Unreadable:
             pass
+    # 배포본처럼 주석 표지를 걷은 페이지도 원본과 같이 읽혀야 한다.
+    deployed_tools = synced_tools.replace(START, "").replace(END, "")
+    try:
+        if findings(tools, api, deployed_tools, synced_api):
+            print("  [selftest] 주석 표지 없는 배포본: 일치해야 하는데 차이를 냈다")
+            bad += 1
+    except Unreadable as exc:
+        print(f"  [selftest] 주석 표지 없는 배포본: 읽혀야 하는데 결론 없음이다({exc})")
+        bad += 1
     print(f"[gate_homepage_drift] selftest {'FAIL ' + str(bad) + '건' if bad else 'PASS'} "
-          f"(경우 {len(cases) + 3}건)")
+          f"(경우 {len(cases) + 4}건)")
     return 1 if bad else 0
 
 
