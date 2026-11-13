@@ -12,7 +12,8 @@
      허브 `/sync/push` 로 보낸다. 밥의 노드·엣지·rev·sync_seq·created 가 그대로여야 한다.
   3. 잡 상태: 잡 id 는 세어 맞힐 수 있는 카운터다. 앨리스가 잡을 만든 뒤 밥이 id 를 하나씩
      물어본다. 사이드카 `/jobs/{id}`, 계정 서명 평면(개인·팀), REST, MCP 어디서든 밥의 답은
-     없는 id 의 답과 같아야 한다.
+     없는 id 의 답과 같아야 한다. 팀 평면에서 만든 잡은 그 팀의 것이라 그 팀의 보기·편집
+     멤버만 읽고, 다른 팀과 두 사람의 개인 평면에는 없는 id 와 같다.
 
 두 키 모드(`VINC_PK_NAMESPACED` 0·1)를 같은 테스트로 돈다. 허브는 1 로, 셀프호스트와
 로컬은 0 으로 돈다."""
@@ -264,6 +265,8 @@ def test_sync_push_from_another_member_cannot_touch_the_owners_nodes_or_edges(st
 
 JOB_MARK = "alicejobmark"
 TEAM = "team:0b7e3f52-6c1d-4a8e-9f00-2d5c8b1a4e77"
+OTHER_TEAM = "team:1c8f4063-7d2e-4b9f-a011-3e6d9c2b5f88"
+COMMUNITY = "community:0b7e3f52-6c1d-4a8e-9f00-2d5c8b1a4e77"
 UNKNOWN_JOB = "job-987654"
 
 
@@ -344,6 +347,45 @@ def test_another_owner_cannot_read_or_probe_a_job_by_counting_ids(stack, tmp_pat
             assert JOB_MARK not in body, f"{name}: 밥이 앨리스의 잡 {jid} 를 읽었다: {body[:400]}"
             assert _same_answer(status, body, jid) == unknown, \
                 f"{name}: {jid} 의 답이 없는 id 의 답과 다르다(id 로 더듬을 수 있다): {status} {body[:400]}"
+
+
+def test_a_team_job_answers_that_team_and_nobody_else(stack):
+    """팀 평면에서 앨리스가 만든 잡은 소유자가 팀이다. 그 팀의 보기·편집 멤버(밥)는 결과를 읽고,
+    다른 팀의 멤버와 두 사람의 개인 평면은 없는 id 와 같은 `no such job` 을 받는다.
+    커뮤니티 평면에는 잡 읽기가 없다(401)."""
+    alice, bob = ALICE.split(":", 1)[1], BOB.split(":", 1)[1]
+    mark = f"{JOB_MARK}team"
+    status, body = _account_plane(stack, "ingest-fragment", alice, {"nodes": [
+        {"id": f"concept:{mark}", "type": "concept", "title": f"Team {mark}", "domain": "vinc/test/jobs"}]},
+        typ="proxy-team", graph_owner=TEAM, role="editor")
+    assert status == 200 and mark in body, body[:800]
+    jobs = stack["app"].jobs
+    team_jobs = [jid for jid in (f"job-{n}" for n in range(1, 50))
+                 if (job := jobs.get(jid)) is not None and job.owner == TEAM]
+    assert len(team_jobs) == 1, team_jobs
+    jid = team_jobs[0]
+
+    def ask(sub, **claims):
+        return _account_plane(stack, "job", sub, {"id": jid}, **claims)
+
+    for role in ("viewer", "editor"):
+        status, body = ask(bob, typ="proxy-team", graph_owner=TEAM, role=role)
+        assert status == 200 and mark in body, f"팀 {role} 가 팀의 잡을 못 읽었다: {status} {body[:400]}"
+        assert json.loads(body)["status"] == "done", body[:400]
+
+    unknown = _account_plane(stack, "job", bob, {"id": UNKNOWN_JOB},
+                             typ="proxy-team", graph_owner=TEAM, role="viewer")
+    assert json.loads(unknown[1]) == {"error": f"no such job: {UNKNOWN_JOB}"}, unknown
+    for name, (status, body) in {
+        "다른 팀의 보기 멤버": ask(bob, typ="proxy-team", graph_owner=OTHER_TEAM, role="viewer"),
+        "밥의 개인 평면": ask(bob),
+        "앨리스의 개인 평면": ask(alice),
+    }.items():
+        assert (status, json.loads(body)) == (unknown[0], {"error": f"no such job: {jid}"}), \
+            f"{name}: 팀의 잡 {jid} 의 답이 없는 id 의 답과 다르다: {status} {body[:400]}"
+
+    status, body = ask(bob, typ="proxy-community", graph_owner=COMMUNITY)
+    assert status == 401 and mark not in body, (status, body[:400])
 
 
 def test_no_mcp_tool_reads_a_job_by_id(stack):
