@@ -17,12 +17,13 @@ import { wireAsk, askRowHTML, nodeAskItems, docAskItems, chev, SHARE_DEPTH } fro
 import { disposeEditorsIn, docEditorOpen, renderMarkdown } from "../doc-editor";
 import { hydrateRich } from "../rich-blocks";
 
-import { RAIL_MIN, RAIL_MAX, loadPrefs, savePrefs, dayOf, localStamp } from "../view-prefs";
+import { dayOf, localStamp } from "../view-prefs";
 import { setViewHooks, refreshTopbar, setSearchFilter, setTopbarTools } from "../topbar";
 import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbScopeClearer, setLnbGraphSource, repaintLnbGraph, setLnbGraphActive,
          refreshLnb, isAgentRoleId, stripRolePrefix } from "../lnb";
 import { createPropsCard } from "./view-props-card";
-import type { N3 } from "./view-host";
+import { createRail } from "./view-rail";
+import type { N3, ViewHost } from "./view-host";
 import { openFloatPanel, closeFloatPanel, isFloatPanelOpen } from "../float-panel";
 import { icon } from "../icons";
 import { setLiveRefresher } from "../live";
@@ -178,10 +179,20 @@ export async function renderView(el: HTMLElement, resume = false) {
   if (docpane) docpane.append(railGrip);
   const msg = el.querySelector<HTMLElement>("#view-msg")!;
   const metricsBar = el.querySelector<HTMLElement>("#view-metrics")!;
-  // 레일 폭 복원 + 닫힌 상태로 시작(크롬은 아직 비킬 것이 없다).
-  setRailWidth(loadPrefs().railW);
-  railChrome(false);
-  wireRailGrip(railGrip);
+  // 떼어 낸 묶음(레일 · 속성 절)에 내주는 손잡이 한 벌. 화살표가 읽는 닫힌 변수는 아래에서 선언되고, 부를 때 읽는다.
+  const host: ViewHost = {
+    detail,
+    reloadNode: (nd) => { ctxCache = null; return loadNodeSource(nd); },
+    isLive: () => myGen === liveGen,
+    dropPick,
+    forgetNode: () => {
+      lastNode = null;
+      if (focusId) { focusId = ""; syncHash(); }   // 주소는 화면이 말하는 것만 말한다
+    },
+  };
+  // 레일(폭 · 그립 · 크기 · 머리 · 열고 닫기)은 `view-rail.ts` 가 맡는다. 만들 때 저장된 폭으로 닫힌 채 시작한다.
+  const rail = createRail(host, { el, shell, docpane, railGrip });
+  const { openRail, closeRail, railHeadHTML, wireRailHead } = rail;
 
 
   let compass: CompassHandle | null = null;   // 나침반 렌즈(그래프 보기)
@@ -286,177 +297,11 @@ export async function renderView(el: HTMLElement, resume = false) {
 
   /** 표면 공용 이스케이프 — 여태 함수마다 같은 것을 다시 선언하고 있었다(esc·esc2). */
 
-  /** 레일 닫기 — 여태 상세 패널에는 닫는 수단이 **하나도 없었다**(버튼도 Esc 도).
-   *  들어가는 문은 모든 마크에 달려 있는데 나오는 문이 크럼 하나뿐이었던 비대칭을
-   *  여기서 끝낸다. 스택(상세→드릴다운→Reader→편집)은 각자 '뒤로'가 있고, ✕/Esc 는
-   *  스택 전체를 접는다. */
-  /** 문서 열 폭의 **단일 원천**(D70). 여태 CSS(`#view-detail{width:20rem}`)와 JS
-   *  상수 두 군데에 같은 숫자가 적혀 있었다. 지금 값은 변수 하나로만 산다:
-   *    --rail-size : 사용자가 끌어 정한 폭
-   *  이 변수를 **셸**에 얹는다(표면이 아니라) — 폭을 실제로 쓰는 것은 셸의 그리드
-   *  열(`#shell[data-doc="open"] { --doc-w: var(--rail-size) }`)이기 때문이다.
-   *  겹쳐 뜨던 시절에 필요했던 `--rail-w`(비켜설 거리)는 사라졌다: 열이 캔버스를
-   *  덮지 않으므로 비켜설 것이 없다. */
-  function setRailWidth(rem: number) {
-    const w = Math.min(RAIL_MAX, Math.max(RAIL_MIN, rem));
-    (shell ?? el).style.setProperty("--rail-size", `${w}rem`);
-    updateRailGrip();
-    return w;
-  }
-  /** 문서 패널의 크기 — 옆 카드(false)냐, 지도 칸 전체(true)냐.
-   *
-   *  열 때는 늘 옆 카드다(지도에서 고른 것도 LNB 에서 고른 것도). 넓게 여는 것은 패널 머리의
-   *  크기 전환 버튼뿐이다. 패널 안에서 옮겨 다니는 것(뒤로·언급 칩·연결 줄)은 지금 크기를
-   *  그대로 두고, 닫으면 옆 카드로 돌아간다.
-   *  근거: [[decision:lnb-picks-in-the-graph-open-the-floating-card-and-the-side-pane-2026-10-28]] */
-  let railFull = false;
-  let railRevision = 0;
-  function setRailFull(full: boolean) {
-    railFull = full;
-    if (!detail.hidden) railChrome(true);
-    const b = detail.querySelector<HTMLElement>("#rail-size");
-    if (b) {
-      const label = full ? COPY.ui.viewx.railSide : COPY.ui.viewx.railFull;
-      b.textContent = label;
-      b.setAttribute("aria-pressed", String(full));
-    }
-  }
-  /** 열 머리 — 캡션 · 크기 전환 · 닫기. 머리를 그리는 자리가 셋(상세 · 리더 · 리더
-   *  실패)이라 한 벌로 모았다. 단추는 글자다: 아이콘 세트(Figma 29:56)에 넓히기
-   *  글리프가 없고, 그림 하나를 더하는 것은 세트의 일이다. */
-  function railHeadHTML(caption: string): string {
-    const V = COPY.ui.viewx;
-    return `
-      <div class="rail-head">
-        <span class="hint">${caption}</span>
-        <span class="rail-head-acts">
-          <button class="rail-x rail-size" id="rail-size" type="button"
-                  aria-pressed="${railFull}">${railFull ? V.railSide : V.railFull}</button>
-          <button class="rail-x" id="rail-close" type="button" aria-label="${V.railClose}"
-                  data-tip="${V.railClose}">✕</button>
-        </span>
-      </div>`;
-  }
-  function wireRailHead() {
-    detail.querySelector("#rail-close")?.addEventListener("click", closeRail);
-    detail.querySelector("#rail-size")?.addEventListener("click", () => setRailFull(!railFull));
-  }
-  function railChrome(open: boolean) {
-    // 패널의 열림과 전체 폭 여부는 셸 상태로 표현한다. 닫을 때 hidden 도 걸어
-    // 접힌 패널의 테두리나 그림자가 지도 위에 남지 않게 한다.
-    if (shell) {
-      shell.dataset.doc = open ? "open" : "closed";
-      shell.dataset.docSize = open && railFull ? "full" : "side";
-    }
-    // 떠 있는 노드 카드는 #shell 밖(body)에 붙어서 셸 상태를 못 본다. 넓게 연 항목 페이지가
-    // 같은 노드를 다 보여 주는 동안 카드가 그 제목을 덮지 않도록 body 에도 같은 상태를 걸고,
-    // CSS 가 그동안만 카드를 숨긴다. 옆 카드로 돌아오면 카드가 그대로 돌아온다.
-    document.body.dataset.docSize = open && railFull ? "full" : "side";
-    if (docpane) docpane.hidden = !open;
-    // 지도 칸 전체로 연 패널에는 끌어서 줄일 모서리가 없다.
-    railGrip.hidden = !open || railFull;
-    updateRailGrip();
-  }
   /** 잇기 대상 고르기를 푼다(열·층이 바뀌면 고르던 자리가 사라진다). 잇기 띠가 듣고 닫힌다. */
   function dropPick() {
     if (!pickTarget) return;
     pickTarget = null;
     dispatchEvent(new CustomEvent("vinc:pick-cancel"));
-  }
-  function closeRail() {
-    ++railRevision;
-    dropPick();
-    detail.hidden = true;
-    // 열의 내용을 지우기 **전에** 그 안의 편집기를 확정·해제한다. 아래 innerHTML 은
-    // 마운트 지점을 걷어 갈 뿐 디바운스를 건드리지 못한다(저장이 화면 없는 곳에서
-    // 터졌다 — 2026-09-07 실측).
-    disposeEditorsIn(detail);
-    detail.innerHTML = "";
-    lastNode = null;
-    if (focusId) { focusId = ""; syncHash(); }   // 주소는 화면이 말하는 것만 말한다
-    railFull = false;     // 다음 열기는 옆 카드가 기본이다(railFull 주석)
-    railChrome(false);
-    // 카드는 선택에 딸린 물건이라 선택이 끝나면 같이 사라진다(떠 있는 창을 남기지 않는다).
-    closeFloatPanel();
-  }
-  function openRail() {
-    ++railRevision;
-    dropPick();
-    // 여는 것도 **덮어쓰는** 것이다: 이 뒤에 오는 것은 예외 없이 `detail.innerHTML`
-    // 대입이다(상세 · 관계 · 드릴다운 · 리더 재진입). 그 자리가 스무 곳이
-    // 넘으므로 문 앞에서 한 번 걷는다 — 호출부마다 적으면 다음에 느는 하나가 샌다.
-    disposeEditorsIn(detail);
-    detail.hidden = false;
-    railChrome(true);
-    return railRevision;
-  }
-  // CSS가 화면 폭으로 접은 실제 범위를 키보드와 접근성 값도 함께 쓴다.
-  function railBounds() {
-    const root = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-    const pane = docpane ?? detail;
-    const gap = parseFloat(getComputedStyle(pane).right) || 0;
-    const max = Math.max(0, Math.min(RAIL_MAX,
-      ((pane.parentElement?.clientWidth ?? window.innerWidth) - gap * 2) / root));
-    return { root, min: Math.min(RAIL_MIN, max), max };
-  }
-  function updateRailGrip() {
-    if (railGrip.hidden) return;
-    const { root, min, max } = railBounds();
-    const now = (docpane ?? detail).getBoundingClientRect().width / root;
-    railGrip.setAttribute("aria-label", COPY.ui.viewx.railResize);
-    railGrip.setAttribute("aria-valuemin", String(min));
-    railGrip.setAttribute("aria-valuemax", String(max));
-    railGrip.setAttribute("aria-valuenow", String(Math.min(max, Math.max(min, now))));
-  }
-  /** 패널 **왼쪽** 모서리 그립 — 왼쪽으로 끌면 문서가 넓어진다. 포인터 캡처라
-   *  커서가 WebGL 캔버스로 넘어가도 드래그가 끊기지 않는다. 확정 값만
-   *  프리퍼런스에 적는다(끄는 동안 매 프레임 저장하지 않는다). */
-  function wireRailGrip(grip: HTMLElement) {
-    grip.addEventListener("keydown", (e) => {
-      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const { root, min, max } = railBounds();
-      const now = (docpane ?? detail).getBoundingClientRect().width / root;
-      const next = e.key === "Home" ? min : e.key === "End" ? max
-        : now + (e.key === "ArrowLeft" ? 1 : -1) * (e.shiftKey ? 4 : 1);
-      const w = setRailWidth(Math.min(max, Math.max(min, next)));
-      savePrefs({ ...loadPrefs(), railW: w });
-    });
-    grip.addEventListener("pointerdown", (e) => {
-      if (e.button !== 0 || !e.isPrimary) return;
-      e.preventDefault();
-      grip.setPointerCapture(e.pointerId);
-      const root = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-      const startX = e.clientX;
-      const startW = (docpane ?? detail).getBoundingClientRect().width / root;
-      let live = startW;
-      const move = (ev: PointerEvent) => {
-        // ⚠ 부호가 **뺄셈**이다: 패널이 오른쪽에 붙어 있으므로(R1) 왼쪽으로 끌 때
-        // 넓어진다. 더하기로 두면 잡은 손과 모서리가 반대로 움직인다.
-        live = setRailWidth(startW - (ev.clientX - startX) / root);
-      };
-      const up = () => {
-        grip.removeEventListener("pointermove", move);
-        grip.removeEventListener("pointerup", up);
-        grip.removeEventListener("pointercancel", up);
-        grip.removeEventListener("lostpointercapture", up);
-        // ⚠ applyPrefs 를 쓰지 않는다: 그것은 "행을 내보낸 층은 다시 그린다"는 계약이라
-        // 폭만 바꿨는데 그래프가 재마운트되고 렌즈 패널까지 열린다. 폭은 렌더러가
-        // 읽는 값이 아니므로 저장만 한다.
-        savePrefs({ ...loadPrefs(), railW: live });
-      };
-      grip.addEventListener("pointermove", move);
-      grip.addEventListener("pointerup", up);
-      grip.addEventListener("pointercancel", up);
-      grip.addEventListener("lostpointercapture", up);
-    });
-    const observer = new ResizeObserver(() => {
-      if (myGen !== liveGen || !grip.isConnected) { observer.disconnect(); return; }
-      updateRailGrip();
-    });
-    observer.observe(docpane ?? detail);
-    observer.observe((docpane ?? detail).parentElement!);
   }
   // Esc 단계 후퇴(정본 §2) 1단계 — 레일이 열려 있으면 레일부터 닫는다. 보기 패널이
   // 열려 있을 땐 그쪽 핸들러가 먼저 잡으므로(패널에 포커스가 있다) 충돌하지 않는다.
@@ -739,7 +584,7 @@ export async function renderView(el: HTMLElement, resume = false) {
    *  넓은 열로 열지 않는다: 그래프에서 고른 것은 그래프 위에서 보여야 한다.
    *  근거: [[decision:lnb-picks-in-the-graph-open-the-floating-card-and-the-side-pane-2026-10-28]] */
   async function openFromNav(id: string, domain?: string, docId?: string) {
-    railFull = false;
+    rail.full = false;
     const nd = id ? await focusNode(id, domain, true) : null;
     if (myGen !== liveGen) return;
     if (docId) await openReader(docId, id || undefined);
@@ -863,10 +708,10 @@ export async function renderView(el: HTMLElement, resume = false) {
     scope.querySelector("[data-detail-back]")?.addEventListener("click", () => void backDetail(pane));
   }
   async function loadTopicDetail(box: HTMLElement, nd: N3, pane: boolean, offset = 0) {
-    const revision = railRevision;
+    const revision = rail.revision;
     const scopeKey = viewScope().key;
     const current = () => box.isConnected && myGen === liveGen && focusId === nd.id
-      && viewScope().key === scopeKey && (!pane || (revision === railRevision && !detail.hidden));
+      && viewScope().key === scopeKey && (!pane || (revision === rail.revision && !detail.hidden));
     const scope = { team: cfg.team || null };
     const requestOwner = cfg.owner;
     box.innerHTML = `<p class="card-note">${loaderInline(COPY.ui.viewx.detailLoading)}</p>`;
@@ -1321,10 +1166,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   }
 
   // 속성 절(그리기 · 편집 · 저장)은 `view-props-card.ts` 가 맡는다. 다시 읽기는 노드 맥락 메모를 비우고 이 열을 새로 그린다.
-  const { drawNodeProps } = createPropsCard({
-    detail,
-    reloadNode: (nd) => { ctxCache = null; return loadNodeSource(nd); },
-  });
+  const { drawNodeProps } = createPropsCard(host);
 
   /** 상세 레일의 수치·관계 목록(T3·T4 · D45-V) — node-context 응답 하나가 정본이다.
    *  구 사이드카는 `links` 키 자체가 없다: 그때만 그래프 잔상(curEdges)으로 강등하고
@@ -1504,9 +1346,9 @@ export async function renderView(el: HTMLElement, resume = false) {
     // 발췌는 증강 — 실패·부재가 상세 패널을 깨지 않는다(문구만 남기고 조용히).
     const box = detail.querySelector<HTMLElement>("#node-source");
     if (!box) return;
-    const revision = railRevision;
+    const revision = rail.revision;
     const scopeKey = viewScope().key;
-    const current = () => myGen === liveGen && revision === railRevision && detail.contains(box)
+    const current = () => myGen === liveGen && revision === rail.revision && detail.contains(box)
       && !detail.hidden && viewScope().key === scopeKey;
     const fail = (state: DetailState) => {
       box.innerHTML = detailErrorHTML(state);
@@ -1547,8 +1389,8 @@ export async function renderView(el: HTMLElement, resume = false) {
       const basics = detail.querySelector<HTMLElement>("#node-basics");
       if (basics) void import("../node-basics").then((m) => m.drawBasics(basics, nd.id, res,
         (domain) => void openNodePane(nd.id, domain || undefined), canEdit));
-      if (railFull && res.links?.executed) drawPaneLinks(nd, res.links);
-      if (railFull) drawItemPage(nd, res, canEdit);
+      if (rail.full && res.links?.executed) drawPaneLinks(nd, res.links);
+      if (rail.full) drawItemPage(nd, res, canEdit);
       const parts: string[] = [];
       if (res.one_liner) parts.push(`<div class="doc-render">${renderMarkdown(res.one_liner)}</div>`);
       const ex = res.excerpts || [];
@@ -1603,7 +1445,7 @@ export async function renderView(el: HTMLElement, resume = false) {
    *  이유가 없다(청크 id `<doc>#00007` 의 뒷자리가 곧 번호다). */
   async function openReader(docId: string, conceptId?: string, chunkIndex?: number) {
     const revision = openRail();
-    const current = () => revision === railRevision && myGen === liveGen && !detail.hidden;
+    const current = () => revision === rail.revision && myGen === liveGen && !detail.hidden;
     detail.innerHTML = `<p class="hint">${loaderInline(COPY.ui.viewx.readerLoading)}</p>`;
     try {
       // 셋을 나란히 부른다. 밑줄과 머리는 **증강**이라 실패해도 문서는 열려야 한다 —
@@ -1935,7 +1777,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     dropPick();
     // `keepDetail` — 방금 만든 것을 지도에 세우는 재그리기(revealNode)는 문서 열을 닫지
     // 않는다. 거기서 쓰고 있던 글이 첫 저장과 함께 사라지면 안 된다.
-    if (!opts?.keepDetail) { ++railRevision; detail.hidden = true; }
+    if (!opts?.keepDetail) { ++rail.revision; detail.hidden = true; }
     closeFloatPanel();   // 층이 바뀌면 카드가 가리키던 노드도 화면에서 사라진다
     // 옛 표면은 **여기서 부수지 않는다.** 새 데이터가 도착해 그릴 준비가 됐을 때
     // swapSurface() 가 부수고 곧바로 새 표면을 세운다 — 그래야 fetch 동안 빈 상자가
