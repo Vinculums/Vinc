@@ -107,17 +107,6 @@ def answer(handler, auth: dict, space: str | None, profile: str | None):
         denied = next(((m, g) for m, g in gated if g.kind == kind), None)
         if denied is not None:
             return _tool_error(denied[0], denied[1].message)
-    if space:
-        # prompts 는 도구 봉투가 아니라 프로토콜 오류로 거절한다.
-        role = auth.get("role") or ""
-        if any(str(m.get("method") or "").startswith(_ROLE_READS) for m in msgs) \
-                and not tools.role_allows(role, "vinc_neighbors"):
-            first = next(m for m in msgs
-                         if str(m.get("method") or "").startswith(_ROLE_READS))
-            return handler._json(200, {
-                "jsonrpc": "2.0", "id": first.get("id"),
-                "error": {"code": -32603,
-                          "message": f"role {role!r} may not read prompts"}})
     denied = next(((m, g) for m, g in gated if g.kind == "read_only"), None)
     if denied is not None:
         return _tool_error(denied[0], denied[1].message)
