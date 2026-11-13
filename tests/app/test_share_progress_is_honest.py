@@ -47,14 +47,9 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-SHEETS = ROOT / "app" / "src" / "sheets.ts"
-TOOLS = ROOT / "app" / "src" / "tools.ts"
-COMPONENTS = ROOT / "app" / "src" / "components.ts"
-#: 진행 막대의 마크업은 로딩 모션 모듈(디자인 허브 사본)이 그린다. `sheetProgress` 는 그것을 부른다.
-LOADERS = ROOT / "app" / "src" / "vinc-loaders.js"
+from _src import func, read
+
 
 #: 기다림을 알리는 카피가 걸리는 모양. `.loading` 이 들어 있는 것은 `common.loading`
 #: 뿐 아니라 **수를 세는 척하던** `packs.loading(n)` 도 잡기 위해서다.
@@ -85,24 +80,21 @@ def _progress_markup(components: str) -> str:
     """`sheetProgress` 가 그리는 마크업의 원문. 로딩 모션의 `loaderTrack` 에 맡겼으면
     **개수 없이**(label 하나만) 부르는지 보고 그 함수의 원문을 돌려준다. 개수 없이 부른
     track 은 `aria-valuenow` 를 싣지 않는다(total 이 있을 때만 싣는 분기를 지운 원문)."""
-    body = components[components.index("export function sheetProgress"):]
-    body = body[: body.index(chr(10) + "}")]
+    body = func(components, "sheetProgress")
     if "loaderTrack(" not in body:
         return body
     call = body[body.index("loaderTrack("):]
     call = call[: call.index(")") + 1]
     assert call == "loaderTrack(label)", f"sheetProgress 가 개수를 실어 track 을 부른다: {call}"
-    src = LOADERS.read_text(encoding="utf-8")
-    fn = src[src.index("export function loaderTrack"):]
-    fn = fn[: fn.index(chr(10) + "}")]
+    fn = func(read("vinc-loaders"), "loaderTrack")
     return fn.replace('${total ? ` aria-valuenow="${done}"` : ""}', "")
 
 
 class ShareProgressTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.components = COMPONENTS.read_text(encoding="utf-8")
-        self.sheets = SHEETS.read_text(encoding="utf-8")
-        self.tools = TOOLS.read_text(encoding="utf-8")
+        self.components = read("components")
+        self.sheets = read("sheets")
+        self.tools = read("tools")
         # 공유 시트 경로. 가져오기 시트는 다른 경로라 관할 밖이다.
         self.share = self.sheets[: self.sheets.index("export function openImportSheet")]
         # Tools 는 공유 탭만. 만들기 탭에도 기다림이 있지만 이 동선이 아니다.
@@ -158,9 +150,8 @@ class ShareProgressTests(unittest.TestCase):
         code = _code_only(self.share)
         self.assertIn("api.importPack(out, cfg.owner, scope, (p) =>", code,
                       "막대가 importPack 의 조각 보고를 받지 않는다")
-        api_src = (ROOT / "app" / "src" / "api.ts").read_text(encoding="utf-8")
-        body = api_src[api_src.index("async function importPackInChunks"):]
-        body = body[: body.index(chr(10) + "}")]
+        api_src = read("api")
+        body = func(api_src, "importPackInChunks")
         self.assertIn("onStep?.(", body, "조각 보고가 없다")
         self.assertIn("for (const c of chunks)", body, "보고가 조각 단위가 아니다")
 
@@ -238,8 +229,8 @@ class ShareProgressTests(unittest.TestCase):
         모션을 줄인 환경에서는 왕복을 멈춘다. 채움은 --foreground, 트랙은 --border 라 두 모드
         모두 비텍스트 대비 3:1 을 넉넉히 넘는다(예전 --primary/--muted 막대는 다크에서 1.87:1
         이라 --ring 분기가 따로 있었다)."""
-        css = (ROOT / "app" / "src" / "vinc-loaders.css").read_text(encoding="utf-8")
-        app = (ROOT / "app" / "src" / "app.css").read_text(encoding="utf-8")
+        css = read("vinc-loaders.css")
+        app = read("app.css")
         self.assertIn('@import "./vinc-loaders.css";', app, "앱이 로딩 모션 스타일을 읽지 않는다")
         self.assertIn("hsl(var(--foreground", css, "채움이 토큰에서 오지 않는다")
         self.assertIn("hsl(var(--border", css, "트랙이 토큰에서 오지 않는다")

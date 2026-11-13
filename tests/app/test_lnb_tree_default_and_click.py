@@ -13,16 +13,11 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-LNB = (ROOT / "app" / "src" / "lnb.ts").read_text(encoding="utf-8")
-TREE = (ROOT / "app" / "src" / "lnb-tree.ts").read_text(encoding="utf-8")
+from _src import ROOT, braced, cut, func, read
 
-
-def _block(src: str, head: str, end: str) -> str:
-    at = src.index(head)
-    return src[at:src.index(end, at)]
+LNB = read("lnb")
+TREE = read("lnb-tree")
 
 
 class TreeDefaultTests(unittest.TestCase):
@@ -39,7 +34,7 @@ class TreeDefaultTests(unittest.TestCase):
         self.assertIn("applyDefaults(tops, expanded, seenDefault)", LNB)
 
     def test_하위_주제가_있는_줄은_자기_항목을_접어_둔다(self):
-        rows = _block(LNB, "function groupRows", "\n}")
+        rows = func(LNB, "groupRows")
         self.assertIn("foldsOwnRows(n)", rows)
         self.assertIn("ownKey(n.path)", rows)
         self.assertIn('class="lnb-fold"', rows)
@@ -47,7 +42,7 @@ class TreeDefaultTests(unittest.TestCase):
 
 class TreeClickTests(unittest.TestCase):
     def setUp(self):
-        self.click = _block(LNB, 'body.addEventListener("click"', '// 트리 키보드')
+        self.click = braced(LNB, 'body.addEventListener("click"')
 
     def test_주제_줄을_누르면_지금_표면이_따라간다(self):
         """2026-11-05 발주자 지시: 문서도 그래프처럼 — 줄을 누르면 문서 목록이 그 주제로 좁혀지며 펴지고,
@@ -61,17 +56,17 @@ class TreeClickTests(unittest.TestCase):
     def test_줄_끝_좁히기_버튼은_없다(self):
         """줄 클릭이 같은 일을 하므로 줄 끝 버튼(.lnb-gscope)은 걷었다(2026-11-05)."""
         self.assertNotIn("lnb-gscope", LNB)
-        rows = _block(LNB, "function groupRows", "\n}")
+        rows = func(LNB, "groupRows")
         self.assertIn('<div class="lnb-grow', rows)
 
     def test_화살표_키로_움직이고_접고_편다(self):
-        keys = _block(LNB, "// 트리 키보드", "// 주제 우클릭")
+        keys = cut(LNB, "// 트리 키보드", "// 주제 우클릭")
         for k in ("ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft", "Home", "End"):
             self.assertIn(f'"{k}"', keys, k)
         self.assertIn("toggleRow(key)", keys)
 
     def test_새_문구가_두_언어에_있다(self):
-        copy = (ROOT / "app" / "src" / "copy.ts").read_text(encoding="utf-8")
+        copy = read("copy")
         self.assertEqual(len(re.findall(r"^\s+scopeBtn: \(name: string\)", copy, re.M)), 0)   # 버튼과 함께 걷었다
         self.assertEqual(len(re.findall(r"^\s+ownItems: \(n: number\)", copy, re.M)), 2)
 

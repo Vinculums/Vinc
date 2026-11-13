@@ -15,25 +15,19 @@ TypeScript 를 실행하지 않고 소스를 읽는다. `tests/app/test_shell_si
 """
 from __future__ import annotations
 
-import os
 import unittest
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-SETTINGS = os.path.join(ROOT, "app", "src", "surfaces", "settings.ts")
+from _src import func, read
 
 
 def src() -> str:
-    with open(SETTINGS, encoding="utf-8") as fh:
-        return fh.read()
+    return read("settings")
 
 
 def shell_body() -> str:
     """`function shell()` 의 본문. 버전 줄은 **탭이 아니라 셸**에 있어야 한다 —
     탭 구성이 웹과 데스크탑에서 다르다(`WEB` 이 Connections·Advanced 를 숨긴다)."""
-    s = src()
-    i = s.index("function shell()")
-    j = s.index("\n  function renderBody()", i)
-    return s[i:j]
+    return func(src(), "shell")
 
 
 class VersionOnScreen(unittest.TestCase):
@@ -57,8 +51,7 @@ class VersionOnScreen(unittest.TestCase):
 
     def test_그릴_자리에_스타일이_있다(self):
         """클래스만 있고 규칙이 없으면 줄이 본문과 구분되지 않는다."""
-        with open(os.path.join(ROOT, "app", "src", "app.css"), encoding="utf-8") as fh:
-            css = fh.read()
+        css = read("app.css")
         self.assertIn(".settings-ver", css)
 
     def test_번역하지_않는다(self):

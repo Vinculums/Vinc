@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { installDom, El } from './mini-dom.mjs';
-import { loadTs, tsUrl, copyStub, COMPONENTS_STUB } from './ts-load.mjs';
+import { loadCompass } from './helpers/compass-load.mjs';
 
 installDom({ hash: '' });
 Object.defineProperty(El.prototype, 'isConnected', { get: () => true });
@@ -14,22 +14,7 @@ globalThis.cancelAnimationFrame ??= clearTimeout;
 globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
 globalThis.matchMedia ??= () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 
-const THEME_STUB = `export const topicJewels = {
-  light: [0xb3261e, 0x1a5fb4, 0x2e7d32, 0xb26a00, 0x6a3fa0],
-  dark: [0xff8a80, 0x82b1ff, 0x69f0ae, 0xffd180, 0xce93d8] };
-export const palette = { light: { background: 0xf2f2f0, surface: 0xe9e9e6, card: 0xfbfbfa, text: 0x17171a, ring: 0x4a4f8c },
-  dark: { background: 0x0a0a0a, surface: 0x121212, card: 0x1a1a1a, text: 0xededeb, ring: 0x8f96d9 } };`;
-const tintUrl = await tsUrl('view-tint.ts', { './theme': THEME_STUB, './area-key': await tsUrl('area-key.ts') });
-const { mountCompass, compassDataFrom } = await loadTs('surfaces/view-compass.ts', {
-  '../copy': copyStub("{ ui: { compass: { rootTopic: 'All topics' } } }"),
-  '../components': COMPONENTS_STUB,
-  '../view-tint': tintUrl,
-  '../topic-tint-table': await tsUrl('topic-tint-table.ts', { './view-tint': tintUrl }),
-  '../theme': THEME_STUB,
-  './view-compass-state': await tsUrl('surfaces/view-compass-state.ts'),
-  './view-compass-whole': await tsUrl('surfaces/view-compass-whole.ts'),
-  '../keys': await tsUrl('keys.ts'),
-});
+const { mountCompass, compassDataFrom } = await loadCompass();
 
 /** [domain, 제목, 종류?] 목록 → 마운트. 허브가 주는 모양(kind·domain·ts·degree)으로 만든다.
  *  마운트마다 다른 그래프라 스페이스도 따로 준다: 주제 색 표는 스페이스마다 하나라 같은 스페이스면 앞 그래프의 주제가 남는다. */

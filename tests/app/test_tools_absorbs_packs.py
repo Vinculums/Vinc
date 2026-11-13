@@ -20,41 +20,27 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-APP = ROOT / "app" / "src"
-
-
-def _body(src: str, head: str) -> str:
-    """`head` 로 시작하는 최상위 함수의 본문만 잘라 낸다 — 열 0 의 `}` 가 끝이다."""
-    body = src[src.index(head):]
-    return body[:body.index("\n}")]
-
-
-def _inner(src: str, head: str) -> str:
-    """두 칸 들여 쓴 안쪽 함수의 본문 — 열 2 의 `}` 가 끝이다."""
-    body = src[src.index(head):]
-    return body[:body.index("\n  }")]
+from _src import SRC, func, read
 
 
 class ToolsAbsorbsPacksTests(unittest.TestCase):
     def setUp(self):
-        self.tools = (APP / "tools.ts").read_text(encoding="utf-8")
-        self.sheets = (APP / "sheets.ts").read_text(encoding="utf-8")
-        self.share = _body(self.tools, "async function renderShare")
+        self.tools = read("tools")
+        self.sheets = read("sheets")
+        self.share = func(self.tools, "renderShare")
 
     # ── ① 가져오기 ─────────────────────────────────────────────────────────
     def test_가져오기_탭이_드롭존을_품는다(self):
         """`파일 고르기` 버튼 한 줄로 되돌리면 끌어다 놓기·샘플 팩·여러 파일 일괄
         적재가 앱에서 통째로 사라진다 — `renderIntake` 를 부르는 곳이 여기 하나뿐이고,
         View 의 빈 상태 초대는 그래프가 **빌 때만** 뜬다."""
-        imp = _body(self.tools, "function renderImport")
+        imp = func(self.tools, "renderImport")
         self.assertIn("renderIntake(", imp, "가져오기 탭이 드롭존을 안 심는다")
 
     def test_드롭존을_부르는_곳이_사라지지_않았다(self):
         """호출부 0 이면 `renderIntake` 는 살아 있어도 도달 불가다."""
-        callers = [p.name for p in sorted(APP.rglob("*.ts"))
+        callers = [p.name for p in sorted(SRC.rglob("*.ts"))
                    if p.name != "intake.ts" and "renderIntake(" in p.read_text(encoding="utf-8")]
         self.assertTrue(callers, "renderIntake 를 부르는 파일이 하나도 없다")
 
@@ -95,7 +81,7 @@ class ToolsAbsorbsPacksTests(unittest.TestCase):
     # ── ⑤ 커뮤니티 게시 ────────────────────────────────────────────────────
     def test_커뮤니티_공유가_공개_맥락_작업으로_넘긴다(self):
         """앱은 팩을 보관해 공개 맥락과 동의를 받는 사이트 작업으로 넘긴다."""
-        pub = _body(self.sheets, "async function publishToCommunity")
+        pub = func(self.sheets, "publishToCommunity")
         # ⚠ 토큰 전수검사로 쓰면 안 된다 — 바로 위 주석이 같은 낱말을 적고 있어서,
         # 분기를 통째로 지워도 초록이었다(변이로 실측). **코드**를 봐야 한다.
         self.assertIn('data.features?.agents !== true', pub)
@@ -104,14 +90,14 @@ class ToolsAbsorbsPacksTests(unittest.TestCase):
         self.assertNotIn('community.publish(', pub)
         self.assertIn('downloadPack(out,', pub)
         # 갤러리 시절 게시 클라이언트는 호출부 없이 남아 있었다(VIN-569). 다시 생기지 않게.
-        self.assertNotIn('/api/community/publish', (APP / "api.ts").read_text(encoding="utf-8"))
+        self.assertNotIn('/api/community/publish', read("api"))
 
     # ── 표면을 지우면서 조용히 깨지는 것 둘 ────────────────────────────────
     def test_숫자_단축키가_표면_수를_따라간다(self):
         """`"1"`~`"3"` 리터럴이 박혀 있었다. 표면이 둘로 줄면 3 을 눌러 `#undefined`
         로 가는데, 문자열 비교라 타입이 아무 말도 안 하고 게이트도 이 자리를 안 본다.
         표면 수가 다시 바뀌어도 같은 일이 나므로 상한을 `ORDER` 에 맨다."""
-        main = (APP / "main.ts").read_text(encoding="utf-8")
+        main = read("main")
         self.assertIn("ORDER.length", main, "단축키 상한이 표면 목록에서 안 온다")
         self.assertNotRegex(main, r'e\.key\s*>=\s*"1"',
                             "숫자 단축키가 아직 리터럴 범위로 잘려 있다")
@@ -120,7 +106,7 @@ class ToolsAbsorbsPacksTests(unittest.TestCase):
         """`#packs`·`#intake` 는 이미 밖에 나가 있는 주소다. 표면만 지우면 링크가
         기본 화면으로 조용히 떨어지고, 그 사람이 찾던 것이 어디 갔는지는 화면 어디에도
         없다. `ALIAS` 가 받고 `ALIAS_TOOLS` 가 그 갈래를 연다."""
-        main = (APP / "main.ts").read_text(encoding="utf-8")
+        main = read("main")
         # ⚠ 두 표를 **따로** 잘라야 한다. `ALIAS_TOOLS` 까지 한 덩어리로 보면 별칭을
         # 지워도 뒤 표의 같은 키가 정규식을 만족시켜 초록이었다(변이로 실측).
         alias = main[main.index("const ALIAS:"):main.index("const ALIAS_TOOLS:")]
@@ -133,25 +119,25 @@ class ToolsAbsorbsPacksTests(unittest.TestCase):
         # 2026-09-22 scope-back 뒤로 Tools 는 설정 시트의 `정보`(data) 분류다. 라우터는
         # 그 분류를 **별칭이 가리킨 탭으로** 열어야 한다 — 탭을 빼면 `#packs` 가 공유가
         # 아니라 쓰기 탭에 떨어진다.
-        route = _body(main, "async function route")
+        route = func(main, "route")
         self.assertRegex(route, r'openSettings\(\s*"data"\s*,\s*ALIAS_TOOLS\[rawHead\]\s*\)',
                          "라우터가 ALIAS_TOOLS 의 탭으로 설정의 정보 분류를 안 연다")
         # 그 탭이 실제로 Tools 까지 닿는가: 옛 `data` 분류와 탭 → 새 분류(import·share) →
         # toolsTab → mountTools. VIN-996 이 데이터 분류를 가져오기 · 공유 둘로 나눴다.
-        settings = (APP / "surfaces" / "settings.ts").read_text(encoding="utf-8")
+        settings = read("settings")
         self.assertRegex(settings,
                          r'if \(cat === "data"\) return tab \?\? "import";',
                          "옛 data 분류가 받은 탭으로 가져오기·공유 분류를 안 연다")
         self.assertRegex(settings, r'let toolsTab: DataTab = active === "share" \? "share" : "import";',
                          "고른 분류를 정보 판이 안 쓴다")
-        data = _inner(settings, "  function renderData")
+        data = func(settings, "renderData")
         self.assertRegex(data, r"mountTools\([^;]*toolsTab\s*\)",
                          "정보 분류가 Tools 를 고른 탭으로 안 심는다")
 
     def test_지운_표면이_트리에_남아_있지_않다(self):
         """반쯤 지우면 죽은 코드가 살아 있는 화면처럼 읽힌다."""
-        self.assertFalse((APP / "surfaces" / "packs.ts").exists(), "packs.ts 가 남아 있다")
-        hits = [f"{p.name}:{i}" for p in sorted(APP.rglob("*.ts"))
+        self.assertFalse((SRC / "surfaces" / "packs.ts").exists(), "packs.ts 가 남아 있다")
+        hits = [f"{p.name}:{i}" for p in sorted(SRC.rglob("*.ts"))
                 for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
                 if 'location.hash = "#packs"' in line or "renderPacks" in line]
         self.assertEqual([], hits, "#packs 로 보내는 자리가 남아 있다")
@@ -164,17 +150,17 @@ class ToolsAbsorbsPacksTests(unittest.TestCase):
         # 버튼이 그것을 부르고 있어도 초록이었다. 사람이 누를 수 있는 손잡이에서
         # Tools 까지 사슬을 따라간다: 보이는 레일 설정 버튼 → openSettings → 정보 분류 →
         # mountTools.
-        html = (ROOT / "app" / "index.html").read_text(encoding="utf-8")
+        html = read("index.html")
         tag = re.search(r'<button[^>]*\bid="rail-settings"[^>]*>', html)
         self.assertIsNotNone(tag, "레일 설정 버튼이 셸에 없다")
         self.assertNotRegex(tag.group(0), r"\bhidden\b", "레일 설정 버튼이 숨겨져 있다")
 
-        lnb = (APP / "lnb.ts").read_text(encoding="utf-8")
+        lnb = read("lnb")
         # 설정 버튼은 LNB 바닥에 산다(2026-10-22, 종 레일을 걷었다).
         self.assertRegex(lnb, r'settingsBtn\?\.addEventListener\("click",[^;]*openSettings\(',
                          "LNB 설정 버튼이 설정 시트를 안 연다")
 
-        settings = (APP / "surfaces" / "settings.ts").read_text(encoding="utf-8")
+        settings = read("settings")
         cats = settings[settings.index("const ALL_CATS"):settings.index("const CATS")]
         for cat in ("import", "share"):
             with self.subTest(cat=cat):
@@ -183,10 +169,10 @@ class ToolsAbsorbsPacksTests(unittest.TestCase):
                 self.assertNotIn("desktop: true", row.group(0),
                                  f"{cat} 분류가 데스크탑 전용이다 · 웹에서 Tools 가 사라진다")
                 self.assertNotIn("when:", row.group(0), f"{cat} 분류에 조건이 붙었다")
-        self.assertRegex(_inner(settings, "  function renderBody"),
+        self.assertRegex(func(settings, "renderBody"),
                          r'active === "import" \|\| active === "share"\) renderData\(',
                          "가져오기·공유 분류가 자기 본문을 안 그린다")
-        self.assertIn("mountTools(", _inner(settings, "  function renderData"),
+        self.assertIn("mountTools(", func(settings, "renderData"),
                       "정보 분류가 Tools 를 안 심는다")
 
 

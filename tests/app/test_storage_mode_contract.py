@@ -11,32 +11,22 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "app/src"
-STORE = (SRC / "storage-mode.ts").read_text(encoding="utf-8")
-API = (SRC / "api.ts").read_text(encoding="utf-8")
-SETTINGS = (SRC / "surfaces/settings.ts").read_text(encoding="utf-8")
-VITE = (ROOT / "app/vite.config.ts").read_text(encoding="utf-8")
-MAIN_RS = (ROOT / "app/src-tauri/src/main.rs").read_text(encoding="utf-8")
-CAPS = (ROOT / "app/src-tauri/capabilities/default.json").read_text(encoding="utf-8")
+from _src import braced, func, read
 
-
-def _fn(src: str, name: str) -> str:
-    m = re.search(rf"^(?:export )?(?:async )?function {name}\(", src, re.M)
-    assert m, name
-    rest = src[m.start():]
-    nxt = re.search(r"^(?:export )?(?:async )?function |^const |^export const ", rest[1:], re.M)
-    return rest[: nxt.start() + 1] if nxt else rest
+STORE = read("storage-mode")
+API = read("api")
+SETTINGS = read("settings")
+VITE = read("vite.config")
+MAIN_RS = read("main.rs")
+CAPS = read("capabilities")
 
 
 class RoutingTest(unittest.TestCase):
 
     def test_저장_호출은_늘_사이드카로_간다(self):
         """계정 모드에서 부르는 것들이다. `call` 로 보내면 계정으로 가서 설정도 잡도 없다."""
-        block = API[API.index("export const storage = {"):]
-        block = block[: block.index("\n};") + 3]
+        block = braced(API, "export const storage = {")
         self.assertNotIn(" call(", block)
         for path in ('"/config"', '"/config/inspect"', '"/sync/push-all"',
                      '"/sync/pull-all"', "`/jobs/${id}`"):
@@ -58,16 +48,16 @@ class NoLossTest(unittest.TestCase):
 
     def test_수가_안_맞으면_모드를_안_바꾼다(self):
         # 받기(켜기)는 자기 안에서 가른다.
-        body = _fn(STORE, "turnOn")
+        body = func(STORE, "turnOn")
         switch = body.index('storage.setConfig({ mode: "local", mode_chosen: true })')
         self.assertLess(body.index("Number(r.missing) > 0"), switch)
         self.assertLess(switch, body.index('dataMode.set("local")'))
         # 올리기는 한 벌(`moveDeviceIntoAccount`)이고, 빠진 것이 있으면 ok 가 거짓이다.
-        move = _fn(STORE, "moveDeviceIntoAccount")
+        move = func(STORE, "moveDeviceIntoAccount")
         self.assertRegex(move, r"if \(Number\(r\.missing\) > 0\) return \{ ok: false")
         self.assertNotIn("setConfig", move)    # 모드는 부르는 쪽이 바꾼다
         # 끄기 판의 옮기는 길은 ok 를 본 뒤에만 모드를 바꾼다.
-        off = _fn(STORE, "askTurnOff")
+        off = func(STORE, "askTurnOff")
         go = off[off.index('go.addEventListener("click"'):]
         gate = go.index("if (!moved.ok)")
         switch = go.index('storage.setConfig({ mode: "account", mode_chosen: true })')
@@ -77,7 +67,7 @@ class NoLossTest(unittest.TestCase):
     def test_로그인_뒤_알림은_옮기지_않고_로컬로_적는다(self):
         """VIN-131 (2026-09-29 결정): 옮기기는 설정의 끄기 판에만 있다. 로그인 뒤 화면이
         올리기를 다시 품으면 두 벌이 되고, 한쪽만 "빠진 것이 있으면 안 바꾼다"를 잃는다."""
-        dg = (SRC / "device-graph.ts").read_text(encoding="utf-8")
+        dg = read("device-graph")
         self.assertNotIn("moveDeviceIntoAccount", dg)
         self.assertNotIn("pushAll", dg)
         self.assertNotIn('mode: "account"', dg)
@@ -91,7 +81,7 @@ class NoLossTest(unittest.TestCase):
         """VIN-179: 올리기가 실패하면 로컬 모드에서 나갈 길이 없었다. 이 길은 폴더를
         건드리지 않고 모드만 바꾼다. 정본(사이드카 설정)이 먼저다: 창의 사본만 바꾸면 다음
         기동의 `decideDataMode` 가 설정 파일의 "local" 을 도로 읽어 온다."""
-        body = _fn(STORE, "askTurnOff")
+        body = func(STORE, "askTurnOff")
         keep = body[body.index('keep.addEventListener("click"'):]
         keep = keep[: keep.index('go.addEventListener("click"')]
         self.assertLess(keep.index('storage.setConfig({ mode: "account", mode_chosen: true })'),
@@ -100,19 +90,19 @@ class NoLossTest(unittest.TestCase):
         self.assertNotIn("data_path", keep)
 
     def test_전량이_아닌_받기는_모드를_안_바꾼다(self):
-        body = _fn(STORE, "turnOn")
+        body = func(STORE, "turnOn")
         self.assertLess(body.index('r.docs_mode !== "everything"'),
                         body.index('storage.setConfig({ mode: "local", mode_chosen: true })'))
 
     def test_폴더를_먼저_열고_그다음에_받는다(self):
         """받기는 새 폴더의 스토어에 써야 한다. 재기동 전에 받으면 옛 스토어에 들어간다."""
-        body = _fn(STORE, "turnOn")
+        body = func(STORE, "turnOn")
         self.assertLess(body.index("useFolder("), body.index("storage.pullAll("))
-        self.assertIn("restartSidecar()", _fn(STORE, "useFolder"))
+        self.assertIn("restartSidecar()", func(STORE, "useFolder"))
 
     def test_위험한_폴더는_확인해야_받는다(self):
-        self.assertIn("accept_risk: acceptRisk", _fn(STORE, "useFolder"))
-        self.assertIn('r.error === "risky_folder"', _fn(STORE, "useFolder"))
+        self.assertIn("accept_risk: acceptRisk", func(STORE, "useFolder"))
+        self.assertIn('r.error === "risky_folder"', func(STORE, "useFolder"))
 
 
 class ShellTest(unittest.TestCase):

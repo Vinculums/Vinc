@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-COPY_TS = (Path(__file__).resolve().parents[2] / "app" / "src" / "copy.ts").read_text(encoding="utf-8")
+from _src import read
+
+COPY_TS = read("copy")
 
 
 def _strings(src: str) -> list[str]:

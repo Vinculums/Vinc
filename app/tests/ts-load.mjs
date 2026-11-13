@@ -14,9 +14,11 @@ export async function loadTs(name, stubs = {}) {
   return import(await tsUrl(name, stubs));
 }
 
-/** `loadTs` 와 같되 data: URL 만 돌려준다: 다른 모듈의 대역으로 진짜 모듈을 끼울 때 쓴다. */
-export async function tsUrl(name, stubs = {}) {
+/** `loadTs` 와 같되 data: URL 만 돌려준다: 다른 모듈의 대역으로 진짜 모듈을 끼울 때 쓴다.
+ *  `patch` 는 옮겨 쓴 JS 를 대역을 끼우기 전에 고치는 함수다(안쪽 값 하나를 전역으로 내보낼 때). */
+export async function tsUrl(name, stubs = {}, { patch } = {}) {
   let js = transpile(await srcText(name));
+  if (patch) js = patch(js);
   for (const [spec, code] of Object.entries(stubs)) {
     const url = code.startsWith('data:') ? code : dataUrl(code);
     js = js.split(JSON.stringify(spec)).join(JSON.stringify(url));

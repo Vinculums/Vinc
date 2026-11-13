@@ -17,23 +17,17 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-APP = ROOT / "app"
-VIEW = (APP / "src" / "surfaces" / "view.ts").read_text(encoding="utf-8")
-EDIT = (APP / "src" / "props-edit.ts").read_text(encoding="utf-8")
-COPY = (APP / "src" / "copy.ts").read_text(encoding="utf-8")
-API = (APP / "src" / "api.ts").read_text(encoding="utf-8")
-BASICS = (APP / "src" / "node-basics.ts").read_text(encoding="utf-8")
+from _src import APP, func, read
 
-
-def _fn(src: str, name: str, nxt: str) -> str:
-    a = src.index(f"function {name}(")
-    return src[a:src.index(nxt, a)]
+VIEW = read("view")
+EDIT = read("props-edit")
+COPY = read("copy")
+API = read("api")
+BASICS = read("node-basics")
 
 
-EDITOR = _fn(VIEW, "openPropsEditor", "function propsDl(")
+EDITOR = func(VIEW, "openPropsEditor")
 SAVE = EDITOR[EDITOR.index("async function save()"):]
 BASICS_SAVE = BASICS[BASICS.index("async function save()"):]
 
@@ -48,7 +42,7 @@ class Contract(unittest.TestCase):
         self.assertIn("owner: cfg.owner", body)
 
     def test_conflict_reads_both_the_200_envelope_and_a_409(self):
-        fn = _fn(API, "isWriteConflict", "\n}\n")
+        fn = func(API, "isWriteConflict")
         for needle in ('r?.status === "conflict"', "r?.status === 409",
                        '"write_conflict"', '"preview_conflict"'):
             self.assertIn(needle, fn)

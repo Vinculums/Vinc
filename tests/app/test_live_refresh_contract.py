@@ -10,25 +10,16 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "app/src"
-LIVE = (SRC / "live.ts").read_text(encoding="utf-8")
-API = (SRC / "api.ts").read_text(encoding="utf-8")
-MAIN = (SRC / "main.ts").read_text(encoding="utf-8")
-VIEW = (SRC / "surfaces/view.ts").read_text(encoding="utf-8")
-LNB = (SRC / "lnb.ts").read_text(encoding="utf-8")
-SIGNALS = (SRC / "account-signals.ts").read_text(encoding="utf-8")
-VITE = (ROOT / "app/vite.config.ts").read_text(encoding="utf-8")
+from _src import func, read
 
-
-def _fn(src: str, name: str) -> str:
-    m = re.search(rf"^(?:export )?(?:async )?function {name}\(", src, re.M)
-    assert m, name
-    rest = src[m.start():]
-    nxt = re.search(r"^(?:export )?(?:async )?function |^const |^let |^export const ", rest[1:], re.M)
-    return rest[: nxt.start() + 1] if nxt else rest
+LIVE = read("live")
+API = read("api")
+MAIN = read("main")
+VIEW = read("view")
+LNB = read("lnb")
+SIGNALS = read("account-signals")
+VITE = read("vite.config")
 
 
 class CadenceTest(unittest.TestCase):
@@ -39,8 +30,8 @@ class CadenceTest(unittest.TestCase):
         self.assertTrue(10_000 <= int(m.group(1).replace("_", "")) <= 15_000)
 
     def test_숨은_창은_묻지_않고_돌아오면_바로_묻는다(self):
-        self.assertIn("if (checking || document.hidden) return;", _fn(LIVE, "check"))
-        mount = _fn(LIVE, "mountLiveRefresh")
+        self.assertIn("if (checking || document.hidden) return;", func(LIVE, "check"))
+        mount = func(LIVE, "mountLiveRefresh")
         self.assertIn('"visibilitychange"', mount)
         self.assertIn('addEventListener("focus"', mount)
 
@@ -53,15 +44,15 @@ class CadenceTest(unittest.TestCase):
 class DeferTest(unittest.TestCase):
 
     def test_바쁘면_기다린다(self):
-        body = _fn(LIVE, "busy")
+        body = func(LIVE, "busy")
         for probe in ("docEditorOpen()", ".sheet-scrim", "docpane", "pointerDown",
                       "isTypingTarget(document.activeElement)"):
             self.assertIn(probe, body, probe)
-        apply = _fn(LIVE, "apply")
+        apply = func(LIVE, "apply")
         self.assertLess(apply.index("if (busy())"), apply.index("pending = false"))
 
     def test_표면이_아니라고_하면_다시_기다린다(self):
-        apply = _fn(LIVE, "apply")
+        apply = func(LIVE, "apply")
         self.assertIn("surface.value === false", apply)
         self.assertIn("pending = true", apply[apply.index("surface.value === false"):])
 
@@ -72,7 +63,7 @@ class WiringTest(unittest.TestCase):
         self.assertLess(MAIN.index("mountLiveRefresh();"), MAIN.rindex("route();"))
 
     def test_표면을_떠나면_갱신기를_푼다(self):
-        route = _fn(MAIN, "route")
+        route = func(MAIN, "route")
         self.assertIn("setLiveRefresher(null);", route)
 
     def test_View_는_카메라를_잇고_다시_받는다(self):
@@ -83,7 +74,7 @@ class WiringTest(unittest.TestCase):
         self.assertIn("return false", block)   # 재생·카드·상세가 떠 있으면 지금은 아니다
 
     def test_좌측_트리는_조용히_갈아_끼운다(self):
-        body = _fn(LNB, "refreshLnb")
+        body = func(LNB, "refreshLnb")
         self.assertIn("if (!opts.quiet)", body)
         self.assertIn("if (opts.quiet) return;", body)
         self.assertIn("refreshLnb({ quiet: true })", LIVE)

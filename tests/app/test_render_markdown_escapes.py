@@ -16,16 +16,11 @@ import os
 import re
 import unittest
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-SRC = os.path.join(ROOT, "app", "src", "doc-editor.ts")
+from _src import ROOT, func, read
 
 
 def body() -> str:
-    with open(SRC, encoding="utf-8") as fh:
-        s = fh.read()
-    i = s.index("export function renderMarkdown")
-    j = s.index("\nexport ", i + 10)
-    return s[i:j]
+    return func(read("doc-editor"), "renderMarkdown")
 
 
 class RenderMarkdownEscapes(unittest.TestCase):
@@ -34,12 +29,10 @@ class RenderMarkdownEscapes(unittest.TestCase):
         정본을 가리므로, 지역 정의가 없고 파일이 정본을 들여오는지를 본다."""
         b = body()
         self.assertNotRegex(b, r"const esc\s*=", "지역 esc 사본이 정본을 가린다")
-        with open(SRC, encoding="utf-8") as fh:
-            src = fh.read()
+        src = read("doc-editor")
         self.assertRegex(src, r'import \{[^}]*\besc\b[^}]*\} from "\./components";',
                          "정본 esc 를 들여오지 않는다 — 게이트의 전제가 깨진다")
-        with open(os.path.join(ROOT, "app", "src", "components.ts"), encoding="utf-8") as fh:
-            comp = fh.read()
+        comp = read("components")
         i = comp.index("export const esc")
         canon = comp[i:comp.index("\n\n", i)]
         for ch in ("&amp;", "&lt;", "&gt;", "&quot;"):

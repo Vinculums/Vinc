@@ -9,29 +9,20 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-API_TS = (ROOT / "app/src/api.ts").read_text(encoding="utf-8")
-MAIN_TS = (ROOT / "app/src/main.ts").read_text(encoding="utf-8")
-FIRSTRUN_TS = (ROOT / "app/src/firstrun.ts").read_text(encoding="utf-8")
-CONNECT_TS = (ROOT / "app/src/account-connect.ts").read_text(encoding="utf-8")
-COPY_TS = (ROOT / "app/src/copy.ts").read_text(encoding="utf-8")
+from _src import ROOT, func, read
 
-
-def _fn(src: str, name: str) -> str:
-    """`async function name(` 또는 `function name(` 의 몸통(다음 최상위 선언 전까지)."""
-    m = re.search(rf"^(?:export )?(?:async )?function {name}\(", src, re.M)
-    assert m, name
-    rest = src[m.start():]
-    nxt = re.search(r"^(?:export )?(?:async )?function |^const |^export const ", rest[1:], re.M)
-    return rest[: nxt.start() + 1] if nxt else rest
+API_TS = read("api")
+MAIN_TS = read("main")
+FIRSTRUN_TS = read("firstrun")
+CONNECT_TS = read("account-connect")
+COPY_TS = read("copy")
 
 
 class RoutingTest(unittest.TestCase):
 
     def test_계정_모드의_데이터_호출은_통과로로_간다(self):
-        call = _fn(API_TS, "call")
+        call = func(API_TS, "call")
         self.assertIn("if (accountMode() && !sidecarOnly(path)) return accountCall(", call)
         self.assertIn('new URL("/space/proxy", cfg.base)', API_TS)
 
@@ -49,19 +40,19 @@ class CredentialTest(unittest.TestCase):
     def test_멤버_키는_바디로만_간다(self):
         """사이드카의 `Authorization` 은 셸 세션 토큰 자리다. 멤버 키를 거기 실으면
         사이드카 인증이 깨지고, 로그에 키가 남는다(`api/spaceproxy.py` 키는 바디로만)."""
-        via = _fn(API_TS, "viaProxy")
+        via = func(API_TS, "viaProxy")
         self.assertIn("token: key", via)
         self.assertIn("Bearer ${cfg.token}", via)
         self.assertNotIn("Bearer ${key}", via)
 
     def test_개인이면_team_을_안_싣는다(self):
-        via = _fn(API_TS, "viaProxy")
+        via = func(API_TS, "viaProxy")
         self.assertIn("...(team ? { team } : {})", via)
 
     def test_권한_거절로_로그아웃하지_않는다(self):
         """계정은 키 거절과 역할 거절을 같은 코드로 준다. 키만 보는 읽기로 한 번 더
         물어야 팀에서 권한 없는 일을 눌렀다고 로그인 화면으로 쫓겨나지 않는다."""
-        acct = _fn(API_TS, "accountCall")
+        acct = func(API_TS, "accountCall")
         i = acct.index('code === "not_authenticated"')
         tail = acct[i:]
         self.assertIn('viaProxy(key, "GET", "/spaces"', tail)
@@ -103,7 +94,7 @@ class GateTest(unittest.TestCase):
         self.assertLess(i_ensure, i_connect)
         self.assertIn("state.textContent = c.localDown;", start[:i_connect])
         # 아직 뜨는 중인 사이드카는 죽이지 않는다. 끝났다고 셸이 알 때만 다시 띄운다.
-        ensure = _fn(API_TS, "ensureSidecar")
+        ensure = func(API_TS, "ensureSidecar")
         self.assertLess(ensure.index('invoke("sidecar_alive")'), ensure.index('invoke("sidecar_restart")'))
         self.assertIn("if (!alive)", ensure)
         blocks = re.findall(r"\n  firstRun: \{.*?\n  \},", COPY_TS, re.S)
@@ -112,7 +103,7 @@ class GateTest(unittest.TestCase):
 
     def test_오프라인_버튼이_없고_닫히지_않는다(self):
         # 풀화면이라 닫기 단추도 Esc 도 없다. 닫는 것은 로그인이 끝났을 때의 close() 하나다.
-        screen = _fn(FIRSTRUN_TS, "openSignInScreen")
+        screen = func(FIRSTRUN_TS, "openSignInScreen")
         self.assertNotIn("keydown", screen)
         self.assertNotIn("Escape", screen)
         self.assertEqual(FIRSTRUN_TS.count("close();"), 1)
@@ -124,11 +115,11 @@ class GateTest(unittest.TestCase):
         """빈 셸 위에 뜨는 시트가 아니라 창 전체가 로그인이다(2026-09-26). 뒤의 셸은
         잠그고, 셸에서는 타이틀바(창 손잡이)를 덮지 않는다."""
         self.assertNotIn("openSheet", FIRSTRUN_TS)
-        screen = _fn(FIRSTRUN_TS, "openSignInScreen")
+        screen = func(FIRSTRUN_TS, "openSignInScreen")
         self.assertIn('screen.id = "signin-screen"', screen)
         self.assertIn('shell?.setAttribute("inert", "")', screen)
         self.assertIn('shell?.removeAttribute("inert")', screen)
-        css = (ROOT / "app/src/app.css").read_text(encoding="utf-8")
+        css = read("app.css")
         # 로그인 뒤 한 번 묻는 화면(VIN-131)도 같은 규칙을 쓴다 — 한 선택자로 묶여 있다.
         self.assertRegex(css, r"#signin-screen, #device-graph-screen \{[^}]*position: fixed; inset: 0;")
         self.assertIn("[data-shell] #signin-screen, [data-shell] #device-graph-screen "
@@ -137,14 +128,14 @@ class GateTest(unittest.TestCase):
     def test_이메일이_먼저_Google_은_그다음이다(self):
         """웹 로그인과 같은 순서 · 같은 말. Google 단추는 연결 페이지에 via=google 을 실어
         로그인 안내를 건너뛴다(켜짐 여부는 그 페이지가 판단한다)."""
-        screen = _fn(FIRSTRUN_TS, "openSignInScreen")
+        screen = func(FIRSTRUN_TS, "openSignInScreen")
         self.assertLess(screen.index('id="fr-signin"'), screen.index('class="si-or"'))
         self.assertLess(screen.index('class="si-or"'), screen.index('id="fr-google"'))
         self.assertIn('google.addEventListener("click", () => void start("google"))', FIRSTRUN_TS)
         # Progress and cancellation now travel beside via; the actual device-flow
         # fixture in app/dev/signin-pending-check.mjs also checks the Google URL.
         self.assertRegex(FIRSTRUN_TS, r"connectAccount\([\s\S]*?\},\s*\{\s*via\b")
-        body = _fn(CONNECT_TS, "connectAccount")
+        body = func(CONNECT_TS, "connectAccount")
         self.assertIn('const via = opts.via ? `&via=${opts.via}` : "";', body)
         # `mcp=1`(VIN-132): 이 앱은 기기별 MCP 키를 받는다. 연결 페이지가 이 표시를 보고 만든다.
         self.assertIn("${encodeURIComponent(state)}&mcp=1${via}", body)
@@ -173,7 +164,7 @@ class GateTest(unittest.TestCase):
 
     def test_게이트는_셸에서만_선다(self):
         """웹은 세션 게이트가 따로 있고, 브라우저 dev 는 개발자의 자리다(캡처용 표식만)."""
-        body = _fn(FIRSTRUN_TS, "needsSignIn")
+        body = func(FIRSTRUN_TS, "needsSignIn")
         self.assertIn("IN_SHELL", body)
         self.assertIn("!hasAccount()", body)
 
@@ -184,7 +175,7 @@ class ExistingDataTest(unittest.TestCase):
         """VIN-131: 말없이 로컬로 정하던 것(0.9.4·0.9.5)을 한 번 알리기로 바꿨다. 사람이 고른
         모드(`mode_chosen`)만 그대로 따르고, 그 밖에는 이 기기에 작업이 있으면 "ask" 다
         (부르는 쪽이 로컬로 계속 가며 알린다. 옮기기는 설정에만 있다)."""
-        decide = _fn(API_TS, "decideDataMode")
+        decide = func(API_TS, "decideDataMode")
         self.assertIn('Promise<DataMode | "ask">', decide)
         chosen = decide.index("conf?.mode_chosen")
         ask = decide.index('if (await localStoreHasData()) return "ask";')
@@ -203,13 +194,13 @@ class ExistingDataTest(unittest.TestCase):
         """VIN-130: 설정 화면·사이드카·로컬 MCP 가 같은 파일을 본다. 창 저장소는 사본이다.
         설정이 먼저다(다음 기동이 창과 무관하게 같은 답을 낸다). 창의 값은 설정을 못 읽는
         옛 엔진일 때만 본다."""
-        decide = _fn(API_TS, "decideDataMode")
+        decide = func(API_TS, "decideDataMode")
         self.assertLess(decide.index("storage.config()"), decide.index("dataMode.get()"))
         self.assertLess(decide.index("if (!conf)"), decide.index("dataMode.get()"))
 
     def test_이_기기를_묻는_질문은_이_기기로_간다(self):
         """창에 "account" 가 남아 있으면 `call` 은 계정으로 가서 계정의 그래프를 센다."""
-        has = _fn(API_TS, "localStoreHasData")
+        has = func(API_TS, "localStoreHasData")
         self.assertIn('localCall("/domains"', has)
         self.assertIn('localCall("/docs"', has)
         self.assertNotRegex(has, r"[^l]call\(")
@@ -218,14 +209,14 @@ class ExistingDataTest(unittest.TestCase):
         """로컬에 남기는 이유는 "로컬로 두면 그 작업이 보인다" 하나다. 로컬 모드 화면은
         `tenant:local` 만 읽는다(VIN-179). 옛 `user:local` 행은 사이드카가 기동하며 접으므로
         (VIN-131, `api/owner_fold.py`) 여기서 따로 세지 않는다."""
-        has = _fn(API_TS, "localStoreHasData")
+        has = func(API_TS, "localStoreHasData")
         self.assertIn('const owner = "tenant:local";', has)
         self.assertNotIn('"user:local"', has)
 
     def test_스토어를_못_열면_없고_그_밖에_모르면_있다(self):
         """못 여는 스토어(503 · storeDown)는 로컬 모드가 보여 줄 것이 없다. 그 밖의 실패는
         종전대로 있다고 답한다: 모를 때 계정으로 넘기면 보이던 작업이 가려진다."""
-        has = _fn(API_TS, "localStoreHasData")
+        has = func(API_TS, "localStoreHasData")
         self.assertRegex(has, r"catch \(e: any\) \{\s*return !e\?\.storeDown;")
 
 

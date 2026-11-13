@@ -9,30 +9,24 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "app" / "src"
-API = (SRC / "api.ts").read_text(encoding="utf-8")
-VIEW = (SRC / "surfaces" / "view.ts").read_text(encoding="utf-8")
-DOC_DELETE = (SRC / "doc-delete.ts").read_text(encoding="utf-8")
+from _src import func, read
 
-
-def _fn(src: str, name: str) -> str:
-    a = src.index(f"function {name}(")
-    return src[a:src.index("\n}\n", a)]
+API = read("api")
+VIEW = read("view")
+DOC_DELETE = read("doc-delete")
 
 
 class Api(unittest.TestCase):
     def test_preview_is_a_dry_run_that_keeps_only_a_complete_digest(self):
-        fn = _fn(API, "previewDelete")
+        fn = func(API, "previewDelete")
         self.assertIn("dry_run: true", fn)
         self.assertIn("crypto.randomUUID()", fn)
         self.assertIn("p.preview_complete", fn)
         self.assertIn("guard.preview_digest = p.preview_digest", fn)
 
     def test_apply_carries_the_guard_and_retries_only_a_lost_response(self):
-        fn = _fn(API, "applyDelete")
+        fn = func(API, "applyDelete")
         self.assertIn("...(guard || {})", fn)
         self.assertIn("status === 0 || status === 502 || status === 504", fn)
         self.assertEqual(fn.count("send()"), 2)
@@ -68,15 +62,15 @@ class CallSites(unittest.TestCase):
 
 class WriteSignal(unittest.TestCase):
     def test_all_three_planes_announce_writes(self):
-        account = _fn(API, "accountCall")
+        account = func(API, "accountCall")
         self.assertIn('if (method === "POST") announceWrite(path, body);', account)
-        local = _fn(API, "localCall")
+        local = func(API, "localCall")
         self.assertIn("if (isWrite) announceWrite(path, body);", local)
         # 웹 쓰기를 빼던 조건이 되살아나면 계정 평면이 다시 빠진다.
         self.assertNotIn("!WEB && !path.startsWith", local)
 
     def test_previews_and_sync_machinery_are_not_writes(self):
-        fn = _fn(API, "announceWrite")
+        fn = func(API, "announceWrite")
         self.assertIn("dry_run === true", fn)
         self.assertIn('path.startsWith("/sync")', fn)
         self.assertIn('path.startsWith("/connect/")', fn)
