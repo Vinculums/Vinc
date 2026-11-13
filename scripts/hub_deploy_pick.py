@@ -198,8 +198,10 @@ def _git_out(*args: str) -> str:
 
 
 def _live_tag() -> str:
+    # 앱 이름은 워크플로의 "배포 대상" 스텝이 한 줄 설정에서 풀어 넘긴다. 없으면 지금의 허브다.
+    app = os.environ.get("HUB_APP") or "vinc-hub"
     r = subprocess.run(
-        ["az", "containerapp", "show", "--name", "vinc-hub", "--resource-group", "vincsRG",
+        ["az", "containerapp", "show", "--name", app, "--resource-group", "vincsRG",
          "--query", "properties.template.containers[0].image", "-o", "tsv"],
         capture_output=True, text=True)
     if r.returncode != 0:

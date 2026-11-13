@@ -128,6 +128,9 @@ jobs:
       deploy: ${{ steps.pick.outputs.deploy }}
       sha: ${{ steps.pick.outputs.sha }}
       withheld: ${{ steps.pick.outputs.withheld }}
+      cae: ${{ steps.target.outputs.cae }}
+      hub_app: ${{ steps.target.outputs.hub_app }}
+      hub_url: ${{ steps.target.outputs.hub_url }}
     steps:
       # 손으로 돌리는 실행은 운영 담당만(repo 변수 PROD_OPERATORS, 쉼표로 구분한 로그인).
       # 실수 방지이지 보안 경계가 아니다: 쓰기 권한자는 이 단계를 지운 브랜치 판을 dispatch 할 수 있다.
@@ -151,6 +154,33 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      # 허브가 도는 환경은 `.github/container-apps-target.env` 의 CAE 한 줄이 정한다. 여기서 앱 이름과
+      # 주소로 풀어 출력으로 넘긴다. build-and-deploy 는 내보낼 커밋을 체크아웃하고 그 커밋은 이 파일보다
+      # 오래될 수 있으므로, 워크플로와 같은 커밋(이 잡의 체크아웃)에서 읽는 이 자리에서만 푼다.
+      # 앱이 선언한 환경에 있지 않으면 멈춘다: 설정과 실물이 어긋난 채 배포하면 다른 앱이 바뀐다.
+      - id: target
+        name: 배포 대상 (컨테이너 앱 환경은 한 줄 설정)
+        run: |
+          set -euo pipefail
+          cae=$(sed -n 's/^CAE=//p' .github/container-apps-target.env)
+          case "$cae" in
+            vinc-cae) app=vinc-hub ;;
+            vinc-cae-vnet) app=vinc-hub-vnet ;;
+            *) echo "::error::.github/container-apps-target.env 의 CAE 를 모른다: '$cae'" >&2; exit 1 ;;
+          esac
+          read -r env_id fqdn < <(az containerapp show -n "$app" -g vincsRG \
+            --query "[properties.managedEnvironmentId, properties.configuration.ingress.fqdn]" -o tsv | paste -sd' ')
+          case "$env_id" in
+            */managedEnvironments/"$cae") ;;
+            *) echo "::error::$app 이 $cae 에 있지 않다(환경: ${env_id:-없음})" >&2; exit 1 ;;
+          esac
+          [ -n "$fqdn" ] || { echo "::error::$app 의 인그레스 주소를 못 읽었다" >&2; exit 1; }
+          {
+            echo "cae=$cae"
+            echo "hub_app=$app"
+            echo "hub_url=https://$fqdn"
+          } >> "$GITHUB_OUTPUT"
+          echo "배포 대상: $app ($cae, https://$fqdn)"
       # 표준 라이브러리만 쓴다 — setup-python 없이 러너의 python3 로 돈다.
       # `DISPATCH_SHA` 는 workflow_dispatch 에서만 읽힌다. 이 워크플로에서 `github.sha`
       # 가 허용되는 유일한 자리다(파일 머리말).
@@ -166,6 +196,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           API: ${{ github.api_url }}
           REPO: ${{ github.repository }}
+          HUB_APP: ${{ steps.target.outputs.hub_app }}
         run: python3 -X utf8 scripts/hub_deploy_pick.py
 
   build-and-deploy:
@@ -181,6 +212,9 @@ jobs:
     # 이 잡이 내보내는 커밋. `github.sha` 가 아니다(파일 머리말).
     env:
       DEPLOY_SHA: ${{ needs.plan.outputs.sha }}
+      # 바꿀 앱과 그 주소. plan 잡의 "배포 대상" 스텝이 한 줄 설정에서 푼 값이다(그 스텝 주석 참조).
+      HUB_APP: ${{ needs.plan.outputs.hub_app }}
+      HUB_URL: ${{ needs.plan.outputs.hub_url }}
     # ⚠ 아래 `AZURE_CONFIG_DIR` 스텝의 유래. 이 잡이 셀프호스티드였을 때 러너는
     # 유지보수자의 대화형 셸과 **같은 기계**였고, az 는 기본으로 `~/.azure` 를 쓰므로
     # 둘이 한 프로필을 공유했다. 2026-08-28 에 그것으로 배포가 죽었다: 잡이 도는 동안
@@ -196,6 +230,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.plan.outputs.sha }}
+      # 앱 이름이나 주소가 비면 아래 az 호출이 엉뚱한 대상을 묻거나 빈 주소로 검증한다. 시작 전에 멈춘다.
+      - name: 배포 대상이 정해졌는가
+        run: |
+          [ -n "$HUB_APP" ] && [ -n "$HUB_URL" ] || { echo "::error::plan 잡이 배포 대상(HUB_APP, HUB_URL)을 넘기지 않았다" >&2; exit 1; }
+          echo "배포 대상: $HUB_APP ($HUB_URL)"
       # 모델 굽기 스텝이 쓴다(아래). 이미지와 같은 3.12 로 맞춘다 — 산출물은 ONNX 라
       # 버전에 안 묶이지만, `python` 이라는 이름이 있어야 그 스텝이 돈다.
       - uses: actions/setup-python@v5
@@ -220,7 +259,7 @@ jobs:
       # "기동은 되지만 기능이 죽은" 리비전이 나가므로 여기서 막는다.
       - name: Gate — 허브 런타임 env 존재 검증
         run: |
-          az containerapp show --name vinc-hub -g vincsRG \
+          az containerapp show --name "$HUB_APP" -g vincsRG \
             --query "properties.template.containers[0].env" -o json \
             | python scripts/check_hub_env.py
 
@@ -236,7 +275,7 @@ jobs:
       - name: Gate — 리비전 접미사가 비어 있는가(자동 번호 유지)
         run: |
           set -euo pipefail
-          suffix=$(az containerapp show --name vinc-hub -g vincsRG \
+          suffix=$(az containerapp show --name "$HUB_APP" -g vincsRG \
             --query "properties.template.revisionSuffix" -o tsv)
           if [ -n "$suffix" ]; then
             echo "::error::앱 템플릿에 revisionSuffix='$suffix' 가 박혀 있다 — 이대로" \
@@ -419,10 +458,11 @@ jobs:
         run: |
           set -euo pipefail
           : > "$RUNNER_TEMP/read-probe.log"
+          # 작은따옴표 안의 $HUB_URL 은 안쪽 sh 가 푼다. 잡 env 는 자식 프로세스에 그대로 내려간다.
           nohup sh -c '
             while [ ! -f "$RUNNER_TEMP/read-probe.stop" ]; do
               code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 100 \
-                https://vinc-hub.grayplant-559d42e3.koreacentral.azurecontainerapps.io/mcp \
+                "$HUB_URL/mcp" \
                 -X POST -H "Authorization: Bearer $PROBE_TOKEN" -H "Content-Type: application/json" \
                 -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{}}" || true)
               echo "$(date +%s) $code" >> "$RUNNER_TEMP/read-probe.log"
@@ -433,7 +473,7 @@ jobs:
       - name: Deploy to Container Apps
         run: |
           set -euo pipefail
-          APP="--name vinc-hub -g vincsRG"
+          APP="--name $HUB_APP -g vincsRG"
           IMAGE="vincacr.azurecr.io/vinc-hub:$DEPLOY_SHA"
           prev=$(az containerapp show $APP --query "properties.latestRevisionName" -o tsv)
           echo "PREV_REV=$prev" >> "$GITHUB_ENV"
@@ -508,8 +548,8 @@ jobs:
           # 끝내 못 뜨면 구 것이 계속 서비스하므로 허브는 내려가 있지 않다. 다만 반쯤 뜬 새
           # 리비전이 스토어를 만졌을 수 있으니 구 이미지로 되돌리는 것은 사람이 보고 정한다.
           echo "::error::새 리비전 $latest 이 10분 안에 서지 않았다(구 리비전 $prev 상태를 확인할 것)." >&2
-          echo "  img=\$(az containerapp revision show -n vinc-hub -g vincsRG --revision $prev --query 'properties.template.containers[0].image' -o tsv)" >&2
-          echo "  az containerapp update -n vinc-hub -g vincsRG --image \"\$img\"" >&2
+          echo "  img=\$(az containerapp revision show -n $HUB_APP -g vincsRG --revision $prev --query 'properties.template.containers[0].image' -o tsv)" >&2
+          echo "  az containerapp update -n $HUB_APP -g vincsRG --image \"\$img\"" >&2
           exit 1
 
       # 위 스텝이 Running 을 보고해도 라이브 템플릿이 이 커밋의 이미지인지는 별개라 다시 읽어
@@ -518,7 +558,7 @@ jobs:
       - name: 허브가 이 커밋의 이미지로 서 있는가
         run: |
           set -euo pipefail
-          h=$(az containerapp show -n vinc-hub -g vincsRG --query 'properties.template.containers[0].image' -o tsv)
+          h=$(az containerapp show -n "$HUB_APP" -g vincsRG --query 'properties.template.containers[0].image' -o tsv)
           echo "hub    = ${h}"
           [ "$h" = "vincacr.azurecr.io/vinc-hub:$DEPLOY_SHA" ] || {
             echo "::error::허브 템플릿의 이미지가 이 배포의 이미지가 아니다" >&2
@@ -537,7 +577,7 @@ jobs:
           while [ "$(date +%s)" -lt "$deadline" ]; do
             i=$((i + 1))
             code=$(curl -s -o "$RUNNER_TEMP/tools.json" -w '%{http_code}' --max-time 100 \
-              https://vinc-hub.grayplant-559d42e3.koreacentral.azurecontainerapps.io/mcp \
+              "$HUB_URL/mcp" \
               -X POST -H "Authorization: Bearer ${{ secrets.VINC_MCP_TOKEN }}" \
               -H "Content-Type: application/json" \
               -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' || true)
@@ -638,7 +678,7 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          APP="--name vinc-hub -g vincsRG"
+          APP="--name $HUB_APP -g vincsRG"
           before=$(az containerapp show $APP --query "properties.latestRevisionName" -o tsv)
           have=$(az containerapp secret list $APP --query "[].name" -o tsv)
           used=$(az containerapp show $APP --query "properties.template.containers[].env[].secretRef" -o tsv)
@@ -744,7 +784,7 @@ jobs:
           KEEP: "10"
         run: |
           set -euo pipefail
-          live=$(az containerapp show --name vinc-hub -g vincsRG \
+          live=$(az containerapp show --name "$HUB_APP" -g vincsRG \
                    --query "properties.template.containers[0].image" -o tsv | sed 's/.*://')
           echo "지금 도는 태그: $live (이건 절대 안 지운다)"
 
@@ -814,9 +854,9 @@ jobs:
         if: ${{ !cancelled() && env.HANDOFF_EXPECTED == '1' }}
         run: |
           set -euo pipefail
-          p=$(az containerapp show -n vinc-hub -g vincsRG \
+          p=$(az containerapp show -n "$HUB_APP" -g vincsRG \
                 --query "properties.template.containers[0].env[?name=='VINC_STORE_SNAPSHOT'].value | [0]" -o tsv)
-          [ -n "$p" ] || p=$(az containerapp show -n vinc-hub -g vincsRG \
+          [ -n "$p" ] || p=$(az containerapp show -n "$HUB_APP" -g vincsRG \
                 --query "properties.template.containers[0].env[?name=='VINC_DATA_DIR'].value | [0]" -o tsv)
           case "$p" in /data/*) ;; *) echo "::error::스냅샷 경로가 /data 밖이다: $p" >&2; exit 1 ;; esac
           rel=${p#/data/}
