@@ -217,13 +217,14 @@ def verify_assertion(public: bytes, token: str, *, now: float | None = None,
     exp = payload.get("exp")
     if exp is not None and (not isinstance(exp, (int, float)) or t > exp):
         return None
-    if max_age is not None:
+    if max_age is not None or max_skew is not None:
+        # iat 를 보는 검사는 둘 다 유한한 수인 iat 만 받는다. NaN 은 어느 비교도 거짓이고
+        # Infinity 는 나이를 먹지 않아서, 걸러내지 않으면 수명 검사를 지난다.
         iat = payload.get("iat")
-        if not isinstance(iat, (int, float)) or t > iat + max_age:
+        if isinstance(iat, bool) or not isinstance(iat, (int, float)) or not math.isfinite(iat):
             return None
-    if max_skew is not None:
-        # 유한한 수인 iat 만 받는다(NaN 은 어느 비교도 거짓이라 두 검사를 다 지난다).
-        iat = payload.get("iat")
-        if isinstance(iat, bool) or not isinstance(iat, (int, float)) or not math.isfinite(iat) or iat > t + max_skew:
+        if max_age is not None and t > iat + max_age:
+            return None
+        if max_skew is not None and iat > t + max_skew:
             return None
     return payload

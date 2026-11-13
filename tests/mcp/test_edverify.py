@@ -63,6 +63,20 @@ def test_exp_and_max_age_enforced():
     assert ev.verify_assertion(pub, old, now=100 + 60, max_age=120) is not None
 
 
+def test_max_age_alone_refuses_an_iat_that_is_not_a_finite_number():
+    # JSON 은 NaN·Infinity 를 싣는다. NaN 은 어느 비교도 거짓이고 Infinity 는 나이를 먹지 않는다.
+    seed = bytes(range(32))
+    pub = ev.secret_to_public(seed)
+    for iat in (float("nan"), float("inf"), float("-inf"), True, "100"):
+        tok = ev.sign_assertion(seed, {"iat": iat})
+        assert ev.verify_assertion(pub, tok, now=1000, max_age=120) is None, iat
+        assert ev.verify_assertion(pub, tok, now=1000, max_age=120, max_skew=60) is None, iat
+    # 유한한 iat 는 그대로 수명으로 본다.
+    fresh = ev.sign_assertion(seed, {"iat": 990.5})
+    assert ev.verify_assertion(pub, fresh, now=1000, max_age=120) is not None
+    assert ev.verify_assertion(pub, fresh, now=1000, max_age=120, max_skew=60) is not None
+
+
 def test_malformed_tokens_return_none():
     pub = ev.secret_to_public(bytes(range(32)))
     for bad in ["", "no-dot", "a.b.c", "!!.!!", "x." + "A" * 10]:
