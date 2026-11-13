@@ -6,7 +6,7 @@ claude.ai 커넥터/데스크탑 원격 타깃의 Bearer 로 쓰면, MCP 가 이
 소유자를 확인해 `owner=user:{public_id}` 로 강제 스탬핑한다(멀티테넌트 격리).
 
 B2 준수: MCP 는 계정 DB·시크릿에 접근하지 않는다. 우리 Ed25519 개인키로
-짧은 어서션(iss=mcp·aud=account·120s)을 서명해 신원을 증명하고, 계정이
+짧은 어서션(iss=mcp·aud=account·경로별 typ·120s)을 서명해 신원을 증명하고, 계정이
 **우리 공개키만** 핀해 검증한다(공개키 공유 ≠ 시크릿 공유). 응답(owner·plan)은
 sha256(key) 기준 60s 캐시 — 커넥션마다 계정을 때리지 않는다.
 
@@ -153,9 +153,20 @@ def _seed() -> bytes | None:
         return None
 
 
-def _sign_assertion(seed: bytes) -> str:
+#: 이 모듈이 부르는 계정 내부 경로마다 어서션에 싣는 `typ`. 경로 하나에 값 하나다: 두 경로가
+#: 한 값을 나눠 쓰면 한 경로에 서명한 어서션이 다른 경로에서도 통한다. 계정이 경로마다 typ 를
+#: 대조하면 바뀐 값은 거절되므로, 값을 바꾸려면 계정이 새 값을 먼저 받아야 한다.
+#: 커뮤니티 경로(`community.py`)와 실행 알림(`run_notify.py`)은 자기 typ 를 따로 싣는다.
+VERIFY_KEY_TYP = "verify-key"
+TEAM_MEMBERSHIP_TYP = "team-membership"
+SPACES_TYP = "spaces"
+PLAN_TYP = "plan"
+
+
+def _sign_assertion(seed: bytes, typ: str) -> str:
+    """경로의 typ 를 실은 어서션. iss·aud·iat·exp 는 계정 `gate()` 가 대조하는 그대로 둔다."""
     now = int(time.time())
-    return edverify.sign_assertion(seed, {"iss": "mcp", "aud": "account",
+    return edverify.sign_assertion(seed, {"iss": "mcp", "aud": "account", "typ": typ,
                                           "iat": now, "exp": now + 120})
 
 
@@ -203,7 +214,7 @@ def verify_key(raw: str, team: str | None = None) -> dict | None:
         body = hubhttp.post_json(
             _account_url() + "/internal/mcp/verify-key", token=None,
             payload={"key": raw, **({"team": team} if team else {})},
-            headers={"X-Vinc-Assertion": _sign_assertion(seed)}, timeout=_TIMEOUT)
+            headers={"X-Vinc-Assertion": _sign_assertion(seed, VERIFY_KEY_TYP)}, timeout=_TIMEOUT)
         sub = body.get("sub")
         if isinstance(sub, str) and sub:
             plan = normalize_plan(body.get("plan"), source="verify-key")
@@ -275,7 +286,7 @@ def verify_member(sub: str, team: str) -> dict | None:
         body = hubhttp.post_json(
             _account_url() + "/internal/mcp/team-membership", token=None,
             payload={"sub": sub, "team": team},
-            headers={"X-Vinc-Assertion": _sign_assertion(seed)}, timeout=_TIMEOUT)
+            headers={"X-Vinc-Assertion": _sign_assertion(seed, TEAM_MEMBERSHIP_TYP)}, timeout=_TIMEOUT)
         go, role = body.get("graph_owner"), body.get("role")
         if (isinstance(go, str) and go.startswith("team:")
                 and isinstance(role, str) and role):
@@ -328,7 +339,7 @@ def list_spaces(sub: str) -> list[dict] | None:
         body = hubhttp.post_json(
             _account_url() + "/internal/mcp/spaces", token=None,
             payload={"sub": sub},
-            headers={"X-Vinc-Assertion": _sign_assertion(seed)}, timeout=_TIMEOUT)
+            headers={"X-Vinc-Assertion": _sign_assertion(seed, SPACES_TYP)}, timeout=_TIMEOUT)
         raw = body.get("spaces")
         if isinstance(raw, list):
             rows = []
@@ -369,7 +380,7 @@ def list_communities(sub: str) -> list[dict] | None:
         body = hubhttp.post_json(
             _account_url() + "/internal/mcp/spaces", token=None,
             payload={"sub": sub},
-            headers={"X-Vinc-Assertion": _sign_assertion(seed)}, timeout=_TIMEOUT)
+            headers={"X-Vinc-Assertion": _sign_assertion(seed, SPACES_TYP)}, timeout=_TIMEOUT)
         raw = body.get("communities")
         if isinstance(raw, list):
             rows = [{"id": r["id"].lower(), "name": r.get("name") if isinstance(r.get("name"), str) else "",
@@ -399,7 +410,7 @@ def lookup_plan(sub: str) -> str | None:
         body = hubhttp.post_json(
             _account_url() + "/internal/mcp/plan", token=None,
             payload={"sub": sub},
-            headers={"X-Vinc-Assertion": _sign_assertion(seed)}, timeout=_TIMEOUT)
+            headers={"X-Vinc-Assertion": _sign_assertion(seed, PLAN_TYP)}, timeout=_TIMEOUT)
     except Exception:
         return None
     if body.get("sub") != sub:
