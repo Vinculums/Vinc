@@ -916,10 +916,12 @@ def _t_host_search(args, bridge):
     raw = _t_search({"query": args["query"], "limit": limit,
                      "owner": args.get("owner"),
                      **{k: args[k] for k in ("mode", "historical", "as_of", "known_at") if k in args}}, bridge)
-    # B9 — 청크 팔만 실패하고 노드 후보가 있으면 그것으로 답한다. 둘 다 없을 때만 실패다.
+    # B9 — 청크 팔만 실패하고 노드 후보가 있으면 그것으로 답한다. 살릴지는 REST /v1/search 와
+    # 같은 규칙(`toolcall.partial_search`)이 정한다. 살리지 않는 실패는 도구 오류다.
+    from .toolcall import partial_search
     failed = not isinstance(raw, dict) or raw.get("error") or raw.get("executed") is False
-    if failed and not (isinstance(raw, dict) and raw.get("node_hits")
-                       and not str(raw.get("error") or "").startswith(("invalid_", "stale_cursor"))):
+    kept = partial_search(raw) if failed else raw
+    if kept is None:
         raise RuntimeError("search_unavailable")
     seen: set[str] = set()
     docs: list[dict] = []
@@ -954,7 +956,7 @@ def _t_host_search(args, bridge):
         out["diagnostics"] = {k: raw[k] for k in ("arms", "node_semantic", "node_window",
                               "vector_rebuilding", "encoder_runtime_warning") if k in raw}
         if failed:
-            out["diagnostics"]["search_error"] = str(raw.get("error") or "chunk search did not run")
+            out["diagnostics"]["search_error"] = kept["search_error"]
         if raw.get("node_error"):
             out["diagnostics"]["node_search_degraded"] = True
         if raw.get("vector_note"):
@@ -3416,7 +3418,14 @@ def validate_args(name: str, args: dict | None) -> None:
 def call(name: str, args: dict | None, bridge: Bridge,
          forced_owner: str | None = None,
          entitlements: dict | None = None,
-         hub: bool = False, community_write=None, community_read=None) -> dict:
+         hub: bool = False, community_write=None, community_read=None, *, ctx=None) -> dict:
+    # ctx(`toolcall.CallContext`)가 오면 owner · 자격 · 커뮤니티 콜백을 거기서 읽는다. 따로 받는
+    # 키워드는 그것을 쓰는 호출자(CLI · events · 테스트)의 길이고, 둘을 함께 주면 TypeError 다.
+    if ctx is not None:
+        if any(v is not None for v in (forced_owner, entitlements, community_write, community_read)):
+            raise TypeError("pass ctx or the separate keywords, not both")
+        forced_owner, entitlements = ctx.forced_owner, ctx.entitlements
+        community_write, community_read = ctx.community_write, ctx.community_read
     tool = _BY_NAME.get(name)
     if tool is None:
         raise KeyError(f"unknown tool: {name}")

@@ -129,7 +129,7 @@ class HubSecretCleanup(unittest.TestCase):
             result = subprocess.run(
                 [self.bash, "-c", script], capture_output=True, text=True, encoding="utf-8", timeout=10,
                 env={"WORK": work, "SECRETS": secrets, "REFS": refs, "BEFORE": before, "AFTER": after,
-                     "PATH": "/usr/bin:/bin"})
+                     "HUB_APP": "vinc-hub", "PATH": "/usr/bin:/bin"})
             calls_file = Path(work) / "calls"
             calls = calls_file.read_text(encoding="utf-8").splitlines() if calls_file.exists() else []
         return result, calls
@@ -143,6 +143,7 @@ class HubSecretCleanup(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         removal = self.removals(calls)
         self.assertEqual(len(removal), 1)
+        self.assertIn("--name vinc-hub -g vincsRG", removal[0], "the app comes from the job's HUB_APP")
         self.assertTrue(removal[0].endswith("--secret-names layout-token encode-token --output none"), removal[0])
         self.assertNotIn("--show-values", " ".join(calls), "secret values must never be read")
 

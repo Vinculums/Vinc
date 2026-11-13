@@ -103,18 +103,14 @@ def _arguments(route: rest_routes.Route, path_fields: dict[str, str],
 def _partial_search(name: str, result: dict) -> dict:
     """B9 — 청크 팔만 실패하고 노드 팔이 후보를 냈으면 버리지 않고 성공으로 낸다.
 
-    사유는 `search_error` 로 옮긴다. vinc_brief 가 같은 실패를 그렇게 싣는다 — 최상위
-    `error` 는 이 봉투가 HTTP 오류로 바꾸므로 살아 있는 node_hits 까지 함께 사라졌다.
-    `executed` 는 brief 와 같이 노드 팔 기준이다. 노드 후보도 없으면 그대로 실패다.
-    인자 오류(invalid_*·stale_cursor)는 노드 팔과 무관하게 실패로 남긴다."""
-    error = str(result.get("error") or "")
-    if (name != "vinc_search" or not error or not result.get("node_hits")
-            or error == "store_busy" or error.startswith(("invalid_", "stale_cursor"))):
+    살릴지와 살린 모양은 `toolcall.partial_search` 하나가 정한다. 최상위 `error` 는 이 봉투가
+    HTTP 오류로 바꾸므로 그대로 두면 살아 있는 node_hits 까지 함께 사라진다. 살리지 않는 결과는
+    그대로 돌려주고 `_failure` 가 상태로 옮긴다(store_busy 는 재시도 가능한 503).
+    ⚠ 여기서는 `error` 가 있는 결과만 넘긴다. `error` 없이 `executed:false` 인 결과는 `_failure` 가
+    실패로 옮긴다(호스트 search 도구는 그것도 살린다)."""
+    if not result.get("error") or name != "vinc_search":
         return result
-    out = {key: value for key, value in result.items() if key != "error"}
-    out["search_error"] = error
-    out["executed"] = True
-    return out
+    return toolcall.partial_search(result) or result
 
 
 _ACCOUNT_CODE_RE = re.compile(r"[a-z][a-z0-9_]*")
@@ -352,16 +348,9 @@ def _handle(handler, method: str) -> bool:
     resolved = gated.auth or auth
     authenticated = True
     spent: dict = {}
+    # 호출의 값(owner · 등급 · 한도 · 자격 · 커뮤니티 콜백)은 `/mcp` 와 같은 `call_context` 가 만든다.
     outcome = toolcall.execute(route.tool, args, handler.app.bridge,
-                               forced_owner=resolved.get("owner"), plan=resolved.get("plan"),
-                               quota=handler.app.quota_for(resolved, spent),
-                               quota_view=handler.app.quota_view,
-                               entitlements=handler.app.entitlements_for(resolved.get("plan")),
-                               hub=True,
-                               community_write=(lambda args: handler.app.community_write(resolved, args))
-                               if handler.app.community_write is not None else None,
-                               community_read=(lambda args: handler.app.community_read(resolved, args))
-                               if handler.app.community_read is not None else None)
+                               handler.app.call_context(resolved, spent), hub=True)
     if outcome.kind == "invalid_argument":
         fail(400, "invalid_argument", _message(outcome.result))
         return True
