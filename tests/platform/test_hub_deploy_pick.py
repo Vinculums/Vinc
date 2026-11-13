@@ -328,6 +328,33 @@ class TriggerRunById(unittest.TestCase):
         self.assertEqual(len(seen), 2)   # 목록 + 잡. 런 단건 조회는 없다
 
 
+class LiveTag(unittest.TestCase):
+    """떠 있는 이미지를 읽는 az 호출이 넘겨받은 앱 이름을 쓰는가."""
+
+    def _argv(self, hub_app: str) -> list[str]:
+        seen: list[list[str]] = []
+
+        def fake_run(argv, **_kw):
+            seen.append(list(argv))
+            return mock.Mock(returncode=0, stdout="vincacr.azurecr.io/vinc-hub:" + _sha(7) + "\n", stderr="")
+
+        env = {k: v for k, v in hp.os.environ.items() if k != "HUB_APP"}
+        if hub_app:
+            env["HUB_APP"] = hub_app
+        with mock.patch.dict(hp.os.environ, env, clear=True), \
+                mock.patch.object(hp.subprocess, "run", fake_run):
+            self.assertEqual(hp._live_tag(), _sha(7))
+        return seen[0]
+
+    def test_넘겨받은_앱_이름을_묻는다(self):
+        argv = self._argv("vinc-hub-vnet")
+        self.assertEqual(argv[argv.index("--name") + 1], "vinc-hub-vnet")
+
+    def test_없으면_지금의_허브를_묻는다(self):
+        argv = self._argv("")
+        self.assertEqual(argv[argv.index("--name") + 1], "vinc-hub")
+
+
 class WorkflowShape(unittest.TestCase):
     """워크플로가 picker 의 답만 쓰는가."""
 
@@ -363,7 +390,8 @@ class WorkflowShape(unittest.TestCase):
                                          if not line.lstrip().startswith("#"))
                         if "github.sha" in text:
                             hits.append((name, i, key, k))
-        allowed = {("plan", 4, "env", "DISPATCH_SHA")}   # 0 번은 운영 담당 가드
+        pick = next(i for i, s in enumerate(self.doc["jobs"]["plan"]["steps"]) if s.get("id") == "pick")
+        allowed = {("plan", pick, "env", "DISPATCH_SHA")}
         # report 의 SHA 는 plan 이 죽었을 때의 마지막 대체값이다(`||` 사슬의 끝).
         allowed.add(("report", 0, "env", "SHA"))
         self.assertEqual(set(hits) - allowed, set())
@@ -383,6 +411,28 @@ class WorkflowShape(unittest.TestCase):
                 run = step.get("run") or ""
                 self.assertNotIn("verify.py", run, name)
                 self.assertNotRegex(run, r"(?m)^\s*python3? -m pytest", name)
+
+    def test_배포_대상은_plan_이_한_줄_설정에서_풀어_넘긴다(self):
+        plan = self.doc["jobs"]["plan"]
+        ids = [s.get("id") for s in plan["steps"]]
+        self.assertLess(ids.index("target"), ids.index("pick"))
+        target = plan["steps"][ids.index("target")]["run"]
+        self.assertIn(".github/container-apps-target.env", target)
+        self.assertIn("vinc-cae) app=vinc-hub ;;", target)
+        self.assertIn('*/managedEnvironments/"$cae")', target)
+        self.assertEqual(plan["steps"][ids.index("pick")]["env"]["HUB_APP"],
+                         "${{ steps.target.outputs.hub_app }}")
+        job = self.doc["jobs"]["build-and-deploy"]
+        self.assertEqual(job["env"]["HUB_APP"], "${{ needs.plan.outputs.hub_app }}")
+        self.assertEqual(job["env"]["HUB_URL"], "${{ needs.plan.outputs.hub_url }}")
+        setting = (_ROOT / ".github" / "container-apps-target.env").read_text(encoding="utf-8")
+        self.assertEqual([l for l in setting.splitlines() if not l.startswith("#")], ["CAE=vinc-cae"])
+
+    def test_배포_잡은_앱_이름과_옛_환경_주소를_적지_않는다(self):
+        for step in self.doc["jobs"]["build-and-deploy"]["steps"]:
+            run = step.get("run") or ""
+            self.assertNotIn("azurecontainerapps.io", run, step.get("name"))
+            self.assertNotRegex(run, r"containerapp [a-z ]*(-n|--name) vinc-hub\b", step.get("name"))
 
     def test_보류는_초록_런에서도_이슈를_연다(self):
         report = self.doc["jobs"]["report"]

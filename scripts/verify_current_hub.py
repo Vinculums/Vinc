@@ -52,6 +52,14 @@ def step_env(step, environment):
     return selected
 
 
+def target_env(app, hub_app):
+    """배포 잡이 plan 에서 받는 HUB_APP·HUB_URL 을 같은 앱의 실물에서 채운다. 검증 단계가 그 둘을 읽는다."""
+    fqdn = (app.get("properties", {}).get("configuration") or {}).get("ingress", {}).get("fqdn")
+    if not fqdn:
+        raise ValueError("hub ingress address is absent")
+    return {"HUB_APP": hub_app, "HUB_URL": "https://" + fqdn}
+
+
 def render(script):
     def replacement(match):
         name = match.group(1)
@@ -72,13 +80,15 @@ def main():
         raise ValueError("invalid deployment commit")
     subprocess.run(["git", "merge-base", "--is-ancestor", args.sha, "origin/main"], check=True)
     expected = "vincacr.azurecr.io/vinc-hub:" + args.sha
-    result = subprocess.run(["az", "containerapp", "show", "-n", "vinc-hub", "-g", "vincsRG", "-o", "json"],
+    # 앱 이름은 hub-deploy 의 "배포 대상" 과 같은 뜻이다. 넘겨받지 않으면 지금의 허브다.
+    hub_app = os.environ.get("HUB_APP") or "vinc-hub"
+    result = subprocess.run(["az", "containerapp", "show", "-n", hub_app, "-g", "vincsRG", "-o", "json"],
                             check=True, capture_output=True, text=True)
     app = json.loads(result.stdout)
     if not ready(app, expected):
         raise ValueError("current revision is not the expected ready image")
     revision = app["properties"]["latestRevisionName"]
-    state = subprocess.run(["az", "containerapp", "revision", "show", "-n", "vinc-hub", "-g", "vincsRG",
+    state = subprocess.run(["az", "containerapp", "revision", "show", "-n", hub_app, "-g", "vincsRG",
                             "--revision", revision, "--query", "properties.runningState", "-o", "tsv"],
                            check=True, capture_output=True, text=True).stdout.strip()
     if state not in ("Running", "RunningAtMaxScale"):
@@ -86,7 +96,7 @@ def main():
     source = subprocess.run(["git", "show", args.sha + ":.github/workflows/hub-deploy.yml"],
                             check=True, capture_output=True, text=True).stdout
     document = yaml.safe_load(source)
-    environment = {**os.environ, "DEPLOY_SHA": args.sha}
+    environment = {**os.environ, "DEPLOY_SHA": args.sha, **target_env(app, hub_app)}
     warnings = []
     for step in verification_steps(document):
         print("Verifying: " + step["name"], flush=True)

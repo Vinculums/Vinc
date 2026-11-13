@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from scripts.verify_current_hub import ready, render, step_env, verification_steps, REQUIRED
+from scripts.verify_current_hub import ready, render, step_env, target_env, verification_steps, REQUIRED
 
 
 def test_ready_requires_exact_image_and_ready_latest_revision():
@@ -58,3 +58,11 @@ def test_unreviewed_variables_and_expressions_are_refused():
     with pytest.raises(ValueError):
         step_env({"env":{"X":"literal"}},{})
     assert step_env({"env":{"SPACE":"${{ vars.VINC_GRAPH_SPACE }}"}},{"VINC_GRAPH_SPACE":"abc"})["SPACE"]=="abc"
+
+
+def test_replayed_steps_get_the_app_name_and_address_of_the_same_app():
+    """배포 잡의 검증 단계는 HUB_APP·HUB_URL 을 읽는다. 다시 돌릴 때도 같은 앱의 실물에서 채운다."""
+    app={"properties":{"configuration":{"ingress":{"fqdn":"vinc-hub.example.azurecontainerapps.io"}}}}
+    assert target_env(app,"vinc-hub")=={"HUB_APP":"vinc-hub","HUB_URL":"https://vinc-hub.example.azurecontainerapps.io"}
+    with pytest.raises(ValueError):
+        target_env({"properties":{}},"vinc-hub")
