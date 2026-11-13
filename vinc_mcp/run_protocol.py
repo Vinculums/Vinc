@@ -7,6 +7,10 @@ Vinc 는 그 산출물에 역할의 게이트(`OutputGate`)를 돌리고, 사람
 끝나면 실행 기록이 남는다. 상태는 따로 두지 않는다 - 실행 기록 Episode(`episode:run-*`)의 props
 가 곧 상태다: `outcome` 은 끝날 때까지 `waiting`, `state` 가 working·waiting·done 을 가른다.
 
+`outcome` 은 프로토콜이 실행을 어떻게 끝냈는가다(게이트 통과 success, 예산·만료·거절 blocked,
+abandoned). 일이 무엇으로 끝났는가는 에이전트가 출력과 함께 보고하는 `verdict` 가 따로 싣는다.
+사람이 읽는 낱말(제목의 꼬리)은 둘을 함께 보는 `reading` 이 정한다.
+
 한계: 호스트가 낸 문장은 증거가 아니다. 무언가를 했다는 주장은 `role_check` 와 같이 게이트에서
 막힌다(증거는 호스트가 관측한 도구 호출에서만 온다). 산출물 원문은 그래프에 넣지 않고 해시와
 길이만 남긴다.
@@ -63,6 +67,11 @@ PERSON_PATH = "the Approvals screen of the Vinc app (https://vincs.io/app/), sig
 STATE_KEYS = _run_rule.STATE_KEYS
 #: 그중 답 쪽(`_answer` 가 채우는 키). 믿지 않는 동기화는 처음 보는 실행에서 이것을 버린다.
 ANSWER_KEYS = _run_rule.ANSWER_KEYS
+#: 일이 내린 결론(`verdict`)의 낱말과 한 줄의 상한. 정본은 `store/run_state.py` 다.
+VERDICTS = _run_rule.VERDICTS
+VERDICT_NOTE_MAX = _run_rule.VERDICT_NOTE_MAX
+#: 게이트만 통과하고 끝난 실행의 outcome. 결론을 보고한 실행의 제목에는 이 낱말 대신 결론이 선다.
+SUCCESS = "success"
 TASK_MAX = 4000
 SUBJECT_MAX = 500
 #: 실행한 호스트 이름(예 "codex-cli 0.162.1"). 실행 기록의 host 가 된다.
@@ -270,13 +279,29 @@ def _save(bridge, owner: str, eid: str, props: dict, *, title: str) -> dict:
         "edges": [{"from": eid, "to": role, "type": "about"}] if role else []})
 
 
+def reading(props: dict) -> str:
+    """사람이 실행의 결과로 읽는 낱말(제목의 꼬리). 결론을 보고하지 않은 실행은 끝났으면 outcome,
+    아니면 state 다.
+
+    결론을 보고한 실행은 결론이 선다: 게이트만 통과한 success 는 `verdict fail`, 프로토콜이 끝내거나
+    아직 열린 실행은 그 낱말 뒤에 `blocked, verdict fail` 처럼 붙는다. 그래서 fail·blocked 를
+    보고한 실행이 그냥 success 로 읽히는 자리가 없다. 제목을 싣는 승인함 카드·이벤트·알림·검색이
+    모두 이 낱말을 본다."""
+    state = props.get("state")
+    tail = (_text(props.get("outcome")) or OPEN_OUTCOME) if state == "done" else _text(state)
+    verdict = props.get("verdict")
+    if verdict not in VERDICTS:
+        return tail
+    said = f"verdict {verdict}"
+    return said if tail in ("", SUCCESS) else f"{tail}, {said}"
+
+
 def _title(props: dict, eid: str = "") -> str:
     """실행 기록의 제목. run_id·역할·상태를 못 읽어도 만든다(run_id 모양이 아니면 episode id).
 
     길이는 `TITLE_CHARS` 안이다: 저장은 너무 긴 제목의 노드를 경고 하나만 남기고 건너뛴다."""
     role = _role_of(props)
-    state = props.get("state")
-    tail = (_text(props.get("outcome")) or OPEN_OUTCOME) if state == "done" else _text(state)
+    tail = reading(props)
     run_id = _text(props.get("run_id"))
     head = f"Run {run_id if _RUN_ID.fullmatch(run_id) else eid}"
     title = f"{head} of {role[len('concept:'):]}: {tail}" if role else f"{head}: {tail}"
@@ -321,6 +346,11 @@ def _view(props: dict, eid: str, policy: dict | None = None, **extra) -> dict:
            "step": _run_rule.count(props.get("step")), **extra}
     if props.get("capability_flags"):
         out["capability_flags"] = list(props["capability_flags"])
+    if props.get("verdict") in VERDICTS:
+        # 일이 내린 결론. outcome·end_reason(프로토콜이 끝낸 까닭)과 따로 읽힌다.
+        out["verdict"] = props["verdict"]
+        if isinstance(props.get("verdict_note"), str) and props["verdict_note"]:
+            out["verdict_note"] = props["verdict_note"]
     if props.get("answer") and state != "waiting":
         # 마지막 답. reply 의 글은 여기서만 호스트에게 간다.
         last = {"answer": props["answer"], "answered_at": props.get("answered_at", ""),
@@ -571,6 +601,54 @@ def _expires_in(args: dict):
     return raw, None
 
 
+def verdicts_for(policy: dict) -> tuple[str, ...]:
+    """이 역할이 보고하는 결론의 낱말. 검사하는 역할(tier verify 또는 output_kind verdict)은
+    pass·fail·blocked, 그 밖의 역할은 delivered·partial·blocked 다."""
+    if policy.get("tier") == "verify" or policy.get("output_kind") == "verdict":
+        return _run_rule.CHECK_VERDICTS
+    return _run_rule.WORK_VERDICTS
+
+
+def _verdict(args: dict, policy: dict, mode: str):
+    """(결론, 한 줄, 오류 문장). 결론을 보고하지 않았으면 (None, "", None).
+
+    결론은 출력과 함께만 온다. blocked 는 무엇이 막았는지 한 줄(`verdict_note`)로 이름 댄다.
+    오류면 아무것도 저장하지 않는다(`_submit` 이 저장 전에 거절한다)."""
+    raw, note = args.get("verdict"), args.get("verdict_note")
+    if raw in (None, "") and note in (None, ""):
+        return None, "", None
+    if raw in (None, ""):
+        return None, "", "Invalid: verdict_note goes with a verdict."
+    if mode != "output":
+        return None, "", "Invalid: verdict goes with output, not with an answer or abandon."
+    allowed = verdicts_for(policy)
+    if not isinstance(raw, str) or raw not in allowed:
+        return None, "", "Invalid: verdict for this role is one of " + ", ".join(allowed) + "."
+    if note is not None and not isinstance(note, str):
+        return None, "", "Invalid: verdict_note is a string."
+    note = " ".join((note or "").split())
+    if len(note) > VERDICT_NOTE_MAX:
+        return None, "", f"Invalid: verdict_note is at most {VERDICT_NOTE_MAX} characters."
+    if raw == "blocked" and not note:
+        return None, "", "Invalid: a blocked verdict names what blocked it in verdict_note."
+    return raw, note, None
+
+
+def _record_verdict(props: dict, verdict, note: str) -> None:
+    """이 출력이 보고한 결론을 기록에 둔다. 보고하지 않은 출력은 앞서 남은 결론을 그대로 둔다."""
+    if verdict is None:
+        return
+    props["verdict"] = verdict
+    if note:
+        props["verdict_note"] = note
+    else:
+        props.pop("verdict_note", None)
+
+
+def _bad_output(output) -> bool:
+    return not isinstance(output, str) or not output.strip() or len(output) > OUTPUT_MAX
+
+
 def _requests(args: dict, policy: dict, approved: list[str]):
     """호스트가 하려는 행동을 셋으로 가른다: 사람만(게이트로), 먼저 묻기, 금지. 이미 승인된 것은 뺀다."""
     raw = args.get("person_only_requests")
@@ -643,6 +721,9 @@ def _submit(args: dict, bridge, owner: str, eid: str, mode: str) -> dict:
     used, bad = _used_capabilities(args)
     if bad:
         return _failure("invalid_capabilities_used", bad)
+    verdict, note, bad = _verdict(args, policy, mode)
+    if bad:
+        return _failure("invalid_verdict", bad)
     _add_usage(props, args.get("usage"))
     _add_cited(props, args.get("cited_ids"))
     flags = _audit(policy, used, list(props.get("approved") or []))
@@ -669,9 +750,13 @@ def _submit(args: dict, bridge, owner: str, eid: str, mode: str) -> dict:
         return _failure("invalid_run_state", "Invalid: the run is not waiting for an answer.")
     over = _over_budget(policy, props)
     if over:
+        # 예산은 게이트보다 먼저 실행을 끝낸다. 그 전에 이 출력이 보고한 결론을 남긴다: 끝낸 까닭은
+        # end_reason(예산), 일의 결론은 verdict 로 따로 읽힌다.
+        if not _bad_output(args.get("output")):
+            _record_verdict(props, verdict, note)
         _end(props, "blocked", over)
         return _finish(bridge, owner, eid, props)
-    return _output(args, bridge, owner, eid, props, policy, flags)
+    return _output(args, bridge, owner, eid, props, policy, flags, (verdict, note))
 
 
 def _finish(bridge, owner, eid, props, **extra) -> dict:
@@ -799,9 +884,9 @@ def _restate(policy: dict, output: str, failed) -> dict:
     return {"claim": said[0], "next": "Restate claim as " + RESTATE + ". Then submit output again."}
 
 
-def _output(args, bridge, owner, eid, props, policy, flags=()) -> dict:
+def _output(args, bridge, owner, eid, props, policy, flags=(), verdict=(None, "")) -> dict:
     output = args.get("output")
-    if not isinstance(output, str) or not output.strip() or len(output) > OUTPUT_MAX:
+    if _bad_output(output):
         return _failure("output_required", f"Invalid: pass the output as one non-empty string of at "
                                            f"most {OUTPUT_MAX} characters.")
     gate_requests, asks, never, bad = _requests(args, policy, list(props.get("approved") or []))
@@ -813,6 +898,9 @@ def _output(args, bridge, owner, eid, props, policy, flags=()) -> dict:
     props["step"] = int(props.get("step", 0)) + 1
     props["output_ref"] = {"sha256": hashlib.sha256(output.encode("utf-8")).hexdigest(),
                            "chars": len(output)}
+    # 결론은 세어진 단계마다 남는다: 게이트가 막은 단계, 대기에 든 단계, 끝난 단계 모두. 다음 출력이
+    # 다른 결론을 보고하면 바뀌고, 보고하지 않으면 그대로다.
+    _record_verdict(props, *verdict)
     if never or flags:
         # 금지된 행동과, 역할이 허락하지 않은 능력을 이미 쓴 단계는 막는다. 실행은 열린 채 다음 시도를 받는다.
         props["gate_results"] = {"verdict": "block", "failed_checks": (

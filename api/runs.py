@@ -156,6 +156,12 @@ def list_runs(store, *, owner: str, cited: str | None = None, role: str | None =
                 "end_reason": str(props.get("end_reason") or ""),
                 "title": title, "date": str(row.get("date") or ""),
                 "host": str(props.get("host") or ""), "cited_ids": ids, "capability_flags": flags}
+        if props.get("verdict"):
+            # 일이 내린 결론(`run_state.readable` 이 아는 낱말만 남긴다). 결론을 보고하지 않은 실행의
+            # 항목은 이 키가 없어 그대로다.
+            item["verdict"] = props["verdict"]
+            if props.get("verdict_note"):
+                item["verdict_note"] = props["verdict_note"]
         if run:
             item["props"] = props
         if cited:

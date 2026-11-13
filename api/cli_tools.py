@@ -233,7 +233,9 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
             return "vinc_run_start", {**common, **{k: v for k, v in data.items()
                                                     if v not in (None, "")}}, None
         if args.runcmd == "submit":
-            data = {"run": args.run, "answer": args.answer, "cited_ids": args.cited}
+            data = {"run": args.run, "answer": args.answer, "cited_ids": args.cited,
+                    "verdict": getattr(args, "verdict", None),
+                    "verdict_note": getattr(args, "verdict_note", None)}
             if args.abandon:
                 data["abandon"] = True
             if args.output is not None:

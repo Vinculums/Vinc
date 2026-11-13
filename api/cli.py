@@ -21,6 +21,7 @@ from . import query as q
 from . import preference as pref
 from . import activate as act
 from . import cli_output
+from store import run_state as _run_state
 from store.querybase import split_csv as _csv
 
 
@@ -491,6 +492,10 @@ def _main(argv: list[str] | None = None) -> int:
                          metavar="ID", help="a graph id the output rests on; repeat for more")
     rns_sub.add_argument("--usage", default=None, metavar="JSON",
                          help='JSON like {"tool_calls":3,"tokens_in":900,"cost_usd":0.02}')
+    rns_sub.add_argument("--verdict", default=None, choices=_run_state.VERDICTS,
+                         help="with the final output: what the work concluded")
+    rns_sub.add_argument("--verdict-note", default=None, dest="verdict_note", metavar="TEXT",
+                         help="one line; required with blocked: what blocked it")
     rns_sub.add_argument("--owner", default=None)
     rns_show = rns.add_parser("show", help="print one run with its state and question")
     rns_show.add_argument("run", help="episode id or the run id")
