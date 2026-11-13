@@ -172,14 +172,27 @@ def _tombstone_owner(store, node_id: str, owner: str = "") -> str:
 
 
 def put_tombstone(store, node_id: str, label: str, owner: str, deleted_at: str,
-                  rev: int) -> bool:
+                  rev: int, *, removed: bool = True) -> bool:
     """수신한 삭제를 재전파용으로 남긴다. deleted_at 은 **원래 삭제 시각 보존**(의미),
     sync_seq 는 수신측 자기 번호(다른 기기의 pull 커서용) — 노드 스탬프와 같은 규칙.
+
+    `removed=False`(이번 적용이 노드를 지우지 않았다)인데 이 소유자의 표식이 이미 **같은** 삭제 시각을 가지면
+    아무것도 쓰지 않는다. 이미 아는 삭제에 새 순번을 매기면 그 표식이 보낸 쪽으로 되돌아가고, 거기서 또 새 순번을
+    받아 동기화마다 오간다. 노드를 지웠거나 시각이 다르면 받은 시각을 새 순번으로 적는다.
+    ⚠ 삭제 하나는 모든 스토어에서 한 시각으로 모여야 한다. 시각이 갈리면 두 시각 사이에 찍힌 재생성이 한쪽에만
+    간다. `apply_delta` 는 받은 시각으로 시계를 먼저 밀어 자르지 않고 적으므로 보통은 처음부터 같다. 그래도 받는
+    쪽이 그 시각을 자르면(받은 시각을 먼저 자르는 판의 앱·허브, 시계 한도 밖의 값) 다른 시각이 돌아온다. 이 경우 더 늦은 표식을
+    지키면 시각이 둘로 갈린 채 남으므로, 다른 시각은 받아 다시 내보내고 같은 시각이 돌아오면 멈춘다. 자른 값은
+    받은 값보다 늦지 않으므로 이 왕복은 한 시각에서 끝난다.
 
     반환 False = 그 자리를 **다른 소유자가 이미 쓰고 있어** 남기지 않았다(위 주석)."""
     held = _tombstone_owner(store, node_id, owner)
     if held and owner and held != owner:
         return False
+    if not removed:
+        have = get_tombstone(store, node_id, owner)
+        if have is not None and have["deleted_at"] == (deleted_at or ""):
+            return True
     store.run("MERGE (t:_Tombstone {node_id: $id}) SET t.label = $l, t.owner_id = $o, "
               "t.deleted_at = $da, t.rev = $rev, t.sync_seq = $seq, t.origin = 'remote'",
               {"id": pkns.key(owner, node_id), "l": label, "o": owner,
@@ -197,16 +210,21 @@ def del_tombstone(store, node_id: str, owner: str = "") -> None:
 
 
 def put_edge_tombstone(store, src: str, rel: str, dst: str, owner: str,
-                       deleted_at: str) -> bool:
+                       deleted_at: str, *, removed: bool = True) -> bool:
     """수신한 엣지 삭제를 재전파용으로 남긴다(노드 put_tombstone 동형 — deleted_at
-    원본 보존, sync_seq 는 수신측 자기 번호)."""
+    원본 보존, sync_seq 는 수신측 자기 번호). `removed` 는 노드와 비슷하다: 이번 적용이 엣지를 지우지 않았고 이
+    소유자의 표식이 같거나 늦은 삭제 시각을 가지면 새 순번을 매기지 않는다. 노드와 달리 늦은 표식도 지킨다: 엣지 삭제
+    시각은 어느 스토어도 자르지 않아 한 삭제가 늘 한 시각이고, 이른 시각은 더 앞선 삭제의 것이다."""
     # `ekey` 만 합성한다 — `src`/`rel`/`dst` **열**은 동기화 와이어로 그대로 나가므로
     # 논리여야 한다(계약 테스트가 번들에 U+001F 가 없음을 고정한다).
     k = pkns.ekey(owner, src, rel, dst)
-    held = store.run("MATCH (t:_EdgeTombstone) WHERE t.ekey = $k RETURN t.owner_id AS o",
-                     {"k": k})
+    held = store.run("MATCH (t:_EdgeTombstone) WHERE t.ekey = $k "
+                     "RETURN t.owner_id AS o, t.deleted_at AS da", {"k": k})
     if held and (held[0].get("o") or "") and owner and held[0].get("o") != owner:
         return False                       # 남의 행 — 덮지 않는다(위 주석)
+    if (not removed and held and (held[0].get("o") or "") == (owner or "")
+            and (held[0].get("da") or "") >= (deleted_at or "")):
+        return True
     store.run("MERGE (t:_EdgeTombstone {ekey: $k}) SET t.src = $s, t.rel = $r, "
               "t.dst = $d, t.owner_id = $o, t.deleted_at = $da, t.sync_seq = $seq, "
               "t.origin = 'remote'",
@@ -873,9 +891,13 @@ def edge_ref(src, rel, dst) -> str:
     return f"{src} -{rel}-> {dst}"
 
 
-def _edges_after_deletions(store, owner, bundle, refused=()):
+_EDGE_MARKERS_OF = ("MATCH (t:_EdgeTombstone) WHERE t.owner_id=$owner AND t.rel=$rel "
+                    "AND ((t.src=$src AND t.dst=$dst) OR ($symmetric AND t.src=$dst AND t.dst=$src)) ")
+
+
+def _edges_after_deletions(store, owner, bundle, refused=(), beaten=None):
     """끝점의 새 편집 증거가 없는 관계 재전송은 기존 삭제를 이기지 못한다. 받지 않은 노드의 스탬프는
-    증거가 아니다."""
+    증거가 아니다. `beaten` 에 목록을 주면 표식을 이긴 엣지의 표식 조건(`_EDGE_MARKERS_OF` 의 인자)을 담는다."""
     times = {n.get("id"): n.get("_updated_at") or ""
              for n in bundle.get("nodes") or [] if n.get("id") not in refused}
     carriers = {fragment: rel for rel, fragment in _REL_TO_FRAGMENT.items()}
@@ -883,14 +905,14 @@ def _edges_after_deletions(store, owner, bundle, refused=()):
     for edge in bundle.get("edges") or []:
         src, dst, kind = edge.get("from") or "", edge.get("to") or "", edge.get("type") or ""
         rel = "ATTACHES_TO:" + kind if src.startswith("record:") else carriers.get(kind, kind)
-        rows = store.run("MATCH (t:_EdgeTombstone) WHERE t.owner_id=$owner AND t.rel=$rel "
-                         "AND ((t.src=$src AND t.dst=$dst) OR ($symmetric AND t.src=$dst AND t.dst=$src)) "
-                         "RETURN t.deleted_at AS deleted_at",
-                         {"owner": owner, "rel": rel, "src": src, "dst": dst, "symmetric": rel == "RELATED_TO"})
+        params = {"owner": owner, "rel": rel, "src": src, "dst": dst, "symmetric": rel == "RELATED_TO"}
+        rows = store.run(_EDGE_MARKERS_OF + "RETURN t.deleted_at AS deleted_at", params)
         if rows and any(not (times.get(src, "") > (r.get("deleted_at") or "") and
                                  times.get(dst, "") > (r.get("deleted_at") or "")) for r in rows):
             continue
         kept.append(edge)
+        if rows and beaten is not None:
+            beaten.append(params)
     return kept
 
 
@@ -934,6 +956,7 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
     if trusted_sender:
         # 병합 쓰기가 시계를 읽기 전에 적는다. 믿지 않는 묶음의 `clock` 은 읽지 않는다.
         revstamp.note_trusted_clock(store, bundle.get("clock"))
+    before = _endpoint_stamps_before(store, owner, bundle)
     writes: list[dict] = []          # merge_fragment 로 쓸 노드(스탬프 포함)
     base_updates: list[tuple] = []   # (nid, label, base_fields, base_rev, base_ua)
     births: list[tuple] = []         # (label, pk, nid, remote_created) — 병합과 무관
@@ -1009,6 +1032,9 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
             writes.append({"node": _merged_fragment_node(label, nid, ntype, remote_snap),
                            "ua": r_ua, "rev": r_rev})
             base_updates.append((nid, label, remote_snap, r_rev, r_ua))
+            # 새로 받은 노드의 스탬프로도 시계를 민다. 안 밀면 시계가 느린 쪽이 그 노드를 곧 지울 때 삭제가 노드
+            # 스탬프보다 앞에 찍혀, 보낸 쪽이 그 삭제를 "삭제 뒤의 편집이 있다"로 읽고 무시한다.
+            revstamp.observe_hlc(store, r_ua, trusted=trusted_sender)
             continue
 
         l_rev, l_ua = local.pop("_rev"), local.pop("_ua")
@@ -1051,7 +1077,8 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
         base_updates.append((nid, label, remote_snap, r_rev, r_ua))
         revstamp.observe_hlc(store, r_ua, trusted=trusted_sender)
 
-    edges = _edges_after_deletions(store, owner, bundle, set(refused))
+    beaten: list[dict] = []
+    edges = _edges_after_deletions(store, owner, bundle, set(refused), beaten)
     if writes or edges:
         # stamp_edges=False — 원격발 엣지를 끝점 스탬프하면 다음 push 로 무변경 노드가
         # 에코된다(엣지 전파 스탬프는 **원 저작 기기**에서만, fragment 주석 참조).
@@ -1061,6 +1088,12 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
         out["executed"] = bool(res.get("executed"))
         out["edges"] = (res.get("merged") or {}).get("edges", {}).get("created", 0)
         out["warnings"] += res.get("warnings") or []
+        if out["executed"]:
+            # 다시 만든 엣지가 이긴 삭제 표식은 지운다(엣지를 로컬에서 만들 때와 같다). 끝점의 필드가 그대로면 이
+            # 스토어는 끝점 스탬프를 새로 적지 않으므로, 표식을 남기면 여기서 처음 받아 가는 기기가 그 엣지와 표식을
+            # 함께 받아 엣지를 지운다.
+            for params in beaten:
+                store.run(_EDGE_MARKERS_OF + "DELETE t", params)
     else:
         out["executed"] = True
 
@@ -1086,10 +1119,10 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
 
     # 삭제 전파(S4): 인바운드 tombstone 을 적용한다. 단 **노드가 삭제보다 나중에
     # 편집됐으면**(updated_at > deleted_at) 삭제를 무시한다(다른 기기의 재편집이 이김).
-    # 적용 시 자기 tombstone 을 남겨(put_tombstone) 다른 기기로 재전파한다.
+    # 적용 시 자기 tombstone 을 남겨(put_tombstone) 다른 기기로 재전파한다. 이미 아는 삭제는 다시 적지 않는다.
     # owner 술어 필수(risk-audit §3.2): 없으면 유효한 멤버 키 하나로 남의 concept 을
-    # 지울 수 있다. deleted_at 은 clamp — 인바운드 값이라 공격자가 미래로 조작해
-    # 어떤 재편집도 이기게 만들 수 있으니 서버 클록을 넘지 못하게 한다.
+    # 지울 수 있다. 미래로 조작한 deleted_at 이 어떤 재편집도 이기지 못하게: 믿지 않는 쪽의 상한 뒤 값은 받지
+    # 않고, 받는 쪽 시계가 따라가지 않는 값(`revstamp.observe_hlc` 의 한도 밖)은 이 스토어의 시계로 자른다.
     for t in bundle.get("tombstones") or []:
         tid, tlabel = t.get("node_id"), t.get("label")
         t_da = t.get("deleted_at") or ""
@@ -1098,8 +1131,6 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
             if tid:
                 refused.append(tid)
             continue
-        if t_da:
-            t_da = min(t_da, revstamp.hlc_now(store))
         # 라벨→PK 를 손으로 적지 않는다 — 동기화 라벨이 늘 때 여기가 빠지면 그
         # 라벨의 삭제가 조용히 전파되지 않는다(v12 Decision 이 그 자리였다).
         pk = _SYNC_PK.get(tlabel or "")
@@ -1111,6 +1142,12 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
             out["warnings"].append(f"delete marker contains U+001F (reserved for PK namespacing) "
                                    f"— skipped (id={tid!r})")
             continue
+        if t_da:
+            # 받은 삭제 시각으로 시계를 먼저 민다. 그래서 아래 min 은 한도 밖의 값만 자르고, 삭제 하나는 모든
+            # 스토어에서 같은 시각을 갖는다. 시계가 따라가기 전에 자르면 느린 기기는 그 뒤의 재생성을 허브의 표식보다
+            # 앞에 찍고, 빠른 기기는 허브가 자른 표식과 다른 시각을 지녀 둘 사이의 재생성을 받지 않는다.
+            revstamp.observe_hlc(store, t_da, trusted=trusted_sender)
+            t_da = min(t_da, revstamp.hlc_now(store))
         run = tlabel == "Episode" and run_state.run_id(tid) == tid
         cur = store.run(f"MATCH (x:{tlabel}) WHERE x.{pk} = $id AND x.owner_id = $owner "
                         "RETURN x.updated_at AS ua" + (", x.props AS props" if run else ""),
@@ -1129,13 +1166,14 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
                       {"id": pkns.key(owner, tid), "owner": owner})
             out["deleted"] += 1
         del_base(store, tid, owner)
-        put_tombstone(store, tid, tlabel, owner, t_da, int(t.get("rev") or 0))
-        revstamp.observe_hlc(store, t_da, trusted=trusted_sender)
+        # 노드를 지우지 않은 적용은 이미 아는 삭제에 새 순번을 매기지 않는다(`put_tombstone`).
+        put_tombstone(store, tid, tlabel, owner, t_da, int(t.get("rev") or 0), removed=bool(cur))
 
-    # 엣지 삭제 전파(S4 확장): 엣지는 타임스탬프가 없어 노드식 재편집 가드가 불가 —
-    # 삭제를 무조건 적용한다. '재생성이 삭제를 이긴다'는 별도 경로로 성립:
-    # 재생성 기기가 끝점을 스탬프(fragment._stamp_edge_endpoints — 로컬 엣지 툼스톤
-    # 상쇄 포함)해 다음 delta 에 엣지가 실려 되돌아온다.
+    # 엣지 삭제 전파(S4 확장): 엣지는 타임스탬프가 없어 끝점 스탬프로 가린다. 엣지를 만들면 그 기기가 양 끝을
+    # 스탬프하므로(fragment._stamp_edge_endpoints — 로컬 엣지 툼스톤 상쇄 포함) 다음 delta 에 엣지가 실려 간다.
+    # 양 끝이 모두 삭제 시각보다 늦게 찍힌 엣지는 그 삭제 뒤의 것으로 읽고 지우지 않는다(표식도 남기지 않는다).
+    # 들어오는 엣지를 표식에 견주는 `_edges_after_deletions` 와 같은 규칙이라, 엣지와 표식이 어느 순서로 와도
+    # 스토어마다 같은 결과가 난다.
     # owner 술어 필수(risk-audit §3.2): 양 끝 모두 owner 스코프 — 안 그러면 남의
     # 관계를 지울 수 있다. _extra_edges_plan 과 같은 술어 패턴.
     for t in bundle.get("edge_tombstones") or []:
@@ -1158,24 +1196,32 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
         pairs = [(src, dst)]
         if rel == "RELATED_TO":   # 무방향 의미 — 물리 역방향도 함께(delete_edge 동형)
             pairs.append((dst, src))
+        e_da = t.get("deleted_at") or ""
+        found: list[tuple[str, dict]] = []
+        after = False
         # 끝점 라벨 조합 전수(v12 — rel 하나에 조합이 여럿). delete_edge 와 동형.
         for sl, sp, dl, dp in ep:
             for s_, d_ in pairs:
-                cnt = store.run(f"MATCH (a:{sl})-[r:{carrier}]->(b:{dl}) "
-                                f"WHERE a.{sp} = $s AND b.{dp} = $d "
-                                f"AND a.owner_id = $owner AND b.owner_id = $owner{qualifier} "
-                                "RETURN count(r) AS c",
-                                {"s": pkns.key(owner, s_),
-                                 "d": pkns.key(owner, d_), "owner": owner, **extra})
-                if cnt and int(cnt[0].get("c") or 0):
-                    store.run(f"MATCH (a:{sl})-[r:{carrier}]->(b:{dl}) "
-                              f"WHERE a.{sp} = $s AND b.{dp} = $d "
-                              f"AND a.owner_id = $owner AND b.owner_id = $owner{qualifier} DELETE r",
-                              {"s": pkns.key(owner, s_),
-                               "d": pkns.key(owner, d_), "owner": owner, **extra})
-                    out["edges_deleted"] = out.get("edges_deleted", 0) + 1
-        put_edge_tombstone(store, src, rel, dst, owner, t.get("deleted_at") or "")
-        revstamp.observe_hlc(store, t.get("deleted_at") or "", trusted=trusted_sender)
+                match = (f"MATCH (a:{sl})-[r:{carrier}]->(b:{dl}) "
+                         f"WHERE a.{sp} = $s AND b.{dp} = $d "
+                         f"AND a.owner_id = $owner AND b.owner_id = $owner{qualifier} ")
+                params = {"s": pkns.key(owner, s_), "d": pkns.key(owner, d_), "owner": owner, **extra}
+                rows = store.run(match + "RETURN count(r) AS c, a.updated_at AS sa, b.updated_at AS ba",
+                                 params)
+                if rows and int(rows[0].get("c") or 0):
+                    found.append((match, params))
+                    # 시각 없는 표식은 견줄 것이 없어 그대로 적용한다. 끝점 스탬프는 이 묶음이 쓰기 전의 값으로
+                    # 견준다: 같은 묶음에 실려 온 끝점 편집(지운 쪽이 그 뒤에 고친 것)은 엣지를 다시 만든 것이 아니다.
+                    after = after or (bool(e_da) and all(
+                        before.get((sl, s_), r.get("sa") or "") > e_da
+                        and before.get((dl, d_), r.get("ba") or "") > e_da for r in rows))
+        if after:
+            continue                          # 삭제 뒤에 (다시) 만든 엣지 → 삭제 무시
+        for match, params in found:
+            store.run(match + "DELETE r", params)
+            out["edges_deleted"] = out.get("edges_deleted", 0) + 1
+        put_edge_tombstone(store, src, rel, dst, owner, e_da, removed=bool(found))
+        revstamp.observe_hlc(store, e_da, trusted=trusted_sender)
 
     out["applied"] = len(writes)
     if refused:
@@ -1184,6 +1230,28 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
     if protected:
         out[run_state.CODE] = sorted(set(protected))
         out["warnings"].append(run_state.warning(out[run_state.CODE]))
+    return out
+
+
+def _endpoint_stamps_before(store, owner: str, bundle: dict) -> dict[tuple[str, str], str]:
+    """묶음의 엣지 삭제 표식이 가리키는 끝점의, 이 묶음을 적용하기 전 스탬프. (라벨, id) → updated_at.
+
+    이 묶음이 처음 만드는 끝점은 담지 않는다(견줄 때 적용 뒤의 값을 쓴다): 그 끝점 사이의 엣지는 이 묶음에
+    실려 온 것뿐이다."""
+    out: dict[tuple[str, str], str] = {}
+    for t in bundle.get("edge_tombstones") or []:
+        src, rel, dst = t.get("src"), t.get("rel"), t.get("dst")
+        spec = q.sync_edge_spec(rel or "")
+        if not spec or not src or not dst or _physical(src) or _physical(dst):
+            continue
+        for sl, sp, dl, dp in spec[2]:
+            for label, field, nid in ((sl, sp, src), (dl, dp, dst), (sl, sp, dst), (dl, dp, src)):
+                if (label, nid) in out:
+                    continue
+                rows = store.run(f"MATCH (x:{label}) WHERE x.{field} = $id AND x.owner_id = $owner "
+                                 "RETURN x.updated_at AS ua", {"id": pkns.key(owner, nid), "owner": owner})
+                if rows:
+                    out[(label, nid)] = rows[0].get("ua") or ""
     return out
 
 

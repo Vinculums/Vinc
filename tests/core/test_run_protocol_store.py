@@ -233,3 +233,26 @@ def test_a_submit_after_expiry_still_closes_the_stored_row_as_before(store, monk
     raw = runs.list_runs(store, owner=OWNER, run="exp-3", stored=True)["runs"][0]["props"]
     assert raw["state"] == "done" and raw["outcome"] == "blocked" and raw["expired_at"]
     assert raw["end_reason"] == run_protocol.EXPIRED_REASON
+
+
+def test_notes_from_a_host_record_are_kept_on_the_run_and_listed(store, monkeypatch):
+    """호스트 기록이 글을 대신한 자리의 참고는 실행 기록에 남아 실행 목록과 승인함에 실린다."""
+    import time
+
+    from vinc_mcp import edverify
+    seed = bytes(range(32))
+    monkeypatch.setenv(run_protocol.OBSERVER_KEYS_ENV, json.dumps(
+        {OWNER: [edverify.b64u_encode(edverify.secret_to_public(seed))]}))
+    bridge = _StoreBridge(store)
+    eid = tools.call("vinc_run_start", {"role": ROLE, "task": "Review it.", "run_id": "notes-1"}, bridge)["run"]
+    entries = [{"command": "gh pr merge 12 --squash", "exit_status": 0}]
+    attestation = edverify.sign_assertion(seed, {
+        "typ": run_protocol.HOST_RECORD_TYP, "aud": run_protocol.HOST_RECORD_AUD, "run": eid, "step": 1,
+        "jti": "notes-1-step-1", "digest": run_protocol.record_digest(entries), "iat": int(time.time())})
+    out = tools.call("vinc_run_submit", {"run": "notes-1", "output": "Please merge #12.",
+                                         "host_record": {"entries": entries, "attestation": attestation}}, bridge)
+    assert out["state"] == "waiting" and out["pending_actions"] == ["merge"]
+    assert out["notes"] and "the record shows it" in out["notes"][0]
+    listed = runs.list_runs(store, owner=OWNER, run="notes-1")["runs"][0]
+    assert listed["notes"] == [{"step": 1, "note": out["notes"][0]}] == listed["props"]["record_notes"]
+    assert runs.waiting_runs(store, owner=OWNER)["runs"][0]["notes"] == listed["notes"]

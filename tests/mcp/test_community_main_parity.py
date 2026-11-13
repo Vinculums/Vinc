@@ -46,7 +46,18 @@ RENAMED = (
      "Community reads require an explicit community:<uuid> space."),
     (", ".join(MAIN_ACTIONS), ", ".join(community.ACTIONS)),
     (", ".join(MAIN_READS), ", ".join(community.READ_ACTIONS)),
+    # 개설이 빠져 커뮤니티 주소가 없는 쓰기의 거절 문장이 하나로 줄었다.
+    ("Community creation requires personal identity; other writes require a community space.",
+     "Community writes require an explicit community space and an action of vinc_community_write."),
+    ("Community creation uses personal identity; all other actions require community:<uuid> space.",
+     "Community writes require an explicit community:<uuid> space."),
 )
+#: 도구가 받지 않게 된 옛 이름. 고정 본에서는 계정으로 나갔고, 지금은 허브가 거절하고 아무것도 보내지 않는다.
+REMOVED = ("talk_create", "talk_comment", "lounge_create", "lounge_comment",
+           "community_join", "community_leave", "community_create")
+KEPT = tuple(a for a in MAIN_ACTIONS if a not in REMOVED)
+#: 그 이름을 부르는 관측 가운데 문장 치환만으로 같아지지 않는 것. 고정 본과 바이트로 대조하지 않고 아래 시험이 따로 본다.
+CHANGED = tuple("write:" + a for a in REMOVED) + ("refuse:preflight:create_in_community",)
 
 
 class Account:
@@ -198,19 +209,37 @@ def test_existing_actions_and_refusals_match_main(account):
     for old, new in RENAMED:
         assert old in main, "a listed difference no longer occurs: " + old[:60]
         main = main.replace(old, new)
-    assert set(json.loads(main)) == set(seen)
-    for name, value in json.loads(main).items():
+    expected = json.loads(main)
+    assert set(expected) == set(seen)
+    for name in CHANGED:
+        old = expected.pop(name)
+        assert old != seen.pop(name), "a listed difference no longer occurs: " + name
+        assert old["sent"] or not name.startswith("write:"), "the main fixture no longer sends " + name
+    for name, value in expected.items():
         assert seen[name] == value, name
-    assert _text(seen) == main
+    assert _text(seen) == _text(expected)
+
+
+def test_removed_actions_now_stop_in_the_hub(account):
+    """고정 본에서 계정으로 나가던 옛 이름이 지금은 허브의 인자 검사에서 멈춘다. 계정에는 한 바이트도 가지 않는다."""
+    seen = _observe(account)
+    for name in CHANGED:
+        assert seen[name]["sent"] == [], name
+    for action in REMOVED:
+        outcome = seen["write:" + action]["outcome"]
+        # 개인 주소로 부르던 개설도 주소를 보기 전에 인자 검사가 거절한다.
+        assert outcome["kind"] == "invalid_argument", action
+    assert "not accepted by vinc_community_write" in json.dumps(seen["write:talk_create"]["outcome"])
+    assert seen["refuse:direct:create_from_community"]["outcome"]["raise"] == "PermissionError"
 
 
 def test_every_existing_write_leaves_the_hub_with_the_same_envelope(account):
     """고정 본과 별개로 봉투를 읽어 둔다: 동작·payload 는 그대로, 들어온 길은 늘 mcp·full, 이름은 다듬어진 값."""
     seen = _observe(account)
-    for action in MAIN_ACTIONS:
+    for action in KEPT:
         (sent,) = seen["write:" + action]["sent"]
         body = json.loads(sent["body"])
         assert sent["path"] == "/internal/mcp/community" and sent["claims"]["typ"] == "community-write"
-        assert body == {"sub": USER, "community": None if action == "community_create" else A[10:],
+        assert body == {"sub": USER, "community": A[10:],
                         "action": action, "payload": PAYLOAD, "client_name": "Codex",
                         "channel": "mcp", "scope": "full"}

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import re
+import shlex
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping
 
@@ -181,17 +182,705 @@ class ToolProof:
     claim: str = ""
 
 
+#: 실행 기록의 행동 종류. 사람 전용 행동 id 로 잇는 것은 KIND_ACTIONS 다.
+RECORD_KINDS = ("vcs.push", "vcs.protected_push", "vcs.tag_push", "vcs.merge", "ci.dispatch", "publish", "deploy",
+                "message.send", "data.migrate", "other")
+#: 기록된 종류마다 그것이 해당하는 사람 전용 행동 id. 역할의 person_only 에 있는 것만 질문이 된다.
+#: 보호 브랜치나 읽을 수 없는 대상의 push 는 병합이자 태그 push 일 수 있으므로 둘 다다.
+KIND_ACTIONS: dict[str, tuple[str, ...]] = {
+    "vcs.merge": ("merge",),
+    "vcs.protected_push": ("merge", "push_tag"),
+    "vcs.tag_push": ("push_tag",),
+    "ci.dispatch": ("publish", "deploy"),
+    "publish": ("publish",),
+    "deploy": ("deploy", "publish"),
+    "message.send": ("send",),
+    "data.migrate": ("migration", "pk_namespacing_migration"),
+}
+#: 기록이 말할 수 있는 사람 전용 행동. 호스트가 본 기록이 있을 때만 이 행동은 기록이 정하고 글은 참고(notes)가
+#: 된다. 에이전트가 적은 기록은 질문을 더할 뿐이고 글 읽기는 그대로다. 이 밖의 행동(승인·가격·위험 수용 같은
+#: 결정)은 도구 호출로 드러나지 않으므로 언제나 글 읽기가 정한다.
+RECORDED_ACTIONS = frozenset(a for actions in KIND_ACTIONS.values() for a in actions)
+#: 기록을 남긴 쪽. host 는 호스트가 도구 호출을 직접 본 것, agent 는 에이전트가 스스로 적은 것이다.
+OBSERVERS = ("host", "agent")
+RECORD_MAX = 256
+COMMAND_MAX = 8192
+FIELD_MAX = 512
+
+
+@dataclass(frozen=True)
+class RecordedAction:
+    """One tool call the run made: a shell command line or a tool name, never a sentence.
+
+    ``observed_by="host"`` only when the host saw the call itself (its tool loop, a hook);
+    a record the agent wrote about its own calls is ``"agent"``. The kind is read from
+    ``command`` or ``tool`` by :func:`action_kinds`; a stated ``kind`` can only add to it.
+    ``target`` is what the host resolved the call to (the branch ``git push`` sent), if known.
+    An agent's ``target`` can only add as well: its call is also read as if no target were given.
+    """
+    command: str = ""
+    tool: str = ""
+    kind: str = ""
+    target: str = ""
+    exit_status: int | None = None
+    observed_by: str = "agent"
+    call_id: str = ""
+
+
+def record_entry_valid(entry: Any) -> bool:
+    """기록 한 줄이 정해진 꼴인가: 타입·길이·종류·누가 보았는가."""
+    return (isinstance(entry, RecordedAction)
+            and all(isinstance(getattr(entry, k), str) for k in ("command", "tool", "kind", "target", "call_id"))
+            and len(entry.command) <= COMMAND_MAX
+            and all(len(getattr(entry, k)) <= FIELD_MAX for k in ("tool", "kind", "target", "call_id"))
+            and bool(entry.command.strip() or entry.tool.strip() or entry.kind.strip())
+            and (entry.kind == "" or entry.kind in RECORD_KINDS)
+            and (entry.exit_status is None or type(entry.exit_status) is int)
+            and entry.observed_by in OBSERVERS)
+
+
+# 명령 한 줄을 단순 명령으로 나누는 구분자. 따옴표 안의 구분자도 나누지만 그 조각은 아는 명령이 아니어서 묻지 않는다.
+_SHELL_SPLIT = re.compile(r"\|\||&&|[;|&\n]|\$\(|`|\)")
+# 명령 앞에 붙어 실제 명령을 감싸는 낱말과 그 낱말의 값을 받는 옵션. 옵션 뒤가 실제 명령이다.
+# 값은 옵션 바로 뒤 낱말이거나 붙어 있다(-ubob, --user=bob). 목록에 없는 옵션은 값이 없다고 본다.
+_WRAPPERS: dict[str, frozenset[str]] = {
+    "sudo": frozenset({"-u", "-g", "-h", "-p", "-C", "-r", "-t", "-T", "-U", "-D", "-R", "--user", "--group",
+                       "--host", "--prompt", "--close-from", "--role", "--type", "--command-timeout",
+                       "--other-user", "--chdir", "--chroot"}),
+    "doas": frozenset({"-u", "-C"}),
+    "env": frozenset({"-u", "--unset", "-C", "--chdir", "-S", "--split-string", "-P"}),
+    "timeout": frozenset({"-s", "--signal", "-k", "--kill-after"}),
+    "nice": frozenset({"-n", "--adjustment"}),
+    "ionice": frozenset({"-c", "--class", "-n", "--classdata", "-p", "--pid", "-P", "--pgid", "-u", "--uid"}),
+    "stdbuf": frozenset({"-i", "-o", "-e", "--input", "--output", "--error"}),
+    "time": frozenset({"-f", "--format", "-o", "--output"}),
+    "xargs": frozenset({"-I", "-n", "-L", "-P", "-s", "-d", "-E", "-a", "--arg-file", "--delimiter", "--max-args",
+                        "--max-procs", "--max-chars", "--process-slot-var"}),
+    "watch": frozenset({"-n", "--interval"}),
+    "exec": frozenset({"-a"}),
+    "command": frozenset(), "nohup": frozenset(), "builtin": frozenset(),
+}
+_DURATION = re.compile(r"\d+(?:\.\d+)?[smhd]?|\.\d+[smhd]?")
+_SHELLS = frozenset({"bash", "sh", "zsh", "dash", "ksh", "fish"})
+# 셸의 값을 받는 옵션(-o pipefail, -O extglob, --rcfile 파일).
+_SHELL_VALUES = frozenset({"--rcfile", "--init-file", "--init-command"})
+# 다른 명령을 대신 돌리는 실행기(앞 낱말들)와 그 값을 받는 옵션. 옵션 뒤의 첫 낱말부터가 실제 명령이다.
+_RUNNER_PY = frozenset({"--from", "--with", "--with-editable", "--with-requirements", "-p", "--python", "--index",
+                        "--index-url", "--extra-index-url", "--directory", "--project", "--package", "--group",
+                        "--extra", "--env-file", "--spec", "--pip-args"})
+_RUNNERS: dict[tuple[str, ...], frozenset[str]] = {
+    ("uvx",): _RUNNER_PY, ("uv", "run"): _RUNNER_PY, ("uv", "tool", "run"): _RUNNER_PY,
+    ("pipx", "run"): _RUNNER_PY, ("poetry", "run"): frozenset(), ("pipenv", "run"): frozenset(),
+    ("hatch", "run"): frozenset(), ("npx",): frozenset({"-p", "--package"}), ("bunx",): frozenset({"-p", "--package"}),
+    ("pnpm", "dlx"): frozenset({"--package"}), ("pnpm", "exec"): frozenset({"--filter", "-F", "-C", "--dir"}),
+    ("yarn", "dlx"): frozenset({"-p", "--package"}),
+}
+_PYTHON = re.compile(r"python[\d.]*|pypy[\d.]*|py")
+# npm·pnpm·yarn 의 하위 명령 앞에 올 수 있는 값 옵션(npm --otp 123456 publish).
+_PACKAGE_VALUES = frozenset({"--otp", "--registry", "--userconfig", "--globalconfig", "--prefix", "-w", "--workspace",
+                             "--tag", "--access", "--cache", "--loglevel", "-C", "--dir", "--filter", "--cwd",
+                             "--scope", "--token", "--index", "-r", "--repository", "--repository-url",
+                             "--manifest-path", "--package", "-p", "--config"})
+_GIT_GLOBAL_WITH_VALUE = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path",
+                                    "--config-env", "--super-prefix"})
+# push 의 해롭지 않은 플래그. 목록에 없는 플래그는 대상을 모른다고 보고 묻는다.
+_PUSH_SAFE_FLAGS = frozenset({"-u", "--set-upstream", "--force-with-lease", "--force-if-includes", "-f", "--force",
+                              "--no-verify", "--verify", "-q", "--quiet", "-v", "--verbose", "--dry-run", "-n",
+                              "--atomic", "--no-atomic", "--progress", "--no-progress", "--porcelain", "-4", "-6",
+                              "--ipv4", "--ipv6", "--no-force-with-lease", "--no-signed"})
+_PUSH_REMOTES = frozenset({"origin", "upstream", "fork", "github"})
+_PUBLISH_TOOLS = {"npm": ("publish",), "pnpm": ("publish",), "yarn": ("publish", "npm"), "cargo": ("publish",),
+                  "twine": ("upload",), "uv": ("publish",), "poetry": ("publish",), "flit": ("publish",),
+                  "gem": ("push",), "vsce": ("publish",), "ovsx": ("publish",), "docker": ("push",),
+                  "podman": ("push",), "hatch": ("publish",), "dotnet": ("nuget",), "mvn": ("deploy",)}
+_RUN_SCRIPTS = {"publish": "publish", "release": "publish", "deploy": "deploy", "migrate": "data.migrate",
+                "db:migrate": "data.migrate", "migration": "data.migrate"}
+_DEPLOY_VERBS = frozenset({"apply", "create", "delete", "patch", "replace", "set", "rollout", "scale", "edit",
+                           "deploy", "up", "update", "upgrade", "install", "uninstall", "rollback", "destroy",
+                           "import", "restart", "start", "stop", "swap", "publish", "push", "sync", "cp"})
+_DEPLOY_TOOLS = frozenset({"az", "kubectl", "helm", "terraform", "tofu", "fly", "flyctl", "gcloud", "aws",
+                           "firebase", "wrangler", "pulumi", "heroku", "vercel", "netlify", "railway", "doctl"})
+_MAIL_TOOLS = frozenset({"sendmail", "mail", "mailx", "mutt", "swaks", "msmtp", "ssmtp"})
+_HTTP_TOOLS = frozenset({"curl", "wget", "http", "https", "xh"})
+_SEND_URL = re.compile(r"hooks\.slack\.com|slack\.com/api/(?:chat\.postMessage|chat\.postEphemeral|files\.upload)"
+                       r"|discord(?:app)?\.com/api/webhooks|api\.telegram\.org/bot[^/\s]*/send|api\.sendgrid\.com"
+                       r"|api\.mailgun\.net|api\.postmarkapp\.com|api\.resend\.com|api\.twilio\.com/\S*/Messages"
+                       r"|graph\.microsoft\.com/\S*sendMail|gmail\.googleapis\.com/\S*/send"
+                       r"|outlook\.office\.com/webhook", re.I)
+_MIGRATE_ARGS = re.compile(r"migrat", re.I)
+_SQL_DDL = re.compile(r"\b(?:alter|create|drop|truncate)\s+(?:table|index|schema|database|type|view)\b|\.sql\b", re.I)
+_MIGRATE_TOOLS = frozenset({"alembic", "flyway", "liquibase", "sqitch", "dbmate", "goose", "migrate", "knex",
+                            "sequelize", "prisma", "rails", "rake", "flask"})
+_MIGRATE_VERBS = frozenset({"upgrade", "downgrade", "stamp", "migrate", "deploy", "update", "up", "down", "rollback",
+                            "apply", "reset", "push", "repair", "clean"})
+# 도구 이름(mcp__서버__도구 의 도구 몫)과 능력 id 를 행동 종류로. 서버 안 메시지(다른 세션에 보내기)는 바깥 발송이 아니다.
+# 이름은 소문자로 견준다.
+_TOOL_KINDS: dict[str, tuple[str, ...]] = {
+    "merge_pull_request": ("vcs.merge",), "enable_pr_auto_merge": ("vcs.merge",), "merge_diff": ("vcs.merge",),
+    "actions_run_trigger": ("ci.dispatch",), "run_workflow": ("ci.dispatch",),
+    "create_release": ("publish", "vcs.tag_push"), "create_tag": ("vcs.tag_push",),
+    "slack_post_message": ("message.send",), "slack_reply_to_thread": ("message.send",),
+    "send_email": ("message.send",), "send_mail": ("message.send",), "reply_all": ("message.send",),
+    "github.pr.merge": ("vcs.merge",), "github.actions.run": ("ci.dispatch",),
+    "slack.message.send": ("message.send",), "email.send": ("message.send",)}
+# 브랜치에 커밋을 쓰는 도구. 쓰는 브랜치는 호스트가 푼 대상(target)으로만 안다.
+_BRANCH_WRITE_TOOLS = frozenset({"push_files", "create_or_update_file", "delete_file"})
+_MAIL_SERVER_TOOLS = frozenset({"send_message", "reply", "forward", "send_draft", "post_message"})
+_INTERNAL_SERVERS = ("claude-code-remote", "claude_code_remote", "vinc")
+
+
+def _argv(part: str) -> list[str]:
+    # 구분자로 나뉜 조각은 따옴표가 열린 채 끝날 수 있다(bash -lc 'gh pr merge 1; ls'). 닫아서 읽는다.
+    for close in ("", "'", '"'):
+        try:
+            return shlex.split(part + close, posix=True)
+        except ValueError:
+            continue
+    return [w.strip("'\"") for w in part.split()]
+
+
+def _option(argv: list[str], i: int, values: frozenset[str]) -> tuple[int, str, str | None]:
+    """argv[i] 의 옵션 하나: (다음 위치, 옵션, 값). 값을 받는 옵션이면 붙은 값이나 다음 낱말이 값이다.
+
+    짧은 옵션 묶음(-iu bob, -ubob)은 값을 받는 첫 글자에서 끊는다."""
+    word = argv[i]
+    if word.startswith("--"):
+        key, eq, value = word.partition("=")
+        if eq:
+            return i + 1, key, value
+        if key in values:
+            return i + 2, key, argv[i + 1] if i + 1 < len(argv) else ""
+        return i + 1, key, None
+    for j, letter in enumerate(word[1:], 2):
+        if "-" + letter in values:
+            if word[j:]:
+                return i + 1, "-" + letter, word[j:]
+            return i + 2, "-" + letter, argv[i + 1] if i + 1 < len(argv) else ""
+    return i + 1, word, None
+
+
+def _strip_wrappers(argv: list[str]) -> list[str]:
+    """sudo·env·timeout 같은 감싸개와 그 옵션(값 포함), 앞의 VAR=값 을 벗긴 실제 명령.
+
+    env -S '...' 는 그 글이 명령이고, timeout 은 옵션 뒤의 시간 하나를 더 건너뛴다."""
+    i = 0
+    while i < len(argv):
+        word = argv[i]
+        name = word.rsplit("/", 1)[-1]
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", word):
+            i += 1
+            continue
+        if name not in _WRAPPERS:
+            break
+        i += 1
+        split: str | None = None
+        while i < len(argv) and argv[i].startswith("-"):
+            if argv[i] == "--":
+                i += 1
+                break
+            if argv[i] == "-":
+                i += 1
+                continue
+            i, key, value = _option(argv, i, _WRAPPERS[name])
+            if name == "env" and key in ("-S", "--split-string") and value is not None:
+                split = value
+        if name == "timeout" and i < len(argv) and _DURATION.fullmatch(argv[i]):
+            i += 1
+        if split is not None:
+            argv, i = _argv(split) + argv[i:], 0
+    return argv[i:]
+
+
+def _shell_command(argv: list[str]) -> str | None:
+    """셸 호출(bash -lc '…', sh -ec, bash -o pipefail -c '…', bash -c -- '…', fish --command=…)이 돌리는 명령 글.
+
+    -c 가 든 짧은 옵션 묶음이 있으면 옵션이 끝난 뒤 첫 낱말이 명령이다. -o·-O 는 값을 하나씩 받는다.
+    bash <<< '…' 의 here-string 도 셸이 읽는 명령이다."""
+    if "<<<" in argv[1:-1]:
+        return argv[argv.index("<<<", 1) + 1]
+    i, command = 1, False
+    while i < len(argv):
+        word = argv[i]
+        if word == "--":
+            i += 1
+            break
+        if word.startswith("--command="):
+            return word.split("=", 1)[1]
+        if word.startswith("--"):
+            command = command or word == "--command"
+            i += 2 if word in _SHELL_VALUES else 1
+            continue
+        if len(word) > 1 and word[0] in "-+":
+            letters = word[1:]
+            command = command or (word[0] == "-" and "c" in letters)
+            i += 1 + letters.count("o") + letters.count("O")
+            continue
+        break
+    return argv[i] if command and i < len(argv) else None
+
+
+def _simple_commands(line: str, depth: int = 0) -> list[list[str]]:
+    out: list[list[str]] = []
+    for part in _SHELL_SPLIT.split(line):
+        argv = _strip_wrappers(_argv(part))
+        if not argv:
+            continue
+        head = argv[0].rsplit("/", 1)[-1]
+        # bash -lc "..." · eval "..." 는 안의 명령이 실제로 도는 명령이다.
+        inner = _shell_command(argv) if depth < 3 and head in _SHELLS else None
+        if inner is not None:
+            out += _simple_commands(inner, depth + 1)
+            continue
+        if depth < 3 and head == "eval":
+            out += _simple_commands(" ".join(argv[1:]), depth + 1)
+            continue
+        out.append([head] + argv[1:])
+    return out
+
+
+def _ref_kinds(name: str | None, target: str, *, source: bool = False) -> set[str]:
+    """push 의 ref 하나가 닿는 곳. 작업 브랜치면 빈 집합, 태그 꼴이면 tag, 보호·모르는 곳이면 protected.
+
+    명령의 ref 자리는 글과 달리 이름이 무엇인지 분명하다: 경로 한 칸이 지키는 이름일 때만 보호 브랜치다
+    (main-fix 는 브랜치다). 원본 자리(source)는 태그인가만 본다. 받는 곳은 받는 자리가 정한다.
+    """
+    if name in ("HEAD", "@") or name is None:
+        name = target or None
+    if not name:
+        return {"vcs.protected_push"}
+    if name.startswith("refs/tags/"):
+        return {"vcs.tag_push"}
+    if name.startswith("refs/heads/"):
+        name = name[len("refs/heads/"):]
+    elif name.startswith("refs/"):
+        return {"vcs.protected_push"}
+    unknown = set() if source else {"vcs.protected_push"}
+    low = name.lower()
+    parts = low.split("/")
+    if not _NAME_SHAPE.fullmatch(name) or not _GUARDED_SET.isdisjoint(parts):
+        return unknown
+    # 작업 브랜치 접두사가 있는 이름은 숫자가 있어도 브랜치다(같은 이름의 태그가 있어야만 태그로 간다).
+    if len(parts) >= 2 and parts[0] in PUSH_READING_LISTS["prefixes"] and (parts[0] != "users" or len(parts) >= 3):
+        return set()
+    if _VERSIONISH.search(low):
+        return {"vcs.tag_push"}
+    # 구분자 없는 낱말 하나(latest·foo)는 태그인지 브랜치인지 모른다.
+    return set() if any(c in name for c in "/-_") else unknown
+
+
+def _push_kinds(args: list[str], target: str) -> set[str]:
+    kinds: set[str] = set()
+    positional: list[str] = []
+    for word in args:
+        if word.startswith("-") and len(word) > 1:
+            if word in _PUSH_SAFE_FLAGS:
+                continue
+            if word in ("--tags", "--follow-tags"):
+                kinds.add("vcs.tag_push")
+            elif word.startswith("--force-with-lease="):
+                kinds |= _ref_kinds(word.split("=", 1)[1].split(":", 1)[0], "")
+            elif word == "--mirror":
+                kinds |= {"vcs.protected_push", "vcs.tag_push"}
+            else:
+                # --all · --delete · -d · --prune · -o · --repo 와 모르는 플래그: 무엇이 어디로 가는지 모른다.
+                kinds.add("vcs.protected_push")
+            continue
+        positional.append(word)
+    remote, refs = (positional[0], positional[1:]) if positional else (None, [])
+    if not refs and "--tags" in args:
+        # 대상 없이 --tags 만 주면 태그만 간다.
+        refs = ["refs/tags/*"]
+    if remote is not None and remote not in _PUSH_REMOTES:
+        # 배포 원격(heroku·production)이나 URL: 받는 곳이 작업 저장소인지 모른다.
+        kinds.add("vcs.protected_push")
+    for ref in refs or [None]:
+        if ref == "refs/tags/*":
+            kinds.add("vcs.tag_push")
+            continue
+        if ref is not None and ("*" in ref or ref.startswith(":") or ref.endswith(":")):
+            kinds.add("vcs.protected_push")
+            continue
+        ref = None if ref is None else ref.lstrip("+")
+        if ref is not None and ":" in ref:
+            source, destination = ref.split(":", 1)
+            if ":" in destination:
+                kinds.add("vcs.protected_push")
+                continue
+            if source not in ("HEAD", "@"):
+                kinds |= _ref_kinds(source, target, source=True)
+            kinds |= _ref_kinds(destination, "")
+        else:
+            kinds |= _ref_kinds(ref, target)
+    return kinds or {"vcs.push"}
+
+
+_GH_API_VALUE_FLAGS = frozenset({"-X", "--method", "-f", "-F", "--field", "--raw-field", "-H", "--header", "--input",
+                                 "-q", "--jq", "-t", "--template", "--cache", "--hostname", "-p", "--preview"})
+
+
+def _gh_api_kinds(rest: list[str]) -> set[str]:
+    method, path, values = "", "", []
+    i = 0
+    while i < len(rest):
+        word = rest[i]
+        if word in _GH_API_VALUE_FLAGS and i + 1 < len(rest):
+            if word in ("-X", "--method"):
+                method = rest[i + 1].upper()
+            else:
+                values.append(rest[i + 1])
+            i += 2
+            continue
+        if word.startswith("--method="):
+            method = word.split("=", 1)[1].upper()
+        elif word.startswith("-X") and len(word) > 2:
+            method = word[2:].upper()
+        elif not word.startswith("-") and not path:
+            path = word
+        else:
+            values.append(word)
+        i += 1
+    if not method:
+        method = "POST" if any(w in ("-f", "-F", "--field", "--raw-field", "--input") for w in rest) else "GET"
+    return _api_kinds(method, path, " ".join(values))
+
+
+def _body_field(body: str, name: str) -> str | None:
+    """요청 본문(-f base=main, JSON {"base":"main"})에서 한 필드의 값."""
+    found = re.search(rf"(?:^|[\s,{{&])[\"']?{name}[\"']?\s*[:=]\s*[\"']?([^\s\"',&}}]+)", body)
+    return found.group(1) if found else None
+
+
+def _api_kinds(method: str, path: str, body: str) -> set[str]:
+    """GitHub REST·GraphQL 호출 하나(메서드, 경로, 본문)가 닿는 종류. gh api 와 curl·wget·httpie 가 같이 쓴다."""
+    path = path.split("?", 1)[0].split("#", 1)[0].rstrip("/")
+    if method == "PUT" and re.search(r"pulls/\d+/merge$", path):
+        return {"vcs.merge"}
+    if "graphql" in path and re.search(r"mergePullRequest|enablePullRequestAutoMerge|enqueuePullRequest", body):
+        return {"vcs.merge"}
+    if method in ("POST", "PUT", "PATCH") and path.endswith("/dispatches"):
+        return {"ci.dispatch"}
+    if method == "POST" and path.endswith("/releases"):
+        return {"publish", "vcs.tag_push"}
+    if method in ("POST", "PATCH", "PUT", "DELETE") and re.search(r"/git/(?:refs|tags)\b", path):
+        if "refs/tags" in path + " " + body or path.endswith("/git/tags"):
+            return {"vcs.tag_push"}
+        named = re.search(r"/git/refs/heads/(.+)$", path) or re.search(r"refs/heads/([^\s'\"]+)", body)
+        return _ref_kinds(named.group(1) if named else None, "") or {"vcs.push"}
+    if method == "POST" and path.endswith("/merges"):
+        # 브랜치를 base 에 병합한다. base 가 작업 브랜치일 때만 해롭지 않다.
+        return {"vcs.push"} if _ref_kinds(_body_field(body, "base"), "") == set() else {"vcs.merge"}
+    if method in ("PUT", "DELETE") and "/contents/" in path:
+        # 파일 쓰기는 커밋이다. branch 가 없으면 기본 브랜치에 들어간다.
+        return _ref_kinds(_body_field(body, "branch"), "") or {"vcs.push"}
+    return set()
+
+
+_HTTP_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE"})
+# curl·wget·httpie 에서 요청 본문을 싣는 옵션과, 본문이 아닌 값을 받는 옵션.
+_HTTP_DATA = frozenset({"-d", "--data", "--data-raw", "--data-binary", "--data-urlencode", "--data-ascii", "--json",
+                        "-F", "--form", "--form-string", "-T", "--upload-file", "--post-data", "--post-file",
+                        "--body-data", "--body-file"})
+_HTTP_VALUES = _HTTP_DATA | frozenset({
+    "-X", "--request", "--method", "-H", "--header", "-u", "--user", "-o", "--output", "-A", "--user-agent",
+    "-e", "--referer", "-b", "--cookie", "-c", "--cookie-jar", "-w", "--write-out", "-m", "--max-time",
+    "--connect-timeout", "--retry", "-x", "--proxy", "-K", "--config", "--cacert", "--cert", "--key", "-E",
+    "-O", "--output-document", "-a", "--auth", "--auth-type", "--header-file"})
+_GITHUB_API = re.compile(r"api\.github\.com(/\S*)?|/api/v3(/\S*)|/api(/graphql)\b", re.I)
+
+
+def _http_kinds(head: str, args: list[str]) -> set[str]:
+    """curl·wget·httpie 호출이 메시지 API 나 GitHub API 의 바꾸는 경로에 닿는가."""
+    kinds = {"message.send"} if any(_SEND_URL.search(w) for w in args) else set()
+    method, path, body = "", None, []
+    i = 0
+    while i < len(args):
+        word = args[i]
+        if word.startswith("-") and len(word) > 1:
+            if word.startswith("-X") and len(word) > 2:
+                method, i = word[2:].upper(), i + 1
+                continue
+            if word.startswith("-d") and len(word) > 2:
+                body.append(word[2:])
+                i += 1
+                continue
+            i, key, value = _option(args, i, _HTTP_VALUES)
+            if key in ("-X", "--request", "--method") and value:
+                method = value.upper()
+            elif key in _HTTP_DATA and value is not None:
+                body.append(value)
+            continue
+        found = _GITHUB_API.search(word)
+        if found and path is None:
+            path = next((g for g in found.groups() if g), "/")
+        elif head in ("http", "https", "xh") and word.upper() in _HTTP_METHODS and path is None and not method:
+            method = word.upper()
+        elif head in ("http", "https", "xh") and path is not None and re.match(r"[\w.-]+:?=", word):
+            body.append(word)
+        i += 1
+    if path is not None:
+        kinds |= _api_kinds(method or ("POST" if body else "GET"), path, " ".join(body))
+    return kinds
+
+
+def _gh_kinds(args: list[str]) -> set[str]:
+    words: list[str] = []
+    skip = False
+    for word in args:
+        if skip:
+            skip = False
+        elif word in ("-R", "--repo", "--hostname"):
+            skip = True
+        else:
+            words.append(word)
+    if words[:2] == ["pr", "merge"]:
+        return set() if "--disable-auto" in words else {"vcs.merge"}
+    if words[:2] in (["workflow", "run"], ["run", "rerun"]):
+        return {"ci.dispatch"}
+    if words[:2] == ["release", "create"]:
+        return {"publish", "vcs.tag_push"}
+    if words[:2] in (["release", "upload"], ["release", "edit"]):
+        return {"publish"}
+    if words[:1] == ["api"]:
+        return _gh_api_kinds(words[1:])
+    return set()
+
+
+def _words(args: list[str], values: frozenset[str] = _PACKAGE_VALUES) -> list[str]:
+    """옵션과 그 값을 뺀 낱말들(npm --otp 123456 publish 의 publish 가 첫 낱말이다)."""
+    out, i = [], 0
+    while i < len(args):
+        if args[i].startswith("-") and len(args[i]) > 1:
+            i = _option(args, i, values)[0]
+            continue
+        out.append(args[i])
+        i += 1
+    return out
+
+
+def _runner_inner(argv: list[str]) -> list[str]:
+    """실행기(python -m, uvx, pipx run, uv run, npx …)가 대신 돌리는 명령. 실행기가 아니면 빈 목록."""
+    head = argv[0]
+    if _PYTHON.fullmatch(head) and "-m" in argv[1:]:
+        return argv[argv.index("-m", 1) + 1:]
+    for prefix, values in _RUNNERS.items():
+        if tuple(argv[:len(prefix)]) == prefix:
+            i = len(prefix)
+            while i < len(argv) and argv[i].startswith("-"):
+                if argv[i] == "--":
+                    i += 1
+                    break
+                i = _option(argv, i, values)[0]
+            return argv[i:]
+    return []
+
+
+def _command_kinds(argv: list[str], target: str, depth: int = 0) -> set[str]:
+    inner = _runner_inner(argv) if depth < 3 else []
+    if inner:
+        inner[0] = inner[0].rsplit("/", 1)[-1]
+        return _command_kinds(inner, target, depth + 1) | _command_kinds_of(argv, target)
+    return _command_kinds_of(argv, target)
+
+
+def _command_kinds_of(argv: list[str], target: str) -> set[str]:
+    head, args = argv[0], argv[1:]
+    words = _words(args)
+    if head == "git":
+        i = 0
+        while i < len(args) and args[i].startswith("-"):
+            i += 2 if args[i] in _GIT_GLOBAL_WITH_VALUE else 1
+        return _push_kinds(args[i + 1:], target) if i < len(args) and args[i] == "push" else set()
+    if head == "gh":
+        return _gh_kinds(args)
+    if head == "np":
+        # np 는 npm 게시 도구다(npx np).
+        return {"publish"}
+    if head in _PUBLISH_TOOLS and words[:1] and words[0] in _PUBLISH_TOOLS[head]:
+        if (head == "yarn" and words[0] == "npm" and words[1:2] != ["publish"]) or (
+                head == "dotnet" and words[1:2] != ["push"]):
+            return set()
+        return {"publish"}
+    if head in ("npm", "pnpm", "yarn", "bun") and words[:1] == ["run"] and len(words) > 1:
+        kind = _RUN_SCRIPTS.get(words[1]) or ("data.migrate" if _MIGRATE_ARGS.search(words[1]) else None)
+        return {kind} if kind else set()
+    if head in _DEPLOY_TOOLS:
+        if head in ("vercel", "netlify"):
+            return {"deploy"} if "--prod" in args or "--production" in args else set()
+        return {"deploy"} if any(w.split("-", 1)[0] in _DEPLOY_VERBS for w in words) else set()
+    if head in _MAIL_TOOLS:
+        return {"message.send"}
+    if head in _HTTP_TOOLS:
+        return _http_kinds(head, args)
+    if head in _MIGRATE_TOOLS:
+        return {"data.migrate"} if any(w in _MIGRATE_VERBS or w.startswith(("migrate", "db:")) for w in words) else set()
+    if (_PYTHON.fullmatch(head) or head in ("uv", "poetry", "pipenv")) and (
+            (any(w.endswith("manage.py") for w in args) and "migrate" in words)
+            or any(_MIGRATE_ARGS.search(w) for w in args[:4])):
+        return {"data.migrate"}
+    if head in ("psql", "mysql", "mariadb", "sqlcmd", "sqlite3") and any(_SQL_DDL.search(w) for w in args):
+        return {"data.migrate"}
+    return set()
+
+
+def _tool_kinds(tool: str, target: str) -> set[str]:
+    name = tool.strip().lower()
+    server, _, basename = name.rpartition("__") if name.startswith("mcp__") else ("", "", name)
+    if name in _TOOL_KINDS or basename in _TOOL_KINDS:
+        return set(_TOOL_KINDS.get(name) or _TOOL_KINDS[basename])
+    if basename in _BRANCH_WRITE_TOOLS:
+        # 브랜치에 커밋을 쓰는 도구. 호스트가 푼 대상이 없으면 어느 브랜치인지 모르므로 묻는다.
+        return _ref_kinds(target or None, "") or {"vcs.push"}
+    if basename.startswith(("publish_", "deploy_")):
+        return {"publish"} if basename.startswith("publish_") else {"deploy"}
+    if basename in _MAIL_SERVER_TOOLS and server and not any(s in server for s in _INTERNAL_SERVERS):
+        return {"message.send"}
+    return set()
+
+
+# 명령 읽기가 놓칠 수 있는 꼴(괄호·중괄호·for/if/while·앞 리다이렉션·목록에 없는 감싸개·변수가 든 API 경로)을
+# 막는 두 번째 그물(_unread_kinds 가 쓴다). 행동의 표지가 보이면 그 갈래의 가장 넓은 종류로 본다(모르면 묻는다).
+_SIGNS: tuple[tuple[re.Pattern[str], str, frozenset[str]], ...] = (
+    (re.compile(r"\bgh\b[^\n]*\bpr\b[^\n]*\bmerge\b|/pulls/[^\s\"']*/merge\b|/merges\b|\bmergePullRequest\b"
+                r"|\bmerge_pull_request\b|\bmerge_diff\b"),
+     "vcs.merge", frozenset({"vcs.merge", "vcs.protected_push"})),
+    (re.compile(r"\bgit\b[^\n]*\bpush\b"),
+     "vcs.protected_push", frozenset({"vcs.push", "vcs.protected_push", "vcs.tag_push"})),
+    (re.compile(r"\bcreateRef\b|\bupdateRef\b|/git/refs\b|\bcreate_tag\b"),
+     "vcs.tag_push", frozenset({"vcs.tag_push", "vcs.protected_push"})),
+    (re.compile(r"\bgh\b[^\n]*\bworkflow\b[^\n]*\brun\b|/dispatches\b"),
+     "ci.dispatch", frozenset({"ci.dispatch", "deploy", "publish"})),
+    (re.compile(r"\b(?:npm|pnpm|yarn|bun|cargo|gem|poetry|flit|hatch|uv)\b[^\n]*\bpublish\b|\btwine\b[^\n]*\bupload\b"
+                r"|\bgh\b[^\n]*\brelease\b[^\n]*\b(?:create|upload|edit)\b|/releases\b|\bdocker\b[^\n]*\bpush\b"
+                r"|\bbuildx\b[^\n]*--push\b|\bcreate_release\b|publish_website"),
+     "publish", frozenset({"publish", "deploy", "ci.dispatch"})),
+    (re.compile(r"\b(?:kubectl|helm|terraform|flyctl|vercel|netlify|heroku)\b[^\n]*"
+                r"\b(?:apply|deploy|upgrade|install|rollout|release)\b|deploy_website"),
+     "deploy", frozenset({"deploy", "publish", "ci.dispatch"})),
+    (re.compile(r"\b(?:sendmail|mailx?|mutt|swaks|msmtp)\b|chat[._]postMessage|hooks\.slack\.com"),
+     "message.send", frozenset({"message.send"})),
+    (re.compile(r"\b(?:alembic|flyway|liquibase)\b|\bmigrate\b"),
+     "data.migrate", frozenset({"data.migrate"})),
+)
+
+
+#: 읽기가 직접 아는 앞머리(위 표들 밖). 이 앞머리의 판단은 변수가 없을 때 그대로 믿는다.
+_READ_HEADS = frozenset({"git", "gh", "np", "uv", "poetry", "pipenv", "psql", "mysql", "mariadb", "sqlcmd", "sqlite3"})
+
+
+def action_kinds(entry: RecordedAction) -> frozenset[str]:
+    """The kinds one recorded call carries: read from its command line and tool name, plus its stated kind.
+
+    A stated kind only adds: a record that calls ``gh pr merge 12`` a ``vcs.push`` is still a merge.
+    Read-only and unknown calls carry none. A script the command runs (``./release.sh``) is not read.
+    """
+    kinds: set[str] = {entry.kind} if entry.kind in RECORD_KINDS else set()
+    stated = entry.target.strip()
+    # 호스트가 푼 대상은 그대로 쓴다. 에이전트가 적은 대상은 더할 뿐이라 대상 없이 읽은 것과 합친다.
+    targets = (stated,) if entry.observed_by == "host" else ("", stated) if stated else ("",)
+    for target in targets:
+        if entry.tool.strip():
+            kinds |= _tool_kinds(entry.tool, target)
+        if entry.command.strip():
+            for argv in _simple_commands(entry.command):
+                kinds |= _command_kinds(argv, target) or _unread_kinds(argv, target)
+    if entry.tool.strip() and not kinds:
+        kinds |= _signed_kinds(entry.tool)
+    return frozenset(kinds)
+
+
+def _known_head(word: str) -> bool:
+    head = word.rsplit("/", 1)[-1]
+    return (head in _READ_HEADS or head in _PUBLISH_TOOLS or head in _DEPLOY_TOOLS or head in _MAIL_TOOLS
+            or head in _HTTP_TOOLS or head in _MIGRATE_TOOLS or bool(_PYTHON.fullmatch(head)))
+
+
+def _signed_kinds(text: str) -> set[str]:
+    out: set[str] = set()
+    for sign, widest, _read in _SIGNS:
+        if sign.search(text):
+            out.add(widest)
+    return out
+
+
+def _unread_kinds(argv: list[str], target: str) -> set[str]:
+    """명령 읽기가 아무 종류도 내지 못한 단순 명령의 두 번째 읽기.
+
+    먼저 뒤쪽에서 아는 명령을 찾아 그 자리부터 다시 읽는다(괄호·for·if·리다이렉션·목록에 없는 감싸개·docker
+    exec 뒤). 없으면, 앞머리가 읽기가 아는 명령이고 인자에 변수($)가 없을 때 그 판단(읽기·작업 브랜치)을 믿는다.
+    그 밖에는 줄의 표지로 가장 넓은 종류를 본다(모르면 묻는다)."""
+    for i in range(1, len(argv)):
+        if _known_head(argv[i]):
+            found = _command_kinds([argv[i].rsplit("/", 1)[-1]] + argv[i + 1:], target)
+            if found:
+                return found
+    if _known_head(argv[0]) and not any("$" in w for w in argv):
+        return set()
+    return _signed_kinds(" ".join(argv))
+
+
+def recorded_person_only(record: Iterable[RecordedAction],
+                         person_only: Iterable[str]) -> dict[str, list[RecordedAction]]:
+    """Person-only action id -> the recorded calls that carry it.
+
+    An earlier approval never covers a recorded call: each call is asked in the step that records it."""
+    wanted = set(person_only)
+    out: dict[str, list[RecordedAction]] = {}
+    for entry in record:
+        for kind in sorted(action_kinds(entry)):
+            for action in KIND_ACTIONS.get(kind, ()):
+                if action in wanted and entry not in out.get(action, []):
+                    out.setdefault(action, []).append(entry)
+    return out
+
+
+_MASK = "***"
+# 저장·표시 전에 가리는 비밀의 꼴: 이름에 TOKEN·KEY·SECRET·PASSWORD·PAT 이 든 VAR=값 과 --옵션 값,
+# 인증 헤더, URL 의 사용자:비밀번호, curl -u 의 사용자:비밀번호, 알려진 토큰 접두사.
+_SECRET_NAME = r"[A-Za-z0-9_-]*(?:TOKEN|KEY|SECRET|PASSWORD|PASSWD|CREDENTIAL|(?:^|_|-)PAT(?=_|-|\b))[A-Za-z0-9_-]*"
+_SECRET_PATTERNS = (
+    (re.compile(rf"(?i)(?<![\w-])({_SECRET_NAME})=(\"[^\"]*\"|'[^']*'|\S+)"), r"\1=" + _MASK),
+    (re.compile(rf"(?i)(--{_SECRET_NAME})(\s+|=)(\"[^\"]*\"|'[^']*'|\S+)"), r"\1\2" + _MASK),
+    (re.compile(r"(?i)\b((?:proxy-)?authorization|x-[\w-]*(?:token|key|auth)[\w-]*|private-token|cookie)"
+                r"(\s*:\s*)[^'\"\n]+"), r"\1\2" + _MASK),
+    (re.compile(r"(?i)([a-z][a-z0-9+.-]*://)[^/\s:@]+:[^/\s@]+@"), r"\1" + _MASK + "@"),
+    (re.compile(r"(?<![\w-])(-u|--user)(\s+)[^\s:]+:\S+"), r"\1\2" + _MASK),
+    (re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{8,}|github_pat_[A-Za-z0-9_]{8,}|sk-[A-Za-z0-9_-]{8,}"
+                r"|xox[abposr]-[A-Za-z0-9-]{6,}|glpat-[A-Za-z0-9_-]{8,}|npm_[A-Za-z0-9]{16,}"
+                r"|pypi-[A-Za-z0-9_-]{16,}|AKIA[0-9A-Z]{16})"), _MASK),
+)
+
+
+def mask_secrets(text: str) -> str:
+    """Hide what looks like a credential in a command line before it is stored or shown."""
+    for pattern, replacement in _SECRET_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def describe(entry: RecordedAction) -> str:
+    """사람이 읽는 기록 한 줄: 무엇을 돌렸고 끝 상태가 무엇이며 누가 보았는가. 비밀은 가린 뒤 자른다."""
+    what = mask_secrets(entry.command.strip() or entry.tool.strip() or entry.kind)
+    status = "" if entry.exit_status is None else f", exit {entry.exit_status}"
+    seen = "observed by the host" if entry.observed_by == "host" else "stated by the agent"
+    return f"{what[:300]} ({seen}{status})"
+
+
 @dataclass(frozen=True)
 class GateResult:
     verdict: str
     failed_checks: tuple[str, ...] = ()
     person_only_actions: tuple[str, ...] = ()
     evidence_sentences: tuple[str, ...] = ()
+    #: 호스트 기록이 정하는 사람 전용 행동을 글이 말한 자리. verdict 에 들지 않고, 허브는 실행에 남겨 사람에게 보인다.
+    notes: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
-        return {"verdict": self.verdict, "failed_checks": list(self.failed_checks),
-                "person_only_actions": list(self.person_only_actions),
-                "evidence_sentences": list(self.evidence_sentences)}
+        out: dict[str, Any] = {"verdict": self.verdict, "failed_checks": list(self.failed_checks),
+                               "person_only_actions": list(self.person_only_actions),
+                               "evidence_sentences": list(self.evidence_sentences)}
+        if self.notes:
+            out["notes"] = list(self.notes)
+        return out
 
 
 class OutputGateStopped(RuntimeError):
@@ -436,7 +1125,16 @@ class OutputGate:
                  person_only_requests: Iterable[Mapping[str, Any]] = (),
                  phase: str = "output", manifest: Mapping[str, Any] | None = None,
                  resolved_sources: Iterable[str] = (),
-                 repositories: Iterable[str] = ()) -> GateResult:
+                 repositories: Iterable[str] = (),
+                 record: Iterable[RecordedAction] | None = None,
+                 host_observed: bool = False) -> GateResult:
+        """``record`` is the record of the calls this step made. ``None`` (a host that keeps no
+        record) reads person-only actions from the text as before. A record adds a question for
+        every recorded call that carries a person-only action; the text is still read as before.
+        Only with ``host_observed`` (a host observer signed this step's record, so it lists every
+        call) do the actions a record can show (:data:`RECORDED_ACTIONS`) come from the record
+        alone; the text about them then becomes ``notes``.
+        """
         props, extra = self._props, self._extra
         gates, never, person = props.get("gates"), props.get("never_checks"), props.get("person_only")
         if (not isinstance(answer, str) or not answer.strip() or len(answer) > 131072
@@ -469,6 +1167,15 @@ class OutputGate:
                    and isinstance(p.get("reason"), str) and bool(p["reason"].strip()) for p in requests):
             return GateResult("block", ("unknown_person_only_request",))
         pending = {p["action"] for p in requests}
+        ran = None if record is None else tuple(record)
+        if type(host_observed) is not bool or (host_observed and ran is None) or (ran is not None and (
+                len(ran) > RECORD_MAX or not all(record_entry_valid(e) for e in ran))):
+            return GateResult("block", ("invalid_action_record",))
+        # 호스트가 본 기록만 기록이 보일 수 있는 행동을 정하고 글을 notes 로 돌린다. 에이전트가 적은 기록은
+        # 빠뜨릴 수 있으므로 질문을 더할 뿐이다.
+        by_record = actions & RECORDED_ACTIONS if host_observed else set()
+        from_record = recorded_person_only(ran or (), actions)
+        notes: set[str] = set()
         selected_repos = tuple(repositories)
         if phase == "handoff" and (not selected_repos or not all(
                 isinstance(repo, str) and repo in {"Vinc", "Vinc-homepage"} for repo in selected_repos)):
@@ -498,9 +1205,21 @@ class OutputGate:
             """
             return _NEGATED.sub("", _QUOTED.sub("", sentence))
 
+        def raised(action: str, said: str) -> None:
+            """글이 사람 전용 행동을 말했다. 호스트 기록이 정하는 행동이면 참고만 남기고, 아니면 묻는다."""
+            if action in by_record:
+                notes.add(f"person_only ({action}): the text names it ('{mask_secrets(said)[:100]}'); the record "
+                          + ("shows it" if action in from_record else "shows no such call"))
+            else:
+                pending.add(action)
+                evidence.add(said[:160])
+
         def fails(check: dict[str, Any]) -> bool:
             kind = check["type"]
             if kind == "person_only":
+                for action, entries in from_record.items():
+                    pending.add(action)
+                    evidence.add(f"recorded {action}: {describe(entries[0])}"[:160])
                 spans: list[tuple[int, int]] | None = None
                 bounds: tuple[int, int] | None = None
                 scanned = False
@@ -527,15 +1246,13 @@ class OutputGate:
                                 if _rest_is_quiet(bounds, spans[index]):
                                     decision = False
                         if direct or decision:
-                            pending.add(action)
-                            evidence.add(sentence[:160])
+                            raised(action, sentence)
                 for match in _PERSON_FIELD.finditer(body):
                     value = match.group(1).strip().lower()
                     if value and not value.startswith(("none", "n/a", "-")):
                         for action in actions:
                             if action in value or any(word in value for word in _DECISION_WORDS.get(action, ())):
-                                pending.add(action)
-                                evidence.add(match.group(0)[:160])
+                                raised(action, match.group(0))
                 return bool(pending)
             if kind == "side_effect_evidence":
                 for sentence in sentences:
@@ -614,7 +1331,7 @@ class OutputGate:
                 (failed if gate["on_fail"] == "block" else interrupts).add(gate["id"])
         verdict = "block" if failed else "interrupt" if interrupts else "pass"
         return GateResult(verdict, tuple(sorted(failed | interrupts)), tuple(sorted(pending)),
-                          tuple(sorted(evidence)[:20]))
+                          tuple(sorted(evidence)[:20]), tuple(sorted(notes)[:20]))
 
     @property
     def person_only(self) -> list[dict[str, Any]]:

@@ -8,10 +8,12 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
 
-from api import cli, fragment, query as q
+from api import cli, fragment, query as q, query_base
 from test_decision_type import _fresh_store, _restore
 
 OWNER = "user:graph-order"
+# 엔진 행 순서를 뒤집는 패치는 `api.query` 와 `api.query_base` 에 함께 건다. query_base 의 함수
+# (주제 설명 미러 조회 등)는 `execute` 를 자기 모듈에서 찾으므로 한쪽만 걸면 그 조회는 뒤집히지 않는다.
 
 
 class GraphOrdering(unittest.TestCase):
@@ -63,7 +65,8 @@ class GraphOrdering(unittest.TestCase):
         for seed in (None, "concept:z", "decision:d"):
             with self.subTest(seed=seed):
                 expected = q.graph(owner=OWNER, seed=seed, depth=1, store=self.store)
-                with patch.object(q, "execute", side_effect=reverse_rows):
+                with patch.object(q, "execute", side_effect=reverse_rows), \
+                        patch.object(query_base, "execute", side_effect=reverse_rows):
                     actual = q.graph(owner=OWNER, seed=seed, depth=1, store=self.store)
                 self.assertEqual(json.dumps(expected), json.dumps(actual))
 
@@ -93,7 +96,8 @@ class GraphOrdering(unittest.TestCase):
         for topic in ("concept:z", "decision:d"):
             with self.subTest(topic=topic):
                 expected = q.decide(topic, owner=OWNER, depth=2, store=self.store)
-                with patch.object(q, "execute", side_effect=reverse_rows):
+                with patch.object(q, "execute", side_effect=reverse_rows), \
+                        patch.object(query_base, "execute", side_effect=reverse_rows):
                     actual = q.decide(topic, owner=OWNER, depth=2, store=self.store)
                 self.assertEqual(json.dumps(expected), json.dumps(actual))
                 self.assertTrue(expected["cross_domain"])

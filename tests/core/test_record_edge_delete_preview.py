@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from api import fragment, mutation_preview, query, sync
+from api import fragment, mutation_preview, query, revstamp, sync
 from api.server import VincApp
 from store.backend import open_store
 from store.config import load_config
@@ -60,8 +60,9 @@ def test_qualified_delete_does_not_remove_a_different_type(store):
 
 def test_record_tombstone_applies_and_recreation_clears_it(store):
     seed(store)
+    # 삭제는 엣지를 만든 뒤에 찍혀야 지운다(양 끝이 모두 삭제보다 늦으면 그 뒤에 다시 만든 엣지로 읽는다).
     marker = {'src':'record:source','dst':'concept:target','rel':'ATTACHES_TO:derives_from',
-              'deleted_at':'2026-10-04T01:00:00Z'}
+              'deleted_at':revstamp.hlc_now(store)}
     sync.apply_delta(owner=OWNER,bundle={'nodes': [], 'edges': [], 'edge_tombstones':[marker]},store=store)
     assert count(store,'MATCH (:Record)-[r:ATTACHES_TO]->(:Concept) RETURN count(r) AS c') == 0
     result = fragment.merge_fragment({'owner':OWNER,'nodes':[], 'edges':[
@@ -74,7 +75,7 @@ def test_qualified_tombstone_preserves_other_type_and_wrong_owner(store):
     seed(store)
     for owner, rel in [('user:other','ATTACHES_TO:derives_from'), (OWNER,'ATTACHES_TO:relates_to')]:
         sync.apply_delta(owner=owner,bundle={'nodes':[],'edges':[], 'edge_tombstones':[
-            {'src':'record:source','dst':'concept:target','rel':rel,'deleted_at':'2026-10-04T01:00:00Z'}]},store=store)
+            {'src':'record:source','dst':'concept:target','rel':rel,'deleted_at':revstamp.hlc_now(store)}]},store=store)
     assert count(store,'MATCH (:Record)-[r:ATTACHES_TO]->(:Concept) RETURN count(r) AS c') == 1
     assert not query.delete_edge('record:source','ATTACHES_TO','concept:target',owner='user:other',store=store)['found']
 
