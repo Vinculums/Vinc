@@ -21,6 +21,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import math
 import time
 
 # ── RFC 8032 §6 레퍼런스 Ed25519 (public domain) ────────────────────────────
@@ -190,10 +191,11 @@ def sign_assertion(seed: bytes, payload: dict) -> str:
 
 
 def verify_assertion(public: bytes, token: str, *, now: float | None = None,
-                     max_age: int | None = None) -> dict | None:
+                     max_age: int | None = None, max_skew: int | None = None) -> dict | None:
     """상대 공개키로 토큰 검증. 유효하면 payload dict, 아니면 None.
 
     exp(있으면) 만료 검사. max_age 주면 iat 기준 상한도 강제(exp 누락 방어).
+    max_skew 주면 iat 이 지금보다 그만큼 넘게 앞선 토큰(미래에 서명했다는 토큰)을 거절한다.
     단일 소비·req 바인딩은 호출자(스토어) 몫 — 여기선 서명·시간만 본다.
     """
     if not isinstance(token, str) or token.count(".") != 1:
@@ -218,5 +220,10 @@ def verify_assertion(public: bytes, token: str, *, now: float | None = None,
     if max_age is not None:
         iat = payload.get("iat")
         if not isinstance(iat, (int, float)) or t > iat + max_age:
+            return None
+    if max_skew is not None:
+        # 유한한 수인 iat 만 받는다(NaN 은 어느 비교도 거짓이라 두 검사를 다 지난다).
+        iat = payload.get("iat")
+        if isinstance(iat, bool) or not isinstance(iat, (int, float)) or not math.isfinite(iat) or iat > t + max_skew:
             return None
     return payload

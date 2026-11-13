@@ -157,6 +157,9 @@ def list_runs(store, *, owner: str, cited: str | None = None, role: str | None =
             item["verdict"] = props["verdict"]
             if props.get("verdict_note"):
                 item["verdict_note"] = props["verdict_note"]
+        if props.get("record_notes"):
+            # 호스트 기록이 글을 대신한 자리의 참고(`run_protocol._output`). 사람이 실행을 읽는 자리에 싣는다.
+            item["notes"] = list(props["record_notes"])
         if run:
             item["props"] = props
         if cited:
@@ -213,7 +216,8 @@ def waiting_runs(store, *, owner: str, limit: int = DEFAULT_LIMIT, now=None) -> 
             "step": props.get("step", 0), "ask": props["asks"],
             "started_at": str(props.get("started_at") or ""),
             "asked_at": view["asked_at"], "expires_at": view["expires_at"],
-            "expired": rp.expired(pending, moment), "decision": view})
+            "expired": rp.expired(pending, moment), "decision": view,
+            **({"notes": list(props["record_notes"])} if props.get("record_notes") else {})})
     items.sort(key=lambda r: (r["expired"], r["expires_at"], r["id"]))
     return {"kind": "runs.waiting", "executed": True, "runs": items[:limit], "total": len(items),
             "truncated": len(items) > limit}
