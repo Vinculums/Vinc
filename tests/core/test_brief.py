@@ -23,6 +23,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from api import fragment as frag  # noqa: E402
+from api import brief as brief_mod  # noqa: E402
 from api import query as q  # noqa: E402
 from store.embedded_backend import import_driver  # noqa: E402
 from vinc_mcp import tools as mcp_tools  # noqa: E402
@@ -518,11 +519,11 @@ class BriefRecordE2E(unittest.TestCase):
                 return {"executed": False, "note": "unknown node: " + node}
             return real(node=node, **kw)
 
-        q.node_context = flaky
+        brief_mod.node_context = flaky
         try:
             out = self._brief("agent test card call")   # 여유 2 (3 대 1)
         finally:
-            q.node_context = real
+            brief_mod.node_context = real
         self.assertEqual(out["status"], "resolved", out.get("note"))
         self.assertNotEqual(out["node"]["id"], "record:agent-test-card")
         self.assertEqual([f["id"] for f in out["fell_through"]],
@@ -645,12 +646,12 @@ class BriefRecordE2E(unittest.TestCase):
         """전부 실패하면 status 는 none 으로 남지만, 무엇을 못 읽었는지는 남긴다 —
         '안 맞았다'와 '맞았는데 못 읽었다'는 다른 사건이고 호출부의 다음 수가 다르다."""
         real = q.node_context
-        q.node_context = lambda *, node, **kw: {"executed": False,
+        brief_mod.node_context = lambda *, node, **kw: {"executed": False,
                                                 "note": "unknown node: " + node}
         try:
             out = self._brief("agent test card call")   # 여유 2 (3 대 1)
         finally:
-            q.node_context = real
+            brief_mod.node_context = real
         self.assertEqual(out["status"], "none")
         self.assertTrue(out["unreadable"])
         self.assertIn("unknown node", out["note"])

@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
-"""`api.brief` 는 `api.query` 가 같은 객체로 다시 내보내는 브리프 규칙이다(직참조·플래그·순위·확정·본문·근거·노출 수).
+"""`api.brief` 는 `api.query` 가 같은 객체로 다시 내보내는 브리프다(해소 규칙·답 조립·`brief()`).
 
 잠그는 것:
-- `api.brief` 의 최상위 이름은 전부 `api.query` 에 **같은 객체**로 있다. 그래야 `api/query.py` 에 남은 `brief()` 가
-  같은 규칙을 읽고, 평가 하네스(`rag_eval`)와 `from api.query import ...` 가 그대로 돈다.
+- `api.brief` 의 최상위 이름은 전부 `api.query` 에 **같은 객체**로 있다. 그래야 `q.brief` 를 부르는 사이드카·MCP 도구와
+  평가 하네스(`rag_eval`), `from api.query import ...` 가 그대로 돈다.
 - `api.brief` 는 `api.query` 를 import 하지 않는다(함수 안의 지연 import 포함).
-- 가져온 모듈은 제 것과 같은 객체다(`_retrieval` 은 `vinc_rag.retrieval`, `pkns` 는 `store.pkns`).
+- 가져온 이름은 제 것과 같은 객체다(`search`·`node_context` 는 `node_read`, `_seed_table` 은 `query_base`,
+  `_retrieval` 은 `vinc_rag.retrieval`, `pkns` 는 `store.pkns`).
 - 옮긴 함수가 전역에서 찾는 이름은 모두 이 모듈에 묶여 있다(빠진 import 는 부를 때에야 `NameError` 로 드러난다).
 """
 from __future__ import annotations
@@ -21,7 +22,9 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from api import brief  # noqa: E402
+from api import node_read  # noqa: E402
 from api import query  # noqa: E402
+from api import query_base  # noqa: E402
 from store import pkns  # noqa: E402
 from vinc_rag import retrieval  # noqa: E402
 
@@ -47,7 +50,7 @@ def _defined() -> list[str]:
 
 def test_every_brief_name_is_reexported_as_the_same_object():
     names = _defined()
-    assert "_brief_resolve" in names and "brief_reads_by_id" in names and "_SEM_PROMOTE" in names, names
+    assert "brief" in names and "_brief_resolve" in names and "_brief_answer" in names, names
     missing = [n for n in names if not hasattr(query, n)]
     other = [n for n in names if hasattr(query, n) and getattr(query, n) is not getattr(brief, n)]
     assert not missing, f"api.query 가 다시 내보내지 않는 brief 이름: {missing}"
@@ -70,6 +73,13 @@ def test_brief_does_not_import_api_query():
 def test_imported_modules_are_their_home_modules():
     assert brief._retrieval is retrieval and query._retrieval is retrieval
     assert brief.pkns is pkns and query.pkns is pkns
+
+
+def test_imported_names_are_their_home_modules_objects():
+    for name, home in (("search", node_read), ("node_context", node_read), ("_seed_table", query_base),
+                       ("_DOC_CONCEPT_PREFIX", query_base)):
+        assert getattr(brief, name) is getattr(home, name), name
+        assert getattr(query, name) is getattr(home, name), name
 
 
 def _codes(code):

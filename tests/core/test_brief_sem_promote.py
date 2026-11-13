@@ -15,6 +15,7 @@ from unittest import mock
 
 from api import fragment as frag
 from api import node_mirror
+from api import brief as brief_mod
 from api import query as q
 
 try:
@@ -299,7 +300,7 @@ class PromoteOnTheEngine(unittest.TestCase):
             return res
 
         off = self._brief(**{FLAG: "off"})
-        with mock.patch.object(q, "search", without_new_fields):
+        with mock.patch.object(brief_mod, "search", without_new_fields):
             stripped = self._brief(**{FLAG: "off"})
         self.assertEqual(off["status"], "choose")
         self.assertEqual(off, stripped)

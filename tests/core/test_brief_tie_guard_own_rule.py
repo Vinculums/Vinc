@@ -13,6 +13,7 @@ import unittest
 from unittest import mock
 
 from api import fragment as frag
+from api import brief as brief_mod
 from api import query as q
 
 try:
@@ -68,7 +69,7 @@ class TieGuardOwnRule(unittest.TestCase):
             res["validity_best_dropped"] = list(hidden)
             return res
 
-        with mock.patch.object(q, "search", with_hidden):
+        with mock.patch.object(brief_mod, "search", with_hidden):
             return q.brief(QUERY, owner=self.OWNER, store=self.store)
 
     def test_the_winner_resolves_without_hidden_rows(self):

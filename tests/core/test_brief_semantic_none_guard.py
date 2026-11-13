@@ -87,12 +87,11 @@ class SemanticNoneGuardTests(unittest.TestCase):
             vector_note=q.UNSTAMPED_RUNTIME_NOTE, encoder_runtime_warning=True)))
 
     def synthetic_brief(self, *hits):
-        with patch.object(q, "search", return_value=result(*hits)) as search, \
-             patch.object(q, "node_context", side_effect=AssertionError("no synthetic node read")), \
-             patch.object(q, "_brief_candidate_material", return_value=None), \
+        with patch.object(brief_mod, "search", return_value=result(*hits)) as search, \
+             patch.object(brief_mod, "node_context", side_effect=AssertionError("no synthetic node read")), \
+             patch.object(brief_mod, "_brief_candidate_material", return_value=None), \
              patch.object(brief_mod, "_brief_strict_on", return_value=False), \
-             patch.object(brief_mod, "_brief_expose_n", return_value=10), \
-             patch.object(q, "_brief_expose_n", return_value=10):
+             patch.object(brief_mod, "_brief_expose_n", return_value=10):
             got = q.brief("amber orbit", owner="user:synthetic", cfg=object(), store=NoIOStore())
         search.assert_called_once()
         self.assertTrue(got["executed"])
