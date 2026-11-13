@@ -72,18 +72,19 @@ resource "azurerm_subnet" "private_endpoints" {
 #
 # 관리 리소스 그룹(ME_ 접두)은 플랫폼이 만들고 관리한다. 거기에 인그레스용 공용 IP, 나가는
 # 트래픽용 공용 IP, Standard Load Balancer 가 생기고 과금된다. 그 그룹 안은 손대지 않는다.
+# 그 그룹의 이름은 적지 않는다. 적어 두면 Azure 가 돌려주는 표기가 조금만 달라도 plan 이
+# 환경 재생성(ForceNew)을 내고, 비워 두면 플랫폼이 정한 이름을 Terraform 이 그대로 받는다.
 resource "azurerm_container_app_environment" "vinc_cae_vnet" {
-  name                               = "vinc-cae-vnet"
-  resource_group_name                = var.resource_group_name
-  location                           = local.network_location
-  infrastructure_subnet_id           = azurerm_subnet.cae_infra.id
-  infrastructure_resource_group_name = "ME_vinc-cae-vnet_vincsRG_koreacentral"
-  internal_load_balancer_enabled     = false
-  public_network_access              = "Enabled"
-  zone_redundancy_enabled            = false
-  mutual_tls_enabled                 = false
-  log_analytics_workspace_id         = azurerm_log_analytics_workspace.vincs.id
-  logs_destination                   = "log-analytics"
+  name                           = "vinc-cae-vnet"
+  resource_group_name            = var.resource_group_name
+  location                       = local.network_location
+  infrastructure_subnet_id       = azurerm_subnet.cae_infra.id
+  internal_load_balancer_enabled = false
+  public_network_access          = "Enabled"
+  zone_redundancy_enabled        = false
+  mutual_tls_enabled             = false
+  log_analytics_workspace_id     = azurerm_log_analytics_workspace.vincs.id
+  logs_destination               = "log-analytics"
 
   # Consumption 프로필은 공급자가 최소·최대 개수를 보내지 않는다. 이름과 유형만 둔다.
   workload_profile {
