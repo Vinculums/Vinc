@@ -182,6 +182,8 @@ DIALOGS = {
     # 캔버스 위 노드 우클릭 메뉴는 캔버스 좌표가 필요해 아직 캡처하지 않았다(매트릭스의 갭).
     "surfaces/view.ts:openContextMenu": None,
     "surfaces/view.ts:confirmDestructive": "App · View · node-delete-confirm / dark",
+    # 지도 위 노드 카드의 지우기(view-cards.ts)도 같은 노드 지우기 확인이다.
+    "surfaces/view-cards.ts:confirmDestructive": "App · View · node-delete-confirm / dark",
     # 문서 홈의 문서 지우기는 같은 파괴 확인(confirmDestructive)이다. 따로 찍은 보드는 없고 노드 지우기 보드가 그 모양이다.
     "surfaces/home.ts:confirmDestructive": "App · View · node-delete-confirm / dark",
     # 작업하는 자리에서 만들기(Part 3). 옛 `new-node-sheet` 폼은 컴포저로 바뀌었다 — 옛 보드는

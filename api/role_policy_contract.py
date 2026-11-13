@@ -1,8 +1,17 @@
 """역할의 실행 정책 칸의 형식 검사: output_kind · act_policy · budget · capabilities · tool_servers.
 
 모두 선택이다. 쓰기는 거절하지 않고 경고만 한다(role_contract 와 같은 태도). 집행은 호스트와
-어댑터가 한다 — 여기는 값의 모양만 본다. 어휘는 `vinc_client/role_policy.py` 에도 있고
-integrations/parity 테스트가 둘이 같음을 고정한다(api 와 클라이언트는 서로 import 하지 않는다).
+어댑터가 한다 — 여기는 값의 모양만 본다.
+
+사본이 두 벌 있다.
+- 어휘는 `vinc_client/role_policy.py` 에도 있고 integrations/parity 테스트가 둘이 같음을 대조한다.
+  클라이언트는 따로 배포되는 패키지(`vinc-client`, 의존은 httpx · pydantic 뿐)라 `api` 를
+  import 할 수 없다.
+- `KEYS` 는 `vinc_mcp/roles.POLICY_KEYS` 에도 있고 tests/core/test_role_policy_contract.py 가
+  대조한다. 이 사본은 층 규칙이 강요하는 것이 아니다: 소유 게이트(`scripts/gate_ownership.py` 의
+  LAYER_BANS)가 막는 방향은 `vinc_mcp` → `api` 이고 `api` → `vinc_mcp` 는 열려 있다. 한쪽에서
+  가져다 쓸지, 사본과 대조 테스트를 유지할지는 열린 결정이다.
+
 근거: [[vinc.canon.agent-roles §3]]
 """
 from __future__ import annotations

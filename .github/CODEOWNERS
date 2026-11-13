@@ -38,7 +38,6 @@
 /packaging/bake_embed_model.py                   @Vinculums/rag
 /scripts/bench_models.py                         @Vinculums/rag
 /scripts/benchmark/                              @Vinculums/rag
-/scripts/eval_search.py                          @Vinculums/rag
 /scripts/make_queries.py                         @Vinculums/rag
 /scripts/make_queries_from_store.py              @Vinculums/rag
 /scripts/quantize_e5.py                          @Vinculums/rag
