@@ -352,16 +352,9 @@ def _handle(handler, method: str) -> bool:
     resolved = gated.auth or auth
     authenticated = True
     spent: dict = {}
+    # 호출의 값(owner · 등급 · 한도 · 자격 · 커뮤니티 콜백)은 `/mcp` 와 같은 `call_context` 가 만든다.
     outcome = toolcall.execute(route.tool, args, handler.app.bridge,
-                               forced_owner=resolved.get("owner"), plan=resolved.get("plan"),
-                               quota=handler.app.quota_for(resolved, spent),
-                               quota_view=handler.app.quota_view,
-                               entitlements=handler.app.entitlements_for(resolved.get("plan")),
-                               hub=True,
-                               community_write=(lambda args: handler.app.community_write(resolved, args))
-                               if handler.app.community_write is not None else None,
-                               community_read=(lambda args: handler.app.community_read(resolved, args))
-                               if handler.app.community_read is not None else None)
+                               handler.app.call_context(resolved, spent), hub=True)
     if outcome.kind == "invalid_argument":
         fail(400, "invalid_argument", _message(outcome.result))
         return True
