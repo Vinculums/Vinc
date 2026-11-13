@@ -263,9 +263,11 @@ def store_unavailable() -> dict:
 # ── 앱(라우트 핸들러의 상태 컨테이너) ─────────────────────────────────────────
 
 #: 팀 그래프 owner 의 접두. 정본은 `vinc_mcp/http_server._TEAM_OWNER_RE` 이고
-#: 여기 있는 것은 **사본**이다 — 사이드카는 MCP 층을 import 하지 않는다(다른 프로세스).
-#: 둘이 어긋나면 팀 그래프가 personal 로 보고되므로 교차계약 테스트가 대조한다
-#: (`record:fact-ap1-role-table-mirror` 와 같은 처방).
+#: 여기 있는 것은 **사본**이다. 둘이 어긋나면 팀 그래프가 personal 로 보고되므로
+#: tests/core/test_conventions_scope.py 가 대조한다(`record:fact-ap1-role-table-mirror` 와 같은 처방).
+#: 층 규칙이 사본을 강요하는 것은 아니다: 소유 게이트(`scripts/gate_ownership.py` 의 LAYER_BANS)가
+#: 막는 방향은 `vinc_mcp` → `api` 이고, 이 파일도 `vinc_mcp.roles` 를 import 한다. 정본을 직접
+#: 가져다 쓸지, 사본과 대조 테스트를 유지할지는 열린 결정이다.
 _TEAM_OWNER_PREFIX = "team:"
 _COMMUNITY_OWNER_PREFIX = "community:"
 _PERSONAL_OWNER_PREFIX = "user:"
