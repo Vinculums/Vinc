@@ -1239,7 +1239,13 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(404, {"error": f"no such route: DELETE {url.path}"})
         if self._origin_rejected():
             return self._json(403, {"error": "origin not allowed"})
-        if not self.app.authorized(self.headers.get("Authorization")):
+        # 계정 검증 장애는 거절이 아니다. 다른 입구처럼 다시 시도할 503 으로 답한다
+        # (연결을 답 없이 끊으면 호스트는 이유를 모른다).
+        try:
+            ok = self.app.authorized(self.headers.get("Authorization"))
+        except entitlement.VerificationUnavailable:
+            return self._verification_unavailable()
+        if not ok:
             return self._unauthorized()
         self.send_response(204)
         for k, v in self._cors_headers().items():
