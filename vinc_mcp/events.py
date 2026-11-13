@@ -10,6 +10,9 @@
 - 콜백 주소는 구독 때와 보낼 때마다 다시 풀어 공인 주소인지 보고, 확인한 그 주소로
   붙는다(TLS 이름은 원래 호스트). 리다이렉트는 따라가지 않는다.
 
+따르는 초안은 `modelcontextprotocol/experimental-ext-triggers-events` 의
+`docs/design-sketch-proposal.md`(SEP-3415 코드)와 developers.openai.com/plugins/build/mcp-events 다.
+두 문서가 어긋나는 곳은 계약 정본 §1 이 정한다.
 계약 정본(종류·커서·전달·보안·테넌시): [[vinc.plan.mcp-events-and-webhooks]]
 """
 from __future__ import annotations
@@ -37,10 +40,6 @@ from store.envflag import truthy
 from .netguard import NotPublic, Unresolved, public_address, public_ips  # noqa: F401 — public_address 는 이 이름으로도 들인다
 from .netguard import tls_connect as _tls_connect
 
-#: 따르는 초안의 고정점. 두 문서가 어긋나는 곳은 계약 정본 §1 이 정한다.
-EVENTS_SPEC = ("modelcontextprotocol/experimental-ext-triggers-events "
-               "docs/design-sketch-proposal.md (2026-02-19, SEP-3415 codes) "
-               "+ developers.openai.com/plugins/build/mcp-events")
 EXTENSION = "io.modelcontextprotocol/events"
 #: api/events.py 의 KINDS 와 같아야 한다(테스트가 대조한다). vinc_mcp 는 api 를 못 들인다.
 KINDS = ("role.reading_changed", "run.citation_superseded", "role.lesson_added",
@@ -53,9 +52,6 @@ FORBIDDEN = -32024
 RESOURCE_EXHAUSTED = -32025
 UNSUPPORTED = -32026
 CALLBACK_ERROR = -32027
-#: `lastError` 와 `data.reason` 에 쓰는 범주. 받는 쪽 본문·헤더는 절대 싣지 않는다.
-CATEGORIES = ("connection_refused", "timeout", "tls_error", "http_4xx", "http_5xx",
-              "challenge_failed")
 
 TTL_MIN_MS = 300_000
 TTL_MAX_MS = 3_600_000
@@ -107,6 +103,10 @@ class EventsError(Exception):
 
 
 class CallbackFailure(Exception):
+    """콜백 실패의 범주 하나. `lastError` 와 `data.reason` 에 이 범주만 싣는다: `connection_refused`,
+    `timeout`, `tls_error`, `status_category` 의 `http_4xx`·`http_5xx`, 확인의 `challenge_failed`.
+    받는 쪽 본문·헤더는 절대 싣지 않는다."""
+
     def __init__(self, category: str):
         super().__init__(category)
         self.category = category

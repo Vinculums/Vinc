@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """허브 도구 호출 클라이언트 — 호스티드 어댑터(`mcp.vincs.io/mcp`)에 JSON-RPC
 `tools/call` 을 한 번 왕복한다. 지금 부르는 쪽은 `api/refs.py`(인용 대조)와
-`scripts/agents_sync.py` 이고, `proxy.py` 는 주소(`_endpoint`)만 빌린다. MCP 도구
+`scripts/agents_sync.py` 이고, `proxy.py` 는 주소(`endpoint`)만 빌린다. MCP 도구
 디스패처(`tools.call`)는 이 모듈을 부르지 않는다.
 
 - stdlib `urllib` 만(F5 오프라인·외부 의존 0 유지).
@@ -23,7 +23,8 @@ from . import hubhttp
 DEFAULT_REMOTE_URL = "https://mcp.vincs.io/mcp"
 
 
-def _endpoint() -> str:
+def endpoint() -> str:
+    """원격 허브의 MCP 주소. env `VINC_REMOTE_MCP_URL`, 없으면 기본값. 끝의 `/` 는 뗀다."""
     return (os.environ.get("VINC_REMOTE_MCP_URL") or DEFAULT_REMOTE_URL).rstrip("/")
 
 
@@ -41,7 +42,7 @@ def call(name: str, args: dict, *, timeout: float = 60) -> dict:
                                  if k not in ("owner", "target")}},
     }
     try:
-        data = hubhttp.post_json(_endpoint(), token=token, payload=payload, timeout=timeout)
+        data = hubhttp.post_json(endpoint(), token=token, payload=payload, timeout=timeout)
     except hubhttp.HubHTTPError as e:
         if e.status is None:
             return {"error": f"remote unreachable: {type(e.cause).__name__}: {e.cause}", "isError": True}
