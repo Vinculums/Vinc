@@ -399,11 +399,11 @@ jobs:
     # "core-pkns 와 모든 게이트는 조건 없이 돈다"고 정했다. 조건을 되살리려면 그 둘을 먼저 뒤집을 것.
     # 이 형태를 지키는 것은 tests/platform/test_ci_suite_is_unconditional.py 다.
     #
-    # 대가는 정직하게 적는다: 이 잡이 PR 마다 늘 돌고, 아래 `runs-on` 이 호스티드라
-    # 그 시간이 그대로 호스티드 분이다(런 39736992368 에서 11분). 호스티드 잡은 잡마다
-    # 새 러너를 받으므로 `needs` 를 걷어도 `changes` 와 한 줄에 서지 않는다(동시 실행
-    # 한도 안에서). 분이 아파져도 처방은 이 잡을 다시 조건부로 만드는 것이 아니다(위 두
-    # 결정).
+    # 붙은 조건은 하나뿐이다: PR 런(`pull_request`)에서는 돌지 않는다. 머지 큐가 main 에 들어갈 바로 그
+    # 트리로 전량을 돌고(필수 체크), main push 가 그 커밋으로 한 번 더 돈다. 그래서 전량을 돌지 않은 커밋은
+    # main 에 들어가지 못한다. 위 두 결정의 "PR 마다"는 2026-11-13 소유자 판정으로 바뀌었다(그래프의
+    # decision 노드 the-full-suite-runs-in-the-merge-queue-and-on-main-not-on-pull-request-runs-2026-11-13).
+    # 경로 조건·`needs`·스텝 조건은 여전히 금지다(tests/platform/test_ci_suite_is_unconditional.py).
     #
     # ── 네 조각으로 나눈다 ────────────────────────────────────────────────────
     # 한 잡이던 동안 이것이 CI 의 임계 경로였다(16~20분, pytest 스텝만 737~1026초 · 약
@@ -432,6 +432,8 @@ jobs:
     # 러너와 임시 디렉터리는 `core` 와 같다(그 잡의 주석).
     name: core-pkns shard ${{ matrix.group }}/4
     runs-on: ubuntu-latest
+    # PR 런에서는 돌지 않는다. 머지 큐(merge_group)가 main 에 들어갈 트리로, main push 가 그 커밋으로 전량을 돈다.
+    if: github.event_name != 'pull_request'
     # 한 조각 4~5분이다. 일정을 조이는 장치가 아니라 행(hang)을 잡는 장치다.
     timeout-minutes: 30
     strategy:
@@ -510,6 +512,8 @@ jobs:
   core-pkns-extras:
     name: core-pkns extras (Neo4j conformance, PID 1, integrations)
     runs-on: ubuntu-latest
+    # PR 런에서는 돌지 않는다. 머지 큐(merge_group)가 main 에 들어갈 트리로, main push 가 그 커밋으로 전량을 돈다.
+    if: github.event_name != 'pull_request'
     timeout-minutes: 30
     # 저장소 적합성 스위트의 Neo4j 쪽(`tests/core/test_store_conformance.py`)과 쓰기 임대·저장 위치로
     # 열기(`test_neo4j_*`)를 여기서 돌린다. 비밀번호는 위 조각과 같은 일회용이다.
@@ -644,11 +648,14 @@ jobs:
       - name: Every shard and the extras job succeeded
         env:
           NEEDS: ${{ toJSON(needs) }}
+          EVENT: ${{ github.event_name }}
         run: |
           python3 - <<'PY'
           import json, os, sys
           needs = json.loads(os.environ["NEEDS"])
-          bad = {k: v.get("result") for k, v in needs.items() if v.get("result") != "success"}
+          # PR 런에서는 조각과 extras 가 돌지 않으므로(skipped) 통과다. 머지 큐와 main push 에서는 전부 success 여야 한다.
+          ok = {"success", "skipped"} if os.environ.get("EVENT") == "pull_request" else {"success"}
+          bad = {k: v.get("result") for k, v in needs.items() if v.get("result") not in ok}
           for k, v in sorted(needs.items()):
               print(f"{k}: {v.get('result')}")
           if not needs or bad:
