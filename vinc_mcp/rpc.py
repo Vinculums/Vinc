@@ -24,6 +24,7 @@ result.isError=True 로 돌려준다(호스트가 재시도·수정 가능하도
 from __future__ import annotations
 
 import json
+from typing import Callable, NamedTuple
 
 from . import __version__
 from . import builtin_prompts, community, events, modern, roles, run_tasks, selfhost
@@ -66,6 +67,14 @@ def _capabilities(modern_era: bool = False) -> dict:
 
 #: 모던 세대에서만 여는 스킬 메서드.
 _SKILL_METHODS = ("skills/list", "skills/get", "resources/list", "resources/read")
+#: 모던 세대에서만 여는 Events 메서드(`events.py`).
+_EVENT_METHODS = ("events/list", "events/poll", "events/subscribe", "events/unsubscribe")
+
+
+class _Route(NamedTuple):
+    """메서드 표(`Dispatcher._ROUTES`)의 칸 하나. `handler(self, method, params, ctx, modern_version)`."""
+    handler: Callable[..., dict]
+    modern_only: bool = False
 
 
 def _where_am_i(forced_owner: str | None) -> str | None:
@@ -171,164 +180,188 @@ class Dispatcher:
 
     def _dispatch(self, method: str, params: dict, *, ctx: toolcall.CallContext | None = None,
                   modern_version: str | None = None) -> dict:
+        """메서드 표(`_ROUTES`)에서 처리 함수를 찾아 부른다."""
         ctx = ctx if ctx is not None else toolcall.CallContext()
-        forced_owner, plan, quota, profile = ctx.forced_owner, ctx.plan, ctx.quota, ctx.profile
-        if method in run_tasks.METHODS and modern_version is not None:
-            return self._tasks(method, params, ctx)
-        if method.startswith("events/") and modern_version is not None:
-            # Events 확장은 모던 세대에서만 연다. 핸드셰이크 세대에는 -32601 그대로다.
-            return self._events(method, params, ctx)
-        if method == "server/discover" and modern_version is not None:
-            # 모던 세대의 `initialize` 자리. 핸드셰이크 세대에서는 모르는 메서드다(-32601).
-            # `instructions` 는 initialize 와 같은 문단이고, 소유자와 팀 이름을 담으므로
-            # 허브에서는 private 다.
-            out = {"supportedVersions": modern.supported_versions(PROTOCOL_VERSIONS),
-                   "capabilities": _capabilities(modern_era=True),
-                   "ttlMs": modern.DISCOVER_TTL_MS,
-                   "cacheScope": "private" if forced_owner else "public"}
-            txt = _where_am_i(forced_owner)
-            if txt:
-                out["instructions"] = txt
-            return out
-        if method == "initialize":
-            if not self.hub:
-                from . import run_protocol
-                self.client = run_protocol.client_label(params.get("clientInfo"))
-            want = params.get("protocolVersion")
-            negotiated = want if want in PROTOCOL_VERSIONS else LATEST_PROTOCOL_VERSION
-            info: dict = {"name": "vinc", "version": __version__}
-            # icons·websiteUrl 은 SEP-973(스펙 2025-11-25)이 Implementation 에 더한 필드다.
-            # **협상된 리비전이 그 필드를 아는 경우에만** 싣는다.
-            #
-            # ⚠ **게이트를 걷어내지 말 것** — 협상과 무관하게 실었다가 커넥터가 죽었다:
-            # [[record:what-the-spec-permits-is-not-what-the-peer-accepts]].
-            # PROTOCOL_VERSIONS 에 그 리비전이 없으므로 지금 이 필드는 아무에게도 안
-            # 나가고, 나중에 목록에 넣으면 게이트가 저절로 열린다.
-            # `sizes` 는 문자열 배열이다(두 스키마의 Icon 정의). 문자열 하나를 보내면 스키마를
-            # 검사하는 클라이언트가 serverInfo 를 통째로 거절한다.
-            # PNG 를 먼저 놓는 이유: 클라이언트는 PNG·JPEG 지원이 **필수**이고 SVG 는
-            # 선택이다(SVG 는 스크립트를 품을 수 있다). 아이콘 자체는 /favicon.* 로
-            # 계속 서빙한다 — 프로토콜 밖이라 무해하다.
-            # 셀프호스트 허브는 자기 바깥 주소의 아이콘을 싣고, 주소가 없으면 아무것도 안 싣는다.
-            icon_base, website = "https://mcp.vincs.io", "https://vincs.io"
-            if selfhost.enabled():
-                icon_base = website = selfhost.public_url()
-            if negotiated >= "2025-11-25" and icon_base:   # ISO 날짜라 사전식 비교가 곧 시간순
-                info["icons"] = [
-                    {"src": f"{icon_base}/favicon.png",
-                     "mimeType": "image/png", "sizes": ["128x128"]},
-                    {"src": f"{icon_base}/favicon.svg",
-                     "mimeType": "image/svg+xml", "sizes": ["any"]},
-                ]
-                info["websiteUrl"] = website
-            out = {
-                # `prompts` 는 로스터가 **비어 있어도** 광고한다. 그래프에 vinc/agent
-                # 도메인이 없는 것은 고장이 아니라 상태이고(역할 없는 목록이 정답), 능력을
-                # 그래프 내용에 따라 켰다 껐다 하면 호스트가 캐시한 목록과 어긋난다.
-                # `listChanged` 는 안 싣는다 — 서버→클라이언트 알림 경로가 없다.
-                "protocolVersion": negotiated,
-                "capabilities": _capabilities(),
-                "serverInfo": info,
-            }
-            # 스페이스를 **묻기 전에** 알려 준다. `space` 인자가 생기면서 "안 실으면
-            # 개인"이 기본이 됐는데(A안), 그 기본은 조용해서 위험하다 — 팀에 쓰려던
-            # 호출이 아무 오류 없이 개인 그래프에 쌓인다. 도구로만 알 수 있게 두면
-            # **부르기로 마음먹은 세션만** 알게 되고, 읽기만 하는 세션은 영영 모른다.
-            # `instructions` 는 첫 도구 호출 전에 무조건 도착하므로 그 구멍을 덮는다.
-            # 연결당 한 번이고 스페이스는 연결 중에 안 바뀌므로 신선도 문제도 없다.
-            txt = _where_am_i(forced_owner)
-            if txt:
-                out["instructions"] = txt
-            return out
-        if method == "ping":
-            return {}
-        if method == "tools/list":
-            # 순서는 레지스트리(`tools.TOOLS` + `HOST_TOOLS`)의 소스 순서이고 계약이다.
-            # 재시작이나 해시 시드가 바뀌어도 바이트까지 같아야 호스트의 프롬프트 캐시가
-            # 산다(tests/mcp/test_mcp_modern.py 가 다른 해시 시드의 두 프로세스로 대조한다).
-            listed = _tool_specs(self.hub)
-            if profile is not None and profile != "all":
-                # 프로파일은 순서를 지킨 채 걸러 낼 뿐이다. `all` 은 위 목록 그대로다.
-                listed = [s for s in listed if tools.in_profile(s["name"], profile)]
-            out = {"tools": listed}
-            return modern.with_cache_hints(out, method) if modern_version else out
-        if method == "tools/call":
-            name = params.get("name") or ""
-            args = params.get("arguments") or {}
-            if not tools.in_profile(name, profile):
-                # 목록에 없는 도구는 실행하지 않는다(쿼터도 안 쓴다). 모델이 읽을 수 있게 도구 오류로 낸다.
-                return _tool_result(_profile_refusal(name, profile), name, is_error=True)
-            if (modern_version is not None and name == run_tasks.SUBMIT_TOOL
-                    and isinstance(args, dict) and "inputResponses" in params):
-                # MRTR 재시도: 같은 호출에 사람의 답이 실려 왔다. 답이면 이어 가고, 입력창을
-                # 거절하거나 닫았으면 실행은 대기 그대로이므로 실행 보기만 돌려준다.
-                answer = run_tasks.answer_of(params.get("inputResponses"))
-                keep = {k: args[k] for k in ("space", "owner") if k in args}
-                args = {**keep, "run": args.get("run"), **({"answer": answer} if answer else {})}
-                name = run_tasks.SUBMIT_TOOL if answer else "vinc_runs"
-            if not self.hub and self.client:
-                from . import run_protocol
-                args = run_protocol.with_host(name, args, self.client)
-            # REST도 같은 검증→한도→도구 호출을 탄다. MCP 봉투만 여기서 만든다.
-            # 근거: [[decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24]]
-            outcome = toolcall.execute(name, args, self.bridge, ctx, hub=self.hub)
-            if outcome.kind == "protocol_error":
-                raise outcome.error
-            if outcome.kind != "ok":
-                return outcome.result
-            # 계정이 거절한 커뮤니티 쓰기와 읽기는 봉투의 isError 로 올린다. 읽기를 빼면 지난 피드 커서의 거절이
-            # 봉투만 보는 클라이언트에게 빈 결과(다음 쪽 없음)로 읽힌다.
-            if name in (community.WRITE_TOOL, community.READ_TOOL) and outcome.result.get("isError"):
-                return _tool_result(roles.serialize_result(outcome.result), name, is_error=True)
-            if modern_version is not None and name == run_tasks.SUBMIT_TOOL:
-                carried = run_tasks.carry(outcome.result, params, args)
-                if carried is not None:
-                    return carried
-            return _result_text(_mcp_text(name, args, outcome.result), name, args,
-                                result=outcome.result)
-        if method in _SKILL_METHODS and modern_version is not None:
-            # 스킬은 역할 계약을 읽는다. 프롬프트와 같은 규칙(커뮤니티 거절·쿼터)을 탄다.
-            if community.is_space(forced_owner):
-                raise PermissionError("Community roles are data. Add a role to your own graph before using it as a skill.")
-            if quota is not None and forced_owner:
-                denial = quota(forced_owner, plan)
-                if denial is not None:
-                    raise _QuotaDenied(_denial_text(denial))
-            if method == "skills/list":
-                out = roles.list_skills(self.bridge, forced_owner, params.get("cursor"))
-            elif method == "skills/get":
-                out = roles.get_skill(self.bridge, params.get("uri"), forced_owner)
-            elif method == "resources/list":
-                out = roles.list_skill_resources(self.bridge, forced_owner, params.get("cursor"))
-            else:
-                out = roles.read_skill_resource(self.bridge, params.get("uri"), forced_owner)
-            return modern.with_cache_hints(out, method)
-        if method in ("prompts/list", "prompts/get"):
-            if community.is_space(forced_owner):
-                raise PermissionError("Community roles are data. Add a role to your own graph before using it as a prompt.")
-            # 쿼터를 tools/call 과 **같이** 센다. 이 둘은 initialize·ping 과 달리
-            # 스토어를 실제로 조회하므로, 무료로 두면 인증된 호출자에게 계량되지 않는
-            # 조회 루프가 열린다(허브는 단일 라이터다). 로컬 stdio 는 forced_owner 가
-            # 없어 여기 안 걸린다.
-            if quota is not None and forced_owner:
-                denial = quota(forced_owner, plan)
-                if denial is not None:
-                    raise _QuotaDenied(_denial_text(denial))
-            # 내장 프롬프트는 역할 앞에 놓고, 역할 목록과 역할 본문은 손대지 않는다.
-            # 로스터 조회가 실패하면 내장만 내지 않고 오류를 그대로 낸다(빈 로스터와 다르다).
-            if method == "prompts/list":
-                listed = roles.list_prompts(self.bridge, forced_owner=forced_owner)
-                out = {"prompts": builtin_prompts.listed() + listed["prompts"]}
-                return modern.with_cache_hints(out, method) if modern_version else out
-            name = params.get("name") or ""
-            if builtin_prompts.is_builtin(name):
-                return builtin_prompts.get(name, params.get("arguments") or {})
-            return roles.get_prompt(name,
-                                    params.get("arguments") or {},
-                                    self.bridge, forced_owner=forced_owner)
-        raise _MethodNotFound(method)
+        return self._handler(method, modern_version)(method, params, ctx, modern_version)
 
-    def _events(self, method: str, params: dict, ctx: toolcall.CallContext) -> dict:
+    def _handler(self, method: str, modern_version: str | None):
+        """메서드 하나의 처리 함수를 이 디스패처에 묶어 낸다. 표에 없는 메서드와, 모던 세대 전용
+        메서드를 핸드셰이크 세대(`modern_version` None)가 부른 것은 -32601(`_MethodNotFound`)이다."""
+        route = self._ROUTES.get(method)
+        if route is None or (route.modern_only and modern_version is None):
+            raise _MethodNotFound(method)
+        return route.handler.__get__(self, type(self))
+
+    def _discover(self, _method, _params, ctx, _modern_version) -> dict:
+        """`server/discover`(모던 세대만)."""
+        # 모던 세대의 `initialize` 자리. 핸드셰이크 세대에서는 모르는 메서드다(-32601).
+        # `instructions` 는 initialize 와 같은 문단이고, 소유자와 팀 이름을 담으므로
+        # 허브에서는 private 다.
+        forced_owner = ctx.forced_owner
+        out = {"supportedVersions": modern.supported_versions(PROTOCOL_VERSIONS),
+               "capabilities": _capabilities(modern_era=True),
+               "ttlMs": modern.DISCOVER_TTL_MS,
+               "cacheScope": "private" if forced_owner else "public"}
+        txt = _where_am_i(forced_owner)
+        if txt:
+            out["instructions"] = txt
+        return out
+
+    def _initialize(self, _method, params, ctx, _modern_version) -> dict:
+        """`initialize`(두 세대)."""
+        forced_owner = ctx.forced_owner
+        if not self.hub:
+            from . import run_protocol
+            self.client = run_protocol.client_label(params.get("clientInfo"))
+        want = params.get("protocolVersion")
+        negotiated = want if want in PROTOCOL_VERSIONS else LATEST_PROTOCOL_VERSION
+        info: dict = {"name": "vinc", "version": __version__}
+        # icons·websiteUrl 은 SEP-973(스펙 2025-11-25)이 Implementation 에 더한 필드다.
+        # **협상된 리비전이 그 필드를 아는 경우에만** 싣는다.
+        #
+        # ⚠ **게이트를 걷어내지 말 것** — 협상과 무관하게 실었다가 커넥터가 죽었다:
+        # [[record:what-the-spec-permits-is-not-what-the-peer-accepts]].
+        # PROTOCOL_VERSIONS 에 그 리비전이 없으므로 지금 이 필드는 아무에게도 안
+        # 나가고, 나중에 목록에 넣으면 게이트가 저절로 열린다.
+        # `sizes` 는 문자열 배열이다(두 스키마의 Icon 정의). 문자열 하나를 보내면 스키마를
+        # 검사하는 클라이언트가 serverInfo 를 통째로 거절한다.
+        # PNG 를 먼저 놓는 이유: 클라이언트는 PNG·JPEG 지원이 **필수**이고 SVG 는
+        # 선택이다(SVG 는 스크립트를 품을 수 있다). 아이콘 자체는 /favicon.* 로
+        # 계속 서빙한다 — 프로토콜 밖이라 무해하다.
+        # 셀프호스트 허브는 자기 바깥 주소의 아이콘을 싣고, 주소가 없으면 아무것도 안 싣는다.
+        icon_base, website = "https://mcp.vincs.io", "https://vincs.io"
+        if selfhost.enabled():
+            icon_base = website = selfhost.public_url()
+        if negotiated >= "2025-11-25" and icon_base:   # ISO 날짜라 사전식 비교가 곧 시간순
+            info["icons"] = [
+                {"src": f"{icon_base}/favicon.png",
+                 "mimeType": "image/png", "sizes": ["128x128"]},
+                {"src": f"{icon_base}/favicon.svg",
+                 "mimeType": "image/svg+xml", "sizes": ["any"]},
+            ]
+            info["websiteUrl"] = website
+        out = {
+            # `prompts` 는 로스터가 **비어 있어도** 광고한다. 그래프에 vinc/agent
+            # 도메인이 없는 것은 고장이 아니라 상태이고(역할 없는 목록이 정답), 능력을
+            # 그래프 내용에 따라 켰다 껐다 하면 호스트가 캐시한 목록과 어긋난다.
+            # `listChanged` 는 안 싣는다 — 서버→클라이언트 알림 경로가 없다.
+            "protocolVersion": negotiated,
+            "capabilities": _capabilities(),
+            "serverInfo": info,
+        }
+        # 스페이스를 **묻기 전에** 알려 준다. `space` 인자가 생기면서 "안 실으면
+        # 개인"이 기본이 됐는데(A안), 그 기본은 조용해서 위험하다 — 팀에 쓰려던
+        # 호출이 아무 오류 없이 개인 그래프에 쌓인다. 도구로만 알 수 있게 두면
+        # **부르기로 마음먹은 세션만** 알게 되고, 읽기만 하는 세션은 영영 모른다.
+        # `instructions` 는 첫 도구 호출 전에 무조건 도착하므로 그 구멍을 덮는다.
+        # 연결당 한 번이고 스페이스는 연결 중에 안 바뀌므로 신선도 문제도 없다.
+        txt = _where_am_i(forced_owner)
+        if txt:
+            out["instructions"] = txt
+        return out
+
+    def _ping(self, _method, _params, _ctx, _modern_version) -> dict:
+        """`ping`(두 세대)."""
+        return {}
+
+    def _tools_list(self, method, _params, ctx, modern_version) -> dict:
+        """`tools/list`(두 세대). 모던 세대에는 캐시 힌트를 싣는다."""
+        # 순서는 레지스트리(`tools.TOOLS` + `HOST_TOOLS`)의 소스 순서이고 계약이다.
+        # 재시작이나 해시 시드가 바뀌어도 바이트까지 같아야 호스트의 프롬프트 캐시가
+        # 산다(tests/mcp/test_mcp_modern.py 가 다른 해시 시드의 두 프로세스로 대조한다).
+        profile = ctx.profile
+        listed = _tool_specs(self.hub)
+        if profile is not None and profile != "all":
+            # 프로파일은 순서를 지킨 채 걸러 낼 뿐이다. `all` 은 위 목록 그대로다.
+            listed = [s for s in listed if tools.in_profile(s["name"], profile)]
+        out = {"tools": listed}
+        return modern.with_cache_hints(out, method) if modern_version else out
+
+    def _tools_call(self, _method, params, ctx, modern_version) -> dict:
+        """`tools/call`(두 세대)."""
+        profile = ctx.profile
+        name = params.get("name") or ""
+        args = params.get("arguments") or {}
+        if not tools.in_profile(name, profile):
+            # 목록에 없는 도구는 실행하지 않는다(쿼터도 안 쓴다). 모델이 읽을 수 있게 도구 오류로 낸다.
+            return _tool_result(_profile_refusal(name, profile), name, is_error=True)
+        if (modern_version is not None and name == run_tasks.SUBMIT_TOOL
+                and isinstance(args, dict) and "inputResponses" in params):
+            # MRTR 재시도: 같은 호출에 사람의 답이 실려 왔다. 답이면 이어 가고, 입력창을
+            # 거절하거나 닫았으면 실행은 대기 그대로이므로 실행 보기만 돌려준다.
+            answer = run_tasks.answer_of(params.get("inputResponses"))
+            keep = {k: args[k] for k in ("space", "owner") if k in args}
+            args = {**keep, "run": args.get("run"), **({"answer": answer} if answer else {})}
+            name = run_tasks.SUBMIT_TOOL if answer else "vinc_runs"
+        if not self.hub and self.client:
+            from . import run_protocol
+            args = run_protocol.with_host(name, args, self.client)
+        # REST도 같은 검증→한도→도구 호출을 탄다. MCP 봉투만 여기서 만든다.
+        # 근거: [[decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24]]
+        outcome = toolcall.execute(name, args, self.bridge, ctx, hub=self.hub)
+        if outcome.kind == "protocol_error":
+            raise outcome.error
+        if outcome.kind != "ok":
+            return outcome.result
+        # 계정이 거절한 커뮤니티 쓰기와 읽기는 봉투의 isError 로 올린다. 읽기를 빼면 지난 피드 커서의 거절이
+        # 봉투만 보는 클라이언트에게 빈 결과(다음 쪽 없음)로 읽힌다.
+        if name in (community.WRITE_TOOL, community.READ_TOOL) and outcome.result.get("isError"):
+            return _tool_result(roles.serialize_result(outcome.result), name, is_error=True)
+        if modern_version is not None and name == run_tasks.SUBMIT_TOOL:
+            carried = run_tasks.carry(outcome.result, params, args)
+            if carried is not None:
+                return carried
+        return _result_text(_mcp_text(name, args, outcome.result), name, args,
+                            result=outcome.result)
+
+    def _skills(self, method, params, ctx, _modern_version) -> dict:
+        """`skills/*` · `resources/list` · `resources/read`(모던 세대만)."""
+        # 스킬은 역할 계약을 읽는다. 프롬프트와 같은 규칙(커뮤니티 거절·쿼터)을 탄다.
+        forced_owner, plan, quota = ctx.forced_owner, ctx.plan, ctx.quota
+        if community.is_space(forced_owner):
+            raise PermissionError("Community roles are data. Add a role to your own graph before using it as a skill.")
+        if quota is not None and forced_owner:
+            denial = quota(forced_owner, plan)
+            if denial is not None:
+                raise _QuotaDenied(_denial_text(denial))
+        if method == "skills/list":
+            out = roles.list_skills(self.bridge, forced_owner, params.get("cursor"))
+        elif method == "skills/get":
+            out = roles.get_skill(self.bridge, params.get("uri"), forced_owner)
+        elif method == "resources/list":
+            out = roles.list_skill_resources(self.bridge, forced_owner, params.get("cursor"))
+        else:
+            out = roles.read_skill_resource(self.bridge, params.get("uri"), forced_owner)
+        return modern.with_cache_hints(out, method)
+
+    def _prompts(self, method, params, ctx, modern_version) -> dict:
+        """`prompts/list` · `prompts/get`(두 세대)."""
+        forced_owner, plan, quota = ctx.forced_owner, ctx.plan, ctx.quota
+        if community.is_space(forced_owner):
+            raise PermissionError("Community roles are data. Add a role to your own graph before using it as a prompt.")
+        # 쿼터를 tools/call 과 **같이** 센다. 이 둘은 initialize·ping 과 달리
+        # 스토어를 실제로 조회하므로, 무료로 두면 인증된 호출자에게 계량되지 않는
+        # 조회 루프가 열린다(허브는 단일 라이터다). 로컬 stdio 는 forced_owner 가
+        # 없어 여기 안 걸린다.
+        if quota is not None and forced_owner:
+            denial = quota(forced_owner, plan)
+            if denial is not None:
+                raise _QuotaDenied(_denial_text(denial))
+        # 내장 프롬프트는 역할 앞에 놓고, 역할 목록과 역할 본문은 손대지 않는다.
+        # 로스터 조회가 실패하면 내장만 내지 않고 오류를 그대로 낸다(빈 로스터와 다르다).
+        if method == "prompts/list":
+            listed = roles.list_prompts(self.bridge, forced_owner=forced_owner)
+            out = {"prompts": builtin_prompts.listed() + listed["prompts"]}
+            return modern.with_cache_hints(out, method) if modern_version else out
+        name = params.get("name") or ""
+        if builtin_prompts.is_builtin(name):
+            return builtin_prompts.get(name, params.get("arguments") or {})
+        return roles.get_prompt(name,
+                                params.get("arguments") or {},
+                                self.bridge, forced_owner=forced_owner)
+
+    def _events(self, method: str, params: dict, ctx: toolcall.CallContext,
+                _modern_version: str | None = None) -> dict:
         """Events 확장. 피드 계산은 사이드카, 구독과 전달은 `self.events`(Runtime)."""
         forced_owner, plan, quota, events_auth = ctx.forced_owner, ctx.plan, ctx.quota, ctx.events_auth
         if method == "events/list":
@@ -361,7 +394,8 @@ class Dispatcher:
         return self.events.subscribe(params, principal=principal, owner=forced_owner,
                                      can_write=bool((events_auth or {}).get("can_write")))
 
-    def _tasks(self, method: str, params: dict, ctx: toolcall.CallContext) -> dict:
+    def _tasks(self, method: str, params: dict, ctx: toolcall.CallContext,
+               _modern_version: str | None = None) -> dict:
         """Tasks 확장. 작업은 실행 기록에서 매번 계산하므로 이 프로세스는 상태를 들지 않는다."""
         forced_owner, plan, quota, events_auth = ctx.forced_owner, ctx.plan, ctx.quota, ctx.events_auth
         if not run_tasks.tasks_declared(run_tasks.client_capabilities(params)):
@@ -387,6 +421,23 @@ class Dispatcher:
             denial = quota(owner, plan)
             if denial is not None:
                 raise _QuotaDenied(_denial_text(denial))
+
+    #: JSON-RPC 메서드 → 처리 함수와 세대 표시. 순서는 뜻이 없다(키가 겹치지 않는다).
+    #: `modern_only` 인 메서드를 핸드셰이크 세대가 부르면 모르는 메서드다(-32601).
+    #: 알림(`notifications/*`)은 `handle` 이 표 앞에서 소비한다.
+    _ROUTES = {
+        **dict.fromkeys(run_tasks.METHODS, _Route(_tasks, modern_only=True)),
+        # Events 확장은 모던 세대에서만 연다. 핸드셰이크 세대에는 -32601 그대로다.
+        **dict.fromkeys(_EVENT_METHODS, _Route(_events, modern_only=True)),
+        "server/discover": _Route(_discover, modern_only=True),
+        "initialize": _Route(_initialize),
+        "ping": _Route(_ping),
+        "tools/list": _Route(_tools_list),
+        "tools/call": _Route(_tools_call),
+        **dict.fromkeys(_SKILL_METHODS, _Route(_skills, modern_only=True)),
+        "prompts/list": _Route(_prompts),
+        "prompts/get": _Route(_prompts),
+    }
 
 
 # 도구 결과 크기 상한 — Anthropic 원격 MCP 요건은 "도구 결과당 최대 25,000 토큰".
