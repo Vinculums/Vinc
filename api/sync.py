@@ -956,6 +956,7 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
     if trusted_sender:
         # 병합 쓰기가 시계를 읽기 전에 적는다. 믿지 않는 묶음의 `clock` 은 읽지 않는다.
         revstamp.note_trusted_clock(store, bundle.get("clock"))
+    before = _endpoint_stamps_before(store, owner, bundle)
     writes: list[dict] = []          # merge_fragment 로 쓸 노드(스탬프 포함)
     base_updates: list[tuple] = []   # (nid, label, base_fields, base_rev, base_ua)
     births: list[tuple] = []         # (label, pk, nid, remote_created) — 병합과 무관
@@ -1209,9 +1210,11 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
                                  params)
                 if rows and int(rows[0].get("c") or 0):
                     found.append((match, params))
-                    # 시각 없는 표식은 견줄 것이 없어 그대로 적용한다.
+                    # 시각 없는 표식은 견줄 것이 없어 그대로 적용한다. 끝점 스탬프는 이 묶음이 쓰기 전의 값으로
+                    # 견준다: 같은 묶음에 실려 온 끝점 편집(지운 쪽이 그 뒤에 고친 것)은 엣지를 다시 만든 것이 아니다.
                     after = after or (bool(e_da) and all(
-                        (r.get("sa") or "") > e_da and (r.get("ba") or "") > e_da for r in rows))
+                        before.get((sl, s_), r.get("sa") or "") > e_da
+                        and before.get((dl, d_), r.get("ba") or "") > e_da for r in rows))
         if after:
             continue                          # 삭제 뒤에 (다시) 만든 엣지 → 삭제 무시
         for match, params in found:
@@ -1227,6 +1230,28 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
     if protected:
         out[run_state.CODE] = sorted(set(protected))
         out["warnings"].append(run_state.warning(out[run_state.CODE]))
+    return out
+
+
+def _endpoint_stamps_before(store, owner: str, bundle: dict) -> dict[tuple[str, str], str]:
+    """묶음의 엣지 삭제 표식이 가리키는 끝점의, 이 묶음을 적용하기 전 스탬프. (라벨, id) → updated_at.
+
+    이 묶음이 처음 만드는 끝점은 담지 않는다(견줄 때 적용 뒤의 값을 쓴다): 그 끝점 사이의 엣지는 이 묶음에
+    실려 온 것뿐이다."""
+    out: dict[tuple[str, str], str] = {}
+    for t in bundle.get("edge_tombstones") or []:
+        src, rel, dst = t.get("src"), t.get("rel"), t.get("dst")
+        spec = q.sync_edge_spec(rel or "")
+        if not spec or not src or not dst or _physical(src) or _physical(dst):
+            continue
+        for sl, sp, dl, dp in spec[2]:
+            for label, field, nid in ((sl, sp, src), (dl, dp, dst), (sl, sp, dst), (dl, dp, src)):
+                if (label, nid) in out:
+                    continue
+                rows = store.run(f"MATCH (x:{label}) WHERE x.{field} = $id AND x.owner_id = $owner "
+                                 "RETURN x.updated_at AS ua", {"id": pkns.key(owner, nid), "owner": owner})
+                if rows:
+                    out[(label, nid)] = rows[0].get("ua") or ""
     return out
 
 
