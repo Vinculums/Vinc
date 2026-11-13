@@ -25,7 +25,6 @@ jobs:
       RG: vincsRG
       STORAGE: vinchubssd01
       SHARE: hub-data
-      APP: vinc-hub
       AUDIT_OWNER_UUID: ${{ inputs.owner_uuid }}
       CONFIRM: ${{ inputs.confirm }}
     steps:
@@ -41,6 +40,10 @@ jobs:
           python -c 'import os,uuid; v=os.environ["AUDIT_OWNER_UUID"]; assert str(uuid.UUID(v)) == v'
           echo "::add-mask::$AUDIT_OWNER_UUID"
       - uses: actions/checkout@v4
+      # 허브 앱은 대상 설정(.github/container-apps-target.env)을 hub-deploy 의 표로 푼 이름이다(HUB_APP).
+      # 앱 이름을 여기 적으면 대상 설정이 바뀌어도 그 이름의 앱을 읽거나 바꾼다. 컨테이너 이름과 이미지 저장소 이름은 앱 이름과 따로다.
+      - name: 허브 앱을 대상 설정에서 푼다
+        run: python3 scripts/hub_target.py >> "$GITHUB_ENV"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -56,7 +59,7 @@ jobs:
         run: |
           set -euo pipefail
           env_of() {
-            az containerapp show -n "$APP" -g "$RG" --query "properties.template.containers[0].env[?name=='$1'].value | [0]" -o tsv
+            az containerapp show -n "$HUB_APP" -g "$RG" --query "properties.template.containers[0].env[?name=='$1'].value | [0]" -o tsv
           }
           p=$(env_of VINC_STORE_SNAPSHOT)
           [ -n "$p" ] || p=$(env_of VINC_DATA_DIR)

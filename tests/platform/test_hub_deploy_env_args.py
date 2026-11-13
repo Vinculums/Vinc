@@ -186,8 +186,12 @@ class HubSecretCleanup(unittest.TestCase):
 
     def test_the_hub_baseline_lists_none_of_the_retired_names(self):
         import json
+        import sys
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from hub_target import target_hub_app
         baseline = json.loads((ROOT / "scripts/app-config-baseline.json").read_text(encoding="utf-8"))
-        hub = baseline["vinc-hub"]
+        # 기준선의 허브 항목은 대상 설정이 고른 앱 이름으로 적혀 있다(지금은 vinc-hub-vnet).
+        hub = baseline[target_hub_app(ROOT)]
         for name in RETIRED_ENV:
             self.assertNotIn(name, hub["env_names"])
         for name in RETIRED_SECRETS:

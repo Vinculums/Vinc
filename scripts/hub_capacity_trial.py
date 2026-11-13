@@ -15,7 +15,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from gate_app_config import APPS, BASELINE, project_app
+from gate_app_config import APPS, BASELINE, HUB_APP, project_app
 
 try:
     from scripts._azutil import AzError, az as _az
@@ -25,7 +25,8 @@ except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없�
     from _root import ROOT  # noqa: F401
 from vinc_mcp import hubhttp  # noqa: E402
 
-APP = ["-n", "vinc-hub", "-g", "vincsRG"]
+# 바꾸는 앱은 드리프트 게이트와 같은 허브 앱이다(대상 설정을 hub-deploy 의 표로 푼 이름).
+APP = ["-n", HUB_APP, "-g", "vincsRG"]
 BASE = "https://mcp.vincs.io"
 # 이 둘이 없으면 허브의 엔트리포인트가 모델을 컨테이너 안에 들고 루프백으로 인코딩한다.
 # 로컬 인코더 시험은 2 CPU 구간에서 이 둘만 빼고, 원복 때 같은 정의로 되돌린다.
@@ -66,12 +67,12 @@ def public_state():
 def expected_profile(baseline, cpu, local=False):
     expected = copy.deepcopy(baseline)
     # ACA Consumption 은 2 CPU·4 GiB 조합에서 임시 디스크도 8 GiB 로 바뀐다.
-    expected["vinc-hub"]["resources"] = {
+    expected[HUB_APP]["resources"] = {
         "cpu": cpu, "memory": "2Gi" if cpu == 1 else "4Gi",
         "ephemeralStorage": "4Gi" if cpu == 1 else "8Gi"}
     if local and cpu != 1:
-        expected["vinc-hub"]["env_names"] = [
-            n for n in expected["vinc-hub"]["env_names"] if n not in LOCAL_ENCODER_ENV]
+        expected[HUB_APP]["env_names"] = [
+            n for n in expected[HUB_APP]["env_names"] if n not in LOCAL_ENCODER_ENV]
     return expected
 
 
@@ -147,7 +148,7 @@ def wait_ready():
 
 def switch(state, cpu):
     # 이미지는 불변 조건이다. 같은 이미지에서 자원만 바꾸는 새 latest 를 만든다.
-    image = state["images"]["vinc-hub"][0]
+    image = state["images"][HUB_APP][0]
     current = show()["properties"]["template"]["containers"]
     if len(current) != 1 or current[0]["image"] != image:
         raise RuntimeError("Refusing to resize an unexpected image")
@@ -193,10 +194,10 @@ def run(args):
     baseline = json.loads(BASELINE.read_text())
     actual, images = public_state()
     initial = show()["properties"]
-    if (actual != baseline or images["vinc-hub"] != [args.expected_image]
+    if (actual != baseline or images[HUB_APP] != [args.expected_image]
             or initial["latestRevisionName"] != args.expected_revision
             or initial["template"].get("revisionSuffix")
-            or baseline["vinc-hub"]["resources"].get("cpu") != 1):
+            or baseline[HUB_APP]["resources"].get("cpu") != 1):
         raise RuntimeError("Preflight baseline, revision or image mismatch; no mutation")
     state = {"baseline": baseline, "images": images}
     if getattr(args, "local_encoder", False):

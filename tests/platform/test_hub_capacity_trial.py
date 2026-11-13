@@ -34,7 +34,7 @@ def _one_cpu_baseline():
     """시험이 다루는 출발점: 1 CPU·2 GiB, 원격 인코더. 운영 기준선은 통합 뒤 2 CPU 라서
     그대로 쓰면 시험의 1→2 모델과 맞지 않는다(그때 시험은 사전 확인에서 거절한다)."""
     baseline = json.loads(_REAL_BASELINE.read_text(encoding="utf-8"))
-    hub = baseline["vinc-hub"]
+    hub = baseline[trial.HUB_APP]
     hub["resources"] = {"cpu": 1.0, "ephemeralStorage": "4Gi", "memory": "2Gi"}
     hub["env_names"] = sorted(set(hub["env_names"]) | set(trial.LOCAL_ENCODER_ENV))
     return baseline
@@ -42,7 +42,7 @@ def _one_cpu_baseline():
 
 def state():
     return {"baseline": _one_cpu_baseline(), "images": {
-        "vinc-hub": ["acr/image:fixed"], "vinc-account": ["acr/account:fixed"]}}
+        trial.HUB_APP: ["acr/image:fixed"], "vinc-account": ["acr/account:fixed"]}}
 
 
 def app(cpu=1, revision="old"):
@@ -137,7 +137,7 @@ class CapacitySafety(unittest.TestCase):
         """시험은 1→2→1 모델이다. 기준선이 이미 2 CPU 면 원복이 허브를 원격 인코더 없이 1 CPU 로
         내리므로, 아무것도 바꾸기 전에 거절해야 한다."""
         real = json.loads(_REAL_BASELINE.read_text(encoding="utf-8"))
-        self.assertEqual(real["vinc-hub"]["resources"]["cpu"], 2.0)
+        self.assertEqual(real[trial.HUB_APP]["resources"]["cpu"], 2.0)
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "state.json"
             args = argparse.Namespace(state=str(path), expected_image="acr/image:fixed",
@@ -197,10 +197,10 @@ class LocalEncoderTrial(unittest.TestCase):
 
     def test_expected_profile_drops_only_the_encoder_env_and_only_at_two_cpu(self):
         base = state()["baseline"]
-        two = trial.expected_profile(base, 2, local=True)["vinc-hub"]["env_names"]
-        one = trial.expected_profile(base, 1, local=True)["vinc-hub"]["env_names"]
-        self.assertEqual(one, base["vinc-hub"]["env_names"])
-        self.assertEqual(set(base["vinc-hub"]["env_names"]) - set(two), set(trial.LOCAL_ENCODER_ENV))
+        two = trial.expected_profile(base, 2, local=True)[trial.HUB_APP]["env_names"]
+        one = trial.expected_profile(base, 1, local=True)[trial.HUB_APP]["env_names"]
+        self.assertEqual(one, base[trial.HUB_APP]["env_names"])
+        self.assertEqual(set(base[trial.HUB_APP]["env_names"]) - set(two), set(trial.LOCAL_ENCODER_ENV))
 
     def test_encoder_env_keeps_the_secret_name_not_a_value(self):
         current = app()

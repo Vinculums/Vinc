@@ -31,6 +31,10 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && !contains(format(',{0},', vars.PROD_OPERATORS), format(',{0},', github.triggering_actor))
         run: exit 1
       - uses: actions/checkout@v4
+      # 허브 앱은 대상 설정(.github/container-apps-target.env)을 hub-deploy 의 표로 푼 이름이다(HUB_APP).
+      # 앱 이름을 여기 적으면 대상 설정이 바뀌어도 그 이름의 앱을 읽거나 바꾼다. 컨테이너 이름과 이미지 저장소 이름은 앱 이름과 따로다.
+      - name: 허브 앱을 대상 설정에서 푼다
+        run: python3 scripts/hub_target.py >> "$GITHUB_ENV"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -49,7 +53,7 @@ jobs:
           if [ -n "$VALIDATION_SHA" ]; then
             echo "$VALIDATION_SHA  rag_eval/fixtures/current_relevance_validation.json" | sha256sum --check
           fi
-          az containerapp show -n vinc-hub -g vincsRG > "$RUNNER_TEMP/hub.json"
+          az containerapp show -n "$HUB_APP" -g vincsRG > "$RUNNER_TEMP/hub.json"
           python - "$RUNNER_TEMP/hub.json" <<'PY'
           import json, os, re
           app = json.load(open(os.sys.argv[1]))

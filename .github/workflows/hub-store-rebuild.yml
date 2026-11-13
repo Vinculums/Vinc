@@ -64,7 +64,6 @@ permissions:
   contents: read
   actions: read
 env:
-  APP: "--name vinc-hub -g vincsRG"
   ACCOUNT: vinchubssd01
   SHARE: hub-data
 jobs:
@@ -108,6 +107,25 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.source_sha || github.sha }}
+      # 위 체크아웃은 후보 커밋이라 이 워크플로보다 오래될 수 있다. 대상 설정과 hub-deploy 의 표는 이 워크플로의
+      # 커밋에서 읽는다(세 파일만).
+      - uses: actions/checkout@v4
+        with:
+          path: _hub_target
+          sparse-checkout: |
+            .github/container-apps-target.env
+            .github/workflows/hub-deploy.yml
+            scripts/hub_target.py
+          sparse-checkout-cone-mode: false
+      # 허브 앱은 대상 설정(.github/container-apps-target.env)을 hub-deploy 의 표로 푼 이름이다(HUB_APP).
+      # APP 은 아래 az 호출이 그대로 펼쳐 쓰는 인자 묶음이다. 앱 이름을 여기 적으면 대상 설정이 바뀌어도 그 이름의 앱이 바뀐다.
+      - name: 허브 앱을 대상 설정에서 푼다
+        run: |
+          set -euo pipefail
+          line=$(python3 _hub_target/scripts/hub_target.py)
+          echo "$line" >> "$GITHUB_ENV"
+          echo "APP=--name ${line#HUB_APP=} -g vincsRG" >> "$GITHUB_ENV"
+          echo "허브 앱: ${line#HUB_APP=}"
       - name: Guard
         run: |
           set -euo pipefail
@@ -384,7 +402,7 @@ jobs:
           if ! az containerapp update $APP --set-env-vars "${switch_env[@]}" --output none; then
             echo "::error::env 교체 실패 — **허브는 지금 내려가 있다.** 원본 /data/$SRC 는 그대로다." >&2
             prev=$(echo "${STOPPED_REVS:-}" | awk '{print $NF}')
-            echo "되살리려면: az containerapp revision activate -n vinc-hub -g vincsRG --revision $prev" >&2
+            echo "되살리려면: az containerapp revision activate -n $HUB_APP -g vincsRG --revision $prev" >&2
             exit 1
           fi
           latest=$(az containerapp show $APP --query "properties.latestRevisionName" -o tsv)
@@ -404,7 +422,10 @@ jobs:
         if: inputs.mode == 'apply'
         run: |
           set -euo pipefail
-          out=$(curl -sf https://vinc-hub.grayplant-559d42e3.koreacentral.azurecontainerapps.io/mcp \
+          # 주소는 대상 허브 앱의 인그레스에서 읽는다(hub-deploy 의 "배포 대상" 과 같다).
+          fqdn=$(az containerapp show $APP --query properties.configuration.ingress.fqdn -o tsv)
+          [ -n "$fqdn" ] || { echo "::error::$HUB_APP 의 인그레스 주소를 못 읽었다" >&2; exit 1; }
+          out=$(curl -sf "https://$fqdn/mcp" \
             -X POST -H "Authorization: Bearer ${{ secrets.VINC_MCP_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')

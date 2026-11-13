@@ -26,14 +26,24 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+try:
+    from hub_target import target_hub_app
+except ImportError:  # 리포 루트에서 scripts 패키지로 읽힐 때
+    from scripts.hub_target import target_hub_app
+
+# 허브 앱은 대상 설정(.github/container-apps-target.env)을 hub-deploy 의 표로 푼 이름이다. hub-deploy 의
+# 배포 잡은 plan 이 푼 HUB_APP 을 넘기므로 그 값을 먼저 쓴다(배포 커밋의 설정이 워크플로보다 오래될 수 있다).
+# 기준선의 허브 항목 이름도 이 이름이다. 설정을 바꾸는 변경은 기준선을 같은 커밋에 고친다.
+HUB_APP = os.environ.get("HUB_APP") or target_hub_app()
 # 게이트는 여기 적힌 앱만 읽는다. 목록에 없는 앱은 라이브에 남아 있어도 대조하지 않으므로
 # 앱을 내릴 때는 이 목록과 기준선에서 먼저 빼고, 라이브 삭제는 그 뒤에 해도 게이트가 울지 않는다.
-APPS = ("vinc-hub", "vinc-account", "vinc-layout")
+APPS = (HUB_APP, "vinc-account", "vinc-layout")
 RG = "vincsRG"
 BASELINE = Path(__file__).resolve().parent / "app-config-baseline.json"
 

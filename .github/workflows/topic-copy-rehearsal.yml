@@ -33,7 +33,6 @@ jobs:
       RG: vincsRG
       STORAGE: vinchubssd01
       SHARE: hub-data
-      APP: vinc-hub
       REHEARSAL_OWNER_UUID: ${{ inputs.owner_uuid }}
       CONFIRM: ${{ inputs.confirm }}
       REHEARSAL_SOURCE: ${{ inputs.source_ref }}
@@ -81,6 +80,10 @@ jobs:
           python -c 'import os,uuid; v=os.environ["REHEARSAL_OWNER_UUID"]; assert str(uuid.UUID(v)) == v'
           echo "::add-mask::$REHEARSAL_OWNER_UUID"
       - uses: actions/checkout@v4
+      # 허브 앱은 대상 설정(.github/container-apps-target.env)을 hub-deploy 의 표로 푼 이름이다(HUB_APP).
+      # 앱 이름을 여기 적으면 대상 설정이 바뀌어도 그 이름의 앱을 읽거나 바꾼다. 컨테이너 이름과 이미지 저장소 이름은 앱 이름과 따로다.
+      - name: 허브 앱을 대상 설정에서 푼다
+        run: python3 scripts/hub_target.py >> "$GITHUB_ENV"
       - name: Verify exact reviewed source checks before accessing production
         timeout-minutes: 5
         env:
@@ -111,7 +114,7 @@ jobs:
           set -euo pipefail
           source "$RUNNER_TEMP/rehearsal-budget.sh"
           env_of() {
-            run_bounded 60 az containerapp show -n "$APP" -g "$RG" --query "properties.template.containers[0].env[?name=='$1'].value | [0]" -o tsv
+            run_bounded 60 az containerapp show -n "$HUB_APP" -g "$RG" --query "properties.template.containers[0].env[?name=='$1'].value | [0]" -o tsv
           }
           p=$(env_of VINC_STORE_SNAPSHOT)
           [ -n "$p" ] || p=$(env_of VINC_DATA_DIR)
