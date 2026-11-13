@@ -443,9 +443,11 @@ jobs:
           # (없는 이름을 지우라고 하지 않는다). `--set-env-vars` 는 기존 env 를 지우지 않는다.
           # 이 이름들의 시크릿은 이 갱신으로 참조가 끊긴 뒤 아래 시크릿 정리 스텝이 지운다.
           RMARGS=()
+          # 이름 찾기는 here-string 으로 넘긴다: pipefail 아래에서 `printf | grep -q` 는 grep 이 일찍 끝날 때
+          # printf 가 SIGPIPE 로 실패해 있는 이름을 없는 것으로 읽는다.
           have=$(az containerapp show $APP --query "properties.template.containers[0].env[].name" -o tsv)
           for n in VINC_EMBED_REMOTE VINC_EMBED_ENCODE_TOKEN VINC_LAYOUT_REMOTE VINC_LAYOUT_TOKEN; do
-            if printf '%s\n' "$have" | grep -qx "$n"; then RMARGS+=("$n"); fi
+            if grep -qx "$n" <<<"$have"; then RMARGS+=("$n"); fi
           done
           [ "${#RMARGS[@]}" = 0 ] || RMARGS=(--remove-env-vars "${RMARGS[@]}")
           # 허브 env 는 **여기서만** 바꾼다. 콘솔이나 bare `az containerapp update
@@ -642,8 +644,8 @@ jobs:
           used=$(az containerapp show $APP --query "properties.template.containers[].env[].secretRef" -o tsv)
           RM=()
           for n in layout-token encode-token; do
-            printf '%s\n' "$have" | grep -qx "$n" || continue
-            if printf '%s\n' "$used" | grep -qx "$n"; then
+            grep -qx "$n" <<<"$have" || continue
+            if grep -qx "$n" <<<"$used"; then
               echo "::error::시크릿 $n 을 env 가 아직 참조한다. 지우지 않는다" >&2
               exit 1
             fi

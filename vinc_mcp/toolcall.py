@@ -61,7 +61,7 @@ def preflight(name: str, args: dict, *, base_auth: dict,
                            message="Community creation uses personal identity; all other actions require community:<uuid> space.")
     if name == community.READ_TOOL and not is_community:
         return Outcome("role_denied", auth=auth,
-                       message="Community Agent reads require an explicit community:<uuid> space.")
+                       message="Community reads require an explicit community:<uuid> space.")
     return Outcome("ok", auth=auth)
 
 
