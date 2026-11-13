@@ -26,19 +26,3 @@ resource "azurerm_mysql_flexible_server_firewall_rule" "vinc_cae_outbound" {
   start_ip_address    = each.value
   end_ip_address      = each.value
 }
-
-# Azure 의 모든 IP(다른 고객의 구독 포함)를 여는 규칙(0.0.0.0). 손으로 만든 것을 state 로 들이기만
-# 하고 값은 그대로 둔다. 아래 import 와 resource 두 블록을 함께 지우는 변경이 이 규칙을 지운다.
-# 되살리는 명령과 순서는 그 변경의 PR 본문에 있다.
-import {
-  to = azurerm_mysql_flexible_server_firewall_rule.allow_all_azure
-  id = "/subscriptions/5d3dbbfd-9770-460a-aede-0f13c0e1683c/resourceGroups/vincsRG/providers/Microsoft.DBforMySQL/flexibleServers/vinc-mysql01/firewallRules/AllowAllAzureServicesAndResourcesWithinAzureIps_2026-7-29_0-59-53"
-}
-
-resource "azurerm_mysql_flexible_server_firewall_rule" "allow_all_azure" {
-  name                = "AllowAllAzureServicesAndResourcesWithinAzureIps_2026-7-29_0-59-53"
-  resource_group_name = azurerm_mysql_flexible_server.vinc_mysql01.resource_group_name
-  server_name         = azurerm_mysql_flexible_server.vinc_mysql01.name
-  start_ip_address    = "0.0.0.0"
-  end_ip_address      = "0.0.0.0"
-}
