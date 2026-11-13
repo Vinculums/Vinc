@@ -17,6 +17,7 @@ import { createSpacePicker, currentSpace, kindOf, menuView, type CurrentSpace, t
 function appDeps(): SpaceDeps {
   return {
     cfg, teamsApi, communitiesApi, isCommunitySpace,
+    unifiedName: COPY.ui.settingsUi.spaceUnified,
     retainBeforeSwitch: () => import("./view-retained").then((m) => m.retainBeforeSwitch()),
     ensureTeam: (team, name) => import("./team-key").then((m) => m.ensureTeamCredential(team, name)),
     reload: () => location.reload(),
@@ -100,7 +101,7 @@ export function mountSpaceSwitcher(deps: SpaceDeps = appDeps()): void {
     const sub = opening ? U.spaceOpening
       : kind === "personal" ? U.spacePersonalHint
       : r.state === "pending" ? U.spacePending : r.state === "suspended" ? U.spaceSuspended
-      : kind === "community" ? U.spaceReadOnly : "";
+      : kind === "community" ? (r.unified ? U.spaceUnifiedHint : U.spaceReadOnly) : "";
     const lock = kind === "community" && !opening ? icon("lock", 12) : "";
     return `<button type="button" class="ctx-item space-row${r.state !== "active" ? " space-row-off" : ""}" role="radio"
         aria-checked="${r.current}" data-kind="${kind}" data-space="${esc(r.id)}"${off ? ' aria-disabled="true"' : ""}>
@@ -125,8 +126,10 @@ export function mountSpaceSwitcher(deps: SpaceDeps = appDeps()): void {
     else if (v.teams.state === "none") body += group(U.spaceTeams, label(U.spaceTeams) + note(U.spaceNone), false);
     else if (v.teams.rows.length)
       body += group(U.spaceTeams, label(U.spaceTeams) + v.teams.rows.map((r) => rowHtml("team", r)).join(""));
+    // 합친 공간 한 줄뿐이면 묶음 이름도 하나로 부른다.
+    const communities = v.unified ? U.spaceCommunity : U.spaceCommunities;
     if (v.communities.length)
-      body += group(U.spaceCommunities, label(U.spaceCommunities) + v.communities.map((r) => rowHtml("community", r)).join(""));
+      body += group(communities, label(communities) + v.communities.map((r) => rowHtml("community", r)).join(""));
     if (v.empty) body += `<p class="space-note space-nomatch">${esc(U.spaceNoMatch)}</p>`;
     const foot = v.foot === "readOnly" ? U.spaceCommunityReadOnly : v.foot === "activation" ? U.spaceActivationHint : "";
     const find = v.find ? `<div class="space-find">${icon("search", 14)}<input class="space-find-input" type="search"
