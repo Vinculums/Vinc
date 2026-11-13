@@ -19,6 +19,7 @@ import { shortcutsRest } from "../keys";
 import { compassModel, topicOf, isMean, kindKey, when, type CompassData, type DNode, type TNode, type LNode, type Edge } from "./view-compass-model";
 import { compassGather, rad, todeg, subR, type Pt, type Cp, type Placement, type LayoutIn } from "./view-compass-gather";
 import { compassTree, crossCanon, type Item, type ShelfCol, type Comp, type Layout, type ShelfSet, type Meas, type Plan } from "./view-compass-tree";
+import { GAP, P2, arcPts, shape, bead, compassRay, type End } from "./view-compass-shapes";
 export { compassDataFrom } from "./view-compass-model";
 export type { CompassNode, CompassData } from "./view-compass-model";
 export type { CompassState } from "./view-compass-state";
@@ -105,38 +106,8 @@ export function mountCompass(host: HTMLElement, data: CompassData, ctx: CompassC
   const GW = (k: 'fan' | 'bridge') => LS.glyphWidth(st.fontKey, k);   // 이름표 글자 하나의 폭: 배치는 이 한 곳에서 읽는다
   const KIND: Record<string, string> = COPY.ui.compass.kinds;
 
-  // ── 모양·빛살·표(문법) ─────────────────────────────────────────────────────────────────────
-  const GAP = 4, P = (pts: Pt[]) => pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
-  const P2 = (pts: Pt[]) => pts.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' ');   // 줄기 조각: 0.1 단위로 자르면 확대했을 때 호가 각진다
-  const arcPts = (cx0: number, cy0: number, r: number, mid: number, half: number, n = 6) => { const o: Pt[] = []; for (let q = 0; q <= n; q++) { const a = mid - half + (2 * half * q) / n; o.push([cx0 + Math.cos(a) * r, cy0 + Math.sin(a) * r]); } return o; };
-  function shape(kind: string, x: number, y: number, r: number, fill: string, hollow?: boolean) {
-    const st = hollow ? `fill="none" stroke="${fill}" stroke-width="1.6"` : `fill="${fill}"`;
-    if (kind === 'doc') return `<g class="shape"><circle cx="${x}" cy="${y}" r="${r}" ${st}/><rect x="${x - r * .42}" y="${y - r * .12}" width="${r * .84}" height="${r * .24}" rx="${r * .1}" fill="var(--c-card)"/></g>`;
-    if (kind === 'decision') { const d = r * 1.25; return `<path class="shape" d="M${x} ${y - d}L${x + d} ${y}L${x} ${y + d}L${x - d} ${y}Z" ${st}/>`; }
-    if (kind === 'record') { const s = r * .9; return `<rect class="shape" x="${x - s}" y="${y - s}" width="${2 * s}" height="${2 * s}" rx="${r * .25}" ${st}/>`; }
-    if (kind === 'episode') { const h = r * 1.2; return `<path class="shape" d="M${x} ${y - h}L${x + h * 1.05} ${y + h * .75}L${x - h * 1.05} ${y + h * .75}Z" ${st} stroke-linejoin="round"/>`; }
-    // 다리는 범례와 같은 이음 표식(위아래 호 둘과 가운데 점)이다. 끝 주제 색을 아는 자리는 `junction` 이 그린다
-    if (kind === 'bridge') { const k = r * .7, w = Math.max(1.6, r * .36).toFixed(2);
-      return `<g class="shape"><path d="M${x - k} ${y - k}A${r} ${r} 0 0 1 ${x + k} ${y - k}M${x + k} ${y + k}A${r} ${r} 0 0 1 ${x - k} ${y + k}" fill="none" stroke="${fill}" stroke-width="${w}" stroke-linecap="round"/><circle cx="${x}" cy="${y}" r="${(r * .33).toFixed(2)}" fill="${fill}"/></g>`; }
-    return `<circle class="shape" cx="${x}" cy="${y}" r="${r}" ${st}/>`;
-  }
-  // 빛살: 가운데 쪽이 굵고 바깥으로 가늘다. 양끝은 노드와 같은 중심의 원호로, 틈만큼 떨어져 잘린다
-  type End = { id: string; x: number; y: number; r: number; c: string };
-  function ray(a: End, b: End, i: number, w0 = 3, w1 = .5) {
-    if (st.theme === 'light') { w0 *= 1.45; w1 = Math.max(w1 * 1.6, 1); }   // 밝은 바탕에서는 가는 띠가 묻힌다: 라이트만 굵게, 바깥 끝도 1 아래로 가늘어지지 않게
-    const th = Math.atan2(b.y - a.y, b.x - a.x), ra = a.r + GAP, rb = b.r + GAP;
-    const pts = [...arcPts(a.x, a.y, ra, th, Math.asin(Math.min(.95, w0 / ra))), ...arcPts(b.x, b.y, rb, th + Math.PI, Math.asin(Math.min(.95, w1 / rb))).reverse()];
-    const x0 = a.x + Math.cos(th) * ra, y0 = a.y + Math.sin(th) * ra, x1 = b.x - Math.cos(th) * rb, y1 = b.y - Math.sin(th) * rb;
-    return { def: `<linearGradient id="r${i}" gradientUnits="userSpaceOnUse" x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}"><stop offset="0" style="stop-color:${mix(a.c, 85)}"/><stop offset="1" style="stop-color:${mix(b.c, 30)}"/></linearGradient>`,
-             svg: `<polygon class="ray" data-a="${a.id}" data-b="${b.id}" points="${P(pts)}" style="fill:url(#r${i})"/>`, x0, y0, x1, y1 };
-  }
-  function bead(x: number, y: number, th: number, c: string, kind: string) {
-    const p = (dx: number, dy: number): Pt => [x + Math.cos(th) * dx - Math.sin(th) * dy, y + Math.sin(th) * dx + Math.cos(th) * dy], f = (q: Pt) => `${q[0].toFixed(1)} ${q[1].toFixed(1)}`;
-    let d = `M${f(p(-1.5, -4))}L${f(p(2.5, 0))}L${f(p(-1.5, 4))}`, extra = '';
-    if (kind === 'INHERITS_FROM') d += `M${f(p(-6, -4))}L${f(p(-6, 4))}`;
-    if (kind === 'DERIVES_FROM') { const q = p(-6.5, 0); extra = `<circle cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="2.2" fill="var(--c-card)" stroke="${c}" stroke-width="1.4"/>`; }
-    return `<path class="ray" d="${d}" fill="none" stroke="${c}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>${extra}`;
-  }
+  // ── 모양 · 빛살 · 표(문법): view-compass-shapes.ts 가 짓는다. 빛살은 그리는 그 순간의 테마와 섞기를 읽는다 ──
+  const { ray } = compassRay({ theme: () => st.theme, mix });
 
   // ── 이웃 모으기와 층 하나의 내용: 모델을 받아 view-compass-gather.ts 가 짓는다(gather 는 시간 창도 읽는다) ─────────────
   const gatherer = compassGather(M, C), { gather } = gatherer;
