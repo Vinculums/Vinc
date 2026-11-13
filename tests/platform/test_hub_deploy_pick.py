@@ -426,7 +426,10 @@ class WorkflowShape(unittest.TestCase):
         self.assertEqual(job["env"]["HUB_APP"], "${{ needs.plan.outputs.hub_app }}")
         self.assertEqual(job["env"]["HUB_URL"], "${{ needs.plan.outputs.hub_url }}")
         setting = (_ROOT / ".github" / "container-apps-target.env").read_text(encoding="utf-8")
-        self.assertEqual([l for l in setting.splitlines() if not l.startswith("#")], ["CAE=vinc-cae"])
+        # 설정은 주석을 빼면 한 줄이고, 그 값은 plan 잡의 표에 있는 환경이어야 한다(어느 쪽인지는 전환 상태다).
+        lines = [l for l in setting.splitlines() if not l.startswith("#")]
+        self.assertEqual(len(lines), 1, lines)
+        self.assertIn(lines[0], ("CAE=vinc-cae", "CAE=vinc-cae-vnet"))
 
     def test_배포_잡은_앱_이름과_옛_환경_주소를_적지_않는다(self):
         for step in self.doc["jobs"]["build-and-deploy"]["steps"]:
