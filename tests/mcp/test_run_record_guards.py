@@ -181,6 +181,19 @@ def test_a_question_that_expired_can_be_deleted(hub):
     assert _gone(hub, eid)
 
 
+def test_an_agent_cannot_abandon_a_waiting_person_only_question_to_delete_it(hub):
+    """대기 중인 사람 전용 질문은 에이전트 자격의 abandon 으로 닫히지 않는다. 닫히면 끝난 실행이 되어 지워진다."""
+    eid = _waiting_run(hub, "guard-abandon-waiting")
+    before = hub.stored(eid)
+    out = hub.tool("vinc_run_submit", run=eid, abandon=True)
+    assert out["executed"] is False and out["error"] == "person_answer_required", out
+    assert hub.stored(eid) == before and eid in hub.waiting_ids()
+    out = hub.tool("vinc_delete", node_id=eid)
+    assert out["executed"] is False and out["error"] == run_state.CODE, out
+    out = hub.proxy("run-answer", {"run": eid, "ask": 1, "answer": "decline"}, auth="session")
+    assert out.get("executed") is True and hub.stored(eid)["state"] == "done", out
+
+
 def test_a_run_a_person_approved_keeps_the_record_of_the_answer(hub):
     """사람이 승인하면 실행은 다시 일한다(working). 그 답의 기록은 실행이 끝날 때까지 지워지지 않는다."""
     eid = _waiting_run(hub, "guard-approved")

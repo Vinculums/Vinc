@@ -757,6 +757,16 @@ def _submit(args: dict, bridge, owner: str, eid: str, mode: str) -> dict:
     flags = _audit(policy, used, list(props.get("approved") or []))
     # 표지는 이 호출이 낸 단계에 단다(output 이면 _output 이 올릴 다음 단계 번호).
     _record_capabilities(props, used, flags, int(props.get("step", 0)) + (mode == "output"))
+    if (mode == "abandon" and props["state"] == "waiting"
+            and not expired(props.get("pending") or {})
+            and decision_kind(props.get("pending") or {}, policy) == "person_only"):
+        # 사람만 답하는 질문을 에이전트 자격이 닫으면, 끝난 실행은 지울 수 있으므로 그 질문이 답 없이 사라진다.
+        # 그 질문은 사람이 거절하거나 만료되어야 닫힌다.
+        return _failure(
+            "person_answer_required", "Refused: a person-only question waits on this run, so an "
+            "agent credential cannot abandon it, and nothing changed. The person declines it in "
+            + PERSON_PATH + ", or it closes when it expires.",
+            run_state=_view(props, eid, policy))
     if mode == "abandon":
         _end(props, "abandoned", "abandoned by the host")
         return _finish(bridge, owner, eid, props)
