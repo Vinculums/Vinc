@@ -109,7 +109,7 @@ def _team_plan_field(body: dict, *, source: str) -> dict:
     """팀 멤버십 응답의 `team_plan`(팀 소유자 등급) → 결과에 붙일 필드.
 
     계정이 안 실으면 **빈 dict** 다. 값을 지어내지 않고 부재를 그대로 넘겨, 허브가
-    부재를 "팀 소유자 등급을 아직 안 싣는 계정"으로 읽게 한다(`http_server._team_plan`).
+    부재를 "팀 소유자 등급을 아직 안 싣는 계정"으로 읽게 한다(`hub_auth._team_plan`).
     멤버 개인 등급(`plan`)과 섞으면 안 된다: Curious 멤버가 Genius 팀에서 일하면 Genius 를
     받아야 한다."""
     raw = body.get("team_plan")
