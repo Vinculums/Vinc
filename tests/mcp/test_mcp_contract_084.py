@@ -650,21 +650,22 @@ class SearchFallsBackWithoutWaiting(unittest.TestCase):
             def __init__(self):
                 self.submitted, self.waited = [], []
 
-            def submit(self, label, _fn):
-                self.submitted.append(label)
+            def submit(self, label, _fn, owner="unset"):
+                self.submitted.append((label, owner))
                 return types.SimpleNamespace(to_dict=lambda: {"status": "queued"})
 
-            def run_sync(self, label, fn, timeout=None):
-                self.waited.append((label, timeout))
+            def run_sync(self, label, fn, timeout=None, owner="unset"):
+                self.waited.append((label, timeout, owner))
                 return fn()
 
         import threading
         app = types.SimpleNamespace(jobs=_Jobs(), _index_lock=threading.Lock(), _index_job=None)
+        # 색인·투영 잡은 읽은 사람의 것이 아니다: owner=None 으로 걸어 그 사람의 잡 조회에 안 보인다.
         VincApp._at_write_point(app, "search.index", lambda: {}, 0.0)
-        self.assertEqual(app.jobs.submitted, ["search.index"])
+        self.assertEqual(app.jobs.submitted, [("search.index", None)])
         self.assertFalse(app.jobs.waited)
         VincApp._at_write_point(app, "graph.algo", lambda: {}, 60.0)
-        self.assertEqual(app.jobs.waited, [("graph.algo", 60.0)])
+        self.assertEqual(app.jobs.waited, [("graph.algo", 60.0, None)])
 
     def test_벡터_아닌_실패는_사유로_말하고_키워드_결과는_지킨다(self):
         """인덱스 부재만 **양성** 강등이다. 그 밖의 실패도 삼키지 않고 `vector_note` 로

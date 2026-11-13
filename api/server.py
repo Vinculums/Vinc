@@ -30,6 +30,7 @@ from array import array
 import datetime as _dt
 import json
 import os
+import re
 import secrets
 import signal
 import sys
@@ -405,7 +406,7 @@ class VincApp:
                                      on_before_done=self._ack_before_done if (
                                          self._durable or self._conversion_durable) else None,
                                      on_before_run=self._conversion_write_guard,
-                                     tick_s=tick_s or None)
+                                     tick_s=tick_s or None, owner_of=_request_owner)
         self.packs_dir = packs_dir
         self.profile_path = profile_path
         self.ingest = ingest if ingest is not None else dict(DEFAULT_INGEST)
@@ -681,13 +682,14 @@ class VincApp:
         인덱스 재빌드를 거는 자리가 쓴다(`_ReaderView.schedule_search_indexes`) —
         그 답은 이번 응답에 필요하지 않고, 검색은 그동안 FTS 로 답한다."""
         if timeout is not None and timeout <= 0:
+            # 색인·투영은 누구의 쓰기도 아니다. 읽은 사람에게 묶으면 그 사람이 전체 행 수를 본다.
             if label == "search.index":
                 with self._index_lock:
                     if self._index_job is None or self._index_job.status not in ("queued", "running"):
-                        self._index_job = self.jobs.submit(label, fn)
+                        self._index_job = self.jobs.submit(label, fn, owner=None)
                     return self._index_job.to_dict()
-            return self.jobs.submit(label, fn).to_dict()
-        return self.jobs.run_sync(label, fn, timeout=timeout)
+            return self.jobs.submit(label, fn, owner=None).to_dict()
+        return self.jobs.run_sync(label, fn, timeout=timeout, owner=None)
 
     def _read(self, fn):
         """읽기 경로 공통: reader 뷰를 열어 fn(reader)->dict 실행 후 닫는다.
@@ -2997,9 +2999,12 @@ class VincApp:
             self.store, out, packs_dir=self.packs_dir, profile_path=self.profile_path))
         return 202, job.to_dict()
 
-    def get_job(self, job_id):
+    def get_job(self, job_id, p=None):
+        """잡 상태. ``owner`` 를 실은 조회(허브의 프록시는 늘 싣는다)는 그 소유자가 만든 잡만
+        본다. 남의 잡과 없는 잡은 같은 404 다: id 를 세어 물어도 있는지조차 알 수 없어야 한다.
+        owner 없는 조회는 세션 토큰을 쥔 이 기기의 셸·CLI 다."""
         job = self.jobs.get(job_id)
-        if job is None:
+        if job is None or (p is not None and "owner" in p and job.owner != p["owner"]):
             return 404, {"error": f"no such job: {job_id}"}
         return 200, job.to_dict()
 
@@ -3095,6 +3100,16 @@ def _heal_search_indexes(store, dim: int, *, quiet=False) -> None:
                   file=sys.stderr, flush=True)
 
 
+def _request_owner() -> str | None:
+    """지금 요청의 소유자. `_dispatch_request` 가 라우팅 전에 세우고, 잡이 이 값에 묶인다."""
+    from .topic_conversion import request_owner
+    return request_owner.get()
+
+
+#: 로그 줄에 그대로 싣지 않을 문자(공백·제어 문자·비 ASCII). 경로 하나가 줄을 쪼개지 못하게.
+_LOG_UNSAFE = re.compile(r"[^\x21-\x7e]")
+
+
 def _pop_max_domains(body) -> int | None:
     """요청 본문에서 주제 상한을 꺼낸다(있으면 제거).
 
@@ -3116,8 +3131,26 @@ def _pop_max_domains(body) -> int | None:
 class _Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
-    def log_message(self, *args):   # 서버 로그 소음 억제(사이드카 — 셸이 제어)
+    def log_message(self, *args):   # 기본 접근 로그는 끈다. 5xx 는 아래 log_request 가 남긴다
         pass
+
+    def log_request(self, code="-", size="-"):
+        """5xx 응답만 stderr 에 한 줄 남긴다: 메서드, 쿼리를 뗀 경로, 상태, 걸린 시간.
+
+        허브 앞에서는 게이트웨이 오류만 보이므로 원인을 되짚을 곳이 이 줄뿐이다. 본문·헤더·
+        쿼리스트링은 싣지 않는다(키·토큰·owner 가 실릴 수 있다). 성공과 4xx 는 남기지 않는다."""
+        started, self._started = getattr(self, "_started", None), None   # keep-alive 다음 요청에 넘기지 않는다
+        try:
+            status = int(code)
+        except (TypeError, ValueError):
+            return
+        if status < 500:
+            return
+        path = _LOG_UNSAFE.sub("?", (getattr(self, "path", "") or "").split("?", 1)[0])[:200] or "-"
+        method = _LOG_UNSAFE.sub("?", self.command or "-")[:16]
+        took = f"{(time.perf_counter() - started) * 1000:.0f}ms" if started is not None else "-"
+        sys.stderr.write(f'[sidecar] "{method} {path}" {status} {took}\n')
+        sys.stderr.flush()
 
     @property
     def app(self) -> VincApp:
@@ -3181,6 +3214,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _dispatch(self, method: str):
+        self._started = time.perf_counter()
         if method == "GET" and self.headers.get(request_timing.HEADER) == request_timing.VALUE:
             with request_timing.capture():
                 return self._dispatch_request(method)
@@ -3381,7 +3415,7 @@ class _Handler(BaseHTTPRequestHandler):
         if path.startswith("/plan/"):
             return app.read_plan(path[len("/plan/"):], p)
         if path.startswith("/jobs/"):
-            return app.get_job(path[len("/jobs/"):])
+            return app.get_job(path[len("/jobs/"):], p)
         return 404, {"error": f"no such route: GET {path}"}
 
     #: 스토어 없이도 **옳게** 도는 POST. 어휘(themes·types)는 그래프 밖 JSON 파일이고
