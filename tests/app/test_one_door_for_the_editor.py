@@ -96,13 +96,17 @@ class TeardownReachesTheHandleTest(unittest.TestCase):
         self.assertIn("disposeEditorsIn(detail)", braced(VIEW, "function openRail()", inner=True))
         # 실제로 모든 대입이 그 문 뒤에 있는지 본다 — 앞에 있어도 되는 것은 스스로
         # 확정하는 closeRail 하나뿐이다(위 검사가 그 순서를 이미 잠갔다).
+        # 문은 레일 모듈(`createRail`)에 있고 표면은 레일을 만든 줄부터 그 문을 쥔다:
+        # 표면의 대입은 그 줄 뒤에, 레일 모듈 안의 대입은 문 뒤에 있어야 한다.
+        held = VIEW.index("= createRail(")
+        rail_from = VIEW.index("export function createRail(")
         gate = VIEW.index("function openRail()")
         close_body = braced(VIEW, "function closeRail()", inner=True)
         close_from = VIEW.index(close_body)
         for m in re.finditer(r"^\s+detail\.innerHTML\s*=", VIEW, re.M):
             if close_from <= m.start() < close_from + len(close_body):
                 continue
-            self.assertGreater(m.start(), gate,
+            self.assertGreater(m.start(), gate if m.start() > rail_from else held,
                                "openRail 보다 앞에서 레일 내용을 갈아치우는 자리가 생겼다")
 
     def test_전체폭_승격은_확정을_기다린다(self):
