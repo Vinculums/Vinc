@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import pytest
 
+from api import neighbors as nb
 from api import query as q
 from engines import domain_hierarchy as dh
 from store import pkns
@@ -161,7 +162,7 @@ def test_a_dag_in_one_batch_without_graph_payload(graph):
 
 
 def test_invalid_queries_do_not_open_a_store(monkeypatch):
-    monkeypatch.setattr(q, "open_store", lambda cfg: pytest.fail("invalid read opened store"))
+    monkeypatch.setattr(nb, "open_store", lambda cfg: pytest.fail("invalid read opened store"))
     for args in ({}, {"node": "concept:x", "nodes": ["concept:x"]}, {"nodes": []},
                  {"nodes": ["concept:x"] * 101}, {"nodes": [42]}, {"node": "physical\x1fid"},
                  {"node": "concept:x", "dir": "wrong"}, {"node": "concept:x", "limit": 5001}):
