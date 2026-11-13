@@ -45,12 +45,12 @@ def run_brief(monkeypatch):
     """store 없이 brief 를 돌린다: search 응답을 그대로 주고, 노드는 늘 열린다."""
     monkeypatch.setenv("VINC_BRIEF_QUOTES", "off")
     monkeypatch.delenv("VINC_BRIEF_ANSWERABILITY", raising=False)
-    monkeypatch.setattr(q, "_brief_query_ids", lambda *a, **k: [])
-    monkeypatch.setattr(q, "_brief_entity_ids", lambda *a, **k: [])
-    monkeypatch.setattr(q, "node_context", lambda **kw: {"executed": True})
-    monkeypatch.setattr(q, "_brief_answer", lambda base, hit, ctx, store, **rule: {**base, "node": {"id": hit["id"]}})
-    monkeypatch.setattr(q, "_brief_attach_section", lambda *a, **k: None)
-    monkeypatch.setattr(q, "_brief_mirror_text", lambda store, owner, h: None)
+    monkeypatch.setattr(brief_mod, "_brief_query_ids", lambda *a, **k: [])
+    monkeypatch.setattr(brief_mod, "_brief_entity_ids", lambda *a, **k: [])
+    monkeypatch.setattr(brief_mod, "node_context", lambda **kw: {"executed": True})
+    monkeypatch.setattr(brief_mod, "_brief_answer", lambda base, hit, ctx, store, **rule: {**base, "node": {"id": hit["id"]}})
+    monkeypatch.setattr(brief_mod, "_brief_attach_section", lambda *a, **k: None)
+    monkeypatch.setattr(brief_mod, "_brief_mirror_text", lambda store, owner, h: None)
 
     def go(query, res, rule="v3"):
         seen = {}
@@ -59,7 +59,7 @@ def run_brief(monkeypatch):
             seen["qc"] = kw.get("query_colbert")
             return copy.deepcopy(res)
 
-        monkeypatch.setattr(q, "search", fake_search)
+        monkeypatch.setattr(brief_mod, "search", fake_search)
         monkeypatch.setenv("VINC_BRIEF_RULE", rule)
         out = q.brief(query, owner="o", query_colbert="TOKENS", store=object())
         out["_qc"] = seen.get("qc")
@@ -163,7 +163,7 @@ def test_token_tie_guard_does_not_run_on_v3(run_brief, monkeypatch):
     # 감춘 행이 1위와 토큰으로 비긴다. 기존 가드라면 되묻고, v3 는 특징으로만 본다.
     res = _res(_lexical_hits(), validity_filtered=1, validity_best_dropped=[2, 1],
                validity_best_dropped_distance=0.34)
-    monkeypatch.setattr(q, "_brief_resolve_learned", lambda query, hits: ("resolved", [hits[0]], 0.9))
+    monkeypatch.setattr(brief_mod, "_brief_resolve_learned", lambda query, hits: ("resolved", [hits[0]], 0.9))
     assert run_brief("what is it", res, rule="learned")["status"] == "choose"
     monkeypatch.setattr(brief_mod, "_brief_v3_p", lambda x: 0.9)
     out = run_brief("what is it", res)
@@ -172,7 +172,7 @@ def test_token_tie_guard_does_not_run_on_v3(run_brief, monkeypatch):
 
 def test_not_rescored_falls_back_to_production(run_brief, monkeypatch):
     called = []
-    monkeypatch.setattr(q, "_brief_resolve_v3", lambda *a: called.append(1) or ("choose", [], None))
+    monkeypatch.setattr(brief_mod, "_brief_resolve_v3", lambda *a: called.append(1) or ("choose", [], None))
     res = _res(_lexical_hits(), node_rescore={"state": "skipped", "reason": "tokens missing"})
     out = run_brief("what is it", res)
     assert not called

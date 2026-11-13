@@ -56,7 +56,7 @@ def test_production_rule_never_sees_the_colbert_order(monkeypatch):
         seen["qc"] = kw.get("query_colbert")
         return {"executed": True, "node_hits": [], "rows": []}
 
-    monkeypatch.setattr(q, "search", fake_search)
+    monkeypatch.setattr(brief_mod, "search", fake_search)
     monkeypatch.delenv("VINC_BRIEF_RULE", raising=False)
     q.brief("what is it", owner="o", query_colbert="TOKENS", store=object())
     assert seen["qc"] is None
