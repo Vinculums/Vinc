@@ -82,6 +82,14 @@ _LATE_SYNC_FIELDS: dict[str, tuple[str, ...]] = {"Concept": ("one_liner",),
 _DEFAULTED_EVIDENCE_RELS = frozenset((*_es._EVIDENCE_RELS, "ATTACHES_TO"))
 
 
+def _physical(value) -> bool:
+    """묶음의 id 에 물리 키의 구분자(`pkns.SEP`, U+001F)가 들었는가. 와이어의 id 는 늘 논리 id 다.
+
+    `pkns.key` 는 구분자가 든 id 를 이미 합성된 물리 키로 보고 그대로 돌려주므로, 그런 id 는 owner 를
+    붙이지 않은 채 저장된 행에 닿는다. 노드 병합(`api/fragment.py`)이 그런 노드를 건너뛰는 것과 같은 규칙이다."""
+    return isinstance(value, str) and pkns.SEP in value
+
+
 def _snapshot(label: str, node: dict) -> dict:
     """노드(번들 노드 또는 로컬 조회 dict)에서 sync 필드만 **raw** 로 뽑되 표현을
     통일한다: props 는 항상 dict(로컬 DB 는 JSON 문자열이라 파싱), tags 는 항상 list.
@@ -899,14 +907,16 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
     `trusted_sender` 는 보낸 쪽을 믿는가다. 기기가 자기 허브에서 받는 pull 만 True 를 넘기고, 허브가
     기기 묶음을 받는 길(사이드카 `/sync/apply-delta`)은 언제나 기본값 False 다. 규칙 셋이 이것을 읽는다:
       - 실행 기록: 처음 보는 실행의 대기·승인·답을 보낸 쪽 그대로 받는가(`store/run_state.py` `keep_own`).
-      - 실행 기록의 삭제 표식: 믿지 않으면 사람이 아직 답할 수 있는 질문을 가진 실행(`run_state.waiting`)은
-        지우지 않고 결과 `run_state_protected` 에 이름을 남긴다. 끝난 실행의 삭제는 받는다.
+      - 실행 기록의 삭제 표식: 믿지 않으면 끝나지 않은 실행(`run_state.unfinished`: 일하는 중이거나 사람을
+        기다린다)은 지우지 않고 결과 `run_state_protected` 에 이름을 남긴다. 끝난 실행의 삭제는 받는다.
       - 시계: 믿지 않으면 스탬프가 `revstamp.ceiling_ms()` 뒤인 노드·노드 삭제·엣지 삭제는 저장하지 않고
         결과 `clock_skew` 에 이름을 남긴다(자르지 않는다: 자르면 보낸 쪽과 다른 스탬프의 사본이 생긴다).
         나머지는 적용한다. 믿으면 스탬프를 그대로 받는다. 믿으면 묶음의 `clock`(보낸 허브의 벽시계)을 적용 전에
         적는다(기기 벽시계 + `revstamp.TRUSTED_AHEAD_MS` 까지). 시계는 max(기기 벽시계, 그 허브 시계) +
         `revstamp.MAX_SKEW_MS` 까지의 스탬프를 따라가고(`revstamp.observe_hlc`), 그 근처에 있는 동안은 되돌리지
         않는다(`revstamp._last`).
+    믿음과 상관없이, 사람을 기다리는 실행의 카드(제목과 `run_state.CARD_KEYS`)는 받는 스토어의 값을 남기고,
+    id 에 물리 키의 구분자(U+001F)가 든 노드·삭제 표식은 적용하지 않고 경고를 남긴다(`_physical`).
     """
     out = {"executed": False, "applied": 0, "skipped_stale": 0, "merged": 0,
            "edges": 0, "deleted": 0, "resurrected": 0, "kept_deleted": 0, "warnings": []}
@@ -949,6 +959,11 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
             # 묘비·base·시계를 건드리기 전에 거른다. 보낸 기기는 base 를 옮기지 않고 다시 보낸다.
             refused.append(nid)
             continue
+        if _physical(nid):
+            # 병합은 이 노드를 건너뛰지만 묘비·base·스탬프는 이 id 를 물리 키 그대로 읽어 저장된 행에 닿는다. 그 전에 거른다.
+            out["warnings"].append(
+                f"node contains U+001F (reserved for PK namespacing) — skipped (id={nid!r})")
+            continue
         pk = frag._NODE_MAP[ntype][1]
         remote_snap = _snapshot(label, n)
         # 구버전 클라이언트가 모르는 필드는 키가 없다. 비운 것이 아니라 말하지 않은 것이다.
@@ -982,6 +997,11 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
                 remote_snap.get("props"), own, trusted=trusted_sender)
             if differed:
                 protected.append(rid)
+        if (rid is not None and local is not None and run_state.waiting(local.get("props"))
+                and remote_snap.get("title") != local.get("title")):
+            # 사람을 기다리는 실행의 카드 제목은 받는 스토어의 값을 남긴다. 카드의 props 는 `keep_own` 이 남긴다.
+            remote_snap["title"] = local.get("title")
+            protected.append(rid)
 
         if local is None:                       # 신규 — 원격 그대로, 스탬프 보존
             for f in unstated:                  # 쓰지 않는다(fragment 의 기존 규칙에 맡긴다)
@@ -1085,15 +1105,22 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
         pk = _SYNC_PK.get(tlabel or "")
         if not tid or not pk:
             continue
+        if _physical(tid):
+            # `pkns.key` 는 구분자가 든 id 를 물리 키로 보고 그대로 돌려준다. 그러면 실행 검사를 지나지 않은 채
+            # 저장된 행을 지운다. 와이어의 삭제 표식은 늘 논리 id 라 받지 않는다(믿는 쪽에서 와도 같다).
+            out["warnings"].append(f"delete marker contains U+001F (reserved for PK namespacing) "
+                                   f"— skipped (id={tid!r})")
+            continue
         run = tlabel == "Episode" and run_state.run_id(tid) == tid
         cur = store.run(f"MATCH (x:{tlabel}) WHERE x.{pk} = $id AND x.owner_id = $owner "
                         "RETURN x.updated_at AS ua" + (", x.props AS props" if run else ""),
                         {"id": pkns.key(owner, tid), "owner": owner})
         if cur and (cur[0].get("ua") or "") > t_da:
             continue                          # 삭제 이후 재편집됨 → 삭제 무시
-        if run and cur and not trusted_sender and run_state.waiting(cur[0].get("props")):
-            # 사람이 아직 답할 수 있는 질문을 가진 실행은 믿지 않는 쪽의 삭제 표식으로 지우지 않는다(묘비도 안 남긴다).
-            # 끝난 실행과 만료된 질문의 삭제는 받는다: 소유자가 기기에서 지운 것이 허브에도 간다.
+        if run and cur and not trusted_sender and run_state.unfinished(cur[0].get("props")):
+            # 끝나지 않은 실행(일하는 중이거나 사람을 기다린다)은 믿지 않는 쪽의 삭제 표식으로 지우지 않는다(묘비도
+            # 안 남긴다): 질문이 답 없이 사라지거나 사람의 답의 기록이 지워진다. 끝난 실행과 만료된 질문의 삭제는
+            # 받는다: 소유자가 기기에서 지운 것이 허브에도 간다.
             protected.append(tid)
             continue
         if cur:
@@ -1119,6 +1146,11 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
         if not trusted_sender and revstamp.beyond_ceiling(t.get("deleted_at") or ""):
             # 먼 삭제 표식을 남기면 그 엣지는 끝점을 아무리 고쳐도 다시 쓰이지 않는다.
             refused.append(edge_ref(src, rel, dst))
+            continue
+        if _physical(src) or _physical(dst):
+            # 노드의 삭제 표식과 같다: 끝점 id 가 물리 키로 읽힌다.
+            out["warnings"].append(f"edge delete marker contains U+001F (reserved for PK "
+                                   f"namespacing) — skipped ({src!r}→{dst!r})")
             continue
         carrier, subtype, ep = spec
         qualifier = " AND r.type = $subtype" if subtype is not None else ""
@@ -1221,20 +1253,23 @@ def configured_hub() -> str:
     return (os.environ.get(HUB_URL_ENV) or "").strip().rstrip("/") or DEFAULT_HUB
 
 
-def trusted_hub(base) -> tuple[str, dict | None]:
-    """믿는 pull(기기의 동기화·계정 전부 받기·계정에서 옮기기)이 갈 허브와 거절 하나.
+def trusted_hub(base, *, upload: bool = False) -> tuple[str, dict | None]:
+    """사이드카의 동기화(기기의 동기화·계정 전부 받기·계정에서 옮기기·계정으로 전부 올리기)가 갈 허브와 거절 하나.
 
-    믿는 pull 은 받은 실행 기록의 대기·승인·답을 그대로 받는다(`apply_delta` 의 `trusted_sender`). 그래서
-    받을 곳은 요청이 아니라 기기의 설정(`configured_hub`)이 정한다. 본문의 `base` 가 없거나 그와 같으면
-    (끝의 `/` 는 무시한다) 그 허브로 가고, 다르면 거절한다: 다른 허브의 상태를 믿을 근거가 없다."""
+    믿는 pull 은 받은 실행 기록의 대기·승인·답을 그대로 받는다(`apply_delta` 의 `trusted_sender`). 전부
+    올리기(`upload`)는 회원 키와 이 기기의 그래프 전부를 싣는다. 그래서 보낼 곳은 요청이 아니라 기기의
+    설정(`configured_hub`)이 정한다. 본문의 `base` 가 없거나 그와 같으면(끝의 `/` 는 무시한다) 그 허브로 가고,
+    다르면 거절한다: 다른 허브의 상태를 믿을 근거도, 다른 서버에 키와 그래프를 줄 까닭도 없다."""
     hub = configured_hub()
     asked = base.strip().rstrip("/") if isinstance(base, str) else base
     if asked in (None, "") or asked == hub:
         return hub, None
+    what = ("this upload carries the member key and this device's whole graph" if upload
+            else "this pull trusts the run states it receives")
     return hub, {"error": UNTRUSTED_HUB, "note": (
-        f"Refused: this pull trusts the run states it receives, so it goes only to this "
-        f"device's hub ({hub}), and the request named another one. Leave base out, or set "
-        f"{HUB_URL_ENV} where the Vinc app starts its engine. Nothing was started.")}
+        f"Refused: {what}, so it goes only to this device's hub ({hub}), and the request "
+        f"named another one. Leave base out, or set {HUB_URL_ENV} where the Vinc app starts "
+        f"its engine. Nothing was started.")}
 
 
 class RemoteHTTP:

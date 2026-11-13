@@ -2967,7 +2967,11 @@ class VincApp:
         owners = body.get("owners") or ["tenant:local", "user:local"]
         if not isinstance(owners, list) or not all(isinstance(o, str) and o for o in owners):
             return 400, {"error": "owners must be a list of owner ids"}
-        remote = sync.RemoteHTTP(token, body.get("base"))
+        # 전부 올리기는 회원 키와 그래프 전부를 싣는다. 보낼 곳은 본문이 아니라 기기의 설정이 정한다.
+        hub, refused = sync.trusted_hub(body.get("base"), upload=True)
+        if refused:
+            return 400, refused
+        remote = sync.RemoteHTTP(token, hub)
         return self._submit_move("sync:push-all", lambda: sync.push_everything(
             self.store, self.cfg, owners=owners, remote=remote))
 

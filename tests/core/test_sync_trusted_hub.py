@@ -5,6 +5,7 @@
 실행 기록의 상태를 허브의 것 그대로 믿는다(`api/sync.py` `trusted_sender`). 그래서 받을 곳은 요청
 본문이 아니라 기기의 설정(`VINC_SYNC_URL`, 없으면 `https://mcp.vincs.io`)이 정한다. 본문의 `base` 가
 그와 다르면 아무 잡도 받지 않고 400 `untrusted_hub` 로 답한다. 같거나 없으면 정한 허브로 간다.
+`/sync/push-all`(계정으로 전부 올리기)도 같다: 회원 키와 이 기기의 그래프 전부를 싣기 때문이다.
 """
 from __future__ import annotations
 
@@ -43,6 +44,7 @@ def app(tmp_path, monkeypatch):
     monkeypatch.setattr(srv.sync, "RemoteHTTP", _Remote)
     monkeypatch.setattr(srv.sync, "run", lambda *a, **k: {})
     monkeypatch.setattr(srv.sync, "pull_everything", lambda *a, **k: {})
+    monkeypatch.setattr(srv.sync, "push_everything", lambda *a, **k: {})
     _Remote.made = []
     out = VincApp(load_config({"data_dir": str(tmp_path / "db")}), store=None,
                   auth=SessionAuth("fixture"))
@@ -59,6 +61,8 @@ def _call(app, route: str, base) -> tuple[int, dict]:
         return app.submit_sync(body)
     if route == "/sync/pull-all":
         return app.submit_sync_pull_all(body)
+    if route == "/sync/push-all":
+        return app.submit_sync_push_all(body)
     return app.submit_config_move({**body, "to": DATABASE, "from": "account", "password": "p"})
 
 
@@ -94,3 +98,16 @@ def test_the_device_configuration_names_the_hub(app, monkeypatch):
     code, out = _call(app, "/sync/pull-all", HUB)
     assert code == 400 and out["error"] == "untrusted_hub", out
     assert "http://127.0.0.1:8765" in out["note"], out
+
+
+def test_an_upload_of_the_whole_graph_goes_only_to_the_configured_hub(app):
+    code, out = _call(app, "/sync/push-all", EVIL)
+    _settle(app, code, out)
+    assert code == 400 and out["error"] == "untrusted_hub", out
+    assert "member key" in out["note"] and HUB in out["note"], out
+    assert _Remote.made == []
+    for base in (None, "", HUB, HUB + "/"):
+        code, out = _call(app, "/sync/push-all", base)
+        _settle(app, code, out)
+        assert code == 202, out
+    assert _Remote.made == [HUB] * 4

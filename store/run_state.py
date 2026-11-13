@@ -14,8 +14,10 @@
 - 실행의 역할(`ROLE_KEYS`)은 상태 키처럼 지킨다: `props_patch` 는 거절하고, 동기화는 프로토콜이
   가진 실행(`held`)의 저장된 역할을 남긴다.
 - 프로토콜이 가진 실행 기록에 props 를 통째로 쓰는 쓰기는 거절한다(`api/mutation_contract.py`,
-  `whole_props_refusal`). 사람이 아직 답할 수 있는 질문을 가진 실행(`waiting`)은 도구 삭제
+  `whole_props_refusal`). 끝나지 않은 실행(`unfinished`: 일하는 중이거나 사람을 기다린다)은 도구 삭제
   (`api/query.py` `delete_node`)와 믿지 않는 쪽의 삭제 표식(`api/sync.py` `apply_delta`)이 지우지 않는다.
+- 사람을 기다리는 실행(`waiting`)의 카드(노드 제목과 `CARD_KEYS`)는 도구 쓰기가 바꾸지 못하고
+  (`card_refusal`), 동기화는 받는 스토어의 값을 남긴다(props 는 `keep_own`, 제목은 `api/sync.py` `apply_delta`).
 
 ``store/`` 는 맨 아래 층이라(``scripts/gate_ownership.py`` 의 ``LAYER_BANS``) ``api`` 와
 ``vinc_mcp`` 가 둘 다 이것을 가져다 쓴다.
@@ -40,6 +42,13 @@ STATE_KEYS = QUESTION_KEYS + ANSWER_KEYS
 #: `props_patch` 로는 못 바꾸고, 프로토콜이 가진 실행에는 동기화로 건너가지 않는다. 통째의 props 는
 #: 클라이언트의 실행 기록(`vinc_client.record_run`)도 역할을 실어 쓰므로 여기서 거절하지 않는다.
 ROLE_KEYS = ("role", "role_hash")
+#: 승인함의 카드(`api/runs.py` `waiting_runs`)가 사람에게 보이는 props 가운데 상태·역할 밖의 것. 사람은
+#: 노드의 제목과 이것을 읽고 답하므로, 실행이 사람을 기다리는 동안에는 도구 쓰기와 동기화가 바꾸지 못한다.
+#: 기다리지 않는 실행에서는 `props_patch` 와 동기화가 보통의 규칙대로 바꾼다.
+CARD_KEYS = ("run_id", "task", "subject", "host", "step", "started_at")
+#: 실행 프로토콜의 상태. 끝은 `DONE` 하나이고, 일하는 중(working)과 기다리는 중(waiting)은 끝나지 않았다.
+STATES = ("working", "waiting", "done")
+DONE = "done"
 #: 믿지 않는 쪽에서 온 질문의 대기 종류. 누가 답해도 되는지는 보낸 쪽의 말을 따르지 않는다.
 _PERSON_ONLY = "person_only"
 #: 막힌 쓰기의 오류 코드이자 동기화 결과가 남긴 실행을 싣는 필드 이름.
@@ -188,7 +197,8 @@ def writes(nodes) -> list[str]:
 
     도구로 `state`·`approved`·`answer` 를 바꿀 수 있으면 에이전트 자격이 사람만 답하는 대기를
     스스로 풀 수 있다. `props_patch` 로 `role`·`role_hash` 를 바꾸면 승인이 다른 역할의 정책과
-    견주어진다. host·trace_ref 같은 나머지 필드는 그대로 `props_patch` 로 더한다."""
+    견주어진다. trace_ref 같은 나머지 필드는 그대로 `props_patch` 로 더한다. 사람을 기다리는 실행의
+    카드(`CARD_KEYS`)는 저장된 행과 견주어야 하므로 여기가 아니라 쓰기 입구가 거절한다(`card_refusal`)."""
     blocked = []
     for node in nodes if isinstance(nodes, list) else []:
         rid = run_id(node.get("id")) if isinstance(node, dict) else None
@@ -218,11 +228,38 @@ def whole_props_refusal(rid: str) -> str:
 
 
 def delete_refusal(rid: str) -> str:
-    """사람이 아직 답할 수 있는 질문을 가진 실행을 지우려는 삭제를 거절하는 문장."""
-    return (f"Refused: {rid} is a run waiting for a person's answer, and deleting it would take "
-            f"the question off the person's approvals unanswered. A person declines it in the "
-            f"Approvals screen of the Vinc app, or the question expires; after that it can be "
-            f"deleted. Nothing was deleted.")
+    """끝나지 않은 실행(`unfinished`)을 지우려는 삭제를 거절하는 문장."""
+    return (f"Refused: {rid} is a run that has not finished. It is working or waits for a "
+            f"person's answer, and deleting it would take its question off the person's approvals "
+            f"or erase the record of a person's answer. A waiting run closes when a person "
+            f"declines it in the Approvals screen of the Vinc app or its question expires; a "
+            f"working run closes when its host ends it with vinc_run_submit abandon:true. After "
+            f"that the owner can delete it. Nothing was deleted.")
+
+
+def card_changes(stored: dict, title, props) -> list[str]:
+    """쓰기가 실행의 카드에서 바꾸는 이름들: 제목(`title`)과 `CARD_KEYS` 가운데 값이 달라지는 것.
+
+    `stored` 는 저장된 행(`title`·`props`)이다. `title` 은 쓰려는 제목이고 None 이면 제목을 쓰지 않는다.
+    `props` 는 쓰고 난 뒤의 props 이고 None 이면 props 를 쓰지 않는다. 실행 기록의 제목은 공백뿐이면
+    빈 제목으로 저장되므로(`api/fragment.py`) 같은 규칙으로 견준다. 같은 값을 다시 보내면 빈 목록이다."""
+    changed = []
+    if title is not None:
+        text = str(title)
+        if (text if text.strip() else "") != (stored.get("title") or ""):
+            changed.append("title")
+    if props is not None:
+        own, after = props_of(stored.get("props")), props_of(props)
+        changed += [k for k in CARD_KEYS if after.get(k, _MISSING) != own.get(k, _MISSING)]
+    return changed
+
+
+def card_refusal(rid: str, fields: list[str]) -> str:
+    """사람을 기다리는 실행의 카드를 바꾸려는 쓰기를 거절하는 문장."""
+    return (f"Refused: {rid} waits for a person's answer, and the person reads its "
+            f"{', '.join(fields)} on the approvals card to decide. The card stays as it was "
+            f"asked until the person answers or the question expires; after that a write can "
+            f"change it. Nothing was written.")
 
 
 def keep_own(incoming, own, *, trusted: bool = False) -> tuple[dict, bool]:
@@ -233,8 +270,9 @@ def keep_own(incoming, own, *, trusted: bool = False) -> tuple[dict, bool]:
     바뀌므로 빼기만 하면 저장된 상태가 지워진다). 처음 보는 실행은 `trusted` 가 가른다:
     믿는 쪽(기기가 자기 허브에서 받을 때)이면 그대로, 아니면 `questions_only` 로 간다.
     프로토콜이 가진 실행(`held`)이면 역할(`ROLE_KEYS`)도 저장된 값을 남긴다: 승인은 그 역할의 정책과
-    견준다. 나머지 키는 보통의 동기화 규칙을 따른다.
-    돌려주는 것은 (바꾼 props, 들어온 상태·역할이 남긴 값과 달랐는가)."""
+    견준다. 저장된 실행이 사람을 기다리면(`waiting`) 카드(`CARD_KEYS`)도 남긴다: 사람이 읽고 답하는
+    글이다. 나머지 키는 보통의 동기화 규칙을 따른다.
+    돌려주는 것은 (바꾼 props, 들어온 상태·역할·카드가 남긴 값과 달랐는가)."""
     incoming = props_of(incoming)
     keys = STATE_KEYS
     if own is None:
@@ -245,6 +283,8 @@ def keep_own(incoming, own, *, trusted: bool = False) -> tuple[dict, bool]:
         own = props_of(own)
         if held(own):
             keys = STATE_KEYS + ROLE_KEYS
+        if waiting(own):
+            keys = keys + CARD_KEYS
         kept = {k: v for k, v in own.items() if k in keys}
     props = {k: v for k, v in incoming.items() if k not in keys}
     props.update(kept)
@@ -282,6 +322,25 @@ def waiting(props, now: datetime.datetime | None = None) -> bool:
     if read.get("state") != "waiting":
         return False
     return not expired(read.get("pending") or {}, now or datetime.datetime.now(datetime.timezone.utc))
+
+
+def unfinished(props, now: datetime.datetime | None = None) -> bool:
+    """끝나지 않은 실행인가. 도구 삭제와 믿지 않는 쪽의 삭제 표식은 이런 실행을 지우지 않는다.
+
+    실행 프로토콜의 상태(`STATES`) 가운데 끝은 `DONE` 하나다. 일하는 중(working)인 실행은 끝나지 않았고,
+    기다리는 중(waiting)인 실행은 요청이 만료되지 않았을 때만 끝나지 않았다(`waiting`): 만료된 질문에는
+    누구도 답할 수 없고 읽는 쪽도 막힌 채 끝난 실행으로 읽는다. 상태가 없거나 모르는 값인 기록은 답
+    (`ANSWER_KEYS`)을 실었으면 끝나지 않은 것으로 읽는다: 지우면 그 답의 기록이 사라진다. 답도 상태도
+    없는 기록(클라이언트의 실행 기록)은 끝난 것이다."""
+    read = readable(props)
+    state = read.get("state")
+    if state == DONE:
+        return False
+    if state == "waiting":
+        return waiting(read, now)
+    if state == "working":
+        return True
+    return any(read.get(k) not in (None, "", [], {}) for k in ANSWER_KEYS)
 
 
 def _within_limit(pending: dict, now: datetime.datetime | None) -> dict:
@@ -337,12 +396,13 @@ def questions_only(props, now: datetime.datetime | None = None) -> dict:
 
 
 def warning(ids: list[str]) -> str:
-    """상태·역할을 남겼거나 지우지 않은 실행들을 알리는 경고 한 줄. 결과의 `CODE` 필드에 전체 목록이 간다."""
+    """상태·역할·카드를 남겼거나 지우지 않은 실행들을 알리는 경고 한 줄. 결과의 `CODE` 필드에 전체 목록이 간다."""
     named = ", ".join(ids[:_NAMED_MAX])
     more = f" and {len(ids) - _NAMED_MAX} more" if len(ids) > _NAMED_MAX else ""
     return (f"{CODE}: kept this store's protocol state ({STATE_KEYS[0]}, "
             f"{', '.join(ANSWER_KEYS[:2])}, ...) and role on {len(ids)} run record(s): "
             f"{named}{more}. A run this store never saw keeps its question but no approval or "
-            f"answer, and a delete marker does not remove a run that waits for a person. A run's "
-            f"waiting, approval, answer and role change only through the run protocol of the "
-            f"store that records them.")
+            f"answer, a run that waits for a person keeps the title, {', '.join(CARD_KEYS[:3])}, "
+            f"... the person reads, and a delete marker does not remove a run that has not "
+            f"finished. A run's waiting, approval, answer and role change only through the run "
+            f"protocol of the store that records them.")

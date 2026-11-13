@@ -48,7 +48,8 @@ ROLE_PREFIX = "concept:agent-"
 RUN_PREFIX = _run_rule.RUN_PREFIX
 #: 이 흐름의 실행 기록 토픽(D8). 도메인은 `vinc/` 아래 둔다.
 DOMAIN = "vinc/agent/harness"
-STATES = ("working", "waiting", "done")
+#: 실행의 상태(working·waiting·done). 삭제를 막는 끝나지 않은 실행의 기준(`run_state.unfinished`)과 한 벌이다.
+STATES = _run_rule.STATES
 #: 열린 실행의 outcome. 끝나기 전에는 아무 결론도 나지 않았다.
 OPEN_OUTCOME = "waiting"
 ANSWERS = ("approve", "decline")

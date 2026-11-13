@@ -83,9 +83,10 @@ def _shapes(path: str) -> list[str]:
 
 PATHS = (list(run_state.PROPS) + [f"pending.{k}" for k in run_state.PENDING_PROPS]
          + [f"used.{k}" for k in run_protocol.USAGE_KEYS])
-#: (ii) 의 길로 쓸 수 있는 이름. 프로토콜 상태 키와 역할 키는 `props_patch` 를 거절한다(`run_state.writes`).
-HELD_PATHS = [p for p in PATHS
-              if p.split(".")[0] not in run_state.STATE_KEYS + run_state.ROLE_KEYS]
+#: (ii) 의 길로 쓸 수 있는 이름. 프로토콜 상태 키와 역할 키는 `props_patch` 를 거절하고(`run_state.writes`),
+#: 대기 중인 실행의 카드 키도 거절한다(`run_state.CARD_KEYS`). 그 이름들은 (i) 의 길로만 온다.
+HELD_PATHS = [p for p in PATHS if p.split(".")[0] not in
+              run_state.STATE_KEYS + run_state.ROLE_KEYS + run_state.CARD_KEYS]
 ACTIONS = ("runs-waiting", "vinc_runs list", "vinc_runs run", "vinc_run_start",
            "vinc_run_submit output", "vinc_run_submit answer", "tasks/get", "tasks/cancel",
            "events feed", "notification payload", "run-answer decline", "run-answer approve")
