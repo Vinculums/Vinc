@@ -3,7 +3,7 @@
     "what": "files -> history-marker comment lines, counted by scripts/gate_comment_history.py",
     "regenerate": "python -X utf8 scripts/gate_comment_history.py --write-baseline",
     "new_file_allowance": 3,
-    "total": 2361
+    "total": 2353
   },
   "files": {
     ".github/actions/runner-preflight/action.yml": 3,
@@ -40,7 +40,7 @@
     "api/cli_tools.py": 4,
     "api/cli_transport.py": 3,
     "api/community_agents.py": 1,
-    "api/docstore.py": 91,
+    "api/docstore.py": 83,
     "api/docsync.py": 2,
     "api/eval_cards.py": 1,
     "api/events.py": 1,
