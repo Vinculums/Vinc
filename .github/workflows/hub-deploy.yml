@@ -131,6 +131,7 @@ jobs:
       cae: ${{ steps.target.outputs.cae }}
       hub_app: ${{ steps.target.outputs.hub_app }}
       hub_url: ${{ steps.target.outputs.hub_url }}
+      account_app: ${{ steps.target.outputs.account_app }}
     steps:
       # 손으로 돌리는 실행은 운영 담당만(repo 변수 PROD_OPERATORS, 쉼표로 구분한 로그인).
       # 실수 방지이지 보안 경계가 아니다: 쓰기 권한자는 이 단계를 지운 브랜치 판을 dispatch 할 수 있다.
@@ -158,14 +159,16 @@ jobs:
       # 주소로 풀어 출력으로 넘긴다. build-and-deploy 는 내보낼 커밋을 체크아웃하고 그 커밋은 이 파일보다
       # 오래될 수 있으므로, 워크플로와 같은 커밋(이 잡의 체크아웃)에서 읽는 이 자리에서만 푼다.
       # 앱이 선언한 환경에 있지 않으면 멈춘다: 설정과 실물이 어긋난 채 배포하면 다른 앱이 바뀐다.
+      # 아래 case 줄이 환경→앱 표의 유일한 정본이다(허브 앱 app=, 계정 앱 account=). 운영 워크플로와
+      # 스크립트는 scripts/hub_target.py 로 이 줄을 읽는다. 줄의 꼴을 바꾸면 그 파일도 같이 바꾼다.
       - id: target
         name: 배포 대상 (컨테이너 앱 환경은 한 줄 설정)
         run: |
           set -euo pipefail
           cae=$(sed -n 's/^CAE=//p' .github/container-apps-target.env)
           case "$cae" in
-            vinc-cae) app=vinc-hub ;;
-            vinc-cae-vnet) app=vinc-hub-vnet ;;
+            vinc-cae) app=vinc-hub account=vinc-account ;;
+            vinc-cae-vnet) app=vinc-hub-vnet account=vinc-account-vnet ;;
             *) echo "::error::.github/container-apps-target.env 의 CAE 를 모른다: '$cae'" >&2; exit 1 ;;
           esac
           read -r env_id fqdn < <(az containerapp show -n "$app" -g vincsRG \
@@ -179,8 +182,9 @@ jobs:
             echo "cae=$cae"
             echo "hub_app=$app"
             echo "hub_url=https://$fqdn"
+            echo "account_app=$account"
           } >> "$GITHUB_OUTPUT"
-          echo "배포 대상: $app ($cae, https://$fqdn)"
+          echo "배포 대상: $app ($cae, https://$fqdn), 드리프트 게이트의 계정 앱: $account"
       # 표준 라이브러리만 쓴다 — setup-python 없이 러너의 python3 로 돈다.
       # `DISPATCH_SHA` 는 workflow_dispatch 에서만 읽힌다. 이 워크플로에서 `github.sha`
       # 가 허용되는 유일한 자리다(파일 머리말).
@@ -215,6 +219,8 @@ jobs:
       # 바꿀 앱과 그 주소. plan 잡의 "배포 대상" 스텝이 한 줄 설정에서 푼 값이다(그 스텝 주석 참조).
       HUB_APP: ${{ needs.plan.outputs.hub_app }}
       HUB_URL: ${{ needs.plan.outputs.hub_url }}
+      # 드리프트 게이트(scripts/gate_app_config.py)가 읽는 계정 앱. 허브 앱과 같은 표의 같은 줄에서 풀었다.
+      ACCOUNT_APP: ${{ needs.plan.outputs.account_app }}
     # ⚠ 아래 `AZURE_CONFIG_DIR` 스텝의 유래. 이 잡이 셀프호스티드였을 때 러너는
     # 유지보수자의 대화형 셸과 **같은 기계**였고, az 는 기본으로 `~/.azure` 를 쓰므로
     # 둘이 한 프로필을 공유했다. 2026-08-28 에 그것으로 배포가 죽었다: 잡이 도는 동안
