@@ -78,8 +78,9 @@ def _repo_copy(tmp_path, setting):
 
 def test_hub_app_follows_the_target_setting_through_the_deploy_table(tmp_path):
     """HUB_APP 을 넘겨받지 않으면 대상 설정 한 줄을 hub-deploy 의 표로 푼다. 전환 뒤에 옛 허브를 검증하지 않는다."""
-    assert target_hub_app()=="vinc-hub"
-    assert target_hub_app(_repo_copy(tmp_path,"# 주석\nCAE=vinc-cae-vnet\n"))=="vinc-hub-vnet"
+    assert target_hub_app() in ("vinc-hub","vinc-hub-vnet")
+    assert target_hub_app(_repo_copy(tmp_path/"old","# 주석\nCAE=vinc-cae\n"))=="vinc-hub"
+    assert target_hub_app(_repo_copy(tmp_path/"new","# 주석\nCAE=vinc-cae-vnet\n"))=="vinc-hub-vnet"
 
 
 @pytest.mark.parametrize("setting",["CAE=other\n","# 비었다\n","CAE=vinc-cae\nCAE=vinc-cae-vnet\n"])
