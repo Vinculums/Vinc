@@ -2,7 +2,6 @@
  "base": "https://vincs.io",
  "capturedAt": "2026-11-04T04:14:41.396Z",
  "tool": "scripts/design/capture_site.mjs",
- "siteRev": "bc1930ef12dbc63ae3c3b5259787aaccb14d8291",
  "states": [
   {
    "id": "landing__default",
@@ -143,91 +142,86 @@
    "id": "community__default",
    "route": "/community/",
    "state": "default",
-   "trigger": "directory: communities, signed out",
+   "trigger": "one space feed: pages, questions and notes, signed out",
    "viewport": {
     "width": 1440,
     "height": 900
    },
    "scheme": "dark",
    "file": "community__default.png",
-   "sha1": "8d62204187f1cffd2441d0ff7214e82242e98e08",
-   "height": 1345,
-   "finalUrl": "/community/"
+   "sha1": "03807bb43bc40f62e7a601f98edb041875938161",
+   "height": 1347,
+   "finalUrl": "/community/",
+   "base": "http://127.0.0.1:38612",
+   "siteRev": "7513683263da3c3faafd72f8351f38aa5042d7d4"
   },
   {
    "id": "community__signed-in",
    "route": "/community/",
    "state": "signed-in",
-   "trigger": "directory with a session: my communities",
+   "trigger": "one space feed with a session",
    "viewport": {
     "width": 1440,
     "height": 900
    },
    "scheme": "dark",
    "file": "community__signed-in.png",
-   "sha1": "efb084aa23af0593caf54c7028ec28f56b757102",
-   "height": 1392,
-   "finalUrl": "/community/"
+   "sha1": "047438ab0b6b7609551ce95b4c9c40c0ce378415",
+   "height": 1347,
+   "finalUrl": "/community/",
+   "base": "http://127.0.0.1:38612",
+   "siteRev": "7513683263da3c3faafd72f8351f38aa5042d7d4"
   },
   {
    "id": "community__home",
    "route": "/community/",
    "state": "home",
-   "trigger": "community home: topic, Rules link, page index",
+   "trigger": "one space page index: every topic with its knowledge and post counts",
    "viewport": {
     "width": 1440,
     "height": 900
    },
    "scheme": "dark",
    "file": "community__home.png",
-   "sha1": "a4eb90d32ac67446f194fcf00da10dcae3413932",
-   "height": 1375,
-   "finalUrl": "/community/frontend"
+   "sha1": "d37c72689e5cbf5aee150851fb903cacc3530ef0",
+   "height": 900,
+   "finalUrl": "/community/topics",
+   "base": "http://127.0.0.1:38612",
+   "siteRev": "7513683263da3c3faafd72f8351f38aa5042d7d4"
   },
   {
    "id": "community__page-read",
    "route": "/community/",
    "state": "page-read",
-   "trigger": "wiki page, Read tab: body, sources, revision line",
+   "trigger": "wiki page: body, sources, revision line, posts about it",
    "viewport": {
     "width": 1440,
     "height": 900
    },
    "scheme": "dark",
    "file": "community__page-read.png",
-   "sha1": "ffd6296683bd5e6084f6a5d1bb7e1cf8bbf2fb5c",
-   "height": 1643,
-   "finalUrl": "/community/frontend/p/design-tokens"
+   "sha1": "37b9b0f2daf5dc05f19ae02e0d80b8555540e167",
+   "height": 1685,
+   "finalUrl": "/community/p/design-tokens",
+   "base": "http://127.0.0.1:38612",
+   "siteRev": "7513683263da3c3faafd72f8351f38aa5042d7d4"
   },
   {
    "id": "community__talk",
    "route": "/community/",
    "state": "talk",
-   "trigger": "Talk tab: one thread with a reply",
+   "trigger": "discussion of a page: one post about it with a reply",
    "viewport": {
     "width": 1440,
     "height": 900
    },
    "scheme": "dark",
    "file": "community__talk.png",
-   "sha1": "ae3be1661c0d39b413f57d51f37ca5ac86895674",
-   "height": 2135,
-   "finalUrl": "/community/frontend/p/design-tokens/talk/019fa000-0000-7000-8000-000000000003"
-  },
-  {
-   "id": "community__lounge",
-   "route": "/community/",
-   "state": "lounge",
-   "trigger": "Lounge: post index",
-   "viewport": {
-    "width": 1440,
-    "height": 900
-   },
-   "scheme": "dark",
-   "file": "community__lounge.png",
-   "sha1": "2c53e1378c1e133031dc17bb609e311d687ed660",
-   "height": 900,
-   "finalUrl": "/community/frontend/lounge"
+   "sha1": "00606ab416471c0d4dcdead8825bc0d1f7eb5ec6",
+   "height": 1567,
+   "finalUrl": "/community/post/019fa000-0000-7000-8000-000000000004",
+   "base": "http://127.0.0.1:38612",
+   "siteRev": "7513683263da3c3faafd72f8351f38aa5042d7d4"
   },
   {
    "id": "community__agent-share",
@@ -240,9 +234,11 @@
    },
    "scheme": "dark",
    "file": "community__agent-share.png",
-   "sha1": "f45f8a519d0035512ff80120e2b24327c5dd9c68",
-   "height": 1041,
-   "finalUrl": "/community/a/019fb000-0000-7000-8000-000000000001/v/2"
+   "sha1": "25f02c868797986da73bb6d06cddcb17d22bc8ff",
+   "height": 1049,
+   "finalUrl": "/community/a/019fb000-0000-7000-8000-000000000001/v/2",
+   "base": "http://127.0.0.1:38612",
+   "siteRev": "7513683263da3c3faafd72f8351f38aa5042d7d4"
   },
   {
    "id": "community__agent-take",
@@ -255,39 +251,45 @@
    },
    "scheme": "dark",
    "file": "community__agent-take.png",
-   "sha1": "fa41722c44101fa7b5fc8eb6e7401d88fe70c245",
-   "height": 1268,
-   "finalUrl": "/community/a/019fb000-0000-7000-8000-000000000001/v/2/take"
+   "sha1": "1908443516edd0d07a6fba48ccd9d876c1d1aab9",
+   "height": 1269,
+   "finalUrl": "/community/a/019fb000-0000-7000-8000-000000000001/v/2/take",
+   "base": "http://127.0.0.1:38612",
+   "siteRev": "7513683263da3c3faafd72f8351f38aa5042d7d4"
   },
   {
    "id": "community__mobile-390",
    "route": "/community/",
    "state": "mobile-390",
-   "trigger": "viewport 390: wiki page, Read tab",
+   "trigger": "viewport 390: wiki page",
    "viewport": {
     "width": 390,
     "height": 844
    },
    "scheme": "dark",
    "file": "community__mobile-390.png",
-   "sha1": "a1a155977bb0d46ba431ef2f0c7f1b7f8ca3e693",
-   "height": 2124,
-   "finalUrl": "/community/frontend/p/design-tokens"
+   "sha1": "107981ea9e3b314c5d4b7c5e3f06e8f8f398943c",
+   "height": 2210,
+   "finalUrl": "/community/p/design-tokens",
+   "base": "http://127.0.0.1:38612",
+   "siteRev": "7513683263da3c3faafd72f8351f38aa5042d7d4"
   },
   {
    "id": "account__default",
    "route": "/account/",
    "state": "default",
-   "trigger": "load: free plan, trial open, two keys, one joined community with a shared agent and pack, graph at the vinc level (top 6 + 3 more)",
+   "trigger": "load: free plan, trial open, two keys, one community contribution with a shared agent and pack, graph at the vinc level (top 6 + 3 more)",
    "viewport": {
     "width": 1440,
     "height": 900
    },
    "scheme": "dark",
    "file": "account__default.png",
-   "sha1": "98b2b807711b677d90cfe487bb87176918f89ee4",
-   "height": 3230,
-   "finalUrl": "/account/"
+   "sha1": "d145c5d5f90c9f9c4bbf633a81c00802b91f30dc",
+   "height": 3282,
+   "finalUrl": "/account/",
+   "base": "http://127.0.0.1:38612",
+   "siteRev": "7513683263da3c3faafd72f8351f38aa5042d7d4"
   },
   {
    "id": "account__pro",
@@ -710,31 +712,35 @@
    "id": "account__community-list",
    "route": "/account/",
    "state": "community-list",
-   "trigger": "Community: one joined community, one contribution, one shared agent and one shared pack",
+   "trigger": "Community: the one space, one contribution, one shared agent and one shared pack",
    "viewport": {
     "width": 1440,
     "height": 900
    },
    "scheme": "dark",
    "file": "account__community-list.png",
-   "sha1": "83b5ce3559b78ea009a67be93677bf72fbaee2b3",
+   "sha1": "be1acca83a2f567cc3696563e59355d6df9799ed",
    "height": 900,
-   "finalUrl": "/account/"
+   "finalUrl": "/account/",
+   "base": "http://127.0.0.1:38612",
+   "siteRev": "7513683263da3c3faafd72f8351f38aa5042d7d4"
   },
   {
    "id": "account__community-empty",
    "route": "/account/",
    "state": "community-empty",
-   "trigger": "Community: nothing joined, contributed or shared",
+   "trigger": "Community: the one space, nothing contributed or shared",
    "viewport": {
     "width": 1440,
     "height": 900
    },
    "scheme": "dark",
    "file": "account__community-empty.png",
-   "sha1": "87bf7d5d8b0d75aa91ac871d7d47a1b4a9815039",
+   "sha1": "a8570b987b9af1152e28f2516eb5e039650b8ed4",
    "height": 900,
-   "finalUrl": "/account/"
+   "finalUrl": "/account/",
+   "base": "http://127.0.0.1:38612",
+   "siteRev": "7513683263da3c3faafd72f8351f38aa5042d7d4"
   },
   {
    "id": "account__delete-ask",
@@ -2258,5 +2264,6 @@
    "finalUrl": "/docs/"
   }
  ],
- "updatedAt": "2026-11-04T04:29:33.715Z"
+ "updatedAt": "2026-11-13T06:36:54.292Z",
+ "siteRev": "bc1930ef12dbc63ae3c3b5259787aaccb14d8291"
 }

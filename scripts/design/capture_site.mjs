@@ -57,17 +57,30 @@ const C_REV = { revNo: 2, title: "Design tokens", body: "A design token is a nam
 const C_PAGE = { publicId: C_ID(1), slug: "design-tokens", title: C_REV.title, isRules: false, locked: false, status: "active", updatedAt: C_WHEN, current: C_REV };
 const C_RULES = { ...C_PAGE, publicId: C_ID(2), slug: "rules", title: "Frontend rules", isRules: true, current: { ...C_REV, title: "Frontend rules", body: "## Scope\nExplain how interfaces are built and reviewed, and cite a source for every claim." } };
 const C_PAGES = [C_PAGE, C_RULES, { ...C_PAGE, publicId: C_ID(6), slug: "focus-states", title: "Focus states" }, { ...C_PAGE, publicId: C_ID(7), slug: "spacing-scale", title: "Spacing scale" }];
-const C_THREAD = { publicId: C_ID(3), title: "Should spacing tokens use rem?", body: "The page says nothing about units. Could we add a short section on rem versus px?", author: "minsu", authorDeleted: false, status: "open", reactionCount: 2, myReaction: false, commentCount: 1, createdAt: C_WHEN, lastActivityAt: C_WHEN, canEdit: false };
-const C_POST = { ...C_THREAD, publicId: C_ID(4), title: "What does your token review look like?", body: "We diff the token file in every pull request. Curious how other teams do it.", author: "jade_kim", status: "published", reactionCount: 4 };
-const C_COMMENTS = [{ publicId: C_ID(5), body: "rem for spacing, px for borders. I can draft the section.", status: "published", author: "jade_kim", authorDeleted: false, createdAt: C_WHEN, reactionCount: 1, myReaction: false }];
-const C_COMMUNITY = { community: { publicId: C_ID(90), slug: "frontend", name: "Frontend", topic: "Building and reviewing web interfaces: tokens, layout, accessibility.", createdAt: C_WHEN, operators: ["jade_kim"] }, myRole: null, canModerate: false, features: { agents: true } };
-const C_DIRECTORY = { communities: [{ slug: "frontend", name: "Frontend", topic: C_COMMUNITY.community.topic, createdAt: C_WHEN }, { slug: "backend", name: "Backend", topic: "APIs, storage and the services behind them.", createdAt: C_WHEN }, { slug: "design-systems", name: "Design systems", topic: "Components, tokens and how teams keep them in step.", createdAt: C_WHEN }] };
+// 자유 글 하나와 그 답글. 글 화면(/community/post/<id>)과 페이지의 "이 문서에 관한 글"이 같은 글을 읽는다.
+const C_POST = { publicId: C_ID(4), title: "What does your token review look like?", body: "We diff the token file in every pull request. Curious how other teams do it.", author: "jade_kim", authorDeleted: false, status: "published", reactionCount: 4, myReaction: false, commentCount: 1, createdAt: C_WHEN, lastActivityAt: C_WHEN, canEdit: false, kind: "question", topic: "frontend/tokens", about: "design-tokens", channel: "web", clientName: "" };
+const C_COMMENTS = [{ publicId: C_ID(5), title: "", body: "rem for spacing, px for borders. I can draft the section.", status: "published", author: "minsu", authorDeleted: false, createdAt: C_WHEN, lastActivityAt: C_WHEN, reactionCount: 1, myReaction: false, commentCount: 0, canEdit: false, channel: "web", clientName: "" }];
+// 한 공간(commons). 사이트는 `/space` 로 이 행을 읽고 그 슬러그의 라우트만 부른다. 화면 주소에는 슬러그가 없다.
+const C_SPACE = { publicId: C_ID(90), slug: "commons", name: "Vinc Community", topic: "Shared knowledge about building with Vinc: pages, questions and notes.", createdAt: C_WHEN };
+const C_COMMUNITY = { community: { ...C_SPACE, operators: ["jade_kim"], participants: 12 }, myRole: null, canModerate: false, features: { agents: true } };
+// 피드 한 쪽: 지식 글(페이지), 페이지에 관한 질문, MCP 로 온 메모. 모양은 Vinc-homepage fixture-server.mjs 의 feedFixture 와 같다.
+const C_FEED_ITEM = { slug: null, excerpt: "", topic: "", author: "jade_kim", authorDeleted: false, about: null, channel: "web", clientName: "", replyCount: 0, reactionCount: 0, myReaction: false, feedAt: C_WHEN, createdAt: C_WHEN };
+const C_FEED = [
+  { ...C_FEED_ITEM, kind: "knowledge", publicId: C_PAGE.publicId, slug: C_PAGE.slug, title: C_PAGE.title, excerpt: "A design token is a named value that the build reads instead of a hard-coded colour or size.", topic: "frontend/tokens", replyCount: null, reactionCount: null },
+  { ...C_FEED_ITEM, kind: C_POST.kind, publicId: C_POST.publicId, title: C_POST.title, excerpt: C_POST.body, topic: C_POST.topic, about: C_POST.about, replyCount: 1, reactionCount: 4 },
+  { ...C_FEED_ITEM, kind: "note", publicId: C_ID(8), title: "Focus rings need 3:1 contrast", excerpt: "Checked the focus ring against every surface token. Two of them fall short on the raised surface.", topic: "frontend/accessibility", author: "minsu", channel: "mcp", clientName: "Cursor", reactionCount: 2 },
+];
+const C_TOPICS = [
+  { path: "frontend", nameEn: "Frontend", nameKo: "프런트엔드", order: 1, featured: true, status: "active", curated: true, pages: 3, posts: 2 },
+  { path: "frontend/tokens", nameEn: "Design tokens", nameKo: "디자인 토큰", order: 2, featured: true, status: "active", curated: true, pages: 1, posts: 1 },
+  { path: "frontend/accessibility", nameEn: "Accessibility", nameKo: "접근성", order: 3, featured: false, status: "active", curated: true, pages: 1, posts: 1 },
+];
 const C_SHARE_ID = "019fb000-0000-7000-8000-000000000001";
 const C_HASH = "a".repeat(64);
-const C_SHARE = { publicId: C_SHARE_ID, community: { slug: "frontend", publicId: C_ID(90), name: "Frontend" }, status: "published", author: "jade_kim", authorDeleted: false, latestVersion: 2, origin: { kind: "page", page: "design-tokens", url: "/community/frontend/p/design-tokens" }, canVersion: false, canWithdraw: false };
-const C_VERSION = { version: 2, hash: C_HASH, role: { id: "concept:agent-token-reviewer", label: "Token reviewer", domain: "vinc/agent", tags: ["agent", "review", "role"], props: { mission: "Review a pull request's colour and spacing values against the token file.", tier: "review", rung: "strong", never: ["Never approve a hard-coded colour."], person_only: [{ action: "merge", reason: "A person merges." }] } }, prompt: "Read the Frontend rules first.\nOpen the token file and the diff.\nList every value that bypasses a token.", tools: ["vinc_conventions", "vinc_search", "vinc_doc_get"], references: [{ kind: "page", title: "Design tokens · revision 2", url: "/community/frontend/p/design-tokens" }], license: "CC-BY-SA-4.0", parent: null, authors: ["jade_kim"], createdAt: C_WHEN };
+const C_SHARE = { publicId: C_SHARE_ID, community: { slug: C_SPACE.slug, publicId: C_SPACE.publicId, name: C_SPACE.name }, status: "published", author: "jade_kim", authorDeleted: false, latestVersion: 2, origin: { kind: "page", page: "design-tokens", url: "/community/p/design-tokens" }, canVersion: false, canWithdraw: false };
+const C_VERSION = { version: 2, hash: C_HASH, role: { id: "concept:agent-token-reviewer", label: "Token reviewer", domain: "vinc/agent", tags: ["agent", "review", "role"], props: { mission: "Review a pull request's colour and spacing values against the token file.", tier: "review", rung: "strong", never: ["Never approve a hard-coded colour."], person_only: [{ action: "merge", reason: "A person merges." }] } }, prompt: "Read the Frontend rules first.\nOpen the token file and the diff.\nList every value that bypasses a token.", tools: ["vinc_conventions", "vinc_search", "vinc_doc_get"], references: [{ kind: "page", title: "Design tokens · revision 2", url: "/community/p/design-tokens" }], license: "CC-BY-SA-4.0", parent: null, authors: ["jade_kim"], createdAt: C_WHEN };
 const C_AGENT_CARD = { publicId: C_SHARE_ID, title: "Token reviewer", mission: C_VERSION.role.props.mission, author: "jade_kim", latestVersion: 2, license: C_VERSION.license, tools: C_VERSION.tools };
-const C_PACK_CARD = { publicId: "019fb000-0000-7000-8000-000000000003", title: "Frontend review notes", description: "Token and focus-state notes from our reviews.", sizeBytes: 48200, author: "ada", status: "published", communitySlug: "frontend", canWithdraw: true, downloadUrl: "/api/community/packs/019fb000-0000-7000-8000-000000000003/download" };
+const C_PACK_CARD = { publicId: "019fb000-0000-7000-8000-000000000003", title: "Frontend review notes", description: "Token and focus-state notes from our reviews.", sizeBytes: 48200, author: "ada", status: "published", communitySlug: C_SPACE.slug, canWithdraw: true, downloadUrl: "/api/community/packs/019fb000-0000-7000-8000-000000000003/download" };
 // Take 행선지는 개인 그래프 하나만 둔다(팀 행선지는 사이트에서 걷히는 중이다).
 const C_DESTINATIONS = { features: { agents: true }, draftActor: "capture-draft-actor-opaque-0123456789", destinations: [{ kind: "personal", name: "Personal", allowed: true }] };
 const dom = (domain, e, c, r, d) => ({ domain, episodes: e, concepts: c, records: r, decisions: d, total: e + c + r + d });
@@ -137,54 +150,54 @@ add({ id: "landing__newsletter-success", url: "/", trigger: "newsletter submit 2
 add({ id: "landing__newsletter-invalid", url: "/", trigger: "newsletter submit with a bad address", api: [...baseApi(null), ["POST", /\/api\/subscribe/, ERR("invalid_email", "Invalid email", 400)]], full: false, before: (p) => newsletter(p, "not-an-email") });
 add({ id: "landing__newsletter-error", url: "/", trigger: "newsletter submit 500", api: [...baseApi(null), ["POST", /\/api\/subscribe/, E500]], full: false, before: (p) => newsletter(p, "ada@example.com") });
 
-// community
+// community: 한 공간(commons)의 라우트만 답한다. 계정에 없는 라우트는 아래 install 이 404 로 답한다.
 const C_API = "/api/community";
-const C_C = `${C_API}/c/frontend`;
+const C_C = `${C_API}/c/${C_SPACE.slug}`;
 const commApi = (me = null, extra = []) => [...baseApi(me), ...extra,
-  ["GET", `${C_API}/communities`, ok(C_DIRECTORY)],
-  ["GET", `${C_API}/communities/mine`, me ? ok({ communities: [C_DIRECTORY.communities[0]] }) : E401],
+  ["GET", `${C_API}/space`, ok({ space: C_SPACE })],
   ["GET", C_C, ok(C_COMMUNITY)],
+  ["GET", /^\/api\/community\/c\/commons\/feed(\?|$)/, ok({ items: C_FEED, nextCursor: null })],
+  ["GET", `${C_C}/topic-index`, ok({ topics: C_TOPICS, canEdit: false })],
   ["GET", `${C_C}/pages`, ok({ pages: C_PAGES.map(({ current, ...p }) => p) })],
   ["GET", `${C_C}/recent`, ok({ edits: [{ ...C_REV, page: "design-tokens" }] })],
-  ["GET", /^\/api\/community\/c\/frontend\/(p\/[^/]+|rules)$/, (url) => ok({ page: C_PAGES.find((p) => url.pathname.endsWith("/" + p.slug)) ?? C_PAGE })],
+  ["GET", /^\/api\/community\/c\/commons\/(p\/[^/]+|rules)$/, (url) => ok({ page: C_PAGES.find((p) => url.pathname.endsWith("/" + p.slug)) ?? C_PAGE })],
   ["GET", /\/p\/[^/]+\/projection\?/, ok({ revision: 2, state: "current", projectedRevision: 2 })],
-  ["GET", /\/p\/[^/]+\/talk(\?|$)/, ok({ threads: [C_THREAD], nextCursor: null })],
-  ["GET", /\/p\/[^/]+\/talk\/[0-9a-f-]+/, ok({ thread: C_THREAD, comments: C_COMMENTS, nextCommentCursor: null })],
-  ["GET", /\/c\/frontend\/lounge(\?|$)/, ok({ posts: [C_POST], nextCursor: null })],
-  ["GET", /\/c\/frontend\/lounge\/[0-9a-f-]+/, ok({ post: C_POST, comments: C_COMMENTS, nextCommentCursor: null })],
+  ["GET", /^\/api\/community\/c\/commons\/p\/[^/]+\/posts(\?|$)/, ok({ posts: [C_POST], nextCursor: null })],
+  ["GET", /^\/api\/community\/c\/commons\/posts\/[0-9a-f-]+(\?|$)/, ok({ post: C_POST, comments: C_COMMENTS, nextCommentCursor: null })],
   ["GET", /\/p\/[^/]+\/agents(\?|$)/, ok({ agents: [C_AGENT_CARD], nextCursor: null })],
-  ["GET", /\/c\/frontend\/attachments\?/, ok({ agents: [C_AGENT_CARD], packs: [] })],
+  ["GET", /\/c\/commons\/attachments\?/, ok({ agents: [C_AGENT_CARD], packs: [] })],
   ["GET", `${C_API}/agents/destinations`, me ? ok(C_DESTINATIONS) : ok({ features: { agents: true }, destinations: [] })],
   ["GET", /\/a\/[0-9a-f-]+\/v\/\d+\/take-preview\?/, ok({ draftActor: C_DESTINATIONS.draftActor, shareId: C_SHARE_ID, version: 2, hash: C_HASH, destination: { kind: "personal" }, candidate: { id: "concept:agent-token-reviewer-aaaaaa", exists: false }, defaultMode: "separate" })],
   ["GET", /^\/api\/community\/a\/[0-9a-f-]+(\/v\/\d+)?$/, ok({ share: C_SHARE, version: C_VERSION, versions: [{ version: 1, hash: "b".repeat(64), title: "Token reviewer", license: C_VERSION.license }, { version: 2, hash: C_HASH, title: "Token reviewer", license: C_VERSION.license }], retainedVersions: [], access: "public" })],
-  ["GET", /^\/api\/community\/u\/[^/]+$/, (url) => ok({ profile: { handle: url.pathname.split("/").pop() }, edits: [{ community: "frontend", page: "design-tokens", revision: 2, title: C_PAGE.title, summary: C_REV.summary, channel: "web", createdAt: C_WHEN }], threads: [], posts: [], agents: [], packs: [] })],
+  ["GET", /^\/api\/community\/u\/[^/]+$/, (url) => ok({ profile: { handle: url.pathname.split("/").pop() }, edits: [{ community: C_SPACE.slug, page: "design-tokens", revision: 2, title: C_PAGE.title, summary: C_REV.summary, channel: "web", createdAt: C_WHEN }], threads: [], posts: [], agents: [], packs: [] })],
 ];
 // 셸이 다 그린 뒤 찍는다: #community-main 의 aria-busy 가 빠지는 것이 렌더 끝 신호다.
 const shellReady = async (p) => { await p.locator("#community-main:not([aria-busy])").waitFor(); await sleep(400); };
 // SPA 라 하위 경로도 한 파일(community/index.html)이 그린다. 매니페스트의 route 는 그 파일 기준으로 둔다.
 const comm = (id, url, trigger, opts = {}) => add({ id: `community__${id}`, url, route: "/community/", trigger, api: commApi(opts.me ?? null), ls: opts.me ? { "vinc.site.signedin": "1" } : {}, vp: opts.vp, full: opts.full ?? true, before: shellReady });
-const C_PAGE_URL = "/community/frontend/p/design-tokens";
+const C_PAGE_URL = "/community/p/design-tokens";
 const C_AGENT_URL = `/community/a/${C_SHARE_ID}/v/2`;
-comm("default", "/community/", "directory: communities, signed out");
-comm("signed-in", "/community/", "directory with a session: my communities", { me: ME });
-comm("home", "/community/frontend", "community home: topic, Rules link, page index");
-comm("page-read", C_PAGE_URL, "wiki page, Read tab: body, sources, revision line");
-comm("talk", `${C_PAGE_URL}/talk/${C_THREAD.publicId}`, "Talk tab: one thread with a reply");
-comm("lounge", "/community/frontend/lounge", "Lounge: post index");
+comm("default", "/community/", "one space feed: pages, questions and notes, signed out");
+comm("signed-in", "/community/", "one space feed with a session", { me: ME });
+// home 과 talk 는 스토리보드 "Read and improve a community page" 의 단계다. 한 공간에서 같은 자리를 맡는 화면을 찍는다:
+// 페이지 목록은 주제 목록이, 페이지 토론은 그 페이지에 관한 글이 맡는다.
+comm("home", "/community/topics", "one space page index: every topic with its knowledge and post counts");
+comm("page-read", C_PAGE_URL, "wiki page: body, sources, revision line, posts about it");
+comm("talk", `/community/post/${C_POST.publicId}`, "discussion of a page: one post about it with a reply");
 comm("agent-share", C_AGENT_URL, "agent share, pinned version 2: role, tools, license, hash");
 comm("agent-take", `${C_AGENT_URL}/take`, "Take panel signed in: exports and Add to my Graph (personal)", { me: ME });
-comm("mobile-390", C_PAGE_URL, "viewport 390: wiki page, Read tab", { vp: MOBILE });
+comm("mobile-390", C_PAGE_URL, "viewport 390: wiki page", { vp: MOBILE });
 
 // account
-// 계정의 Community 절은 위키 셸 API 를 읽는다: 가입한 커뮤니티 · 내 기여(/u/:handle) · 내가 공유한 에이전트와 팩(/agents/mine).
-const C_NOTHING = [["GET", `${C_API}/communities/mine`, ok({ communities: [] })], ["GET", /^\/api\/community\/u\/[^/]+$/, (url) => ok({ profile: { handle: url.pathname.split("/").pop() }, edits: [], threads: [], posts: [], agents: [], packs: [] })]];
-const acctApi = ({ me = ME, billing = BILLING.trial, keys = KEYS, shares = { agents: [C_AGENT_CARD], packs: [C_PACK_CARD] }, joined = true, domains = DOMAINS, extra = [] } = {}) => [
+// 계정의 Community 절은 위키 셸 API 를 읽는다: 한 공간(/space) · 내 기여(/u/:handle) · 내가 공유한 에이전트와 팩(/agents/mine).
+const C_NOTHING = [["GET", /^\/api\/community\/u\/[^/]+$/, (url) => ok({ profile: { handle: url.pathname.split("/").pop() }, edits: [], threads: [], posts: [], agents: [], packs: [] })]];
+const acctApi = ({ me = ME, billing = BILLING.trial, keys = KEYS, shares = { agents: [C_AGENT_CARD], packs: [C_PACK_CARD] }, contributed = true, domains = DOMAINS, extra = [] } = {}) => [
   ...baseApi(me), ["GET", "/api/billing/status", ok(billing)], ["GET", "/api/account/keys", ok(keys)], ["GET", /\/api\/graph\/domains/, ok(domains)],
   ["GET", /\/api\/username\/check/, (url) => { const u = url.searchParams.get("u") || ""; if (u === "ada") return ok({ valid: true, available: false, reason: "taken" }); if (u.length < 3) return ok({ valid: false, available: false, reason: "too_short" }); if (u === "admin") return ok({ valid: false, available: false, reason: "reserved" }); if (/[^a-z0-9_]/.test(u)) return ok({ valid: false, available: false, reason: "bad_format" }); return ok({ valid: true, available: true, reason: null }); }],
-  ["GET", `${C_API}/agents/mine`, ok(shares)], ...commApi(me, joined ? [] : C_NOTHING).slice(baseApi(me).length),
+  ["GET", `${C_API}/agents/mine`, ok(shares)], ...commApi(me, contributed ? [] : C_NOTHING).slice(baseApi(me).length),
   ...extra];
 const acct = (id, trigger, opts = {}, before, full = true) => add({ id: `account__${id}`, url: "/account/", trigger, api: acctApi(opts), ls: { "vinc.site.signedin": "1" }, before, full });
-acct("default", "load: free plan, trial open, two keys, one joined community with a shared agent and pack, graph at the vinc level (top 6 + 3 more)");
+acct("default", "load: free plan, trial open, two keys, one community contribution with a shared agent and pack, graph at the vinc level (top 6 + 3 more)");
 acct("pro", "plan pro: header badge, topics tile without the limit", { me: ME_PRO, billing: BILLING.active });
 acct("team-member", "user with teams: Team plan badge, LNB lists the teams", { me: ME_TEAM, billing: BILLING.none });
 acct("plan-get-pro", "billing: trial closed, checkout open: Get Pro", { billing: BILLING.checkout }, async (p) => p.locator("#planCard").scrollIntoViewIfNeeded(), false);
@@ -216,8 +229,8 @@ acct("graph-drill-product", "graph: legend row 'product' › descends, breadcrum
 acct("graph-drill-book", "graph: product › book, two leaves", {}, async (p) => { await graph(p); await p.locator("#gLegend button", { hasText: /product/ }).first().click(); await sleep(400); await p.locator("#gLegend button", { hasText: /book/ }).first().click(); await sleep(500); }, false);
 acct("graph-empty", "graph: rows [] : Nothing synced yet", { domains: { executed: true, rows: [] } }, graph, false);
 const commCard = async (p) => { await p.locator("#acc-community").scrollIntoViewIfNeeded(); await p.locator("#communityShares h3").first().waitFor(); await sleep(300); };
-acct("community-list", "Community: one joined community, one contribution, one shared agent and one shared pack", {}, commCard, false);
-acct("community-empty", "Community: nothing joined, contributed or shared", { joined: false, shares: { agents: [], packs: [] } }, commCard, false);
+acct("community-list", "Community: the one space, one contribution, one shared agent and one shared pack", {}, commCard, false);
+acct("community-empty", "Community: the one space, nothing contributed or shared", { contributed: false, shares: { agents: [], packs: [] } }, commCard, false);
 const delOpen = async (p) => { await p.locator("#delCard").scrollIntoViewIfNeeded(); await p.locator("#delOpenBtn").click(); await p.waitForSelector("#delModal", { state: "visible" }); await sleep(300); };
 acct("delete-ask", "Delete: modal, Delete disabled until the word is typed", {}, delOpen, false);
 acct("delete-typed", "Delete: DELETE typed, button enabled", {}, async (p) => { await delOpen(p); await p.fill("#delTyped", "DELETE"); await sleep(200); }, false);
