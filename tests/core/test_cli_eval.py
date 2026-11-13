@@ -53,3 +53,11 @@ def test_the_rest_route_and_the_tool_agree_and_it_is_read_only():
     route = next(r for r in rest_routes.READ_ROUTES if r.tool == "vinc_eval_cards")
     assert (route.method, route.path) == ("GET", "/v1/roles/{id}/eval-cards")
     assert tools.tool_tier("vinc_eval_cards") == "viewer"
+
+
+def test_the_verb_is_a_tool_verb_so_the_command_line_runs_it():
+    # 도구 동사 목록에 없으면 명령줄은 이 동사를 기기 전용 동사로 보내고, 그쪽에는 처리기가 없어 아무것도
+    # 찍지 않고 2 로 끝난다.
+    from api import cli_target
+    assert "eval" in cli_target.TOOL_CMDS
+    assert "eval" not in cli_target.DEVICE_CMDS
