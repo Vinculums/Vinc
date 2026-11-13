@@ -32,6 +32,8 @@ from store.querybase import (  # noqa: E402,F401  (재수출)
     is_conventions_chunk_id,
 )
 
+from . import node_schema
+
 SPEC_VERSION = 1
 
 #: 그 문서의 출처 표식(일반 자료와 구분하는 유일한 표시).
@@ -114,8 +116,8 @@ def _title(key: str, lang: str) -> str:
 
 
 # ── 스키마 절(코드에서 생성) ──────────────────────────────────────────────────
-# 문장은 여기 있고 **값은 코드 상수에서 온다**: 종류별 보존 필드(`fragment._KEPT_FIELDS`),
-# 결정의 구간 자리(`fragment._INTERVAL_FIELDS`), 엣지 끝점 쌍(`fragment._ALLOWED_PAIRS_HINT`,
+# 문장은 여기 있고 **값은 코드 상수에서 온다**: 종류별 보존 필드(`node_schema.KEPT_FIELDS`),
+# 결정의 구간 자리(`node_schema.INTERVAL_FIELDS`), 엣지 끝점 쌍(`fragment._ALLOWED_PAIRS_HINT`,
 # 쓰기 경로가 거절할 때 내는 바로 그 문장), 근거를 저장하는 관계(`embedded_schema.EDGE_EVIDENCE_RELS`),
 # 역할 계약(`role_contract`). 상수가 바뀌면 이 절도 함께 바뀐다(테스트가 대조한다).
 # EN/ko 는 줄 단위로 1:1 이다(test_templates_are_line_for_line_parallel).
@@ -148,17 +150,16 @@ _EVIDENCE_REQUIRED = ("supersedes", "returns_to")
 
 
 def _kept(label: str) -> list[str]:
-    from . import fragment as _fr
-    have = _fr._KEPT_FIELDS.get(label, frozenset())
+    have = node_schema.KEPT_FIELDS.get(label, frozenset())
     return [f for f in _FIELD_ORDER if f in have]
 
 
 def _evidence_edges() -> list[str]:
     """근거 열이 있는 관계를 쓰기 이름으로. ATTACHES_TO 는 Record 의 엣지 넷이 쓰는 테이블이다."""
     from store.embedded_schema import EDGE_EVIDENCE_RELS
-    from . import fragment as _fr
-    back = {v: k for k, v in {**_fr._CC_EDGES, **_fr._EC_EDGES}.items()}
-    back.update({_fr._SUPERSEDES_REL: _fr._SUPERSEDES_EDGE, "ATTACHES_TO": "record edges"})
+    back = {v: k for k, v in {**node_schema.CC_EDGES, **node_schema.EC_EDGES}.items()}
+    back.update({node_schema.SUPERSEDES_REL: node_schema.SUPERSEDES_EDGE,
+                 "ATTACHES_TO": "record edges"})
     return [back.get(r, r.lower()) for r in EDGE_EVIDENCE_RELS]
 
 
@@ -177,7 +178,7 @@ def schema_section(key: str, lang: str) -> list[str]:
     tag = "[스키마 고정]" if ko else "[schema-fixed]"
     out = [f"## {_title(key, lang)} {tag}"]
     if key == "nodes":
-        prefixes = ", ".join(f"{k}:" for k in _fr._NODE_MAP)
+        prefixes = ", ".join(f"{k}:" for k in node_schema.NODE_MAP)
         out.append(f"id 접두사가 테이블을 정한다({prefixes}). 접두사와 다른 type 은 건너뛴다(prefix_mismatch)."
                    if ko else
                    f"The id prefix picks the table ({prefixes}). A type that disagrees with it is skipped (prefix_mismatch).")
@@ -229,7 +230,7 @@ def schema_section(key: str, lang: str) -> list[str]:
                  "Pass valid_from, valid_until and superseded_by as tool arguments (front matter is not read). needs_embed true means vectors are pending. Deleting a document keeps its concept:doc mirror."])
     elif key == "time":
         ct = " · ".join(lb for _k, lb, *_ in _KIND_LINES if "content_time" in _kept(lb))
-        rec, dec = _fr._INTERVAL_FIELDS["record"], _fr._INTERVAL_FIELDS["decision"]
+        rec, dec = node_schema.INTERVAL_FIELDS["record"], node_schema.INTERVAL_FIELDS["decision"]
         out += ([f"- content_time({ct}): 기록이 가리키는 일이 일어난 때. YYYY[-MM[-DD]].",
                  f"- 성립 구간: Record 는 {rec[0]}·{rec[1]}, Decision 은 {dec[0]}·{dec[1]}. 다른 종류에는 구간이 없다.",
                  "- Episode 는 date 하나다. 생성 시각이 없어 known_at 이 거르지 못한다.",

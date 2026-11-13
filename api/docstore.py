@@ -55,6 +55,7 @@ from store.chunking import (DEFAULT_MAX_CHARS, _HEADING_RE, _section_title,  # n
                             plan_boundaries)
 
 from . import graphmd
+from . import node_schema
 from .authoring import document_retrieval
 
 #: `concept:doc.<doc_id>` — 문서의 개념 그래프 쪽 자리(미러). 그 `domain` 은 **사람이
@@ -164,18 +165,9 @@ def chunks_intact(store, doc_id: str) -> bool:
 
 
 # ── 내용 시점(D72) ───────────────────────────────────────────────────────────
-_CONTENT_TIME_RE = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
-
-
-def _norm_content_time(v: str | None) -> str:
-    """`YYYY` · `YYYY-MM` · `YYYY-MM-DD` 만 통과시킨다. 나머지는 빈 문자열.
-
-    형식이 곧 계약이다: 이 축의 비교·버킷은 전부 **문자열 사전식**이라(날짜 파싱을
-    도입하지 않는다 — `ts` 계약과 동형) 자릿수가 어긋나면 정렬이 조용히 무너진다.
-    `1905-6` 처럼 자리를 안 채운 값도 거부하는 이유가 그것이다. 기원전·음수 연도는
-    미지원이고, 불합격은 던지지 않고 **비운다** — 저장은 성공하되 축에서 빠진다."""
-    s = str(v or "").strip()
-    return s if _CONTENT_TIME_RE.match(s) else ""
+# 형식 검사기의 정본은 `node_schema.normalize_time` 이다. 사설 이름은 같은 함수를 가리키며
+# 이 모듈 안의 호출과 그 이름을 읽는 테스트가 쓴다.
+_norm_content_time = node_schema.normalize_time
 
 
 #: 본문 첫머리 프런트매터가 스스로 밝히는 doc_id. **그 값은 스토어의 id 가 아니다** —
