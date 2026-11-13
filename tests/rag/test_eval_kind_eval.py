@@ -5,12 +5,20 @@
 목록 정답이 간선에서 오고 만료된 노드는 빠지는가, 대체 계보를 따라가는가, 오라클이
 자르기 전에 거르는가, 그리고 같은 제목 넷의 순서가 종류 접두로 정해진다는 것(누수)과
 스위치가 그것을 슬러그 순서로 바꾼다는 것.
+
+누수 스위치(:data:`rag_eval.kind_eval.LEAKS`)마다 그 스위치가 제품 경로에 앉는지도 본다. 스위치는
+모듈의 이름 하나를 갈아 끼우므로, 제품이 그 이름을 다른 모듈에서 찾게 되면 패치는 아무것도 바꾸지
+않고 하네스는 "바뀐 질문 0"을 낸다. 그 경우 여기서 떨어진다.
 """
 from __future__ import annotations
 
+import contextlib
+import importlib
 import os
+import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from rag_eval import kind_eval as K
 
@@ -19,6 +27,35 @@ try:
     _DRIVER = True
 except Exception:                           # pragma: no cover
     _DRIVER = None
+
+#: 누수 스위치 → (스위치가 갈아 끼우는 이름이 사는 모듈, 그 이름, 원래 함수를 감싸는가).
+#: 감싸는 스위치는 원래 함수를 자기 코드에서 부르고, 감싸지 않는 스위치는 원래 함수를 경로에서 뺀다.
+LEAK_TARGETS = {
+    "identity": ("vinc_rag.retrieval", "_node_fallback_search", True),
+    "tiebreak_slug": ("vinc_rag.retrieval", "_node_fallback_search", True),
+    "no_graph_arm": ("vinc_rag.retrieval", "_graph_arm_search", False),
+    "brief_rank_without_arms": ("api.query", "_brief_rank", False),
+    "current_relevance_only": ("store.search_temporal", "current_order", True),
+}
+
+
+@contextlib.contextmanager
+def _callers(module, name: str):
+    """`module.name` 이 불릴 때마다 부른 자리의 모듈 이름을 적는다. 원래 함수는 그대로 돈다."""
+    real = getattr(module, name)
+    seen: list[str] = []
+
+    def spy(*a, **kw):
+        seen.append(sys._getframe(1).f_globals.get("__name__", ""))
+        return real(*a, **kw)
+    with mock.patch.object(module, name, spy):
+        yield seen
+
+
+class LeakRegistry(unittest.TestCase):
+    def test_every_leak_switch_names_the_function_it_replaces(self):
+        self.assertEqual(set(LEAK_TARGETS), set(K.LEAKS),
+                         "새 누수 스위치는 LEAK_TARGETS 에 적고 아래 OnAStore 에 제품 경로 테스트를 둔다")
 
 
 class Scores(unittest.TestCase):
@@ -152,6 +189,60 @@ class OnAStore(unittest.TestCase):
                          "덜 맞는 기록이 창 밖에서 올라와 자리를 빼앗지 않는다")
         with K.leak_current_relevance_only():
             self.assertEqual(ids(2), ["concept:rain-gauge", "record:rain-memo"])
+
+    # ── 스위치가 제품 경로에 앉는가 ──────────────────────────────────────────
+
+    def _assert_switch_reaches(self, leak: str, run):
+        """스위치 없이는 제품이 그 이름을 그 모듈에서 찾아 부르고, 스위치를 켜면 그 호출이 전부
+        스위치의 코드를 거치거나(감싸는 스위치) 원래 함수가 한 번도 불리지 않는다(빼는 스위치)."""
+        mod_name, name, wraps = LEAK_TARGETS[leak]
+        module = importlib.import_module(mod_name)
+        switch = K.LEAKS[leak][0]
+        with _callers(module, name) as seen:
+            run()
+        self.assertTrue(seen, f"제품이 {mod_name}.{name} 을 부르지 않는다: 스위치가 닿을 자리가 없다")
+        self.assertNotIn(K.__name__, seen)
+        with _callers(module, name) as seen:
+            with switch():
+                run()
+        if wraps:
+            self.assertTrue(seen, f"스위치 {leak} 를 켜자 {mod_name}.{name} 이 불리지 않았다")
+            self.assertEqual(set(seen), {K.__name__},
+                             f"스위치 {leak} 를 켜도 제품이 {mod_name}.{name} 을 직접 부른다")
+        else:
+            self.assertEqual(seen, [], f"스위치 {leak} 를 켜도 제품이 {mod_name}.{name} 을 부른다")
+
+    def _search_ids(self, query: str, k: int, **kw):
+        from api import query as q
+        return [h["id"] for h in q.search(query, top_k=k, owner=self.OWNER, store=self.store,
+                                          **kw)["node_hits"]]
+
+    def test_leak_identity_wraps_the_title_arm_and_changes_no_order(self):
+        run = lambda: self._search_ids("tie note", 4)  # noqa: E731
+        before = run()
+        self._assert_switch_reaches("identity", run)
+        with K.leak_identity():
+            self.assertEqual(run(), before, "대조 감싸기가 순서를 바꿨다")
+
+    def test_leak_tiebreak_slug_wraps_the_title_arm(self):
+        self._assert_switch_reaches("tiebreak_slug", lambda: self._search_ids("tie note", 4))
+
+    def test_leak_no_graph_arm_takes_the_graph_arm_out_of_search(self):
+        run = lambda: self._search_ids("soil moisture rule", 3)  # noqa: E731
+        self._assert_switch_reaches("no_graph_arm", run)
+        with K.leak_no_graph_arm():
+            self.assertTrue(run(), "그래프 팔을 끄면 제목 팔의 결과는 남아야 한다")
+
+    def test_leak_brief_rank_without_arms_replaces_the_brief_order(self):
+        from api import query as q
+        run = lambda: q.brief("soil moisture rule", owner=self.OWNER, store=self.store)  # noqa: E731
+        self._assert_switch_reaches("brief_rank_without_arms", run)
+        with K.leak_brief_rank_without_arms():
+            self.assertIn(run().get("status"), ("choose", "resolved"))
+
+    def test_leak_current_relevance_only_wraps_the_current_order(self):
+        self._assert_switch_reaches("current_relevance_only", lambda: self._search_ids(
+            "rain gauge calibration drift", 2, mode="current"))
 
 
 if __name__ == "__main__":

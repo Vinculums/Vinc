@@ -1496,7 +1496,10 @@ def node(node_id: str, *, owner: str, cfg=None, store=None) -> dict:
 LAYOUTS = ("hub", "rank")
 _LAYOUT_ALIAS = {"radial": "hub", "circle": "hub", "tree": "hub",
                  "organic": "hub", "dendro": "hub", "shell": "hub"}
-_DIRECTED_RELS = ("PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM")
+#: 방향이 곧 의미인 엣지. 배치(:func:`layout_positions`)와 상충 판정(:func:`_flow_conflicts`)이
+#: 이 한 벌을 같이 읽는다. RELATED_TO 는 무방향이라(역방향이 같은 간선으로 접힌다)
+#: 여기 없다 — 넣으면 정상 관계가 전부 모순으로 보고된다.
+_DIRECTED_RELS = frozenset({"PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"})
 # ⚠ 방향 정합(2026-08-02 수정). `DERIVES_FROM(a→b)` 은 "a 가 b 에서 나왔다"이므로
 # **b 가 상류**다. 좌측 문서 트리(D69)는 이미 뒤집어 적재하는데(`_nav_depth` 주석:
 # "뒤집기를 빠뜨리면 트리 전체가 조용히 뒤집힌다") 레이아웃은 안 뒤집어, 같은
@@ -2174,7 +2177,6 @@ def _dedupe_planar(nodes: list[dict]) -> None:
 # 시간축(D72). `recorded` = 기록 시각(현행 ts), `content` = 문서 내용이 가리키는 시점.
 BASIS_RECORDED = "recorded"
 BASIS_CONTENT = "content"
-_BASES = (BASIS_RECORDED, BASIS_CONTENT)
 
 
 def _apply_basis(shaped: dict, basis: str) -> str:
@@ -3839,9 +3841,6 @@ def _brief_rule_v3() -> bool:
 def _brief_rule_colbert() -> bool:
     """학습 규칙(v2·v3)이면 ColBERT 로 다시 선 후보 위에서 해소한다. 기존 규칙은 그 순서를 안 본다."""
     return _brief_rule() != "production"
-
-
-_HANGUL = re.compile(r"[가-힣]")
 
 
 def _brief_learned_features(query: str, hits: list[dict]) -> list[float] | None:
@@ -6550,9 +6549,7 @@ def shortest_path(a_id: str, b_id: str, *, max_depth: int = 6,
 # 유사로 중복 후보를 **제안**하고, 확정(엣지 재지향+삭제)은 기존 merge_nodes
 # (비가역·사용자 지시·단일 쓰기 표면 R4) 경유. suggest_ties(D25 전 단계)와 동형의
 # 조회-전용 계층. 실사용 사고(중복 개념 오염 concept:ipaas)의 예방 표면.
-import re as _re_merge   # 모듈 상단 import 회피(국소 사용)
-
-_MERGE_TOKEN_RE = _re_merge.compile(r"[0-9a-z가-힣]+")
+_MERGE_TOKEN_RE = re.compile(r"[0-9a-z가-힣]+")
 
 
 def _norm_title(title: str) -> tuple[str, frozenset]:
@@ -7849,15 +7846,6 @@ def near_nodes(store, needle: str, *, owner: str | None = None,
              "domain": r.get("domain") or ""} for r in rows[:limit]]
 
 
-def miss(kind: str, *, error: str, hint: str, **extra) -> dict:
-    """실패 봉투 한 벌(F4) — `executed` 는 참이다. **조회는 돌았고 답이 없을 뿐**이라,
-    거짓으로 두면 호출부가 스토어 장애와 구분하지 못한다(그 구분이 이 리포의 계약)."""
-    out = {"kind": kind, "executed": True, "found": False,
-           "error": error, "hint": hint}
-    out.update({k: v for k, v in extra.items() if v not in (None, [], {})})
-    return out
-
-
 def decide_topic_resolve_plan(topic: str, *, owner: str | None = None,
                               label: str = "Concept") -> QueryPlan:
     """decide 토픽 → seed id 해석(A1.9 A5). id 정확일치 또는 title 대소문자 무시
@@ -8035,9 +8023,6 @@ def _current_decisions(rows: list[dict], today: str) -> tuple[list[dict], int]:
     return keep, retired
 
 
-#: 방향이 곧 의미인 엣지. RELATED_TO 는 무방향이라(역방향이 같은 간선으로 접힌다)
-#: 여기 없다 — 넣으면 정상 관계가 전부 모순으로 보고된다.
-_DIRECTED_RELS = frozenset({"PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"})
 #: 한 응답이 싣는 상충 상한. 넘치면 `conflicts_truncated` 로 말한다(F6 — 잘린 것을
 #: 말하지 않으면 받는 쪽은 "이게 전부"로 읽는다).
 _CONFLICT_CAP = 50
