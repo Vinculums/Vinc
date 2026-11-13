@@ -1337,7 +1337,7 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         return "created"
     if etype in _EC_EDGES:
         # F4 — episodic↔semantic 다리. 비대칭 쌍이라 역방향 dedupe 불요(ATTACHES_TO
-        # 동형). 삭제 전파는 엣지 툼스톤(S4 확장 — query.delete_edge)이 담당한다.
+        # 동형). 삭제 전파는 엣지 툼스톤(S4 확장 — graph_edit.delete_edge)이 담당한다.
         #
         # v12 — 출발점에 decision 이 붙는다. `about` 은 "X 는 Y 에 관한 것"이고,
         # 결정이 어떤 개념을 두고 내려졌다는 말이 정확히 그 형태다.

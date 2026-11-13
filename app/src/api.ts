@@ -1258,7 +1258,7 @@ export const api = {
     executed: boolean; found?: boolean;
     deleted?: { node: number; edges: number }; note?: string; error?: string; status?: string;
   }> => applyDelete("/delete", { owner, node }, guard),
-  // `deleted` 는 수가 아니라 `{edges: n}` 이다(`query.delete_edge`). 지울 수 없는 관계
+  // `deleted` 는 수가 아니라 `{edges: n}` 이다(`graph_edit.delete_edge`). 지울 수 없는 관계
   // 종류(부착 등)는 executed:true 에 `note` 만 싣고 `deleted` 가 없다.
   previewDeleteEdge: (owner: string, from: string, to: string, type: string): Promise<DeleteGuard> =>
     previewDelete("/delete-edge", { owner, from, to, type }),
