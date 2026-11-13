@@ -1525,7 +1525,7 @@ class TwoStoreTimeRoundtrip(unittest.TestCase):
         from api import sync
         from api import revstamp
         self._diverged_pair("2019-01-01T00:00:00.000Z", "2099-01-01T00:00:00.000Z")
-        revstamp._meta_set(self.a, sync._ONESHOT_KEY, "done")
+        revstamp.meta_set(self.a, sync._ONESHOT_KEY, "done")
         sync.set_cursor(self.a, "push", 999)
         sync.set_cursor(self.a, "pull", 999)
 

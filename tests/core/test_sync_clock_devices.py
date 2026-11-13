@@ -157,7 +157,7 @@ def test_a_device_two_hours_slow_wins_on_the_hub_with_an_edit_made_after_it_pull
     pulled = _run(dev, remote)
     assert _row(dev)["title"] == "v1-hub", pulled
     # 기기 시계는 허브 스탬프까지 따라갔다(자르지 않았다). 그래서 다음 편집이 그 뒤에 찍힌다.
-    assert int(revstamp._meta_get(dev, "last_hlc", "0")) >= _ms(_row(hub)["ua"])
+    assert int(revstamp.meta_get(dev, "last_hlc", "0")) >= _ms(_row(hub)["ua"])
     clocks.hub += SECOND
     _write(dev, "v2-device")
     assert _row(dev)["ua"] > _row(hub)["ua"]
@@ -520,7 +520,7 @@ def test_a_far_hub_reply_does_not_hold_the_device(world, reply_clock, item):
     _hub_write(hub, clocks, "v0")
     clocks.hub += SECOND
     _run(dev, remote)
-    honest = int(revstamp._meta_get(dev, revstamp.TRUSTED_CLOCK, "0"))
+    honest = int(revstamp.meta_get(dev, revstamp.TRUSTED_CLOCK, "0"))
     assert honest == clocks.hub
     now = clocks.hub
     clocks.hub = _ms(item)
@@ -542,7 +542,7 @@ def test_a_far_hub_reply_does_not_hold_the_device(world, reply_clock, item):
     out = _run(dev, remote)
     assert SKEW not in out["push"], out
     assert [i for i in range(150) if (_row(hub, f"concept:w{i}") or {}).get("title") != f"w{i}"] == []
-    assert int(revstamp._meta_get(dev, revstamp.TRUSTED_CLOCK, "0")) <= clocks.hub
+    assert int(revstamp.meta_get(dev, revstamp.TRUSTED_CLOCK, "0")) <= clocks.hub
 
 
 @pytest.mark.parametrize("kind", KINDS)

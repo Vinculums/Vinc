@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from store import pkns, run_state
 
-from . import events, query as q
+from . import events, query as q, readkit
 
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 200
@@ -20,15 +20,7 @@ _DOC_ALIASES = ("doc:", "concept:doc.")
 
 
 def clamp_limit(value) -> int:
-    if value in (None, ""):
-        return DEFAULT_LIMIT
-    try:
-        n = int(value)
-    except (TypeError, ValueError):
-        raise ValueError("invalid_limit: expected an integer") from None
-    if not 1 <= n <= MAX_LIMIT:
-        raise ValueError(f"invalid_limit: expected 1..{MAX_LIMIT}")
-    return n
+    return readkit.clamp_limit(value, default=DEFAULT_LIMIT, maximum=MAX_LIMIT)
 
 
 def parse_cited(value) -> str | None:
@@ -63,7 +55,7 @@ def claim_status(store, owner: str, claim: str) -> dict:
     out = {"id": claim, "found": False, "retired": False, "valid_until": "", "superseded_by": ""}
     doc = _doc_id(claim)
     if doc is not None:
-        rows = events._run(q.QueryPlan(
+        rows = readkit.run_plan(q.QueryPlan(
             "runs_claim_doc", "MATCH (d:_DocMeta) WHERE d.doc_id = $id AND d.owner_id = $owner "
             "RETURN d.valid_until AS vu, d.superseded_by AS sb",
             {"id": doc, "owner": owner}), store)
@@ -74,21 +66,21 @@ def claim_status(store, owner: str, claim: str) -> dict:
         label, pk = (("Record", "record_id") if claim.startswith("record:")
                      else ("Decision", "decision_id"))
         cols = "x.props AS props" + (", x.valid_until AS vu" if label == "Record" else "")
-        rows = events._run(q.QueryPlan(
+        rows = readkit.run_plan(q.QueryPlan(
             f"runs_claim_{label}", f"MATCH (x:{label}) WHERE x.{pk} = $id AND x.owner_id = $owner "
             f"RETURN {cols}", {"id": pkns.key(owner, claim), "owner": owner}), store)
         if rows:
-            props = events._props(rows[0].get("props"))
+            props = readkit.props(rows[0].get("props"))
             vu = str(rows[0].get("vu") or props.get("valid_until") or "")
             sb = str(props.get("superseded_by")
-                     or events._superseded_by(store, owner, label, pk, [claim]).get(claim) or "")
+                     or readkit.superseded_by(store, owner, label, pk, [claim]).get(claim) or "")
             out.update(found=True, valid_until=vu, superseded_by=sb)
     out["retired"] = bool(out["valid_until"] or out["superseded_by"])
     return out
 
 
 def _episodes(store, owner: str) -> list[dict]:
-    return events._run(q.QueryPlan(
+    return readkit.run_plan(q.QueryPlan(
         "runs_list", "MATCH (e:Episode) WHERE e.owner_id = $owner AND "
         "e.episode_id STARTS WITH $prefix RETURN e.episode_id AS id, e.title AS title, "
         "e.date AS date, e.props AS props",
@@ -124,13 +116,13 @@ def list_runs(store, *, owner: str, cited: str | None = None, role: str | None =
     try:
         rows = _episodes(store, owner)
         claim = claim_status(store, owner, cited) if cited else None
-    except events._StoreFailed as exc:
+    except readkit.StoreFailed as exc:
         return {**base, "error": str(exc)}
     runs = []
     for row in rows:
         # 잘못된 모양의 기록 하나가 목록 전체를 멈추지 않게 읽는 한 벌(`store/run_state.py`)을 지난다.
         props = run_state.readable(row.get("props"))
-        title = events._title(row.get("title"))
+        title = readkit.title(row.get("title"))
         if not stored:
             read = rp.as_read(props, now)
             if read is not props:
@@ -198,7 +190,7 @@ def waiting_runs(store, *, owner: str, limit: int = DEFAULT_LIMIT, now=None) -> 
         return {**base, "error": "owner is required"}
     try:
         rows = _episodes(store, owner)
-    except events._StoreFailed as exc:
+    except readkit.StoreFailed as exc:
         return {**base, "error": str(exc)}
     moment = now or datetime.datetime.now(datetime.timezone.utc)
     shown_after = moment - datetime.timedelta(seconds=EXPIRED_SHOWN_S)
@@ -216,7 +208,7 @@ def waiting_runs(store, *, owner: str, limit: int = DEFAULT_LIMIT, now=None) -> 
         items.append({
             "id": pkns.strip(row["id"]), "run_id": str(props.get("run_id") or ""),
             "role": events.role_id(props.get("role")) or "", "space": owner,
-            "title": events._title(row.get("title")), "task": str(props.get("task") or ""),
+            "title": readkit.title(row.get("title")), "task": str(props.get("task") or ""),
             "subject": str(props.get("subject") or ""), "host": str(props.get("host") or ""),
             "step": props.get("step", 0), "ask": props["asks"],
             "started_at": str(props.get("started_at") or ""),

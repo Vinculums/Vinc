@@ -21,7 +21,7 @@ import re
 from store import pkns
 from store.embedded_schema import EDGE_BIRTH_RELS, EDGE_EVIDENCE_RELS
 
-from . import events, query as q
+from . import events, query as q, readkit
 
 DEFAULT_DAYS = 14
 MAX_DAYS = 60
@@ -82,7 +82,7 @@ def scan(store, *, owner: str, days: int = DEFAULT_DAYS, now: datetime.datetime 
     try:
         nodes = _recent_nodes(store, owner, since)
         rels = _recent_relations(store, owner, since)
-    except events._StoreFailed as exc:
+    except readkit.StoreFailed as exc:
         return {**base, "error": str(exc)}
     # 출처: 근거가 실행 id 인 관계의 실행. 그 끝점도 같은 출처로 묶는다(먼저 본 것이 이긴다).
     source_of: dict[str, str] = {}
@@ -123,7 +123,7 @@ def scan(store, *, owner: str, days: int = DEFAULT_DAYS, now: datetime.datetime 
 def _recent_nodes(store, owner: str, since: str) -> list[dict]:
     out: list[dict] = []
     for label, pk in _NODE_TABLES:
-        rows = events._run(q.QueryPlan(
+        rows = readkit.run_plan(q.QueryPlan(
             f"agent_writes_{label}",
             f"MATCH (n:{label}) WHERE n.owner_id = $owner AND n.updated_at >= $since "
             f"RETURN n.{pk} AS id, n.title AS title, n.props AS props, n.updated_at AS at",
@@ -132,8 +132,8 @@ def _recent_nodes(store, owner: str, since: str) -> list[dict]:
             nid = pkns.strip(row["id"])
             if nid.startswith(events.RUN_PREFIX):
                 continue
-            out.append({"id": nid, "kind": label.lower(), "title": events._title(row.get("title")),
-                        "props": events._props(row.get("props")), "at": str(row.get("at") or "")})
+            out.append({"id": nid, "kind": label.lower(), "title": readkit.title(row.get("title")),
+                        "props": readkit.props(row.get("props")), "at": str(row.get("at") or "")})
     return out
 
 
@@ -145,13 +145,13 @@ def _recent_relations(store, owner: str, since: str) -> list[dict]:
         has_ev = rel in EDGE_EVIDENCE_RELS
         for src, spk, dst, dpk in pairs:
             ev = "r.evidence" if has_ev else "''"
-            rows = events._run(q.QueryPlan(
+            rows = readkit.run_plan(q.QueryPlan(
                 f"agent_writes_{rel}_{src}_{dst}",
                 f"MATCH (a:{src})-[r:{rel}]->(b:{dst}) WHERE a.owner_id = $owner AND r.created >= $since "
                 f"RETURN a.{spk} AS s, b.{dpk} AS t, b.title AS tt, {ev} AS ev, r.created AS at",
                 {"owner": owner, "since": since}), store)
             for row in rows:
                 out.append({"type": rel, "from": pkns.strip(row["s"]), "to": pkns.strip(row["t"]),
-                            "to_title": events._title(row.get("tt")), "evidence": str(row.get("ev") or ""),
+                            "to_title": readkit.title(row.get("tt")), "evidence": str(row.get("ev") or ""),
                             "at": str(row.get("at") or ""), "needs": has_ev and _needs_evidence(rel, src, dst)})
     return out

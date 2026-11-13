@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from store import pkns
 
-from . import events, query as q
+from . import query as q, readkit
 
 CARD_PREFIX = "record:eval-card-"
 DEFAULT_LIMIT = 20
@@ -31,15 +31,7 @@ def role_address(value) -> str | None:
 
 
 def clamp_limit(value) -> int:
-    if value in (None, ""):
-        return DEFAULT_LIMIT
-    try:
-        n = int(value)
-    except (TypeError, ValueError):
-        raise ValueError("invalid_limit: expected an integer") from None
-    if not 1 <= n <= MAX_LIMIT:
-        raise ValueError(f"invalid_limit: expected 1..{MAX_LIMIT}")
-    return n
+    return readkit.clamp_limit(value, default=DEFAULT_LIMIT, maximum=MAX_LIMIT)
 
 
 def list_cards(store, *, owner: str, role: str | None, limit: int = DEFAULT_LIMIT) -> dict:
@@ -51,7 +43,7 @@ def list_cards(store, *, owner: str, role: str | None, limit: int = DEFAULT_LIMI
     if not rid:
         return {**base, "error": "role is required"}
     try:
-        rows = events._run(q.QueryPlan(
+        rows = readkit.run_plan(q.QueryPlan(
             "eval_cards",
             "MATCH (r:Record)-[:ATTACHES_TO]->(c:Concept) WHERE r.owner_id = $owner "
             "AND c.owner_id = $owner AND c.concept_id = $role "
@@ -60,11 +52,11 @@ def list_cards(store, *, owner: str, role: str | None, limit: int = DEFAULT_LIMI
             "r.valid_from AS valid_from, r.valid_until AS valid_until",
             {"owner": owner, "role": pkns.key(owner, rid),
              "prefix": pkns.key(owner, CARD_PREFIX)}), store)
-    except events._StoreFailed as exc:
+    except readkit.StoreFailed as exc:
         return {**base, "error": str(exc)}
     cards = []
     for row in rows:
-        props = events._props(row.get("props"))
+        props = readkit.props(row.get("props"))
         until = str(row.get("valid_until") or "")
         cards.append({"id": pkns.strip(row["id"]), "title": str(row.get("title") or ""),
                       "role": rid, "date": str(props.get("date") or row.get("valid_from") or ""),
