@@ -32,7 +32,8 @@ import math
 RUN_PREFIX = "episode:run-"
 #: 질문 쪽 상태: 실행이 지금 무엇을 묻는가. 실행 프로토콜의 출력 단계(`_output`)와 작업 닫기
 #: (`run_tasks.cancel`)가 쓴다. 닫힌 작업 표시는 답을 막기만 하고 승인을 만들지 않는다.
-QUESTION_KEYS = ("state", "pending", "asks", "last_asked_at", "task_cancelled")
+#: 실행이 돌린 호출의 기록(`actions_run`)과 아직 묻지 못한 기록된 사람 전용 행동(`record_pending`)도 질문 쪽이다.
+QUESTION_KEYS = ("state", "pending", "asks", "last_asked_at", "task_cancelled", "actions_run", "record_pending")
 #: 답 쪽 상태: 누가 무엇에 답했고 무엇이 승인됐는가. 실행 프로토콜의 `_answer` 가 채운다.
 ANSWER_KEYS = ("approved", "answer", "answered_at", "answered_actions", "answered_by", "answer_via",
                "answer_text")

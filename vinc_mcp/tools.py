@@ -2085,6 +2085,16 @@ TOOLS.append({"name": "vinc_run_start", "reference":
                  "description": "The client that runs the role, with its version."},
         "owner": {"type": "string"}}, "required": ["role", "task"]},
     "run": _t_run_start})
+#: 실행이 돌린 호출 한 줄(`run_protocol.ACTION_KEYS`). 종류는 게이트가 명령·도구 이름에서 다시 읽는다.
+_ACTION_RECORD = {"type": "array", "maxItems": 64, "items": {"type": "object", "properties": {
+    "command": {"type": "string", "maxLength": 8192},
+    "tool": {"type": "string", "maxLength": 512},
+    "kind": {"type": "string", "enum": ["vcs.push", "vcs.protected_push", "vcs.tag_push", "vcs.merge",
+                                        "ci.dispatch", "publish", "deploy", "message.send",
+                                        "data.migrate", "other"]},
+    "target": {"type": "string", "maxLength": 512},
+    "exit_status": {"type": "integer"},
+    "call_id": {"type": "string", "maxLength": 512}}, "additionalProperties": False}}
 TOOLS.append({"name": "vinc_run_submit", "reference":
     (
         (
@@ -2097,7 +2107,11 @@ TOOLS.append({"name": "vinc_run_submit", "reference":
         "ask_first you as the person chose. A request expires after expires_in_s (default 3600, at "
         "most 43200) and the run ends blocked. A claim that something ran is blocked, since no host "
         "proof reaches this tool; the result names it as claim. Say what you attempted and where it "
-        "can be read instead. Only the output's hash and length are stored. With the final output, "
+        "can be read instead. actions_run lists the calls the step ran (command or tool name); with "
+        "it, a merge, tag push, publish, send or migration is asked from those calls, not from the "
+        "output's words, and text about them comes back as notes. host_record carries the same "
+        "entries signed by a host observer key registered for the graph. Only the output's hash and "
+        "length are stored. With the final output, "
         "verdict says what the work concluded (a verify-tier role pass, fail or blocked; any other "
         "role delivered, partial or blocked) and verdict_note names what blocked it. It is kept "
         "apart from outcome, which says how the protocol ended the run, and a step over the budget "
@@ -2119,6 +2133,14 @@ TOOLS.append({"name": "vinc_run_submit", "reference":
         "cited_ids": {"type": "array", "items": {"type": "string"}},
         "capabilities_used": {"type": "array", "maxItems": 64, "items": {"type": "string"},
                               "description": "Capability ids of the tools called in this step."},
+        "actions_run": {**_ACTION_RECORD,
+                        "description": "The calls this step ran, one per entry: the exact shell "
+                                       "command or the tool name, its target and exit status."},
+        "host_record": {"type": "object", "properties": {
+            "entries": _ACTION_RECORD,
+            "attestation": {"type": "string", "maxLength": 4096}},
+            "required": ["entries", "attestation"], "additionalProperties": False,
+            "description": "The calls a host observer saw, signed with its registered key."},
         "usage": {"type": "object", "properties": {
             "tool_calls": {"type": "integer", "minimum": 0},
             "tokens_in": {"type": "integer", "minimum": 0},

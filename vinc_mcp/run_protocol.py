@@ -32,6 +32,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import os
 import re
 import threading
 import uuid
@@ -39,7 +40,7 @@ import zlib
 
 from store import run_state as _run_rule
 
-from . import role_output_gate, run_notify
+from . import edverify, role_output_gate, run_notify
 from .capability_maps import capability_verdict
 from .roles import contract
 
@@ -105,6 +106,17 @@ RESTATE = ("what you attempted and where its result can be read (a PR, commit or
            "as success: no host proof reaches this tool")
 #: 완료 주장을 보는 검사. 막힌 결과에 그 문장(claim)과 고쳐 쓰는 법을 싣는다.
 _CLAIM_CHECK = "side_effect_evidence"
+#: 이 단계가 실제로 돌린 호출의 기록(`actions_run`) 한 줄의 키와 상한. 기록이 있으면 사람 전용 행동은
+#: 글이 아니라 기록에서 묻는다(`role_output_gate.RECORDED_ACTIONS`). 명령 원문은 질문의 설명에만 남는다.
+ACTION_KEYS = ("command", "tool", "kind", "target", "exit_status", "call_id")
+ACTIONS_PER_STEP = 64
+ACTIONS_MAX = 200
+#: 호스트가 직접 본 기록(`host_record`)을 서명하는 관찰자 공개키. 값은 JSON {"<owner>": ["<b64url 공개키>"]}.
+#: 키가 없는 그래프는 호스트 기록을 받지 않는다(에이전트가 적은 `actions_run` 만 받는다).
+OBSERVER_KEYS_ENV = "VINC_RUN_OBSERVER_KEYS"
+HOST_RECORD_TYP = "run-host-record"
+HOST_RECORD_AUD = "vinc-run"
+HOST_RECORD_MAX_AGE_S = 900
 
 
 def episode_id(run_id: str) -> str:
@@ -604,6 +616,109 @@ def _record_capabilities(props: dict, used: list[str], flags: list[dict], step: 
         props["capability_flags"] = kept[:CAPABILITIES_MAX]
 
 
+def record_digest(entries) -> str:
+    """호스트 기록 줄들의 지문. 관찰자는 이 값을 서명하고 허브는 받은 줄로 다시 계산해 견준다."""
+    text = json.dumps(entries, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _entries(raw, observed_by: str):
+    """(기록 줄들, 오류 문장). 줄은 정해진 키만 갖는다. 누가 보았는지는 들어온 길이 정한다."""
+    bad = (f"Invalid: actions_run is a list of at most {ACTIONS_PER_STEP} calls, each with some of "
+           + ", ".join(ACTION_KEYS) + " (command or tool), as the step ran them.")
+    if not isinstance(raw, list) or len(raw) > ACTIONS_PER_STEP:
+        return None, bad
+    out = []
+    for item in raw:
+        if not isinstance(item, dict) or not item or set(item) - set(ACTION_KEYS):
+            return None, bad
+        status = item.get("exit_status")
+        fields = {k: item.get(k, "") for k in ("command", "tool", "kind", "target", "call_id")}
+        if (isinstance(status, bool) or not (status is None or isinstance(status, int))
+                or not all(isinstance(v, str) for v in fields.values())):
+            return None, bad
+        entry = role_output_gate.RecordedAction(**fields, exit_status=status, observed_by=observed_by)
+        if not role_output_gate.record_entry_valid(entry):
+            return None, bad
+        out.append(entry)
+    return out, None
+
+
+def _observer_keys(owner: str) -> list[bytes]:
+    try:
+        table = json.loads(os.environ.get(OBSERVER_KEYS_ENV) or "{}")
+    except ValueError:
+        return []
+    keys = table.get(owner) if isinstance(table, dict) else None
+    out = []
+    for key in keys if isinstance(keys, list) else []:
+        try:
+            out.append(edverify.load_public(key))
+        except (ValueError, TypeError):
+            continue
+    return out
+
+
+def _host_record(args: dict, owner: str, eid: str):
+    """(호스트가 본 기록, 오류 문장). 관찰자 키로 서명이 맞을 때만 host 로 받는다. 없으면 (None, None).
+
+    서명은 이 실행(`run`)과 이 줄들(`digest`)에 묶인다. 에이전트 자격으로 온 같은 줄은 `actions_run` 이다."""
+    raw = args.get("host_record")
+    if raw is None:
+        return None, None
+    if not isinstance(raw, dict) or set(raw) != {"entries", "attestation"} or not isinstance(
+            raw.get("attestation"), str):
+        return None, "Invalid: host_record is {entries, attestation}."
+    entries, bad = _entries(raw["entries"], "host")
+    if bad:
+        return None, bad.replace("actions_run", "host_record.entries")
+    keys = _observer_keys(owner)
+    if not keys:
+        return None, ("Refused: no host observer key is registered for this graph, so a host record "
+                      "cannot be checked and nothing changed. Send the calls as actions_run instead.")
+    want = record_digest(raw["entries"])
+    for key in keys:
+        payload = edverify.verify_assertion(key, raw["attestation"], max_age=HOST_RECORD_MAX_AGE_S)
+        if (payload and payload.get("typ") == HOST_RECORD_TYP and payload.get("aud") == HOST_RECORD_AUD
+                and payload.get("run") == eid and payload.get("digest") == want):
+            return entries, None
+    return None, ("Refused: the host record's attestation does not match this run and these entries, "
+                  "so nothing changed.")
+
+
+def _step_record(args: dict, owner: str, eid: str, mode: str):
+    """(이 단계의 기록, 오류). 호스트가 본 줄이 앞에 서고 에이전트가 적은 줄이 뒤에 붙는다(더할 뿐 빼지 못한다).
+
+    기록이 없는 제출(기록을 모르는 호스트)은 None 이다: 그 제출의 사람 전용 행동은 글에서 읽는다."""
+    host, bad = _host_record(args, owner, eid)
+    if bad:
+        return None, ("invalid_host_record", bad)
+    stated = None
+    if args.get("actions_run") is not None:
+        stated, bad = _entries(args.get("actions_run"), "agent")
+        if bad:
+            return None, ("invalid_actions_run", bad)
+    if host is None and stated is None:
+        return None, None
+    if mode != "output":
+        return None, ("invalid_actions_run", "Invalid: actions_run and host_record go with output.")
+    return (host or []) + (stated or []), None
+
+
+def _record_actions(props: dict, record, step: int) -> None:
+    """기록 가운데 종류가 있는 호출만 실행 기록에 남긴다: 단계, 종류, 누가 보았는가, 끝 상태. 명령 원문은 남기지 않는다."""
+    kept = list(props.get("actions_run") or [])
+    for entry in record:
+        kinds = sorted(role_output_gate.action_kinds(entry))
+        if kinds:
+            row = {"step": step, "kinds": kinds, "observed_by": entry.observed_by}
+            if entry.exit_status is not None:
+                row["exit_status"] = entry.exit_status
+            kept.append(row)
+    if kept:
+        props["actions_run"] = kept[:ACTIONS_MAX]
+
+
 def _question(actions: list[str], policy: dict, checks: list[str]) -> str:
     reasons = {p.get("action"): p.get("reason") for p in policy.get("person_only") or []
                if isinstance(p, dict)}
@@ -749,6 +864,9 @@ def _submit(args: dict, bridge, owner: str, eid: str, mode: str) -> dict:
     used, bad = _used_capabilities(args)
     if bad:
         return _failure("invalid_capabilities_used", bad)
+    record, bad = _step_record(args, owner, eid, mode)
+    if bad:
+        return _failure(*bad)
     verdict, note, bad = _verdict(args, policy, mode)
     if bad:
         return _failure("invalid_verdict", bad)
@@ -794,7 +912,7 @@ def _submit(args: dict, bridge, owner: str, eid: str, mode: str) -> dict:
             _record_verdict(props, verdict, note)
         _end(props, "blocked", over)
         return _finish(bridge, owner, eid, props)
-    return _output(args, bridge, owner, eid, props, policy, flags, (verdict, note))
+    return _output(args, bridge, owner, eid, props, policy, flags, (verdict, note), record)
 
 
 def _finish(bridge, owner, eid, props, **extra) -> dict:
@@ -922,7 +1040,7 @@ def _restate(policy: dict, output: str, failed) -> dict:
     return {"claim": said[0], "next": "Restate claim as " + RESTATE + ". Then submit output again."}
 
 
-def _output(args, bridge, owner, eid, props, policy, flags=(), verdict=(None, "")) -> dict:
+def _output(args, bridge, owner, eid, props, policy, flags=(), verdict=(None, ""), record=None) -> dict:
     output = args.get("output")
     if _bad_output(output):
         return _failure("output_required", f"Invalid: pass the output as one non-empty string of at "
@@ -936,6 +1054,16 @@ def _output(args, bridge, owner, eid, props, policy, flags=(), verdict=(None, ""
     props["step"] = int(props.get("step", 0)) + 1
     props["output_ref"] = {"sha256": hashlib.sha256(output.encode("utf-8")).hexdigest(),
                            "chars": len(output)}
+    approved = list(props.get("approved") or [])
+    role_person = {p.get("action") for p in policy.get("person_only") or [] if isinstance(p, dict)}
+    from_record = role_output_gate.recorded_person_only(record or (), role_person, approved)
+    if record is not None:
+        _record_actions(props, record, props["step"])
+    # 게이트 앞에서 막힌 단계의 기록된 사람 전용 행동은 다음에 게이트를 지나는 단계가 묻는다(이미 돈 호출이다).
+    carried = [a for a in dict.fromkeys(list(props.get("record_pending") or []) + list(from_record))
+               if a in role_person and a not in approved]
+    if carried:
+        props["record_pending"] = carried
     # 결론은 세어진 단계마다 남는다: 게이트가 막은 단계, 대기에 든 단계, 끝난 단계 모두. 다음 출력이
     # 다른 결론을 보고하면 바뀌고, 보고하지 않으면 그대로다.
     _record_verdict(props, *verdict)
@@ -957,28 +1085,35 @@ def _output(args, bridge, owner, eid, props, policy, flags=(), verdict=(None, ""
                                **({"missing_ids": list(missing)} if missing else {}))
     props.pop("citations_missing", None)
     gate = role_output_gate.OutputGate(policy)
-    result = gate.evaluate(output, person_only_requests=gate_requests)
+    result = gate.evaluate(output, person_only_requests=gate_requests, record=record, approved=approved)
     props["gate_results"] = {"verdict": result.verdict, "failed_checks": list(result.failed_checks)}
-    # 고쳐 쓰는 법은 응답에만 싣고 실행 기록에는 남기지 않는다. 호스트가 스스로 이름 댄 행동에는 붙이지 않는다.
-    named = tuple(f"person_only ({g['action']})" for g in gate_requests)
+    # 고쳐 쓰는 법은 응답에만 싣고 실행 기록에는 남기지 않는다. 호스트가 스스로 이름 댄 행동과 기록이 보인
+    # 행동에는 붙이지 않는다(기록된 호출은 고쳐 쓸 문장이 아니다). 글의 참고(notes)도 응답에만 싣는다.
+    named = tuple(f"person_only ({a})" for a in [g["action"] for g in gate_requests] + carried)
     advice = [line for line in gate.advice(result) if not line.startswith(named)]
+    told = {"notes": list(result.notes)} if result.notes else {}
     if result.verdict == "block":
         failed = _saved(bridge, owner, eid, props)
         return failed or {**_view(props, eid, policy, status="blocked",
                                   failed_checks=list(result.failed_checks),
                                   evidence_sentences=list(result.evidence_sentences),
-                                  **({"advice": advice} if advice else {})),
+                                  **({"advice": advice} if advice else {}), **told),
                           **_restate(policy, output, result.failed_checks)}
-    actions = list(dict.fromkeys(list(result.person_only_actions) + asks))
+    props.pop("record_pending", None)
+    actions = list(dict.fromkeys(list(result.person_only_actions) + carried + asks))
     if result.verdict == "interrupt" or actions:
         props["state"] = "waiting"
         now = _now()
         asked_at = _stamp(now)
         props["asks"] = int(props.get("asks") or 0) + 1
         props["last_asked_at"] = asked_at
-        person = set(result.person_only_actions) | {g["action"] for g in gate_requests}
+        person = set(result.person_only_actions) | {g["action"] for g in gate_requests} | set(carried)
         reasons = {i["action"]: str(i["reason"]).strip()[:REASON_MAX]
                    for i in args.get("person_only_requests") or []}
+        for action, entries in from_record.items():
+            # 기록이 보인 행동의 설명은 돌린 호출 그대로다. 사람은 이 명령을 보고 답한다.
+            reasons.setdefault(action, ("ran: " + "; ".join(
+                role_output_gate.describe(e) for e in entries[:3]))[:REASON_MAX])
         requests = [{"action": a, "reason": reasons.get(a, ""),
                      "kind": "person_only" if a in person else "ask_first"} for a in actions]
         # 게이트가 끼어든 것(행동 없이)과 사람만 하는 행동이 하나라도 있으면 사람만 답한다.
@@ -993,6 +1128,6 @@ def _output(args, bridge, owner, eid, props, policy, flags=(), verdict=(None, ""
             return failed
         # 저장된 대기만 알린다(계정 → 웹 푸시). 행동·질문은 싣지 않고, 실패해도 실행은 그대로다.
         run_notify.waiting(owner, eid, props)
-        return _view(props, eid, policy, **({"advice": advice} if advice else {}))
+        return _view(props, eid, policy, **({"advice": advice} if advice else {}), **told)
     _end(props, "success", "gates passed")
-    return _finish(bridge, owner, eid, props, status="passed")
+    return _finish(bridge, owner, eid, props, status="passed", **told)
