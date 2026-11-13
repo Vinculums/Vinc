@@ -716,15 +716,16 @@ def _encode_stub(vector, *, seen: dict | None = None, delay: float = 0.0,
     import json as _json
     import threading as _th
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-    from api import server as _srv
-    saved_runtime = _srv._ENCODER_RUNTIME
-    saved_build = _srv._ENCODER_BUILD
+    # 질의 경로의 런타임·빌드 대조는 `encoder_client` 의 이름을 읽는다.
+    from api import encoder_client as _ec
+    saved_runtime = _ec._ENCODER_RUNTIME
+    saved_build = _ec._ENCODER_BUILD
     if not saved_runtime:
-        _srv._ENCODER_RUNTIME = "test-runtime"
+        _ec._ENCODER_RUNTIME = "test-runtime"
     if not saved_build:
-        _srv._ENCODER_BUILD = "test-build"
-    runtime = _srv._ENCODER_RUNTIME if runtime is None else runtime
-    build = _srv._ENCODER_BUILD if build is None else build
+        _ec._ENCODER_BUILD = "test-build"
+    runtime = _ec._ENCODER_RUNTIME if runtime is None else runtime
+    build = _ec._ENCODER_BUILD if build is None else build
 
     class _H(BaseHTTPRequestHandler):
         def log_message(self, *_a):
@@ -758,8 +759,8 @@ def _encode_stub(vector, *, seen: dict | None = None, delay: float = 0.0,
     finally:
         srv.shutdown()
         srv.server_close()
-        _srv._ENCODER_RUNTIME = saved_runtime
-        _srv._ENCODER_BUILD = saved_build
+        _ec._ENCODER_RUNTIME = saved_runtime
+        _ec._ENCODER_BUILD = saved_build
 
 
 class QueryEmbeddingWiringTests(unittest.TestCase):
@@ -802,9 +803,11 @@ class QueryEmbeddingWiringTests(unittest.TestCase):
         self._saved = {k: os.environ.get(k)
                        for k in ("VINC_EMBED_ENCODE", "VINC_EMBED_ENCODE_TIMEOUT",
                                  "VINC_EMBED_ENCODE_TOKEN")}
+        from api import encoder_client as ec
         from api import server as srv
         self.srv = srv
-        self._consts = {k: getattr(srv, k) for k in
+        self.ec = ec
+        self._consts = {k: getattr(ec, k) for k in
                         ("_QVEC_TIMEOUT", "_QVEC_COLD_TIMEOUT")}
 
     def tearDown(self):
@@ -814,7 +817,7 @@ class QueryEmbeddingWiringTests(unittest.TestCase):
             else:
                 os.environ[k] = v
         for k, v in self._consts.items():
-            setattr(self.srv, k, v)
+            setattr(self.ec, k, v)
 
     def _search(self):
         app = _app(store=self._Store(self))
@@ -882,24 +885,24 @@ class QueryEmbeddingWiringTests(unittest.TestCase):
         self.assertEqual(self.seen_vec, [])
 
     def test_local_encoder_without_deployment_build_still_serves_vectors(self):
-        from api import server as srv
-        saved_build = srv._ENCODER_BUILD
-        saved_required = srv._ENCODER_BUILD_REQUIRED
-        saved_runtime = srv._ENCODER_RUNTIME
+        from api import encoder_client as ec
+        saved_build = ec._ENCODER_BUILD
+        saved_required = ec._ENCODER_BUILD_REQUIRED
+        saved_runtime = ec._ENCODER_RUNTIME
         remote_runtime = saved_runtime or "test-runtime"
         try:
             with _encode_stub([0.5, 0.5, 0.0, 0.0], build="") as url:
-                srv._ENCODER_BUILD = ""
-                srv._ENCODER_BUILD_REQUIRED = False
-                srv._ENCODER_RUNTIME = ""
+                ec._ENCODER_BUILD = ""
+                ec._ENCODER_BUILD_REQUIRED = False
+                ec._ENCODER_RUNTIME = ""
                 os.environ["VINC_EMBED_ENCODE"] = url
                 res = self._search()
             self.assertEqual(res.get("arms"), "fts+vector")
-            self.assertEqual(srv._ENCODER_RESPONSE_RUNTIME.get(), remote_runtime)
+            self.assertEqual(ec._ENCODER_RESPONSE_RUNTIME.get(), remote_runtime)
         finally:
-            srv._ENCODER_BUILD = saved_build
-            srv._ENCODER_BUILD_REQUIRED = saved_required
-            srv._ENCODER_RUNTIME = saved_runtime
+            ec._ENCODER_BUILD = saved_build
+            ec._ENCODER_BUILD_REQUIRED = saved_required
+            ec._ENCODER_RUNTIME = saved_runtime
 
     def test_창구가_죽어도_검색은_답하고_사유를_남긴다(self):
         os.environ["VINC_EMBED_ENCODE"] = "http://127.0.0.1:9"   # discard 포트
@@ -907,8 +910,8 @@ class QueryEmbeddingWiringTests(unittest.TestCase):
         # 시점에 한 번 읽히므로 여기서 env 를 놔 봐야 안 먹는다(오래 그렇게 적혀
         # 있었다). 콜드 상한도 함께 줄인다 — 닫힌 포트는 이 기계에서 연결 거부일
         # 때도 연결 시간 초과일 때도 있고, 후자면 콜드 재시도가 붙어 30초가 된다.
-        self.srv._QVEC_TIMEOUT = 0.3
-        self.srv._QVEC_COLD_TIMEOUT = 0.3
+        self.ec._QVEC_TIMEOUT = 0.3
+        self.ec._QVEC_COLD_TIMEOUT = 0.3
         res = self._search()
         self.assertEqual(res.get("arms"), "fts")
         self.assertTrue(res.get("vector_note"), "조용히 강등됐다 — 사유가 없다")
@@ -1254,21 +1257,21 @@ class QueryEmbeddingColdStartTests(unittest.TestCase):
     질의에 긴 값을 물리지 않도록 쿨다운이 받친다."""
 
     def setUp(self):
-        from api import server as srv
-        self.srv = srv
-        self._consts = {k: getattr(srv, k) for k in
+        from api import encoder_client as ec
+        self.ec = ec
+        self._consts = {k: getattr(ec, k) for k in
                         ("_QVEC_TIMEOUT", "_QVEC_COLD_TIMEOUT",
                          "_QVEC_WARM_WINDOW", "_QVEC_COLD_COOLDOWN")}
         # 상수는 import 시점에 읽히므로 env 가 아니라 모듈 속성을 바꾼다.
-        srv._QVEC_TIMEOUT = 0.2
-        srv._QVEC_COLD_TIMEOUT = 1.5
-        srv._QVEC_WARM_WINDOW = 300.0
-        srv._QVEC_COLD_COOLDOWN = 60.0
+        ec._QVEC_TIMEOUT = 0.2
+        ec._QVEC_COLD_TIMEOUT = 1.5
+        ec._QVEC_WARM_WINDOW = 300.0
+        ec._QVEC_COLD_COOLDOWN = 60.0
         self._saved_url = os.environ.get("VINC_EMBED_ENCODE")
 
     def tearDown(self):
         for k, v in self._consts.items():
-            setattr(self.srv, k, v)
+            setattr(self.ec, k, v)
         if self._saved_url is None:
             os.environ.pop("VINC_EMBED_ENCODE", None)
         else:
@@ -1294,13 +1297,13 @@ class QueryEmbeddingColdStartTests(unittest.TestCase):
         """웜 창 안에 성공한 적이 있으면 인코더는 살아 있다. 지금 초과는 '바쁨'이니
         기다려 봐야 사용자만 세운다."""
         with _encode_stub([1.0, 0.0], delay=3.0) as url, self._app_at(url) as app:
-            app._qvec_ok = time.monotonic()
+            app.encoder._qvec_ok = time.monotonic()
             t0 = time.monotonic()
             vec, note = app._query_embedding("양자역학")
             elapsed = time.monotonic() - t0
         self.assertIsNone(vec)
         self.assertTrue(note, "조용히 강등됐다 — 사유가 없다")
-        self.assertLess(elapsed, self.srv._QVEC_COLD_TIMEOUT,
+        self.assertLess(elapsed, self.ec._QVEC_COLD_TIMEOUT,
                         "웜인데 긴 상한까지 기다렸다 — 바쁜 인코더에 사용자를 세웠다")
 
     def test_인코더가_죽어_있으면_긴_상한을_무는_질의는_하나뿐이다(self):
@@ -1318,11 +1321,11 @@ class QueryEmbeddingColdStartTests(unittest.TestCase):
             t1 = time.monotonic()
             self.assertIsNone(app._query_embedding("q2")[0])
             second = time.monotonic() - t1
-            self.assertGreater(app._qvec_cold_until, time.monotonic(),
+            self.assertGreater(app.encoder._qvec_cold_until, time.monotonic(),
                                "긴 시도가 실패했는데 쿨다운이 안 걸렸다")
-        self.assertGreaterEqual(first, self.srv._QVEC_COLD_TIMEOUT,
+        self.assertGreaterEqual(first, self.ec._QVEC_COLD_TIMEOUT,
                                 "첫 질의가 긴 상한을 물지 않았다 — 시나리오가 안 섰다")
-        self.assertLess(second, self.srv._QVEC_COLD_TIMEOUT,
+        self.assertLess(second, self.ec._QVEC_COLD_TIMEOUT,
                         "죽은 인코더에 두 번째 질의도 긴 상한을 물었다")
 
     def test_성공_한_번이_다음_시간_초과를_바쁨으로_바꾼다(self):
@@ -1338,7 +1341,7 @@ class QueryEmbeddingColdStartTests(unittest.TestCase):
         """'기다리는 스레드가 있다' 플래그를 안 풀면 그 프로세스는 영영 콜드 재시도를
         못 한다. 인코더가 다시 잠들면 벡터 팔이 안 켜지고, 남는 신호는 평범한 시간
         초과 하나뿐이라 '바쁜 인코더'와 구분되지 않는다."""
-        self.srv._QVEC_COLD_COOLDOWN = 0.0    # 쿨다운은 위 테스트가 지킨다
+        self.ec._QVEC_COLD_COOLDOWN = 0.0    # 쿨다운은 위 테스트가 지킨다
         with _encode_stub([1.0, 0.0], delay=3.0) as url, self._app_at(url) as app:
             self.assertIsNone(app._query_embedding("q1")[0])
             self.assertTrue(app._claim_cold_retry(),

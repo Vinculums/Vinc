@@ -87,7 +87,7 @@ def test_timings_cross_real_rest_bridge_and_sidecar_without_changing_search(monk
 
     monkeypatch.setenv("VINC_EMBED_ENCODE", "http://127.0.0.1:1")
     app = VincApp(store=EmptyStore(), auth=SessionAuth("fixture-sidecar"))
-    monkeypatch.setattr(app, "_encode_query", lambda *_a: ([0.5, 0.5], ""))
+    monkeypatch.setattr(app.encoder, "encode_query", lambda *_a: ([0.5, 0.5], ""))
     sidecar = sidecar_server(app, "127.0.0.1", 0)
     bridge = Bridge(base=f"http://127.0.0.1:{sidecar.server_address[1]}", token="fixture-sidecar")
     public = public_server(MCPHTTPApp(bridge, verify_key=lambda key, team=None:
