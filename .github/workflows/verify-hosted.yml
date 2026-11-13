@@ -62,6 +62,7 @@ jobs:
     name: core (hosted, verify.py + gates)
     if: inputs.core
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       # 앱 보드 게이트가 캡처 뒤의 커밋 목록을 읽는다(ci.yml 의 core 잡과 같다).
       - uses: actions/checkout@v4
@@ -170,6 +171,7 @@ jobs:
     name: app (hosted, typecheck + dev checks)
     if: inputs.app
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -205,6 +207,7 @@ jobs:
     name: rust (hosted ubuntu, cargo check)
     if: inputs.rust_linux
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -239,6 +242,7 @@ jobs:
     name: rust (hosted windows, cargo check)
     if: inputs.rust_windows
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       # ⚠ 호스티드 windows 에는 WSL 이 없으므로 `ci.yml` 의 Git Bash 우선 스텝이
       # 필요 없다. 그 스텝은 셀프호스티드 기계에서 system32 의 bash 가 WSL 로 가는
@@ -274,6 +278,7 @@ jobs:
     if: always()
     needs: [core, core-pkns, app, rust-linux, rust-windows]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Write the record
         env:
