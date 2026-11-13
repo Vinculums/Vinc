@@ -88,3 +88,34 @@ def test_successes_and_client_errors_leave_no_line(capfd):
         _stop(app, httpd, t)
     assert codes == (200, 404, 401)
     assert "[sidecar]" not in capfd.readouterr().err
+
+
+def _read_line(line: str) -> tuple[str, int]:
+    """로그를 읽는 쪽이 하듯 줄을 푼다: 따옴표 칸은 역슬래시 이스케이프(\\" 와 \\\\)만 허용한다.
+    (풀어 낸 "메서드 경로", 상태) 를 돌려주고, 칸이 그 꼴로 닫히지 않으면 실패한다."""
+    m = re.fullmatch(r'\[sidecar\] "((?:[^"\\]|\\["\\])*)" (\d{3}) (?:\d+ms|-)', line)
+    assert m, f"따옴표 칸이 모호하다: {line!r}"
+    return re.sub(r'\\(["\\])', r"\1", m.group(1)), int(m.group(2))
+
+
+def test_a_quote_or_backslash_in_the_path_keeps_the_line_parseable(capfd):
+    app = sidecar.VincApp(store=_Store(), auth=SessionAuth(TOKEN), quiet_boot=True)
+
+    def boom(*_a, **_k):
+        raise RuntimeError("probe-failure-marker")
+
+    app.get_job = boom
+    # 마지막 경로는 정확히 200자이고 200자째가 역슬래시다: 자르기 전에 이스케이프하면 반쪽만 남는다.
+    paths = ['/jobs/a"b', "/jobs/a\\", '/jobs/a\\"b"c', "/jobs/" + "a" * 193 + "\\"]
+    assert len(paths[-1]) == 200
+    httpd, t = _serve(app)
+    try:
+        codes = [_get(httpd, p + "?owner=user:owner-marker") for p in paths]
+    finally:
+        _stop(app, httpd, t)
+    assert codes == [500] * len(paths), codes
+    err = capfd.readouterr().err
+    lines = [ln for ln in err.splitlines() if ln.startswith("[sidecar]")]
+    assert [_read_line(ln) for ln in lines] == [(f"GET {p}", 500) for p in paths], lines
+    for secret in ("owner-marker", TOKEN, "probe-failure-marker"):
+        assert secret not in err, (secret, err)

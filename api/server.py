@@ -3110,6 +3110,13 @@ def _request_owner() -> str | None:
 _LOG_UNSAFE = re.compile(r"[^\x21-\x7e]")
 
 
+def _log_field(value: str, limit: int) -> str:
+    """로그 줄의 따옴표 칸에 넣을 값. 안전하지 않은 문자는 '?' 로 바꾸고 limit 자로 자른 뒤,
+    역슬래시와 따옴표 앞에 역슬래시를 붙인다. 그래서 칸은 늘 `"(?:[^"\\\\]|\\\\["\\\\])*"` 로 읽힌다.
+    자르기가 이스케이프보다 먼저여야 한다: 거꾸로 하면 반쪽 이스케이프가 닫는 따옴표를 삼킨다."""
+    return _LOG_UNSAFE.sub("?", value)[:limit].replace("\\", "\\\\").replace('"', '\\"')
+
+
 def _pop_max_domains(body) -> int | None:
     """요청 본문에서 주제 상한을 꺼낸다(있으면 제거).
 
@@ -3146,8 +3153,8 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if status < 500:
             return
-        path = _LOG_UNSAFE.sub("?", (getattr(self, "path", "") or "").split("?", 1)[0])[:200] or "-"
-        method = _LOG_UNSAFE.sub("?", self.command or "-")[:16]
+        path = _log_field((getattr(self, "path", "") or "").split("?", 1)[0], 200) or "-"
+        method = _log_field(self.command or "-", 16)
         took = f"{(time.perf_counter() - started) * 1000:.0f}ms" if started is not None else "-"
         sys.stderr.write(f'[sidecar] "{method} {path}" {status} {took}\n')
         sys.stderr.flush()
