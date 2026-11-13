@@ -18,18 +18,13 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-SRC = Path(__file__).resolve().parents[2] / "app" / "src"
-
-
-def _read(rel: str) -> str:
-    return (SRC / rel).read_text(encoding="utf-8")
+from _src import read
 
 
 class Prefs(unittest.TestCase):
     def setUp(self):
-        self.src = _read("view-prefs.ts")
+        self.src = read("view-prefs")
 
     def test_bring_이_없고_none_이_있다(self):
         t = re.search(r"export type EdgeShow = ([^;]+);", self.src).group(1)
@@ -65,9 +60,9 @@ class Prefs(unittest.TestCase):
 class Names(unittest.TestCase):
     def test_노드만_이름이_남고_데려오기는_없다(self):
         # 보기 옵션 패널(견본 칩)은 3D 와 함께 걷었다. 노드만이라는 이름과 데려오기가 없다는 것은 그대로 잡는다
-        v = _read("surfaces/view.ts")
+        v = read("view")
         self.assertNotIn("edgeBring", v)
-        c = _read("copy.ts")
+        c = read("copy")
         self.assertIn('none: "nodes only"', c)
         self.assertIn('none: "노드만"', c)
         self.assertNotIn("bring &amp; go", c)

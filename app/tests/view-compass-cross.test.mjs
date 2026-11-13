@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { installDom, El } from './mini-dom.mjs';
-import { loadTs, tsUrl, copyStub, COMPONENTS_STUB } from './ts-load.mjs';
+import { loadCompass } from './helpers/compass-load.mjs';
 
 // 펼친 뒤의 움직임(FLIP)과 목록 줄기 그리기는 다음 프레임에 돈다. mini-dom 은 그 SVG 경로를 그리지 못하므로 프레임을 돌리지 않는다
 globalThis.requestAnimationFrame = () => 0;
@@ -15,22 +15,7 @@ globalThis.cancelAnimationFrame ??= clearTimeout;
 globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
 globalThis.matchMedia ??= () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 
-const THEME_STUB = `export const topicJewels = {
-  light: [0xb3261e, 0x1a5fb4, 0x2e7d32, 0xb26a00, 0x6a3fa0],
-  dark: [0xff8a80, 0x82b1ff, 0x69f0ae, 0xffd180, 0xce93d8] };
-export const palette = { light: { background: 0xf2f2f0, surface: 0xe9e9e6, card: 0xfbfbfa, text: 0x17171a, ring: 0x4a4f8c },
-  dark: { background: 0x0a0a0a, surface: 0x121212, card: 0x1a1a1a, text: 0xededeb, ring: 0x8f96d9 } };`;
-const tintUrl = await tsUrl('view-tint.ts', { './theme': THEME_STUB, './area-key': await tsUrl('area-key.ts') });
-const { mountCompass, compassDataFrom } = await loadTs('surfaces/view-compass.ts', {
-  '../copy': copyStub("{ ui: { compass: { rootTopic: 'All topics' } } }"),
-  '../components': COMPONENTS_STUB,
-  '../view-tint': tintUrl,
-  '../topic-tint-table': await tsUrl('topic-tint-table.ts', { './view-tint': tintUrl }),
-  '../theme': THEME_STUB,
-  './view-compass-state': await tsUrl('surfaces/view-compass-state.ts'),
-  './view-compass-whole': await tsUrl('surfaces/view-compass-whole.ts'),
-  '../keys': await tsUrl('keys.ts'),
-});
+const { mountCompass, compassDataFrom } = await loadCompass();
 
 // 맨 위 주제 하나 아래 여섯 영역, 영역마다 하위 주제 셋, 주제마다 개념 열둘과 기록 몇 개
 function graph() {

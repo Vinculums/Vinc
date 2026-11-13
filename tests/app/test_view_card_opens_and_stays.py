@@ -13,30 +13,15 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-CSS = (ROOT / "app" / "src" / "app.css").read_text(encoding="utf-8")
-VIEW = (ROOT / "app" / "src" / "surfaces" / "view.ts").read_text(encoding="utf-8")
-COPY = (ROOT / "app" / "src" / "copy.ts").read_text(encoding="utf-8")
-TOPBAR = (ROOT / "app" / "src" / "topbar.ts").read_text(encoding="utf-8")
-INDEX = (ROOT / "app" / "index.html").read_text(encoding="utf-8")
-COMPONENTS = (ROOT / "app" / "src" / "components.ts").read_text(encoding="utf-8")
+from _src import braced, read
 
-
-def _fn(src: str, head: str) -> str:
-    """`head` 로 시작하는 함수 본문(줄 끝에 선 첫 여는 중괄호부터 짝을 센다)."""
-    a = src.index(head)
-    i = re.search(r"\{\s*\n", src[a:]).start() + a
-    depth = 0
-    for j in range(i, len(src)):
-        if src[j] == "{":
-            depth += 1
-        elif src[j] == "}":
-            depth -= 1
-            if depth == 0:
-                return src[a:j + 1]
-    raise AssertionError(f"{head} 가 닫히지 않는다")
+CSS = read("app.css")
+VIEW = read("view")
+COPY = read("copy")
+TOPBAR = read("topbar")
+INDEX = read("index.html")
+COMPONENTS = read("components")
 
 
 def _code(body: str) -> str:
@@ -54,7 +39,7 @@ class TheLensPanelIsGone(unittest.TestCase):
 
     def test_escape_still_folds_what_is_open(self):
         # Esc 는 가장 나중에 뜬 것부터 접는다: 카드, 그다음 상세 열, 그다음 지나온 층
-        body = _code(_fn(VIEW, "const onKey = (e: KeyboardEvent) =>"))
+        body = _code(braced(VIEW, "const onKey = (e: KeyboardEvent) =>"))
         self.assertIn("closeFloatPanel()", body)
         self.assertIn("closeRail()", body)
         self.assertIn("trail.pop()", body)

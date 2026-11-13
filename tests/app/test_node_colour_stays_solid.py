@@ -12,39 +12,22 @@
 소스를 대조한다(`test_view_url.py` · `test_lnb_tint.py` 와 같은 자리)."""
 from __future__ import annotations
 
-import re
 import unittest
-from pathlib import Path
 
-APP = Path(__file__).resolve().parents[2] / "app" / "src"
-
-
-def _read(rel: str) -> str:
-    return (APP / rel).read_text(encoding="utf-8")
-
-
-def _fn(src: str, head: str) -> str:
-    """`head` 로 시작하는 함수(또는 화살표) 본문 — **같은 들여쓰기**의 다음 선언 전까지.
-    안쪽 줄은 더 깊이 들여써 있으므로 거기서 끊기지 않는다."""
-    at = src.index(head)
-    indent = at - (src.rfind("\n", 0, at) + 1)
-    rest = src[at:]
-    nxt = re.search(r"\n" + " " * indent + r"(const|function|let|export|type|g\.on|/\*\*)",
-                    rest[len(head):])
-    return rest if not nxt else rest[:len(head) + nxt.start()]
+from _src import read
 
 
 class CardTests(unittest.TestCase):
     def test_노드_카드는_지도와_같은_색상표를_읽는다(self):
-        src = _read("surfaces/view.ts")
+        src = read("view")
         self.assertNotIn("tintMap([nd.domain]", src)
         # 표는 지도(나침반)가 짓는 그 한 벌이다 — 카드가 따로 지으면 넣는 집합이 갈려 순위가 밀린다.
         self.assertIn("compass?.colour(nd.domain.trim())", src)
         self.assertNotIn("tintMap(", src)
 
     def test_범례가_노드_물러남을_가르치지_않는다(self):
-        self.assertNotIn("tierNode", _read("copy.ts"))
-        self.assertNotIn("tierNode", _read("surfaces/view.ts"))
+        self.assertNotIn("tierNode", read("copy"))
+        self.assertNotIn("tierNode", read("view"))
 
 
 if __name__ == "__main__":

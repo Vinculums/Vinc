@@ -21,12 +21,12 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-SRC = Path(__file__).resolve().parents[2] / "app" / "src"
-LNB = (SRC / "lnb.ts").read_text(encoding="utf-8")
-CSS = (SRC / "app.css").read_text(encoding="utf-8")
-MAIN = (SRC / "main.ts").read_text(encoding="utf-8")
+from _src import func, read
+
+LNB = read("lnb")
+CSS = read("app.css")
+MAIN = read("main")
 
 
 class LnbTintTests(unittest.TestCase):
@@ -46,8 +46,8 @@ class LnbTintTests(unittest.TestCase):
 
     def test_주제_색_표를_짓는_곳은_하나다(self):
         """트리와 나침반이 각자 tintPlan 을 돌리면 넣는 주제 집합이 달라 한 주제가 두 색이 된다."""
-        compass = (SRC / "surfaces" / "view-compass.ts").read_text(encoding="utf-8")
-        table = (SRC / "topic-tint-table.ts").read_text(encoding="utf-8")
+        compass = read("view-compass")
+        table = read("topic-tint-table")
         for name, src in (("lnb.ts", LNB), ("view-compass.ts", compass)):
             self.assertNotIn("tintPlan(", src, f"{name} 가 색 표를 따로 짓는다")
         self.assertIn("tintPlan([...known], mode)", table)
@@ -70,8 +70,7 @@ class LnbTintTests(unittest.TestCase):
         설정 화면의 클릭 핸들러에 달면 테마 `pref` 가 `"auto"` 인 경로가 통째로 샌다:
         그때 모드를 바꾸는 것은 OS 이고(아래 matchMedia 구독) 설정 클릭이 없다.
         `applyTheme` 는 `data-theme` 를 쓰는 **유일한** 곳이라 두 경로가 여기서 만난다."""
-        head = MAIN.index("export function applyTheme() {")
-        body = MAIN[head:MAIN.index(chr(10) + "}", head)]
+        body = func(MAIN, "applyTheme")
         self.assertIn("repaintLnb()", body,
                       "테마를 뒤집고 안 그리면 도트에 반대 모드 색이 남는다")
         self.assertIn(
@@ -80,8 +79,7 @@ class LnbTintTests(unittest.TestCase):
 
     def test_지도를_먼저_다시_칠하고_트리를_그린다(self):
         """지도와 트리는 같은 표를 지금 모드로 읽는다. 지도를 먼저 다시 칠해 두 표면이 같은 모드의 색으로 함께 바뀌게 한다."""
-        head = MAIN.index("export function applyTheme() {")
-        body = MAIN[head:MAIN.index(chr(10) + "}", head)]
+        body = func(MAIN, "applyTheme")
         self.assertLess(body.index("repaintView();"), body.index("repaintLnb();"))
 
     def test_Agent_색은_그릴_때마다_지금_모드로_매긴다(self):

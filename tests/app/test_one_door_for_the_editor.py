@@ -20,33 +20,13 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "app/src"
-MAIN = (SRC / "main.ts").read_text(encoding="utf-8")
-VIEW = (SRC / "surfaces/view.ts").read_text(encoding="utf-8")
-EDITOR = (SRC / "doc-editor.ts").read_text(encoding="utf-8")
-KEYS = (SRC / "keys.ts").read_text(encoding="utf-8")
+from _src import ROOT, SRC, braced, read
 
-
-def body_of(source: str, opener: str) -> str:
-    """`opener` 로 시작하는 블록의 본문 — 중괄호를 세어 끝을 찾는다.
-
-    본문만 봐야 "이 함수 안에서 그 순서인가"를 물을 수 있다. 파일 전체에서 인덱스를
-    비교하면 엉뚱한 곳의 같은 글자가 답을 준다."""
-    i = source.index(opener)
-    j = source.index("{", i)
-    depth, k = 0, j
-    while k < len(source):
-        if source[k] == "{":
-            depth += 1
-        elif source[k] == "}":
-            depth -= 1
-            if depth == 0:
-                return source[j + 1:k]
-        k += 1
-    raise AssertionError(f"블록의 끝을 못 찾았다: {opener}")
+MAIN = read("main")
+VIEW = read("view")
+EDITOR = read("doc-editor")
+KEYS = read("keys")
 
 
 class OneGuardTest(unittest.TestCase):
@@ -60,7 +40,7 @@ class OneGuardTest(unittest.TestCase):
         아니라 이 파일이 지키려는 동작(표면 이동)에 걸어 둔다."""
         head = MAIN.rindex('document.addEventListener("keydown"', 0,
                            MAIN.index("location.hash = `#${ORDER"))
-        guard = body_of(MAIN[head:], 'document.addEventListener("keydown"')
+        guard = braced(MAIN[head:], 'document.addEventListener("keydown"', inner=True)
         self.assertIn('shortcutsRest("surface", e.target', guard)
         # 그 판정이 실제로 표면 이동을 막는 자리 앞에 있어야 한다.
         self.assertLess(guard.index("shortcutsRest(\"surface\""),
@@ -87,7 +67,7 @@ class OneGuardTest(unittest.TestCase):
         이제 어느 문으로 나가도 확정되므로(아래 ExitsTest) 이 문을 열어 둘 수 있다."""
         # 가드가 두 줄로 접혀 있어 공백을 눌러 놓고 본다 — 잠그는 것은 줄바꿈이 아니라
         # "Esc 는 예외"라는 계약이다.
-        onkey = re.sub(r"\s+", " ", body_of(VIEW, "const onKey = (e: KeyboardEvent)"))
+        onkey = re.sub(r"\s+", " ", braced(VIEW, "const onKey = (e: KeyboardEvent)", inner=True))
         self.assertIn('shortcutsRest("surface", e.target, document.activeElement,'
                       ' docEditorOpen()) && e.key !== "Escape"', onkey)
         self.assertIn("closeRail();", onkey)
@@ -97,14 +77,14 @@ class TeardownReachesTheHandleTest(unittest.TestCase):
     """② 마운트 지점을 비우는 곳은 전부 핸들에 닿는다 — **비우기 전에.**"""
 
     def test_라우터가_문서_열을_비우기_전에_확정한다(self):
-        route = body_of(MAIN, "async function route()")
+        route = braced(MAIN, "async function route()", inner=True)
         self.assertIn("disposeEditorsIn(docpaneBodyEl)", route)
         self.assertLess(route.index("disposeEditorsIn(docpaneBodyEl)"),
                         route.index('docpaneBodyEl.innerHTML = ""'),
                         "비운 뒤에 부르면 확정할 편집기를 이미 못 찾는다")
 
     def test_레일을_닫을_때_비우기_전에_확정한다(self):
-        close = body_of(VIEW, "function closeRail()")
+        close = braced(VIEW, "function closeRail()", inner=True)
         self.assertIn("disposeEditorsIn(detail)", close)
         self.assertLess(close.index("disposeEditorsIn(detail)"),
                         close.index('detail.innerHTML = ""'))
@@ -113,11 +93,11 @@ class TeardownReachesTheHandleTest(unittest.TestCase):
         """`detail.innerHTML` 대입은 스무 곳이 넘고 전부 openRail 을 먼저 지난다.
 
         그래서 문 앞에서 한 번 걷는다 — 호출부마다 적으면 다음에 느는 하나가 샌다."""
-        self.assertIn("disposeEditorsIn(detail)", body_of(VIEW, "function openRail()"))
+        self.assertIn("disposeEditorsIn(detail)", braced(VIEW, "function openRail()", inner=True))
         # 실제로 모든 대입이 그 문 뒤에 있는지 본다 — 앞에 있어도 되는 것은 스스로
         # 확정하는 closeRail 하나뿐이다(위 검사가 그 순서를 이미 잠갔다).
         gate = VIEW.index("function openRail()")
-        close_body = body_of(VIEW, "function closeRail()")
+        close_body = braced(VIEW, "function closeRail()", inner=True)
         close_from = VIEW.index(close_body)
         for m in re.finditer(r"^\s+detail\.innerHTML\s*=", VIEW, re.M):
             if close_from <= m.start() < close_from + len(close_body):
@@ -138,8 +118,8 @@ class ExitsTest(unittest.TestCase):
 
     # doc-editor 에는 dispose 가 둘이다(실패 stub · 진짜 편집기). 확정하는 쪽은
     # 뒤엣것이므로 그 블록만 집는다 — stub 을 보면 전부 통과해 버린다.
-    DISPOSE = body_of(EDITOR[EDITOR.index("const handle: DocEditorHandle = {"):],
-                      "dispose: async (discard = false) =>")
+    DISPOSE = braced(EDITOR[EDITOR.index("const handle: DocEditorHandle = {"):],
+                     "dispose: async (discard = false) =>", inner=True)
 
     def test_dispose_가_대기_중_편집을_버리지_않고_저장한다(self):
         """여태 `clearTimeout` 만 했다. 그게 `뒤로`·`전체폭` 이 마지막 2초를

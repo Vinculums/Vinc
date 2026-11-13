@@ -10,22 +10,17 @@
 from __future__ import annotations
 
 import unittest
-from pathlib import Path
 
-SRC = Path(__file__).resolve().parents[2] / "app" / "src" / "surfaces"
-VIEW = (SRC / "view.ts").read_text(encoding="utf-8")
+from _src import func, read
 
-
-def _block(src: str, start: str, end: str) -> str:
-    a = src.index(start)
-    return src[a:src.index(end, a)]
+VIEW = read("view")
 
 
 class MapClick(unittest.TestCase):
     def test_the_3d_click_route_is_gone_from_the_graph_tab(self):
         # 그래프 탭은 나침반 하나다. 3D 의 지도 클릭 길(openFromMap)은 걷었고, 노드 상세는 openDetail 이 연다
         self.assertNotIn("function openFromMap(", VIEW)
-        body = _block(VIEW, "function openDetail(", "\n  }")
+        body = func(VIEW, "openDetail")
         self.assertIn("focusOnMap(nd);", body)
         self.assertIn("railFor(nd);", body)
 

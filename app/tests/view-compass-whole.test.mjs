@@ -177,7 +177,7 @@ test('the fitted camera holds the whole box at the screen aspect', () => {
 
 // ── 마운트: 실제 view-compass.ts 를 mini-dom 위에 세워 머리 단추 · 보던 자리 잇기 · 사이드바 고르기 · Esc 를 본다 ──
 import { installDom, El } from './mini-dom.mjs';
-import { tsUrl, copyStub, COMPONENTS_STUB } from './ts-load.mjs';
+import { loadCompass } from './helpers/compass-load.mjs';
 installDom({ hash: '' });
 Object.defineProperty(El.prototype, 'isConnected', { get: () => true });
 const winOn = [];
@@ -185,20 +185,7 @@ globalThis.addEventListener = (type, fn) => winOn.push([type, fn]);
 globalThis.cancelAnimationFrame ??= clearTimeout;
 globalThis.requestAnimationFrame ??= (f) => setTimeout(() => f(0), 0);
 globalThis.matchMedia ??= () => ({ matches: true, addEventListener() {}, removeEventListener() {} });
-const THEME_STUB = `export const topicJewels = { light: [0xb3261e, 0x1a5fb4, 0x2e7d32, 0xb26a00, 0x6a3fa0], dark: [0xff8a80, 0x82b1ff, 0x69f0ae, 0xffd180, 0xce93d8] };
-export const palette = { light: { background: 0xf2f2f0, surface: 0xe9e9e6, card: 0xfbfbfa, text: 0x17171a, ring: 0x4a4f8c },
-  dark: { background: 0x0a0a0a, surface: 0x121212, card: 0x1a1a1a, text: 0xededeb, ring: 0x8f96d9 } };`;
-const wholeTint = await tsUrl('view-tint.ts', { './theme': THEME_STUB, './area-key': await tsUrl('area-key.ts') });
-const { mountCompass, compassDataFrom } = await loadTs('surfaces/view-compass.ts', {
-  '../copy': copyStub("{ ui: { compass: { rootTopic: 'All topics', whole: 'Whole graph', rels: 'Relations', wholeLabel: (n, t) => `whole ${n} ${t}` } } }"),
-  '../components': COMPONENTS_STUB,
-  '../view-tint': wholeTint,
-  '../topic-tint-table': await tsUrl('topic-tint-table.ts', { './view-tint': wholeTint }),
-  '../theme': THEME_STUB,
-  './view-compass-whole': await tsUrl('surfaces/view-compass-whole.ts'),
-  './view-compass-state': await tsUrl('surfaces/view-compass-state.ts'),
-  '../keys': await tsUrl('keys.ts'),
-});
+const { mountCompass, compassDataFrom } = await loadCompass({ copy: "{ ui: { compass: { rootTopic: 'All topics', whole: 'Whole graph', rels: 'Relations', wholeLabel: (n, t) => `whole ${n} ${t}` } } }" });
 const SPEC = [['work/alpha', 'a'], ['work/alpha', 'a2'], ['work/zebra', 'b'], ['research', 'c'], ['research/deep', 'd', 'record']];
 function mountW(ctx = {}) {
   const nodes = SPEC.map(([domain, t, kind = 'concept']) => ({ id: `${kind}:${t}`, kind, title: t, label: t, domain, ts: '2026-11-01', degree: 1 }));

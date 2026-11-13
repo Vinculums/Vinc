@@ -24,10 +24,9 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "app" / "src"
+from _src import SRC, func, read
+
 #: `api.search` 를 부르는 표면 전부(2026-09-07 실측). 늘어나면 여기도 늘린다.
 #: 값은 (알림을 만드는 호출, **그 판정이 마크업이 되는 유일한 자리**).
 #: 둘째 것을 문자 그대로 잡는 것이 일부러다. 이 조각이 사라졌으면 화면은 침묵한다 —
@@ -74,9 +73,8 @@ class ArmsNoticeReachesEverySurfaceTests(unittest.TestCase):
                 self.assertIn(b, src, f"{rel}: 판정이 그리는 자리까지 못 간다 ({b})")
 
     def test_판단은_구조화_필드로만_한다(self):
-        src = _read("components.ts")
-        body = src[src.index("export function armsNotice("):]
-        body = body[:body.index("\n}")]
+        src = read("components")
+        body = func(src, "armsNotice")
         for field in ("embed_migration", "vector_rebuilding", "vector_note",
                       "encoder_runtime_warning"):
             self.assertIn(field, body, f"{field} 을 안 본다")
@@ -85,14 +83,14 @@ class ArmsNoticeReachesEverySurfaceTests(unittest.TestCase):
         self.assertNotIn("rebuilt", body, "영문 사유 문장을 파싱하고 있다")
 
     def test_failed_arm_is_reported_before_runtime_mismatch(self):
-        body = _read("components.ts")
+        body = read("components")
         body = body[body.index("export function armsNotice("):]
         self.assertLess(body.index('res?.vector_note && res?.arms === "fts"'),
                         body.index("if (res?.encoder_runtime_warning)"),
                         "검색이 실패했는데 의미 팔이 실행됐을 수도 있다고 안내한다")
 
     def test_두_덱에_문구가_다_있다(self):
-        src = _read("copy.ts")
+        src = read("copy")
         for key in ("rebuilding", "degraded", "runtimeMismatch"):
             self.assertEqual(len(re.findall(rf"^\s*{key}:", src, re.M)), 2,
                              f"{key} 가 EN·KO 두 덱에 다 있지 않다")

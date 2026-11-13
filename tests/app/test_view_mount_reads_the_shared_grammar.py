@@ -20,25 +20,19 @@
 from __future__ import annotations
 
 import unittest
-from pathlib import Path
 
-VIEW = Path(__file__).resolve().parents[2] / "app" / "src" / "surfaces" / "view.ts"
+from _src import func, read
 
-
-def _mount() -> str:
-    """renderView 의 마운트 구간 — 해시를 읽는 곳부터 끝까지."""
-    src = VIEW.read_text(encoding="utf-8")
-    start = src.index("export async function renderView")
-    return src[start:]
+VIEW = read("view")
 
 
 class MountReadsTheSharedGrammar(unittest.TestCase):
     def setUp(self):
-        self.src = _mount()
+        self.src = func(VIEW, "renderView")
 
     def test_마운트가_공유_파서로_읽는다(self):
         self.assertIn("parseViewUrl(location.hash)", self.src)
-        head = VIEW.read_text(encoding="utf-8").split("\n", 12)[:12]
+        head = VIEW.split("\n", 12)[:12]
         self.assertTrue(any("parseViewUrl" in l and "view-url" in l for l in head),
                         "view.ts 가 view-url 에서 parseViewUrl 을 import 해야 한다")
 

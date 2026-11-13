@@ -22,12 +22,12 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-CSS_PATH = Path(__file__).resolve().parents[2] / "app" / "src" / "app.css"
+from _src import read
+
 #: 주석을 먼저 걷는다(test_select_is_one_rule 과 같은 이유 — 주석 본문이 선택자로
 #: 딸려 들어오면 검사가 거짓으로 실패한다). 줄 수는 안 쓰므로 통째로 지운다.
-CSS = re.sub(r"/\*.*?\*/", "", CSS_PATH.read_text(encoding="utf-8"), flags=re.S)
+CSS = re.sub(r"/\*.*?\*/", "", read("app.css"), flags=re.S)
 
 #: 규격의 이름들. 값은 전부 .25rem(4px)의 배수여야 한다.
 SPEC_VARS = ("--ctl-h", "--row-h", "--titlebar-h", "--topbar-h",

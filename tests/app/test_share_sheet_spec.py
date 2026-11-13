@@ -18,35 +18,20 @@
 from __future__ import annotations
 
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-
-
-def _src() -> str:
-    return (ROOT / "app" / "src" / "sheets.ts").read_text(encoding="utf-8")
-
-
-def _docs_src() -> str:
-    return (ROOT / "app" / "src" / "share-docs.ts").read_text(encoding="utf-8")
-
-
-def _body(src: str, head: str) -> str:
-    """`head` 로 시작하는 최상위 함수의 본문만 잘라 낸다 — 열 0 의 `}` 가 끝이다."""
-    body = src[src.index(head):]
-    return body[:body.index("\n}")]
+from _src import ROOT, func, read
 
 
 class ShareSheetSpecTests(unittest.TestCase):
     def test_공유_시트가_문서_수를_보여준다(self):
-        src = _src()
-        spec = _body(src, "function specRows")
+        src = read("sheets")
+        spec = func(src, "specRows")
         self.assertIn("specDocs", spec, "공유 시트 사양 표에 문서 줄이 없다")
         self.assertIn("c.documents", spec, "문서 줄이 매니페스트 카운트를 안 읽는다")
         # 헬퍼가 **있는 것**과 **불리는 것**은 다르다 — 위 둘은 헬퍼 본문만 보므로
         # 호출부를 지워도 그대로 통과한다(변이로 실측). 그러면 문서 줄을 포함한 사양 표
         # 전체가 공유 시트에서 사라져도 가드는 초록이다 — 막으려던 바로 그것이다.
-        share = _body(src, "export async function renderSharePreview")
+        share = func(src, "renderSharePreview")
         self.assertIn("specRows(c, scopeLabel)", share, "공유 시트가 사양 표를 안 그린다")
 
     def test_제외한_미러의_원문은_팩에_안_실린다(self):
@@ -62,14 +47,14 @@ class ShareSheetSpecTests(unittest.TestCase):
         JS 러너가 없으므로(`app/package.json` 에 `test` 없음) 소스에서 잠근다. 여기
         잠그는 것은 **나가는 객체 그 자체**다 — 렌더 간접이 없어 `out` 이 곧 팩이고,
         세 줄 중 어느 하나를 지워도 이 테스트가 빨개진다."""
-        share = _body(_src(), "export async function renderSharePreview")
+        share = func(read("sheets"), "renderSharePreview")
         self.assertIn("const docs = keptDocs(pack.documents, excluded, pack.doc_refs, keepIds, standalone)",
                       share, "제외 집합과 남은 노드를 원문에 적용하지 않는다")
         self.assertIn("{ documents: docs }", share,
                       "거른 목록이 나가는 팩에 안 실린다 — 끈 원문이 그대로 나간다")
         self.assertIn("recount(keep, edges, docs, c)", share,
                       "매니페스트 수가 실제 나가는 수와 갈린다(시트가 저장 전에 그 수를 보여준다)")
-        self.assertIn("documents: docs.length", _body(_src(), "function recount"),
+        self.assertIn("documents: docs.length", func(read("sheets"), "recount"),
                       "다시 센 문서 수가 거른 목록 길이가 아니다")
 
     def test_미러가_아닌_개념을_끄는_것은_원문을_안_뺀다(self):
@@ -85,13 +70,13 @@ class ShareSheetSpecTests(unittest.TestCase):
         붙잡지 않을 때** 빠진다(아래 `test_원문은_남은_노드가_붙잡을_때만_나간다`). 개념
         하나를 끈 것만으로는 여전히 안 빠진다 — 실제 동작은 `app/dev/share-docs-check.ts`
         가 돌려 본다."""
-        helper = _body(_docs_src(), "export function keptDocs")
+        helper = func(read("share-docs"), "keptDocs")
         self.assertIn("indexOf(DOC_MIRROR)", helper, "미러인지 아닌지를 안 가린다")
         self.assertIn("at >= 0", helper, "미러가 아닌 id 도 doc_id 로 푼다")
 
     def test_미러_접두가_서버와_같은_값이다(self):
         """접두가 한쪽만 바뀌면 앱은 아무 문서도 못 빼고 조용히 넘긴다 — 두 층 대조."""
-        self.assertIn('export const DOC_MIRROR = "concept:doc."', _docs_src())
+        self.assertIn('export const DOC_MIRROR = "concept:doc."', read("share-docs"))
         self.assertIn('_DOC_MIRROR_PREFIX = "concept:doc."',
                       (ROOT / "api" / "docstore.py").read_text(encoding="utf-8"))
 
@@ -101,10 +86,10 @@ class ShareSheetSpecTests(unittest.TestCase):
         원문을 지목할 행이 없으니 끌 방법도 없었다. 서버가 원문을 고른 기준(`doc_refs`
         = 그 원문을 끌어온 노드)을 시트가 남은 노드에 다시 적용한다.
         근거: [[decision:share-documents-follow-the-nodes-that-carry-them]]"""
-        helper = _body(_docs_src(), "export function keptDocs")
+        helper = func(read("share-docs"), "keptDocs")
         self.assertIn("refs[d?.doc_id]", helper, "원문을 끌어온 노드를 안 본다")
         self.assertIn("kept.has(id)", helper, "남은 노드와 대조하지 않는다")
-        share = _body(_src(), "export async function renderSharePreview")
+        share = func(read("sheets"), "renderSharePreview")
         self.assertIn("pack.doc_refs, keepIds", share)
         self.assertIn("delete (out as any).doc_refs", share,
                       "시트용 대응표가 팩 파일·전송에 그대로 실린다")
@@ -112,7 +97,7 @@ class ShareSheetSpecTests(unittest.TestCase):
     def test_원문_규칙_모듈은_import_가_없다(self):
         """`app/dev/share-docs-check.ts` 가 plain node 로 이 규칙을 돌린다. import 가 하나라도
         생기면 그 검사는 모듈을 못 찾고 CI 의 Dev checks 가 죽는다."""
-        self.assertNotRegex(_docs_src(), r"(?m)^import ")
+        self.assertNotRegex(read("share-docs"), r"(?m)^import ")
         self.assertTrue((ROOT / "app" / "dev" / "share-docs-check.ts").exists())
 
     def test_서버가_시트에만_대응표를_싣는다(self):
@@ -134,33 +119,33 @@ class ShareSheetSpecTests(unittest.TestCase):
         """VIN-105 가 counts.records·decisions 를 넣는데 사양 표가 그 키를 안 읽으면
         화면은 오류 없이 개념·연결·문서만 보여 준다. 구버전 팩은 키가 없어도
         `?? 0` 으로 0 을 찍는다."""
-        src = _src()
-        spec = _body(src, "function specRows")
+        src = read("sheets")
+        spec = func(src, "specRows")
         self.assertIn("specRecords", spec)
         self.assertIn("specDecisions", spec)
         self.assertIn("c.records", spec)
         self.assertIn("c.decisions", spec)
         self.assertIn("?? 0", spec, "구버전 매니페스트에 decisions 가 없으면 조용히 터진다")
-        share = _body(src, "export async function renderSharePreview")
+        share = func(src, "renderSharePreview")
         self.assertIn("specRows(c, scopeLabel)", share)
 
     def test_제외_후_카운트가_모든_종을_다시_센다(self):
         """개별 제외가 concepts·edges·documents 만 다시 쓰면 Record/Decision 은
         끈 뒤에도 원래 수가 남는다. `recount` 가 VIN-105 술어(Episode+Record,
         Decision)로 다시 채운다."""
-        src = _src()
-        helper = _body(src, "function recount")
+        src = read("sheets")
+        helper = func(src, "recount")
         self.assertIn('n.type === "record" || n.type === "episode"', helper)
         self.assertIn('n.type === "decision"', helper)
         self.assertIn("documents: docs.length", helper)
-        share = _body(src, "export async function renderSharePreview")
+        share = func(src, "renderSharePreview")
         self.assertIn("recount(keep, edges, docs, c)", share)
 
     def test_가져오기_요약이_기록과_결정을_문서와_섞지_않는다(self):
         """updateNote 세 번째 자리에 records 를 넣고 라벨은 문서였다. 원문 수와
         기록 수가 한 줄에서 갈린다."""
-        src = _src()
-        imp = _body(src, "export function openImportSheet")
+        src = read("sheets")
+        imp = func(src, "openImportSheet")
         self.assertIn("specRecords", imp)
         self.assertIn("specDecisions", imp)
         self.assertIn("c.decisions ?? 0", imp)
