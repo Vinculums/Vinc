@@ -73,10 +73,6 @@ def service(monkeypatch):
                 if claims["jti"] in state["nonces"]:
                     return self.reply(401, {"error": "replay"})
                 state["nonces"].add(claims["jti"])
-            if self.path == "/internal/mcp/community" and data.get("action") == "community_create":
-                if claims.get("typ") != "community-write" or data.get("community") is not None:
-                    return self.reply(403, {"error": "wrong_creation_scope"})
-                return self.reply(200, {"created": True, "id": B})
             owner = "community:" + str(data.get("community"))
             if owner not in (A, B):
                 return self.reply(404, {"error": "community_not_found"})
@@ -244,36 +240,65 @@ def test_account_write_timeout_is_explicitly_unconfirmed(monkeypatch):
         community.write({"owner": A, "member": "user:"+USER, "scope": "full"}, write_args())
 
 
-def test_creation_uses_personal_identity_and_never_a_client_owner(service):
-    args = write_args("personal", action="community_create", payload={"slug": "new-topic", "owner": "user:other"})
-    args.pop("space")
-    _, result = rpc(service, WRITE, args)
-    assert result["created"]
-    path, body, claims = service["requests"][-1]
-    assert path == "/internal/mcp/community" and body["sub"] == claims["sub"] == USER
-    assert body["community"] is None and not service["bridge"].calls
-    assert service["quota"] == [("user:"+USER, "free")]
+#: 도구가 받지 않는 옛 이름. 한 공간에서는 post_create·post_reply 가 그 일을 하고, 개설과 가입은 없다.
+REMOVED = ("talk_create", "talk_comment", "lounge_create", "lounge_comment",
+           "community_join", "community_leave", "community_create")
 
 
-def test_creation_cannot_be_misdirected_from_a_community_or_static_identity(service):
+@pytest.mark.parametrize("action", REMOVED)
+def test_removed_actions_are_refused_in_the_hub_and_never_reach_the_account(service, action):
+    assert action not in community.ACTIONS
+    _, result = rpc(service, WRITE, write_args(A, action=action))
+    assert result["isError"]
+    assert f"action='{action}' is not accepted by vinc_community_write" in result["content"][0]["text"]
+    # 개인 주소로 부르던 개설 길도 닫혀 있다. 키 종류와 상관없이 계정에 쓰기 요청이 가지 않는다.
     for token in ("vinc_sk_user", "S"):
-        _, result = rpc(service, WRITE, write_args(A, action="community_create"), token=token)
+        personal = write_args(action=action)
+        personal.pop("space")
+        _, result = rpc(service, WRITE, personal, token=token)
         assert result["isError"]
+    assert not [r for r in service["requests"] if r[0] == "/internal/mcp/community"]
+    assert not service["quota"] and not service["revisions"] and not service["bridge"].calls
+
+
+@pytest.mark.parametrize("action", REMOVED)
+def test_removed_actions_are_refused_on_the_rest_route(service, action):
+    args = write_args(A, action=action)
+    args.pop("space")
+    req = urllib.request.Request("http://127.0.0.1:"+str(service["hub"].server_port)+"/v1/community?space="+A,
+                                 data=json.dumps(args).encode(),
+                                 headers={"Authorization": "Bearer vinc_sk_user", "Content-Type": "application/json"})
+    with pytest.raises(urllib.error.HTTPError) as refused:
+        urllib.request.urlopen(req, timeout=10)
+    with refused.value as response:
+        assert response.status == 400
+        assert action in json.loads(response.read())["error"]["message"]
+    assert not [r for r in service["requests"] if r[0] == "/internal/mcp/community"]
     assert not service["revisions"] and not service["bridge"].calls
+
+
+def test_a_direct_write_call_with_a_removed_action_sends_nothing(monkeypatch):
+    sent = []
+    monkeypatch.setattr(community.hubhttp, "request", lambda *a, **k: sent.append(a) or pytest.fail("sent"))
+    member = {"owner": A, "member": "user:"+USER, "scope": "full"}
+    for action in REMOVED:
+        with pytest.raises(PermissionError):
+            community.write(member, write_args(action=action))
+        with pytest.raises(PermissionError):
+            community.write({**member, "owner": "user:"+USER}, write_args(action=action))
+    assert not sent
 
 
 @pytest.mark.parametrize("action", community.ACTIONS)
 def test_complete_phase1_action_enum_is_routed_without_generic_graph_writes(service, action):
     args = write_args(A, action=action)
-    if action == "community_create":
-        args.pop("space")
     # 합친 공간의 동작은 허브가 payload 형식을 본다. 그 동작에는 계정이 받는 모양을 준다.
     shaped = {"post_reply": {"targetId": "0191f0aa-5555-7abc-8def-0123456789ab", "body": "Text"},
               "topic_save": {"path": "physics", "nameEn": "Physics"}}
     if action in shaped:
         args["payload"] = shaped[action]
     _, result = rpc(service, WRITE, args)
-    assert result.get("saved") or result.get("created")
+    assert result.get("saved")
     assert service["requests"][-1][1]["action"] == action
     assert not service["bridge"].calls
 
