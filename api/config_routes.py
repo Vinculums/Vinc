@@ -40,6 +40,33 @@ def _check_database(body: dict) -> tuple[dict | None, dict | None]:
     return inspect_database(loc.uri, user=loc.user, password=password, database=loc.database), None
 
 
+#: 고정 경로로 뜬 프로세스가 위치를 바꾸는 요청을 거절할 때의 문장. 화면과 스크립트가 이 문장을 그대로 본다.
+_PINNED_NOTE = "this process was started with a fixed data path (--data or MEMORY_DATA_DIR)"
+
+
+def pinned(extra: str = "") -> tuple[int, dict]:
+    """409 `pinned`. `extra` 는 문장 끝에 그대로 붙는다(이동은 무엇을 할 수 있는지 덧붙인다)."""
+    return 409, {"error": "pinned", "note": _PINNED_NOTE + extra}
+
+
+def database_gate(check: dict, body: dict, *, writer_lease: bool = False) -> tuple[int, dict] | None:
+    """`_check_database` 의 확인 결과로 이 데이터베이스를 받을지 가른다. 받으면 None, 아니면 (코드, 바디).
+
+    순서가 답이다: 연결 실패(400) → 막는 위험(400) → [writer_lease 면] 다른 Vinc 가 쓰는 중(409) →
+    확인이 필요한 위험인데 `accept_risk` 가 없음(409)."""
+    if not check["ok"]:
+        return 400, {"error": check["problem"], "check": check}
+    blocking = [r for r in check["risks"] if r in BLOCKING_RISKS]
+    if blocking:
+        return 400, {"error": blocking[0], "check": check}
+    if writer_lease and (check.get("writer_lease") or {}).get("active"):
+        return 409, {"error": "another_writer", "check": check,
+                     "note": "another Vinc process is writing to this database"}
+    if check["risks"] and not truthy(body.get("accept_risk")):
+        return 409, {"error": "risky_database", "check": check}
+    return None
+
+
 def config_view(app) -> dict:
     home = store_config.vinc_home()
     conf = store_config.read_local_config(home)
@@ -145,19 +172,13 @@ def write_config(app, body):
             return 400, {"error": "bad_location", "note": str(exc)}
         if isinstance(loc, DatabaseLocation):
             if app._data_pinned():
-                return 409, {"error": "pinned",
-                             "note": "this process was started with a fixed data path "
-                                     "(--data or MEMORY_DATA_DIR)"}
+                return pinned()
             check, err = _check_database({**loc.to_dict(), "password": body.get("password")})
             if err:
                 return 400, err
-            if not check["ok"]:
-                return 400, {"error": check["problem"], "check": check}
-            blocking = [r for r in check["risks"] if r in BLOCKING_RISKS]
-            if blocking:
-                return 400, {"error": blocking[0], "check": check}
-            if check["risks"] and not truthy(body.get("accept_risk")):
-                return 409, {"error": "risky_database", "check": check}
+            gate = database_gate(check, body)
+            if gate:
+                return gate
             d = loc.to_dict()
             d.pop("kind")
             updates.update({"mode": "database", "database": d})
@@ -177,9 +198,7 @@ def write_config(app, body):
         updates["mode_chosen"] = body["mode_chosen"]
     if "data_path" in body:
         if app._data_pinned():
-            return 409, {"error": "pinned",
-                         "note": "this process was started with a fixed data path "
-                                 "(--data or MEMORY_DATA_DIR)"}
+            return pinned()
         raw = body.get("data_path")
         if raw in (None, ""):
             updates["data_path"] = None
@@ -234,9 +253,7 @@ def submit_config_move(app, body):
     # 환경(VINC_DATABASE_*)을 넣고 다시 띄우는 일이다. 그 밖의 이동은 거절한다.
     copy_only = app._data_pinned()
     if copy_only and not (isinstance(to, DatabaseLocation) and body.get("from") is None):
-        return 409, {"error": "pinned",
-                     "note": "this process was started with a fixed data path "
-                             "(--data or MEMORY_DATA_DIR); it can only copy its graph to a database"}
+        return pinned("; it can only copy its graph to a database")
     source = body.get("from")
     if source not in (None, "account"):
         return 400, {"error": "from must be omitted (this store) or 'account'"}
@@ -254,17 +271,9 @@ def submit_config_move(app, body):
         check, err = _check_database({**to.to_dict(), "password": body.get("password")})
         if err:
             return 400, err
-        if not check["ok"]:
-            return 400, {"error": check["problem"], "check": check}
-        blocking = [r for r in check["risks"] if r in BLOCKING_RISKS]
-        if blocking:
-            return 400, {"error": blocking[0], "check": check}
-        lease = check.get("writer_lease") or {}
-        if lease.get("active"):
-            return 409, {"error": "another_writer", "check": check,
-                         "note": "another Vinc process is writing to this database"}
-        if check["risks"] and not truthy(body.get("accept_risk")):
-            return 409, {"error": "risky_database", "check": check}
+        gate = database_gate(check, body, writer_lease=True)
+        if gate:
+            return gate
         password = body["password"]
         run = lambda: app._move_to_database(to, password, source=source, body=body,  # noqa: E731
                                             copy_only=copy_only, hub=hub)
