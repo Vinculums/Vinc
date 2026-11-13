@@ -10,7 +10,8 @@ import tempfile
 import unittest
 
 from api import node_mirror
-from api import server as sv
+# 토큰 채우기(`node_mirror.rebuild_colbert`)는 인코더 이름을 `encoder_client` 에서 부를 때 읽는다.
+from api import encoder_client as ec
 
 try:
     import ladybug                          # noqa: F401
@@ -92,22 +93,22 @@ class RealStore(unittest.TestCase):
         from api.server import VincApp
         app = VincApp(store=self.store)
         cb = type("CB", (), {"id": "B1"})()
-        real_cb, real_call = sv._colbert, sv._encode_call
+        real_cb, real_call = ec._colbert, ec._encode_call
         os.environ["VINC_EMBED_ENCODE"] = "http://encoder.invalid"
         try:
-            sv._colbert = lambda: cb
-            sv._encode_call = lambda url, texts, kind, timeout, colbert=False: {
+            ec._colbert = lambda: cb
+            ec._encode_call = lambda url, texts, kind, timeout, colbert=False: {
                 "colbert": ["AAAA"] * len(texts), "colbert_books": "B9"}
             res = app._node_mirror_colbert({"owner": self.OWNER})
             self.assertEqual((res["done"], res["executed"]), (0, False))
             self.assertIn("B9", res["error"])
-            sv._encode_call = lambda url, texts, kind, timeout, colbert=False: {
+            ec._encode_call = lambda url, texts, kind, timeout, colbert=False: {
                 "colbert": ["AAAA"] * len(texts), "colbert_books": "B1"}
             res = app._node_mirror_colbert({"owner": self.OWNER})
             self.assertEqual((res["done"], res["rows"]), (2, 2))
             self.assertEqual(app._node_mirror_colbert({"owner": self.OWNER})["rows"], 0)
         finally:
-            sv._colbert, sv._encode_call = real_cb, real_call
+            ec._colbert, ec._encode_call = real_cb, real_call
             os.environ.pop("VINC_EMBED_ENCODE", None)
             app.jobs.stop() if hasattr(app.jobs, "stop") else None
 
@@ -115,19 +116,19 @@ class RealStore(unittest.TestCase):
         from api.server import VincApp
         app = VincApp(store=self.store)
         cb = type("CB", (), {"id": "B1"})()
-        real = sv._colbert, sv._encode_call, sv._COLBERT_FILL_MAX
+        real = ec._colbert, ec._encode_call, node_mirror._COLBERT_FILL_MAX
         os.environ["VINC_EMBED_ENCODE"] = "http://encoder.invalid"
         try:
-            sv._colbert = lambda: cb
-            sv._encode_call = lambda url, texts, kind, timeout, colbert=False: {
+            ec._colbert = lambda: cb
+            ec._encode_call = lambda url, texts, kind, timeout, colbert=False: {
                 "colbert": ["AAAA"] * len(texts), "colbert_books": "B1"}
-            sv._COLBERT_FILL_MAX = 1
+            node_mirror._COLBERT_FILL_MAX = 1
             first = app._node_mirror_colbert({"owner": self.OWNER})
             self.assertEqual((first["done"], first["left"]), (1, 1))
             second = app._node_mirror_colbert({"owner": self.OWNER})
             self.assertEqual((second["done"], second["left"]), (1, 0))
             self.assertEqual(app._node_mirror_colbert({"owner": self.OWNER})["rows"], 0)
         finally:
-            sv._colbert, sv._encode_call, sv._COLBERT_FILL_MAX = real
+            ec._colbert, ec._encode_call, node_mirror._COLBERT_FILL_MAX = real
             os.environ.pop("VINC_EMBED_ENCODE", None)
             app.jobs.stop() if hasattr(app.jobs, "stop") else None

@@ -28,13 +28,16 @@
 concept 의 산문을 그대로 물려받아 둘이 같은 낱말로 묶인다) 인코드는 2.4배가 됐다.
 다시 제안하기 전에 읽을 것: [[record:the-one-liner-join-improves-no-item-and-costs-four-2026-09-16]]
 
-이 모듈은 **스토어 연산만** 한다. 인코딩은 부르는 쪽이 한다 — 허브는 사이드카가
-원격 인코더에 묻고(`api/server.py`), 로컬은 `scripts/fill_node_mirror.py` 가 onnx 를
-직접 든다. 인코딩이 여기 들어오면 두 경로가 서로의 의존성을 물게 된다.
+인코더는 이 모듈이 들이지 않는다. 허브의 재구축(:func:`rebuild`)은 사이드카의 원격 인코더
+클라이언트(`api/encoder_client.py`)를 **부를 때** 가져오고, 로컬은 `scripts/fill_node_mirror.py` 가
+onnx 를 직접 든다. 모듈 맨 위에서 인코더를 들이면 두 경로가 서로의 의존성을 물게 된다.
 """
 from __future__ import annotations
 import hashlib
 import json
+import os
+import time
+from array import array
 
 from store.node_mirror_state import EXTRA_CHARS, extra_text, mirror_text as _mirror_text
 
@@ -254,3 +257,220 @@ def replace(store, rows: list[dict], model: str, encoder_runtime: str = "",
     index_ok = index_answers(store)
     return {"kind": "node-mirror.replace", "rows": len(rows), "owners": owners,
             "model": model, "index_ok": index_ok, "index_error": index_error}
+
+
+# ── 재구축(`POST /node-mirror/rebuild`) ──────────────────────────────────────
+# 사이드카가 부른다(`VincApp.write_node_mirror_rebuild`). 인코더와 docstore 는 부를 때 가져온다 —
+# 모듈 맨 위에서 들이지 않으므로 로컬 채우기(`scripts/fill_node_mirror.py`)는 원격 인코더
+# 클라이언트를 들이지 않고, 패치는 `api.encoder_client` 의 이름에 닿는다. 앱에서 받는 키워드 인자:
+#   jobs         쓰기 큐(`api.jobs.JobQueue`). 교체와 토큰 싣기만 이리로 간다
+#   reader       리더 뷰를 여는 함수(못 열면 None). 연 뷰는 인코딩 전에 닫는다
+#   store        지금의 스토어를 돌려주는 함수. 교체 잡이 돌 때 부른다
+#   lock         두 재구축이 겹치지 않게 하는 락(앱 하나에 하나)
+#   unavailable  스토어가 없을 때 응답에 싣는 사유 봉투를 돌려주는 함수
+
+#: 미러 재구축 한 배치의 크기. 인코더 왕복 수와 한 요청의 무게를 맞바꾼다.
+_MIRROR_BATCH = int(os.environ.get("VINC_NODE_MIRROR_BATCH", "32"))
+#: 그 한 배치의 상한. 질의 경로의 1.5초와 **다른 성질**이다 — 여기서는 기다리는 쪽이
+#: 배포 스크립트라 인코더 콜드스타트(0→1 리비전)를 통째로 참는 것이 맞다.
+_MIRROR_ENCODE_TIMEOUT = float(os.environ.get("VINC_NODE_MIRROR_ENCODE_TIMEOUT", "120"))
+#: 교체(드롭·삭제·삽입·인덱스 빌드)의 상한. 인코딩이 빠져 있어 짧다.
+_MIRROR_REPLACE_TIMEOUT = float(os.environ.get("VINC_NODE_MIRROR_REPLACE_TIMEOUT", "600"))
+#: ColBERT 토큰을 한 요청에 몇 노드씩 묻는가. 노드 텍스트는 512토큰까지라 dense 미러의 32보다 작게 잡는다.
+_COLBERT_BATCH = int(os.environ.get("VINC_NODE_COLBERT_BATCH", "8"))
+#: 재구축 한 번에 토큰을 채우는 행 수의 상한(0 이면 무제한). 엔진은 쓴 토큰을 스토어가 닫힐 때까지
+#: 메모리에 붙들므로, 미러 전체를 한 프로세스에서 채우면 허브 한도를 넘는다. 남은 행은 다음 기동의
+#: 재구축이 해시로 이어 채운다. 근거: [[record:the-colbert-token-fill-holds-written-pages-in-the-sidecar-store-until-it-closes-so-a-whole-mirror-fill-ran-the-hub-out-of-memory-2026-10-31]]
+_COLBERT_FILL_MAX = int(os.environ.get("VINC_NODE_COLBERT_FILL_MAX", "3000"))
+
+
+def rebuild(body, *, jobs, reader, store, lock, unavailable):
+    """POST /node-mirror/rebuild — dense 미러(:func:`rebuild_dense`) 다음에 ColBERT
+    토큰 열을 채운다(:func:`rebuild_colbert`). 토큰은 dense 가 성공했을 때만 간다 —
+    토큰은 미러 행에 실리므로 행이 먼저 있어야 한다. 토큰 단계의 실패는 dense 결과를
+    되돌리지 않고 `colbert` 칸에 사유로 남는다(재채점은 토큰이 다 있을 때만 켜진다)."""
+    from .encoder_client import _colbert
+    parts = {"jobs": jobs, "reader": reader, "store": store, "lock": lock,
+             "unavailable": unavailable}
+    code, res = rebuild_dense(body, **parts)
+    if code == 200 and _colbert() is not None:
+        res = {**res, "colbert": rebuild_colbert(body, **parts)}
+    return code, res
+
+
+def rebuild_colbert(body, *, jobs, reader, store, lock, unavailable) -> dict:
+    """미러 행 중 토큰 텍스트나 코드북이 바뀐 것만 인코더에 묻고(`colbert:true`), 배치마다
+    바로 싣는다. 2만 행의 코드를 한꺼번에 들면 수백 MB 라 이 컨테이너에서 OOM 이다.
+    중간에 죽어도 다음 재구축이 해시로 남은 것만 이어 한다.
+    근거: [[vinc.plan.vin845-colbert-node-rescoring-implementation-2026-10-30]]"""
+    from .encoder_client import _colbert, _encode_call
+    url = os.environ.get("VINC_EMBED_ENCODE", "").strip()
+    cb = _colbert()
+    if not url or cb is None:
+        return {"executed": False, "error": "colbert not configured"}
+    if not lock.acquire(blocking=False):
+        return {"executed": False, "error": "미러 재구축이 이미 돌고 있다"}
+    try:
+        r = reader()
+        if r is None:
+            return {"executed": False, **unavailable()}
+        try:
+            owner = (body.get("owner") or "").strip() or None
+            rows, _ = collect(r, owner, with_tokens=True)
+            todo = colbert_todo(rows, colbert_state(r, owner), cb.id)
+        finally:
+            r.close()
+        del rows
+        left = max(0, len(todo) - _COLBERT_FILL_MAX) if _COLBERT_FILL_MAX > 0 else 0
+        if left:
+            todo = todo[:_COLBERT_FILL_MAX]
+        t0, done = time.monotonic(), 0
+        for i in range(0, len(todo), _COLBERT_BATCH):
+            batch = todo[i:i + _COLBERT_BATCH]
+            out = _encode_call(url, [b["ctext"] for b in batch], "passage",
+                               _MIRROR_ENCODE_TIMEOUT, colbert=True)
+            codes = out.get("colbert")
+            if out.get("colbert_books") != cb.id or not isinstance(codes, list)                         or len(codes) != len(batch):
+                # 코드북이 다르면 사이드카가 풀 수 없는 코드다. 싣지 않고 멈춘다.
+                return {"executed": done > 0, "rows": len(todo), "done": done, "left": left,
+                        "error": out.get("colbert_error")
+                        or f"encoder books {out.get('colbert_books')} != sidecar {cb.id}"}
+            updates = [{"vid": vec_id(b.get("owner") or "", b["id"]), "codes": c,
+                        "hash": colbert_hash(b["ctext"])} for b, c in zip(batch, codes)]
+            jobs.run_sync("node-mirror.colbert",
+                               lambda u=updates: {"set": set_colbert(store(), u, cb.id)},
+                               timeout=_MIRROR_REPLACE_TIMEOUT)
+            done += len(batch)
+        return {"executed": True, "rows": len(todo), "done": done, "left": left, "books": cb.id,
+                "encode_s": round(time.monotonic() - t0, 1)}
+    finally:
+        lock.release()
+
+
+def rebuild_dense(body, *, jobs, reader, store, lock, unavailable):
+    """노드 미러의 색인을 통째로 다시 만든다(바뀐 행만
+    인코딩하고, 바뀐 것도 색인도 멀쩡하면 아무것도 안 한다).
+
+    **배포 경계에서만 부른다**(`packaging/docker-entrypoint.sh`). 증분 삽입은
+    기각됐다 — "없던 벡터가 생기는" HNSW 삽입만 세그폴트를 내기 때문이고, 그래서
+    미러는 전량 재구축 아니면 아무것도 아니다. 그 비용(노드 수에 비례, 1365
+    노드에 약 6분)을 **질의 경로가 아니라 릴리스에 물린다**. 평시 노드 쓰기는 미러
+    지연을 허용한다 — 그동안에도 제목 팔과 그래프 팔은 그대로 산다.
+    근거: [[decision:the-semantic-arm-ships-on-and-the-mirror-rebuilds-at-the-release-boundary]]
+    · [[record:the-node-mirror-rebuilds-at-the-deploy-boundary-2026-09-10]]
+
+    ⚠ **인코딩을 쓰기 큐 밖에서 한다.** 전부를 한 잡으로 묶으면 그 몇 분 동안
+    모든 쓰기가 단일 워커 뒤에 줄을 서고, `run_sync` 의 상한(600초)을 넘기는 순간
+    기다리던 쓰기가 **지연이 아니라 500** 이 된다. 느린 것은 인코더 왕복이고
+    그것은 스토어를 안 만지므로, 여기서 다 받아 두고 마지막의 짧은 교체만 큐로
+    보낸다. 조회는 리더 커넥션이라 어느 쪽에도 안 막힌다.
+
+    중간에 죽으면 인덱스 없는 미러가 남는다. 그 상태에서 의미 팔은 빈 목록을 낼
+    뿐이라 검색은 멀쩡하고, 다음 배포가 다시 만든다."""
+    from . import docstore
+    from .encoder_client import (_ENCODER_BUILD, _ENCODER_RESPONSE_INSTANCE,
+                                 _ENCODER_RESPONSE_RUNTIME, _ENCODER_RUNTIME, _encode_post)
+    url = os.environ.get("VINC_EMBED_ENCODE", "").strip()
+    if not url:
+        # 데스크탑에는 인코더가 없다 — 미러도 없고, 의미 팔은 빈 목록을 낸다.
+        return 503, {"executed": False,
+                     "error": "VINC_EMBED_ENCODE 가 비어 있다 — 인코더 없이는 못 만든다"}
+    if not lock.acquire(blocking=False):
+        return 409, {"executed": False, "error": "미러 재구축이 이미 돌고 있다"}
+    try:
+        r = reader()
+        if r is None:
+            return 503, {"executed": False, **unavailable()}
+        # 🔴 **리더를 여기서 닫는다.** 인코딩 몇 분 동안 열어 두면 그 커넥션이 읽기
+        # 트랜잭션을 쥐고, 뒤이은 교체의 `CREATE_VECTOR_INDEX`(=DDL=쓰기)가
+        # `Cannot start a new write transaction` 으로 거절된다. 그 자리는 멱등을
+        # 위해 예외를 삼키므로 **행은 들어가고 인덱스만 없는** 미러가 남고, 의미
+        # 팔은 예외 없이 빈 목록만 낸다.
+        # `_read` 가 `finally: r.close()` 인 것과 같은 이유다.
+        try:
+            owner = (body.get("owner") or "").strip() or None
+            rows, collisions = collect(r, owner)
+            # 라벨은 이 이미지의 인코더가 내는 모델(`VINC_EMBED_MODEL`)이다. 스토어 키는
+            # 워커의 첫 폴이 바꾸는데 재구축이 그보다 먼저 읽을 수 있다. 그러면 새 벡터에
+            # 이전 모델 이름이 붙고, `plan` 은 이전 모델의 벡터를 전부 "안 바뀜"으로 둔다.
+            model = os.environ.get("VINC_EMBED_MODEL", "").strip()
+            if not model:
+                try:
+                    model = str((docstore.embed_model_state(r) or {}).get("stored") or "")
+                except Exception:
+                    model = ""    # 라벨일 뿐이다 — 못 읽었다고 재구축을 접지 않는다
+            # 🔴 **바뀐 노드만 인코딩한다.** 전량을 매번 인코딩하면 재구축이 미러 크기에
+            # 비례해 길어지고(수만 행이면 25분을 넘는다), 그 내내 질의 임베딩이 같은 인코더
+            # 뒤에 줄을 서서 검색이 의미 팔 없이 나가며, 교체 단계에서 사이드카 메모리가
+            # 한도에 닿는다. 같은 글자·모델·런타임이면 같은 벡터이므로 그 행은 제자리에
+            # 둔다. 판을 증명할 길(런타임 지문·빌드·모델 라벨)이 하나라도 없으면 전부
+            # 다시 만든다.
+            # 근거: [[decision:the-node-mirror-keeps-unchanged-rows-and-rebuilds-its-index-whole-2026-10-02]]
+            stale = None
+            todo = rows
+            if _ENCODER_RUNTIME and _ENCODER_BUILD and model:
+                todo, stale = plan(rows, existing(r, owner),
+                                               model, _ENCODER_RUNTIME)
+            unchanged = stale is not None and not todo and not stale \
+                and index_answers(r)
+        finally:
+            r.close()
+        if not rows:
+            return 200, {"kind": "node-mirror.rebuild", "executed": False, "rows": 0,
+                         "note": "미러에 담을 노드가 0건이다"}
+        if unchanged:
+            # 교체도 잡도 없다 — 끝난 잡은 쓰기로 세어져 DB 전체 스냅샷을 부른다.
+            return 200, {"kind": "node-mirror.rebuild", "executed": False,
+                         "unchanged": True, "rows": len(rows), "encoded": 0,
+                         "index_ok": True, "model": model}
+        t0 = time.monotonic()
+        mirror_runtime = ""
+        mirror_instance = ""
+        for i in range(0, len(todo), _MIRROR_BATCH):
+            batch = todo[i:i + _MIRROR_BATCH]
+            vecs = _encode_post(url, [b["text"] for b in batch], "passage",
+                                _MIRROR_ENCODE_TIMEOUT)
+            actual_runtime = _ENCODER_RESPONSE_RUNTIME.get()
+            if mirror_runtime and actual_runtime != mirror_runtime:
+                return 502, {"executed": False,
+                             "error": "encoder runtime changed during mirror rebuild"}
+            actual_instance = _ENCODER_RESPONSE_INSTANCE.get()
+            if not _ENCODER_BUILD and (
+                    not actual_instance or
+                    (mirror_instance and actual_instance != mirror_instance)):
+                return 502, {"executed": False,
+                             "error": "encoder instance changed or unknown during mirror rebuild"}
+            mirror_runtime = actual_runtime
+            mirror_instance = actual_instance
+            if len(vecs) != len(batch):
+                # 반만 받은 벡터로 미러를 갈아 끼우면 나머지 노드가 조용히 사라진다.
+                return 502, {"executed": False, "error": (
+                    f"인코더가 {len(batch)}건 중 {len(vecs)}건만 돌려줬다 "
+                    f"(배치 {i // _MIRROR_BATCH + 1})")}
+            for b, v in zip(batch, vecs):
+                # float32 배열로 든다. 파이썬 float 목록은 행당 약 41KB(1024차원)라
+                # 미러 전체를 들면 그것만으로 컨테이너 한도에 닿는다. 4KB 다.
+                b["emb"] = array("f", v)
+        encode_s = time.monotonic() - t0
+        res = jobs.run_sync(
+            "node-mirror.replace",
+            lambda: replace(store(), todo, model,
+                                        mirror_runtime, stale=stale),
+            timeout=_MIRROR_REPLACE_TIMEOUT)
+    finally:
+        lock.release()
+    # `index_ok` 가 거짓이면 행은 들어갔고 인덱스만 없다 — 의미 팔이 조용히 죽는
+    # 상태다. 결과에 실어야 엔트리포인트 로그와 배포 로그에 그대로 나온다.
+    return 200, {"kind": "node-mirror.rebuild", "executed": True,
+                 "rows": len(rows), "encoded": len(todo),
+                 "removed": len(stale) if stale is not None else None,
+                 "owners": sorted({str(b.get("owner") or "") for b in rows}),
+                 "index_ok": res.get("index_ok"),
+                 "index_error": res.get("index_error"),
+                 # id 가 겹친 노드는 그래프의 결함이지 재구축의 결함이 아니다.
+                 # 걸러 내고 **말한다** — 조용히 버리면 결함이 미러 뒤에 숨는다.
+                 "id_collisions": collisions[:5],
+                 "id_collision_count": len(collisions), "model": model,
+                 "encode_s": round(encode_s, 1),
+                 "swap_s": round(time.monotonic() - t0 - encode_s, 1),
+                 "wall_s": round(time.monotonic() - t0, 1)}
