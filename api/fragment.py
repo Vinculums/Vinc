@@ -32,6 +32,7 @@ import re
 
 from engines import domain_hierarchy
 
+from . import node_schema
 from . import revstamp
 from . import role_contract
 from store import pkns, write_batch
@@ -39,14 +40,17 @@ from store import querybase as _qb
 # 근거 열을 가진 rel 의 정본 — 스키마가 표를 갖고 여기서는 읽기만 한다.
 from store.embedded_schema import EDGE_EVIDENCE_RELS, wiki_pairs_open
 
-_NODE_MAP = {   # fragment type → (label, pk column)
-    "record": ("Record", "record_id"),
-    "concept": ("Concept", "concept_id"),
-    "domain": ("Domain", "name"),
-    "bridge": ("Bridge", "bridge_id"),
-    "episode": ("Episode", "episode_id"),
-    "decision": ("Decision", "decision_id"),   # v12
-}
+# 노드 종류·엣지 타입·필드 표의 정본은 `api/node_schema.py` 다. 아래 사설 이름은 같은
+# 객체를 가리키며 이 모듈 안의 호출과 그 이름을 읽는 테스트가 쓴다. 값은 거기서 고친다.
+_NODE_MAP = node_schema.NODE_MAP
+_CC_EDGES = node_schema.CC_EDGES
+_EC_EDGES = node_schema.EC_EDGES
+_SUPERSEDES_EDGE, _SUPERSEDES_REL = node_schema.SUPERSEDES_EDGE, node_schema.SUPERSEDES_REL
+_SUPERSEDES_KINDS = node_schema.SUPERSEDES_KINDS
+_OWNER_SCOPED_LABELS = node_schema.OWNER_SCOPED_LABELS
+_KEPT_FIELDS = node_schema.KEPT_FIELDS
+_CONTRACT_FIELDS = node_schema.CONTRACT_FIELDS
+_INTERVAL_FIELDS = node_schema.INTERVAL_FIELDS
 
 # 끝점 (라벨, PK) 두 쌍 — 엣지 경로가 해석한 결과를 들고 다니는 형태.
 _Ends = tuple[tuple[str, str], tuple[str, str]]
@@ -57,26 +61,14 @@ _Ends = tuple[tuple[str, str], tuple[str, str]]
 # 속하는지만 보고 라벨은 _NODE_MAP 에서 꺼낸다(타입마다 분기를 늘리지 않는다).
 _SEMANTIC_TYPES = ("concept", "decision")
 
-_CC_EDGES = {   # Concept→Concept fragment 엣지 → rel 테이블
-    "relates_to": "RELATED_TO",
-    "prerequisite_of": "PREREQUISITE_OF",
-    "derives_from": "DERIVES_FROM",
-    "inherits_from": "INHERITS_FROM",
-    "returns_to": "RETURNS_TO",
-}
-# Episode 참여 엣지 — _CC_EDGES 에 넣지 않는다: sync 의 _REL_TO_FRAGMENT 가
-# _CC_EDGES 를 역맵으로 파생하므로(Concept 엣지 export 전용) 섞이면 오염된다.
-_EC_EDGES = {"about": "ABOUT"}
 #: v23 — 공개 위키 쪽. 커뮤니티 소유자에서는 이 네 종이 페이지 노드 넷(`_PAGE_TYPES`)
 #: 어느 쌍에나 서고, ABOUT 은 사건·기록 페이지도 대상으로 받는다(`wiki_pairs_open`).
 _WIKI_EDGES = ("relates_to", "prerequisite_of", "derives_from", "inherits_from")
 _PAGE_TYPES = ("concept", "decision", "record", "episode")
-#: 대체 관계 — 새 것 → 옛 것. 같은 종류끼리만이고 근거가 필수다. 쓰기 경로는
+#: 대체 관계(`_SUPERSEDES_EDGE`) — 새 것 → 옛 것. 같은 종류끼리만이고 근거가 필수다. 쓰기 경로는
 #: 유효구간을 **판정하지 않는다**: 옛 것의 `valid_until` 이 비었거나 새 것의 시작과
 #: 다르면 경고만 하고 어느 값도 대신 쓰지 않는다.
 #: 근거: [[vinc.plan.temporal-edges-point-in-time-document-validity-2026-09-28]] §2
-_SUPERSEDES_EDGE, _SUPERSEDES_REL = "supersedes", "SUPERSEDES"
-_SUPERSEDES_KINDS = ("record", "decision", "concept")
 _EDGE_TYPES = set(_CC_EDGES) | set(_EC_EDGES) | {"connects_via", _SUPERSEDES_EDGE}
 
 # 개방층 캐리어(F1 — D11-R2 포팅). 어휘(타입 이름)는 theme_store, 물리는 여기.
@@ -147,36 +139,8 @@ class _ThemeFold:
                 self.proposed.append(entry)
 
 
-#: 계약이 선언한 선택 필드 → **그 필드를 실제로 열에 쓰는 라벨**.
-#:
-#: 이 표가 없던 동안 `_merge_node` 는 자기 라벨이 안 쓰는 필드를 **말없이 버렸다**.
-#: 실측(2026-08-24): 결정 노드 셋에 `content_time` 을 실어 보냈는데 `merged` 는
-#: 성공이고 `warnings` 는 비어 있었으며 값은 어디에도 없었다. 스키마가 그렇게
-#: 생긴 것은 맞다(Decision 에는 그 열이 없다 — [[vinc.plan.sync-node-time-fields]]
-#: §6.2 인벤토리). 문제는 스키마가 아니라 **성공이라고 답한 것**이다.
-#:
-#: Entity 분기가 `domain`·`props` 에 이미 같은 경고를 내고 있었다 — 그 선례를
-#: 나머지 필드로 넓히는 것이 전부다.
-_KEPT_FIELDS: dict[str, frozenset[str]] = {
-    "Concept":  frozenset({"title", "domain", "tags", "props", "one_liner", "content_time"}),
-    # v15(W13) — 유효구간 둘은 **Record 에만** 있다. 다른 종류에 실으면 아래
-    # `_warn_unkept_fields` 가 말하고 값은 버려진다(조용한 유실 금지).
-    "Record":   frozenset({"title", "domain", "tags", "props", "content_time",
-                           "valid_from", "valid_until"}),
-    "Decision": frozenset({"title", "domain", "tags", "props"}),
-    "Episode":  frozenset({"title", "domain", "tags", "props", "date", "summary"}),
-    # Bridge 에는 tags 열이 없다. 여기 tags 를 두면 SET 이 Binder 로 죽어 노드와
-    # 엣지가 함께 떨어지고, 되읽기도 없는 열을 투영해 실패한다.
-    "Bridge":   frozenset({"title", "props"}),
-    "Domain":   frozenset(),          # 열이 `name` 하나뿐이다
-    "Entity":   frozenset({"title", "tags"}),
-}
-#: 위 표가 판정하는 필드 전체. 여기 없는 키(오타·상류 메타)는 **묻지 않는다** —
-#: 팩 가져오기·동기화가 부가 키를 싣는 경로가 있고, 모르는 키까지 경고하면 정상
-#: 왕복이 소음으로 덮인다. 잡으려는 것은 "계약에 있는 필드를 엉뚱한 종류에 실었다"다.
-_CONTRACT_FIELDS = frozenset({"title", "domain", "tags", "props", "one_liner",
-                              "content_time", "date", "summary",
-                              "valid_from", "valid_until"})   # v15(W13)
+#: 라벨이 열에 쓰는 필드(`_KEPT_FIELDS`)와 판정 대상 필드(`_CONTRACT_FIELDS`)는
+#: `api/node_schema.py` 에 있다. 아래 둘은 그 표 밖의 필드를 받았을 때 경고 문장을 고른다.
 #: 이미 자기 문장으로 경고하는 조합 — 두 번 말하지 않는다.
 _ALREADY_WARNED = {("Entity", "domain"), ("Entity", "props"), ("Bridge", "domain")}
 #: 열은 없지만 같은 값을 둘 자리가 따로 있는 조합 — 버렸다는 말 뒤에 그 자리를 덧붙인다.
@@ -208,13 +172,12 @@ def _decision_interval(props: dict, stored_raw, nid: str, warnings: list[str]) -
 
     형식이 틀린 값은 쓰지 않고 저장된 값을 남긴다(없으면 키를 뺀다). 빈 문자열은
     명시적 지우기다. 뒤집힌 구간은 저장하되 경고한다. 넘겨받은 dict 는 고치지 않는다."""
-    from . import docstore as _ds      # 지연 import — 날짜 검증기 1벌 유지
     out, stored = props, None
     for key in ("valid_from", "valid_until"):
         raw = props.get(key)
         if raw is None:
             continue
-        norm = _ds._norm_content_time(str(raw))
+        norm = node_schema.normalize_time(str(raw))
         if norm or not str(raw).strip():
             if norm != raw:
                 out = {**out, key: norm}
@@ -274,11 +237,6 @@ def _warn_unkept_fields(node: dict, label: str, nid: str,
             f"the value was dropped, not stored"
             + (f"; a {label} keeps it in {where}" if where else ""))
 
-
-#: owner_id 열을 가진 라벨 — Bridge(v2)·Entity(F1) 편입으로 SEC-3 가드·스탬프 규칙
-#: 승계. **쓰기(`_merge_node`)와 되읽기(`_stored_nodes`)가 같은 목록을 봐야 한다** —
-#: 갈라지면 되읽기가 0행을 만나고, 호출부는 "방금 쓴 것이 없다"로 읽는다.
-_OWNER_SCOPED_LABELS = ("Record", "Concept", "Episode", "Bridge", "Entity", "Decision")
 
 #: 되읽기 예산(직렬화 바이트). 요청 본문 상한이 응답까지 묶어 주지는 **않는다** —
 #: 필드 하나만 고쳐 보낸 노드도 되읽기는 **저장된 props 전량**을 싣기 때문에 응답이
@@ -413,8 +371,7 @@ def _claim_props(props, label: str, nid: str, warnings: list[str], known_repos=N
         _subject_repo_warnings(norm, nid, warnings, known_repos)
     at = props.get("measured_at")
     if at is not None:
-        from . import docstore as _ds      # 지연 import — 날짜 검증기 1벌 유지
-        if not _ds._norm_content_time(str(at)):
+        if not node_schema.normalize_time(str(at)):
             warnings.append(
                 f"props.measured_at '{at}' is not YYYY[-MM[-DD]] (id={nid}) — stored "
                 f"as sent, but claims cannot be ordered against it")
@@ -747,7 +704,6 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
             # ⚠ 형식 위반은 **쓰지 않고 경고한다** — SET 하면 오타 한 번이 저장된
             # 시점을 지운다. 빈 문자열은 명시적 지우기로 존중한다. 문서 경로
             # (`put_doc`)도 이제 같은 규칙이다: [[record:content-time-writable-through-ingest]].
-            from . import docstore as _ds      # 지연 import(순환 없음) — 검증기 1벌 유지
             _cp = node.get("props") if isinstance(node.get("props"), dict) else {}
             _raw = node.get("content_time")
             _promoted = False
@@ -756,7 +712,7 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
                 _raw = _cand if isinstance(_cand, str) else None
                 _promoted = _raw is not None
             if _raw is not None:
-                _norm = _ds._norm_content_time(str(_raw))
+                _norm = node_schema.normalize_time(str(_raw))
                 if _promoted and _norm:
                     _promote("content_time", _norm, "props.content_time")
                 elif _promoted and not str(_raw).strip():
@@ -775,12 +731,11 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
             # 무효화("이 주장은 X 까지였다")는 valid_until 만 실은 부분 재전송으로
             # 쓴다 — 그래서 보존 가드가 이 필드의 핵심이다.
             # 근거: [[vinc.plan.0-9-0-open-decisions §2]] · 형식 계약은 content_time 동형.
-            from . import docstore as _ds2      # 지연 import — 검증기 1벌 유지
             for _vcol in ("valid_from", "valid_until"):
                 _vraw = node.get(_vcol)
                 if _vraw is None:
                     continue
-                _vnorm = _ds2._norm_content_time(str(_vraw))
+                _vnorm = node_schema.normalize_time(str(_vraw))
                 if _vnorm or not str(_vraw).strip():
                     _set(_vcol, _vnorm)
                 else:
@@ -809,7 +764,6 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
             # top-level 이 이기고(빈 문자열로 지우는 것 포함) props 폴백은 키가 아예
             # 없을 때만. props 원본은 지우지 않는다(부분 재전송이 원본을 깎는다).
             # 선언 누락의 계보: [[vinc.canon.mcp-contract]] §5.1.
-            from . import docstore as _dse     # 지연 import — 날짜 검증기 1벌 유지
             _props = node.get("props") if isinstance(node.get("props"), dict) else {}
             for _col in ("date", "summary"):
                 _val = node.get(_col)
@@ -826,7 +780,7 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
                 if _col == "date":
                     # 날짜는 content_time 과 같은 형식 계약이다. 틀리면 쓰지 않고 저장된
                     # 값을 남긴다 — 정렬·시점 읽기가 이 열을 사전식으로 비교한다.
-                    _dn = _dse._norm_content_time(_val)
+                    _dn = node_schema.normalize_time(_val)
                     if not _dn and _val.strip():
                         _src = "props.date" if _promoted else "date"
                         warnings.append(
@@ -1472,13 +1426,6 @@ def _interval_of(store, kind: str, label_pk: tuple[str, str], key: str) -> tuple
             props = {}
         return (str(props.get("valid_from") or ""), str(props.get("valid_until") or ""))
     return None
-
-
-#: 대체 경고가 가리키는 구간 필드의 이름. 경고는 저작자가 **그대로 따를 수 있는** 자리를
-#: 말해야 한다: Decision 에는 `valid_until` 열이 없어 그 이름으로 보내면 버려지고,
-#: 구간은 props 에 둔다(`_interval_of` 가 읽는 자리, 읽기 게이트가 보는 자리와 같다).
-_INTERVAL_FIELDS = {"record": ("valid_from", "valid_until"),
-                    "decision": ("props.valid_from", "props.valid_until")}
 
 
 def _warn_supersede_interval(store, kind, ends, ksrc, kdst, src, dst, warnings) -> None:
