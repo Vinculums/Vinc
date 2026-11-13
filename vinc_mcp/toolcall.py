@@ -100,6 +100,30 @@ def preflight(name: str, args: dict, *, base_auth: dict,
     return Outcome("ok", auth=auth)
 
 
+def partial_search(result) -> dict | None:
+    """B9 — 실패한 vinc_search 결과에서 노드 팔의 후보를 살린 답. 살리지 않으면 None 이다.
+
+    청크 팔만 실패하고(`error` 가 있거나 `executed` 가 false) 노드 팔이 `node_hits` 를 냈으면
+    사유를 `search_error` 로 옮기고(사유가 비었으면 "chunk search did not run") `executed` 를 노드 팔
+    기준인 True 로 둔 사본을 돌려준다. vinc_brief 가 같은 실패를 그렇게 싣는다.
+    살리지 않는 것: 실패가 아닌 결과, 노드 후보가 없는 결과, 인자 오류(invalid_*·stale_cursor),
+    유지보수 거절(store_busy). store_busy 는 스토어 전체가 읽기를 거절한 것이지 청크 팔만의 실패가
+    아니다. 호출자가 다시 물을 신호(REST 는 재시도 가능한 503)를 지켜야 한다.
+    REST /v1/search(`rest_api._partial_search`)와 호스트 search 도구(`tools._t_host_search`)가 이
+    규칙 하나를 쓴다. 살리지 않은 실패를 어떤 봉투로 내는가는 각 표면의 일이다."""
+    if not isinstance(result, dict) or not result.get("node_hits"):
+        return None
+    error = str(result.get("error") or "")
+    if not error and result.get("executed") is not False:
+        return None
+    if error == "store_busy" or error.startswith(("invalid_", "stale_cursor")):
+        return None
+    out = {key: value for key, value in result.items() if key != "error"}
+    out["search_error"] = error or "chunk search did not run"
+    out["executed"] = True
+    return out
+
+
 def _whoami_quota(result: dict, owner: str | None, plan: str | None,
                   view: Callable[[str, str | None], dict | None]) -> dict:
     """`vinc_whoami`(`/v1/me`)에 스페이스마다 남은 호출 수를 싣는다. 세는 단위는 그래프
