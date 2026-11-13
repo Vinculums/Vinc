@@ -29,7 +29,7 @@ sys.path.insert(0, str(ROOT))
 
 from store import embedded_backend as eb  # noqa: E402
 
-_DRIVER, _NAME = eb._import_driver()
+_DRIVER, _NAME = eb.import_driver()
 
 
 def _plan_switch() -> bool:

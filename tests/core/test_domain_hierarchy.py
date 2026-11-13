@@ -32,9 +32,9 @@ from store import embedded_schema as eschema           # noqa: E402
 from store import pkns                                  # noqa: E402
 from store.backend import open_store                    # noqa: E402
 from store.config import load_config                    # noqa: E402
-from store.embedded_backend import _import_driver       # noqa: E402
+from store.embedded_backend import import_driver       # noqa: E402
 
-_DRIVER, _NAME = _import_driver()
+_DRIVER, _NAME = import_driver()
 
 
 class ParseTests(unittest.TestCase):

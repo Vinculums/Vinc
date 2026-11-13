@@ -22,10 +22,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from store.embedded_backend import VectorIndexRemnant, _import_driver  # noqa: E402
+from store.embedded_backend import VectorIndexRemnant, import_driver  # noqa: E402
 import _remnant_probe  # noqa: E402  (tests/ 가 sys.path 에 있다 — conftest 의 _tmpjail 과 같다)
 
-_DRIVER, _NAME = _import_driver()
+_DRIVER, _NAME = import_driver()
 DIM = 4
 ROWS = 60
 

@@ -28,11 +28,11 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from api import docstore as ds  # noqa: E402
-from store.embedded_backend import _import_driver  # noqa: E402
+from store.embedded_backend import import_driver  # noqa: E402
 from store.embedded_schema import LEX_INDEX_KEY, migration_statements  # noqa: E402
 from store.lexical import coverage, lex_text, lex_tokens  # noqa: E402
 
-_DRIVER, _NAME = _import_driver()
+_DRIVER, _NAME = import_driver()
 
 _DOC = ("# 당일전략\n\n12월에 베팅하는 건 굉장히 드물고 하수라서, 실제 승부는 10월·11월에 난다.\n\n"
         "The quarter end rebalancing drives institutions.\n")

@@ -25,9 +25,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from api import docstore as ds       # noqa: E402
 from api import docsync              # noqa: E402
 from api import graphmd              # noqa: E402
-from store.embedded_backend import _import_driver  # noqa: E402
+from store.embedded_backend import import_driver  # noqa: E402
 
-_DRIVER, _NAME = _import_driver()
+_DRIVER, _NAME = import_driver()
 
 DAY = "2026-08-01"
 

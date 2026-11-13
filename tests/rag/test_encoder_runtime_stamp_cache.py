@@ -23,7 +23,7 @@ from api import docstore as ds  # noqa: E402
 from api import query as q  # noqa: E402
 from store import embedded_backend as eb  # noqa: E402
 
-_DRIVER, _NAME = eb._import_driver()
+_DRIVER, _NAME = eb.import_driver()
 _SCAN = "RETURN DISTINCT v.encoder_runtime"
 _EMB = [1.0, 0.0, 0.0, 0.0]
 

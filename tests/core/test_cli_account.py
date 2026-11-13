@@ -11,7 +11,7 @@ from unittest.mock import patch
 import pytest
 
 from api import cli, cli_target, remote_client
-from api.cli_tools import _tool_request
+from api.cli_tools import tool_request
 from types import SimpleNamespace
 from vinc_mcp import rest_routes, tools
 
@@ -231,7 +231,7 @@ def test_nine_existing_verbs_now_map_to_tool_shapes(monkeypatch):
     ]
     monkeypatch.setattr("sys.stdin", io.StringIO("document body"))
     for flags, expected in cases:
-        name, data, _guard = _tool_request(SimpleNamespace(owner=None, **flags))
+        name, data, _guard = tool_request(SimpleNamespace(owner=None, **flags))
         assert name == expected
         assert "owner" not in data
         if name == "vinc_doc_put":

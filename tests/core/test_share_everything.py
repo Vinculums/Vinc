@@ -7,10 +7,10 @@ from unittest.mock import patch
 from api import docstore as ds, share, packfile
 from store.backend import open_store
 from store.config import load_config
-from store.embedded_backend import _import_driver
+from store.embedded_backend import import_driver
 
 
-@unittest.skipIf(_import_driver()[0] is None, "embedded driver unavailable")
+@unittest.skipIf(import_driver()[0] is None, "embedded driver unavailable")
 class EverythingDocumentsTests(unittest.TestCase):
     OWNER = "user:source"
 

@@ -382,7 +382,7 @@ sys.stdin.read()
 '''
 
 
-@unittest.skipIf(eb._import_driver()[0] is None, "Ladybug driver unavailable")
+@unittest.skipIf(eb.import_driver()[0] is None, "Ladybug driver unavailable")
 class KillAfterAck(unittest.TestCase):
     """실엔진 킬 테스트 — 이 패키지의 수용 기준."""
 

@@ -22,10 +22,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from store import pkns  # noqa: E402
-from store.embedded_backend import _import_driver, to_engine_cypher  # noqa: E402
+from store.embedded_backend import import_driver, to_engine_cypher  # noqa: E402
 from _pkseed import _seed  # noqa: E402
 
-_DRIVER, _NAME = _import_driver()
+_DRIVER, _NAME = import_driver()
 
 
 class TranslateTests(unittest.TestCase):

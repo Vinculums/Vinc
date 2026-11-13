@@ -33,9 +33,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from api import fragment as frag   # noqa: E402
 from api import query as q         # noqa: E402
 from store import pkns            # noqa: E402
-from store.embedded_backend import _import_driver   # noqa: E402
+from store.embedded_backend import import_driver   # noqa: E402
 
-_DRIVER, _ = _import_driver()
+_DRIVER, _ = import_driver()
 A, B = "user:alice", "user:bob"
 
 

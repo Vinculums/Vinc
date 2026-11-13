@@ -11,9 +11,9 @@ import pytest
 from api.docstore import get_doc
 from store.backend import open_store
 from store.config import load_config
-from store.embedded_backend import _import_driver
+from store.embedded_backend import import_driver
 
-pytestmark = pytest.mark.skipif(sys.platform != "linux" or _import_driver()[0] is None,
+pytestmark = pytest.mark.skipif(sys.platform != "linux" or import_driver()[0] is None,
                                reason="Linux SIGKILL and the embedded driver are required")
 ROOT = Path(__file__).resolve().parents[2]
 TEXT = "durability sentinel checkpoint recovery evidence"

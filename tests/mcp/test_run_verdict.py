@@ -346,6 +346,6 @@ def test_rest_and_the_cli_carry_the_verdict_to_the_same_tool():
     args = SimpleNamespace(cmd="run", runcmd="submit", owner=None, run="r-1", output=None,
                            answer=None, abandon=False, cited=None, person_only_requests=None,
                            usage=None, verdict="blocked", verdict_note="no shell")
-    name, data, _ = cli_tools._tool_request(args)
+    name, data, _ = cli_tools.tool_request(args)
     assert name == "vinc_run_submit"
     assert data == {"run": "r-1", "verdict": "blocked", "verdict_note": "no shell"}

@@ -17,9 +17,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from store.embedded_backend import (DdlGuardTimeout, _DdlGuard,  # noqa: E402
-                                    _import_driver)
+                                    import_driver)
 
-_DRIVER, _NAME = _import_driver()
+_DRIVER, _NAME = import_driver()
 
 
 class DdlGuardUnitTests(unittest.TestCase):
