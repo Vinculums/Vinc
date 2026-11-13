@@ -68,6 +68,10 @@ _NARROWING_LONG = {
 _NARROWING_SHORT = "km"
 
 
+#: 전량 잡에 허용하는 단 하나의 잡 조건(소유자 판정 2026-11-13). 그 밖의 `if:` 는 그대로 위반이다.
+PR_ONLY_SKIP = "github.event_name != 'pull_request'"
+
+
 def _args_after_pytest(line: str) -> list[str] | None:
     """명령 자리의 `pytest` 뒤 인자들. 그런 호출이 아니면 None."""
     m = _INVOKES.search(line)
@@ -112,8 +116,13 @@ def offences(doc: dict) -> list[str]:
         return ["ci.yml 에 `pytest` 로 `tests` 전량을 도는 자리가 하나도 없다"]
 
     bad = []
+    triggers = doc.get("on", doc.get(True)) or {}
     for name, job in sorted({n: j for n, j, _s, _a in runs}.items()):
-        if "if" in job:
+        if job.get("if") == PR_ONLY_SKIP and "merge_group" in triggers:
+            # 허용하는 조건은 이것 하나다: PR 런에서만 빠지고 머지 큐와 main push 에서는 전량이 돈다.
+            # 머지 큐가 없는 워크플로라면 PR 이 전량 없이 들어갈 수 있으므로 허용하지 않는다.
+            pass
+        elif "if" in job:
             bad.append(f"{name} 에 `if:` 가 있다 ({job['if']!r}) — 거짓이면 조용히 skip 된다")
         if "needs" in job:
             bad.append(f"{name} 에 `needs: {job['needs']!r}` 가 있다 — 선행 잡이 빨갛거나 "
@@ -129,6 +138,15 @@ def offences(doc: dict) -> list[str]:
 
 
 class FullSuiteHasNoOffSwitch(unittest.TestCase):
+    def test_only_the_pull_request_skip_is_allowed(self):
+        job = {"if": PR_ONLY_SKIP, "steps": [{"run": "python -m pytest -q tests"}]}
+        queue = {"on": {"pull_request": None, "merge_group": None}, "jobs": {"s": job}}
+        self.assertEqual(offences(queue), [])
+        no_queue = {"on": {"pull_request": None}, "jobs": {"s": job}}
+        self.assertTrue(offences(no_queue), "머지 큐가 없으면 PR 런 건너뛰기도 위반이다")
+        other = {"on": {"merge_group": None}, "jobs": {"s": {**job, "if": "needs.changes.outputs.python == 'true'"}}}
+        self.assertTrue(offences(other), "다른 조건은 여전히 위반이다")
+
     def test_the_pytest_job_is_unconditional(self):
         import yaml
         doc = yaml.safe_load(_CI.read_text(encoding="utf-8"))

@@ -358,7 +358,7 @@ class ListSpacesShapeTests(unittest.TestCase):
         old_open = E.hubhttp.urlopen
         old_seed, old_sign = E._seed, E._sign_assertion
         E._seed = lambda: b"\x00" * 32
-        E._sign_assertion = lambda seed, typ: "assertion"
+        E._sign_assertion = lambda seed, typ, body: "assertion"
         E.hubhttp.urlopen = lambda req, timeout=None: _Resp(
             json.dumps(payload).encode())
         try:
