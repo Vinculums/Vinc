@@ -737,6 +737,36 @@ def _tool_kinds(tool: str, target: str) -> set[str]:
     return set()
 
 
+# 명령 읽기가 놓칠 수 있는 꼴(괄호·중괄호·for/if/while·앞 리다이렉션·목록에 없는 감싸개·변수가 든 API 경로)을
+# 막는 두 번째 그물(_unread_kinds 가 쓴다). 행동의 표지가 보이면 그 갈래의 가장 넓은 종류로 본다(모르면 묻는다).
+_SIGNS: tuple[tuple[re.Pattern[str], str, frozenset[str]], ...] = (
+    (re.compile(r"\bgh\b[^\n]*\bpr\b[^\n]*\bmerge\b|/pulls/[^\s\"']*/merge\b|/merges\b|\bmergePullRequest\b"
+                r"|\bmerge_pull_request\b|\bmerge_diff\b"),
+     "vcs.merge", frozenset({"vcs.merge", "vcs.protected_push"})),
+    (re.compile(r"\bgit\b[^\n]*\bpush\b"),
+     "vcs.protected_push", frozenset({"vcs.push", "vcs.protected_push", "vcs.tag_push"})),
+    (re.compile(r"\bcreateRef\b|\bupdateRef\b|/git/refs\b|\bcreate_tag\b"),
+     "vcs.tag_push", frozenset({"vcs.tag_push", "vcs.protected_push"})),
+    (re.compile(r"\bgh\b[^\n]*\bworkflow\b[^\n]*\brun\b|/dispatches\b"),
+     "ci.dispatch", frozenset({"ci.dispatch", "deploy", "publish"})),
+    (re.compile(r"\b(?:npm|pnpm|yarn|bun|cargo|gem|poetry|flit|hatch|uv)\b[^\n]*\bpublish\b|\btwine\b[^\n]*\bupload\b"
+                r"|\bgh\b[^\n]*\brelease\b[^\n]*\b(?:create|upload|edit)\b|/releases\b|\bdocker\b[^\n]*\bpush\b"
+                r"|\bbuildx\b[^\n]*--push\b|\bcreate_release\b|publish_website"),
+     "publish", frozenset({"publish", "deploy", "ci.dispatch"})),
+    (re.compile(r"\b(?:kubectl|helm|terraform|flyctl|vercel|netlify|heroku)\b[^\n]*"
+                r"\b(?:apply|deploy|upgrade|install|rollout|release)\b|deploy_website"),
+     "deploy", frozenset({"deploy", "publish", "ci.dispatch"})),
+    (re.compile(r"\b(?:sendmail|mailx?|mutt|swaks|msmtp)\b|chat[._]postMessage|hooks\.slack\.com"),
+     "message.send", frozenset({"message.send"})),
+    (re.compile(r"\b(?:alembic|flyway|liquibase)\b|\bmigrate\b"),
+     "data.migrate", frozenset({"data.migrate"})),
+)
+
+
+#: 읽기가 직접 아는 앞머리(위 표들 밖). 이 앞머리의 판단은 변수가 없을 때 그대로 믿는다.
+_READ_HEADS = frozenset({"git", "gh", "np", "uv", "poetry", "pipenv", "psql", "mysql", "mariadb", "sqlcmd", "sqlite3"})
+
+
 def action_kinds(entry: RecordedAction) -> frozenset[str]:
     """The kinds one recorded call carries: read from its command line and tool name, plus its stated kind.
 
@@ -752,8 +782,40 @@ def action_kinds(entry: RecordedAction) -> frozenset[str]:
             kinds |= _tool_kinds(entry.tool, target)
         if entry.command.strip():
             for argv in _simple_commands(entry.command):
-                kinds |= _command_kinds(argv, target)
+                kinds |= _command_kinds(argv, target) or _unread_kinds(argv, target)
+    if entry.tool.strip() and not kinds:
+        kinds |= _signed_kinds(entry.tool)
     return frozenset(kinds)
+
+
+def _known_head(word: str) -> bool:
+    head = word.rsplit("/", 1)[-1]
+    return (head in _READ_HEADS or head in _PUBLISH_TOOLS or head in _DEPLOY_TOOLS or head in _MAIL_TOOLS
+            or head in _HTTP_TOOLS or head in _MIGRATE_TOOLS or bool(_PYTHON.fullmatch(head)))
+
+
+def _signed_kinds(text: str) -> set[str]:
+    out: set[str] = set()
+    for sign, widest, _read in _SIGNS:
+        if sign.search(text):
+            out.add(widest)
+    return out
+
+
+def _unread_kinds(argv: list[str], target: str) -> set[str]:
+    """명령 읽기가 아무 종류도 내지 못한 단순 명령의 두 번째 읽기.
+
+    먼저 뒤쪽에서 아는 명령을 찾아 그 자리부터 다시 읽는다(괄호·for·if·리다이렉션·목록에 없는 감싸개·docker
+    exec 뒤). 없으면, 앞머리가 읽기가 아는 명령이고 인자에 변수($)가 없을 때 그 판단(읽기·작업 브랜치)을 믿는다.
+    그 밖에는 줄의 표지로 가장 넓은 종류를 본다(모르면 묻는다)."""
+    for i in range(1, len(argv)):
+        if _known_head(argv[i]):
+            found = _command_kinds([argv[i].rsplit("/", 1)[-1]] + argv[i + 1:], target)
+            if found:
+                return found
+    if _known_head(argv[0]) and not any("$" in w for w in argv):
+        return set()
+    return _signed_kinds(" ".join(argv))
 
 
 def recorded_person_only(record: Iterable[RecordedAction],
