@@ -17,7 +17,7 @@ from api import query as q
 from store import embedded_backend as eb
 from vinc_rag import retrieval as R
 
-_DRIVER, _NAME = eb._import_driver()
+_DRIVER, _NAME = eb.import_driver()
 
 OWNER = "user:kinds"
 QUERY = "alpha beta gamma"

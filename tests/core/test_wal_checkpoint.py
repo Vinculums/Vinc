@@ -28,9 +28,9 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from store.config import StoreConfig, load_config                # noqa: E402
-from store.embedded_backend import _driver_kwargs, _import_driver  # noqa: E402
+from store.embedded_backend import _driver_kwargs, import_driver  # noqa: E402
 
-_DRIVER, _NAME = _import_driver()
+_DRIVER, _NAME = import_driver()
 
 
 class DriverKwargs(unittest.TestCase):

@@ -15,7 +15,7 @@ from uuid import UUID
 
 from store import durable_generation as dg
 from store import topic_batch_manifest as manifest
-from store.embedded_backend import DDL_GUARD, _import_driver
+from store.embedded_backend import DDL_GUARD, import_driver
 from store.embedded_schema import rel_table_specs
 from store.topic_transfer import TransferRefused, _canonical
 from . import topic_conversion as legacy
@@ -110,7 +110,7 @@ class Batches:
         self.qualified_indexes = qualified_indexes
         if max_rows < 1 or max_bytes < 1:
             raise ValueError("positive batch limits required")
-        driver, _ = _import_driver()
+        driver, _ = import_driver()
         if driver is None or str(getattr(driver, "__version__", "")) != "0.21.2":
             raise TransferRefused("conversion_engine_unqualified")
 

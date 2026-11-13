@@ -20,11 +20,11 @@ from api import fragment as frag
 from store import pkns, run_state
 from store.backend import open_store
 from store.config import load_config
-from store.embedded_backend import _import_driver
+from store.embedded_backend import import_driver
 from vinc_mcp import tools
 from vinc_mcp.bridge import Bridge
 
-pytestmark = pytest.mark.skipif(_import_driver()[0] is None, reason="임베디드 드라이버(ladybug) 미설치")
+pytestmark = pytest.mark.skipif(import_driver()[0] is None, reason="임베디드 드라이버(ladybug) 미설치")
 
 ROOT = Path(__file__).resolve().parents[2]
 A = "user:clock-a"

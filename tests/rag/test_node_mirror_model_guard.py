@@ -24,7 +24,7 @@ from api import query as q
 from store import embedded_backend as eb
 from vinc_rag import retrieval
 
-_DRIVER, _NAME = eb._import_driver()
+_DRIVER, _NAME = eb.import_driver()
 _SCAN = "RETURN DISTINCT v.model"
 DIM = 4
 

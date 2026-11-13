@@ -257,9 +257,9 @@ def test_a_spelled_run_id_lands_on_the_stored_run_and_keeps_its_state(open_store
 def _frozen_clock(monkeypatch):
     """두 스토어가 같은 시각을 찍게 HLC 의 물리 시각을 고정한다. 단조 전진(+1)은 그대로다."""
     def hlc_now(store):
-        last = int(revstamp._meta_get(store, "last_hlc", "0"))
+        last = int(revstamp.meta_get(store, "last_hlc", "0"))
         cur = max(1_800_000_000_000, last + 1)
-        revstamp._meta_set(store, "last_hlc", cur)
+        revstamp.meta_set(store, "last_hlc", cur)
         return revstamp._fmt(cur)
     monkeypatch.setattr(revstamp, "hlc_now", hlc_now)
     # 벽시계도 같은 값에 둔다: 스탬프가 벽시계 + 허용 스큐보다 뒤인 항목은 받지 않으므로(`clock_skew`),

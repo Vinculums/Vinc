@@ -26,8 +26,8 @@ _BS = chr(92)   # 백슬래시. 리터럴로 쓰면 이 파일을 옮기는 층�
 
 _DRIVER = None
 try:
-    from store.embedded_backend import _import_driver
-    _DRIVER, _ = _import_driver()
+    from store.embedded_backend import import_driver
+    _DRIVER, _ = import_driver()
 except Exception:
     pass
 

@@ -159,8 +159,8 @@ class ConventionsContractTests(unittest.TestCase):
 
 _DRIVER = None
 try:
-    from store.embedded_backend import _import_driver
-    _DRIVER, _ = _import_driver()
+    from store.embedded_backend import import_driver
+    _DRIVER, _ = import_driver()
 except Exception:
     pass
 

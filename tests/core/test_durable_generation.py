@@ -125,7 +125,7 @@ class DurableGenerationTests(unittest.TestCase):
             dg.publish_wal(self.persistent, self.source, sequence=2)
 
 
-@unittest.skipIf(eb._import_driver()[0] is None, "Ladybug driver unavailable")
+@unittest.skipIf(eb.import_driver()[0] is None, "Ladybug driver unavailable")
 class RealReplayTests(unittest.TestCase):
     def test_checkpoint_base_plus_later_wal_restores_acknowledged_row(self):
         from store.backend import open_store

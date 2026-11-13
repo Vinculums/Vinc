@@ -18,9 +18,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from store import pkns  # noqa: E402
 
 from api import share  # noqa: E402
-from store.embedded_backend import _import_driver  # noqa: E402
+from store.embedded_backend import import_driver  # noqa: E402
 
-_DRIVER, _NAME = _import_driver()
+_DRIVER, _NAME = import_driver()
 
 
 class _FakeStore:
@@ -207,7 +207,7 @@ class PromoteCandidatesTests(unittest.TestCase):
 
 # ── 실엔진: 자기완결 팩(원문 포함, D45) 라운드트립 ────────────────────────────
 try:
-    from store.embedded_backend import _import_driver as _imp_drv
+    from store.embedded_backend import import_driver as _imp_drv
     _SHARE_DRIVER = _imp_drv()[0]
 except Exception:
     _SHARE_DRIVER = None

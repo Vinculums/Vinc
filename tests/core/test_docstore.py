@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from api import docstore as ds  # noqa: E402
 from store import pkns  # noqa: E402
-from store.embedded_backend import _import_driver  # noqa: E402
+from store.embedded_backend import import_driver  # noqa: E402
 
 
 def _pk(nid: str, owner: str = "user:a") -> str:
@@ -32,7 +32,7 @@ def _pk(nid: str, owner: str = "user:a") -> str:
     직접 층도 같은 말을 써야 서로를 찾는다. 플래그가 꺼져 있으면 항등이다."""
     return pkns.key(owner, nid)
 
-_DRIVER, _NAME = _import_driver()
+_DRIVER, _NAME = import_driver()
 
 # 무손실 속성 검증용 표본 — 경계 조건을 겨냥해 고른다(무작위 아님·결정론).
 _SAMPLES = [

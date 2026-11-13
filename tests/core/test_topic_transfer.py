@@ -154,8 +154,8 @@ def test_other_owner_logical_alias_is_not_a_source_dependency():
 
 class RawStore:
     def __init__(self, path):
-        from store.embedded_backend import _import_driver
-        driver, _ = _import_driver()
+        from store.embedded_backend import import_driver
+        driver, _ = import_driver()
         self.path = str(path)
         # Conversion verifies every table while a write transaction pins pages.
         # Keep the synthetic pool large enough for that engine overhead; the
@@ -215,8 +215,8 @@ def insert(store, data):
 
 @pytest.fixture
 def native(tmp_path, request):
-    from store.embedded_backend import _import_driver
-    driver, _ = _import_driver()
+    from store.embedded_backend import import_driver
+    driver, _ = import_driver()
     if driver is None:
         pytest.skip("native graph driver not installed")
     store = RawStore(tmp_path / "synthetic.db")

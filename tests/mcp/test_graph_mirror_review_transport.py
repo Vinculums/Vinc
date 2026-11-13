@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from api.cli_tools import _tool_request
+from api.cli_tools import tool_request
 from api import remote_client
 from vinc_mcp import tools
 from test_rest_v1 import Server, TEAM
@@ -76,10 +76,10 @@ def test_rest_get_and_post_keep_viewer_read_scope_and_team_owner():
 def test_cli_named_command_only_adds_flag_when_selected():
     args = SimpleNamespace(cmd="node", nodecmd="graph", id=MID, depth=1,
                            owner="user:a", review_mirror=False)
-    name, data, _ = _tool_request(args)
+    name, data, _ = tool_request(args)
     assert name == "vinc_graph" and "review_mirror" not in data
     args.review_mirror = True
-    assert _tool_request(args)[1]["review_mirror"] is True
+    assert tool_request(args)[1]["review_mirror"] is True
 
 
 def test_cli_parser_accepts_named_review_flag(monkeypatch, capsys):
@@ -87,7 +87,7 @@ def test_cli_parser_accepts_named_review_flag(monkeypatch, capsys):
     captured = []
 
     def run(args):
-        captured.append(_tool_request(args))
+        captured.append(tool_request(args))
         return {"executed": True}, None
 
     monkeypatch.setattr(cli_tools, "run", run)

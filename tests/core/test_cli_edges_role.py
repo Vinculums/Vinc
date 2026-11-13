@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 from api import cli, cli_output, fragment
-from api.cli_tools import _tool_request
+from api.cli_tools import tool_request
 from api.server import VincApp
 from store.config import load_config
 
@@ -45,18 +45,18 @@ def _check(tmp_path, **flags):
 
 
 def test_flag_mapping_sends_only_given_options(tmp_path):
-    assert _tool_request(_edges(id="concept:a")) == ("vinc_edges", {"node": "concept:a"}, None)
-    assert _tool_request(_edges(nodes=["concept:a", "concept:b"], type="RELATES_TO",
+    assert tool_request(_edges(id="concept:a")) == ("vinc_edges", {"node": "concept:a"}, None)
+    assert tool_request(_edges(nodes=["concept:a", "concept:b"], type="RELATES_TO",
                                 dir="out", limit=5)) == (
         "vinc_edges", {"nodes": ["concept:a", "concept:b"], "type": "RELATES_TO",
                        "dir": "out", "limit": 5}, None)
-    assert _tool_request(SimpleNamespace(cmd="role", rolecmd="get", owner=None,
+    assert tool_request(SimpleNamespace(cmd="role", rolecmd="get", owner=None,
                                          id="agent-dev-core")) == (
         "vinc_role", {"role": "agent-dev-core"}, None)
-    assert _tool_request(_check(tmp_path)) == (
+    assert tool_request(_check(tmp_path)) == (
         "vinc_role_check", {"role": "agent-dev-core", "output": "Final answer.\n"}, None)
     requests = [{"action": "merge", "reason": "needs a person"}]
-    name, data, guard = _tool_request(_check(
+    name, data, guard = tool_request(_check(
         tmp_path, person_only_requests=json.dumps(requests), self_authored=True))
     assert (name, guard) == ("vinc_role_check", None)
     assert data["person_only_requests"] == requests and data["self_authored"] is True

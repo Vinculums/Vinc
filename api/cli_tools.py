@@ -57,7 +57,7 @@ def _bridge(args):
         app.close()
 
 
-def _confirm(args, subject: str) -> bool:
+def confirm(args, subject: str) -> bool:
     """사람이 터미널 앞에 있을 때만 묻는다. 묻는 말은 stderr 로 — stdout 은 결과 자리다.
     Windows 의 NUL 은 isatty() 가 참이라 stdin 만으로는 판정하지 않는다."""
     if getattr(args, "yes", False):
@@ -104,7 +104,7 @@ def _text_file(path: str) -> str:
         raise ValueError(f"--output: {exc}") from None
 
 
-def _tool_request(args) -> tuple[str, dict, str | None]:
+def tool_request(args) -> tuple[str, dict, str | None]:
     cmd = args.cmd
     owner = getattr(args, "owner", None)
     common = {"owner": owner} if owner else {}
@@ -293,6 +293,11 @@ def _tool_request(args) -> tuple[str, dict, str | None]:
     raise ValueError(f"no tool mapping for {cmd}")
 
 
+# 사설 별칭. 같은 함수이고, 이 이름으로 부르는 호출부가 그대로 돈다.
+_confirm = confirm
+_tool_request = tool_request
+
+
 def run(args) -> tuple[dict | None, int | None]:
     if legacy_recall(args):
         # 옛 인자를 쓰는 스크립트는 옛 모양(사이드카 `/recall`)을 그대로 받는다.
@@ -302,10 +307,10 @@ def run(args) -> tuple[dict | None, int | None]:
             return bridge.request("GET", "/recall", params={k: v for k, v in params.items()
                                                             if v not in (None, "")}), None
     try:
-        name, data, destructive = _tool_request(args)
+        name, data, destructive = tool_request(args)
     except (ValueError, json.JSONDecodeError) as exc:
         return None, usage_error(str(exc))
-    if destructive and not data.get("dry_run") and not _confirm(args, destructive):
+    if destructive and not data.get("dry_run") and not confirm(args, destructive):
         return None, usage_error("confirmation required; pass --yes")
     try:
         tools.validate_args(name, data)

@@ -11,14 +11,14 @@ from api.jobs import JobError
 from api import topic_conversion as conversion
 from store.backend import open_store
 from store.config import StoreConfig
-from store.embedded_backend import _import_driver
+from store.embedded_backend import import_driver
 
 
 SOURCE = "user:reader-source"
 TARGET = "team:reader-target"
 OTHER = "user:reader-other"
 RUN = "00000000-0000-4000-8000-000000000077"
-DRIVER, _ = _import_driver()
+DRIVER, _ = import_driver()
 
 
 @unittest.skipIf(DRIVER is None, "Embedded driver required")

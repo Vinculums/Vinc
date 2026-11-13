@@ -72,7 +72,7 @@ def session_runner(session) -> _SessionRunner:
     return _SessionRunner(session)
 
 
-def _meta_get(store, key: str, default: str = "0") -> str:
+def meta_get(store, key: str, default: str = "0") -> str:
     # 쓰기 묶음(`store.write_batch`) 안이면 키마다 한 번만 읽고 그 뒤로는 메모리 값을 쓴다. 쓰기는 묶음이
     # 커밋 직전에 한 번 한다(`store.write_batch.flush_meta`). 묶음이 되돌려지면 값도 같이 버려진다.
     batch = write_batch.current(store)
@@ -86,13 +86,18 @@ def _meta_get(store, key: str, default: str = "0") -> str:
     return default if v in (None, "") else str(v)
 
 
-def _meta_set(store, key: str, value) -> None:
+def meta_set(store, key: str, value) -> None:
     batch = write_batch.current(store)
     if batch is not None:
         batch.meta[key] = str(value)
         batch.dirty.add(key)
         return
     store.run("MERGE (m:_SyncMeta {key: $k}) SET m.value = $v", {"k": key, "v": str(value)})
+
+
+# 사설 별칭. `api/sync.py` 가 이 이름으로 부른다.
+_meta_get = meta_get
+_meta_set = meta_set
 
 
 #: 믿지 않는 보낸 쪽(허브가 받는 기기 업로드)의 스탬프가 받는 쪽 벽시계보다 앞설 수 있는 한도(밀리초).
@@ -193,12 +198,12 @@ def note_trusted_clock(store, stamp) -> None:
     `TRUSTED_AHEAD_MS` 뒤의 값은 무시하고 앞서 적은 값을 둔다."""
     ms = _parse_ms(stamp)
     if ms is not None and ms <= _wall_ms() + TRUSTED_AHEAD_MS:
-        _meta_set(store, TRUSTED_CLOCK, ms)
+        meta_set(store, TRUSTED_CLOCK, ms)
 
 
 def _trusted_clock(store, phys: int) -> int:
     """적힌 믿는 출처의 시계. 없거나 벽시계 + `TRUSTED_AHEAD_MS` 뒤면 0(적힌 시계 없음)으로 읽는다."""
-    got = int(_meta_get(store, TRUSTED_CLOCK, "0"))
+    got = int(meta_get(store, TRUSTED_CLOCK, "0"))
     return got if got <= phys + TRUSTED_AHEAD_MS else 0
 
 
@@ -206,7 +211,7 @@ def _last(store, phys: int) -> int:
     """저장된 시계값. max(벽시계, 믿는 출처의 시계)보다 `RESET_AHEAD_MS` 넘게 앞선 값은 0 으로 읽어 벽시계로
     되돌린다. 믿는 출처의 시계는 받은 스탬프가 아니라 그 출처가 말한 벽시계다: 허브에 남은 먼 스탬프 하나를
     받아도 기기 시계는 여전히 돌아온다."""
-    last = int(_meta_get(store, "last_hlc", "0"))
+    last = int(meta_get(store, "last_hlc", "0"))
     if last <= phys + RESET_AHEAD_MS:
         return last
     return 0 if last > max(phys, _trusted_clock(store, phys)) + RESET_AHEAD_MS else last
@@ -221,7 +226,7 @@ def hlc_now(store) -> str:
     cur = phys if phys > last else last + 1
     if cur > _LATEST_MS:
         cur = phys
-    _meta_set(store, "last_hlc", cur)
+    meta_set(store, "last_hlc", cur)
     return _fmt(cur)
 
 
@@ -245,14 +250,14 @@ def observe_hlc(store, remote_updated_at: str, *, trusted: bool = False) -> None
             return
     last = _last(store, phys)
     if val > last:
-        _meta_set(store, "last_hlc", val)
+        meta_set(store, "last_hlc", val)
 
 
 def next_seq(store, owner: str) -> int:
     """owner별 단조 sync_seq(delta 커서 원천). owner 없으면 로컬 기본."""
     key = f"seq:{owner or 'user:local'}"
-    cur = int(_meta_get(store, key, "0")) + 1
-    _meta_set(store, key, cur)
+    cur = int(meta_get(store, key, "0")) + 1
+    meta_set(store, key, cur)
     return cur
 
 

@@ -18,9 +18,9 @@ def args(**kw):
 
 
 def test_cards_maps_the_role_and_keeps_only_the_flags_that_were_given():
-    name, data, guard = cli_tools._tool_request(args(role="agent-dev-core", limit=None))
+    name, data, guard = cli_tools.tool_request(args(role="agent-dev-core", limit=None))
     assert (name, data, guard) == ("vinc_eval_cards", {"role": "agent-dev-core"}, None)
-    assert cli_tools._tool_request(args(role="agent-dev-core", limit=3))[1] == {
+    assert cli_tools.tool_request(args(role="agent-dev-core", limit=3))[1] == {
         "role": "agent-dev-core", "limit": 3}
 
 

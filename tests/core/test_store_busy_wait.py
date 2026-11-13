@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from store import embedded_backend as B  # noqa: E402
 
-_DRIVER, _NAME = B._import_driver()
+_DRIVER, _NAME = B.import_driver()
 _TOKEN = "test-token-busy"
 _OWNER = "user:a"
 
