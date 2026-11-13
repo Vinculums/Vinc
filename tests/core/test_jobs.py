@@ -199,6 +199,48 @@ class BeforeDoneTests(unittest.TestCase):
                                      {"written": True}), {"written": True})
 
 
+class OwnerTests(unittest.TestCase):
+    """잡은 만든 요청의 소유자를 단다. 조회 쪽 대조는 `api.server.VincApp.get_job` 이 한다."""
+
+    def setUp(self):
+        self.current = None
+        self.jq = JobQueue(owner_of=lambda: self.current)
+
+    def tearDown(self):
+        self.jq.shutdown(drain=False)
+
+    def test_a_job_takes_the_owner_of_the_request_that_made_it(self):
+        self.current = "user:alice"
+        job = self.jq.submit("t", lambda: {"ok": 1})
+        self.jq.run_sync("t", lambda: {"ok": 2})
+        self.current = "user:bob"
+        self.assertEqual(self.jq.get(job.id).owner, "user:alice")
+        self.assertEqual(self.jq.get("job-2").owner, "user:alice")
+
+    def test_an_explicit_owner_wins_and_none_means_no_owner(self):
+        self.current = "user:alice"
+        self.assertIsNone(self.jq.submit("t", lambda: {}, owner=None).owner)
+        self.assertEqual(self.jq.submit("t", lambda: {}, owner="team:x").owner, "team:x")
+
+    def test_an_empty_or_non_string_owner_is_no_owner(self):
+        for value in ("", 7, {"id": "user:alice"}):
+            self.current = value
+            self.assertIsNone(self.jq.submit("t", lambda: {}).owner, value)
+
+    def test_the_owner_is_not_in_the_wire_shape(self):
+        self.current = "user:alice"
+        job = self.jq.submit("t", lambda: {})
+        job._done.wait(2.0)
+        self.assertNotIn("owner", job.to_dict())
+
+    def test_without_a_hook_jobs_have_no_owner(self):
+        jq = JobQueue()
+        try:
+            self.assertIsNone(jq.submit("t", lambda: {}).owner)
+        finally:
+            jq.shutdown(drain=False)
+
+
 class _Idle:
     """`on_idle` 기록기 — 호출마다 `wrote` 를 담고 첫 호출에 이벤트를 푼다."""
 

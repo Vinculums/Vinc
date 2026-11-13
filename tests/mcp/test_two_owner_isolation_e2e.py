@@ -10,16 +10,24 @@
      REST `/v1/search`, 웹 평면 프록시 `search` 네 곳을 본다.
   2. 동기화: 앨리스의 키로 밥의 노드와 엣지를 지우는 묶음, 밥의 id 로 노드를 덮는 묶음을
      허브 `/sync/push` 로 보낸다. 밥의 노드·엣지·rev·sync_seq·created 가 그대로여야 한다.
+  3. 잡 상태: 잡 id 는 세어 맞힐 수 있는 카운터다. 앨리스가 잡을 만든 뒤 밥이 id 를 하나씩
+     물어본다. 사이드카 `/jobs/{id}`, 계정 서명 평면(개인·팀), REST, MCP 어디서든 밥의 답은
+     없는 id 의 답과 같아야 한다.
 
 두 키 모드(`VINC_PK_NAMESPACED` 0·1)를 같은 테스트로 돈다. 허브는 1 로, 셀프호스트와
 로컬은 0 으로 돈다."""
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
+import re
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
+import uuid
 from pathlib import Path
 
 import pytest
@@ -33,6 +41,7 @@ from store import pkns  # noqa: E402
 from store.backend import open_store  # noqa: E402
 from store.config import load_config  # noqa: E402
 from store.embedded_backend import import_driver  # noqa: E402
+from vinc_mcp import edverify as ev  # noqa: E402
 from vinc_mcp import http_server as hub  # noqa: E402
 from vinc_mcp.bridge import Bridge  # noqa: E402
 
@@ -47,6 +56,8 @@ SHARED_WORD = "zanzibarquill"
 #: 밥에게만 있는 표식. 어느 질의에도 쓰지 않으므로 앨리스의 응답에 나오면 곧 유출이다.
 BOB_MARKS = ("bobexcerptmark", "bobtitlemark", "doc-bob-private")
 ALICE_MARKS = ("aliceexcerptmark", "doc-alice-own")
+#: 계정이 프록시 어서션에 서명하는 키(테스트 전용 시드).
+ACCT_SEED = bytes((i * 11 + 5) & 0xFF for i in range(32))
 
 
 def _serve(httpd):
@@ -55,9 +66,9 @@ def _serve(httpd):
     return t
 
 
-def _call(base, method, path, *, key=None, body=None):
+def _call(base, method, path, *, key=None, body=None, headers=None):
     data = json.dumps(body).encode() if body is not None else None
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", **(headers or {})}
     if key:
         headers["Authorization"] = "Bearer " + key
     req = urllib.request.Request(base + path, data=data, headers=headers, method=method)
@@ -92,7 +103,7 @@ def stack(tmp_path, monkeypatch, request):
         return {"owner": owner, "scope": "full", "plan": "free"}
 
     hub_app = hub.MCPHTTPApp(Bridge(base=side_base, token=SIDECAR_TOKEN, owner="user:local"),
-                             verify_key=verify)
+                             verify_key=verify, account_public=ev.secret_to_public(ACCT_SEED))
     front = hub.make_server(hub_app, "127.0.0.1", 0)
     front_thread = _serve(front)
     hub_base = f"http://127.0.0.1:{front.server_address[1]}"
@@ -247,3 +258,101 @@ def test_sync_push_from_another_member_cannot_touch_the_owners_nodes_or_edges(st
     _push(stack, "vinc_sk_bob", {
         "tombstones": [{"node_id": VICTIM, "label": "Concept", "deleted_at": last, "rev": 99}]})
     assert _bob_row(store, VICTIM) is None, "밥 자신의 묘비가 적용되지 않았다(묘비 꼴이 틀렸다)"
+
+
+# ── 3. 잡 상태 ────────────────────────────────────────────────────────────────
+
+JOB_MARK = "alicejobmark"
+TEAM = "team:0b7e3f52-6c1d-4a8e-9f00-2d5c8b1a4e77"
+UNKNOWN_JOB = "job-987654"
+
+
+def _account_plane(stack, op, sub, args, **claims):
+    """계정 백엔드가 하는 그대로: 본문 지문(`bh`)과 새 `jti` 를 실은 서명으로 `/internal/graph-owner`."""
+    raw = json.dumps(args).encode()
+    now = int(time.time())
+    payload = {"typ": "proxy", "iss": "account", "aud": "mcp", "sub": sub, "op": op,
+               "iat": now, "exp": now + 120, "jti": uuid.uuid4().hex,
+               "bh": base64.urlsafe_b64encode(hashlib.sha256(raw).digest()).rstrip(b"=").decode(),
+               **claims}
+    return _call(stack["hub"], "POST", "/internal/graph-owner", body=args,
+                 headers={"X-Vinc-Assertion": ev.sign_assertion(ACCT_SEED, payload)})
+
+
+def _alice_makes_jobs(stack, tmp_path) -> int:
+    """앨리스가 세 길로 잡을 만든다. 마지막 잡의 번호를 돌려준다(밥이 셀 범위)."""
+    status, body = _call(stack["hub"], "POST", "/mcp", key="vinc_sk_alice", body={
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "vinc_ingest", "arguments": {"nodes": [
+            {"id": f"concept:{JOB_MARK}-mcp", "type": "concept", "title": f"Alice {JOB_MARK} mcp",
+             "domain": "vinc/test/jobs"}]}}})
+    assert status == 200 and JOB_MARK in body, body[:800]
+    status, body = _account_plane(stack, "ingest-fragment", ALICE.split(":", 1)[1], {"nodes": [
+        {"id": f"concept:{JOB_MARK}-web", "type": "concept", "title": f"Alice {JOB_MARK} web",
+         "domain": "vinc/test/jobs"}]})
+    assert status == 200 and JOB_MARK in body, body[:800]
+    # 202 로 id 를 돌려주는 잡. 받은편지함 경로가 결과에 실린다.
+    inbox = tmp_path / f"{JOB_MARK}-inbox"
+    inbox.mkdir()
+    (inbox / "broken.json").write_text("{", encoding="utf-8")
+    status, body = _call(stack["side"], "POST", "/ingest/inbox", key=SIDECAR_TOKEN,
+                         body={"path": str(inbox), "owner": ALICE})
+    assert status == 202, body
+    job_id = json.loads(body)["job_id"]
+    for _ in range(200):
+        status, polled = _call(stack["side"], "GET", f"/jobs/{job_id}?owner={ALICE}", key=SIDECAR_TOKEN)
+        if json.loads(polled).get("status") in ("done", "error"):
+            break
+        time.sleep(0.05)
+    assert status == 200 and json.loads(polled)["status"] == "done", polled
+    return int(job_id.rsplit("-", 1)[1])
+
+
+def _same_answer(status: int, body: str, jid: str) -> tuple[int, str]:
+    """id 와 요청마다 새로 나는 request_id 를 지운 답. 나머지가 같아야 같은 답이다."""
+    body = re.sub(r'"request_id": ?"[^"]*"', '"request_id": ""', body.replace(jid, UNKNOWN_JOB))
+    return status, body
+
+
+def _surfaces(stack):
+    """잡 상태를 내주는 길마다 (이름, id → (상태, 본문)). 계정의 `/api/graph/jobs/:id` 는
+    서명만 하고 이 `/internal/graph-owner` 로 넘기므로 계정 평면이 곧 그 길이다."""
+    bob_sub = BOB.split(":", 1)[1]
+    return [
+        ("sidecar /jobs owner=bob", lambda jid: _call(
+            stack["side"], "GET", f"/jobs/{jid}?owner={BOB}", key=SIDECAR_TOKEN)),
+        ("account plane, personal", lambda jid: _account_plane(stack, "job", bob_sub, {"id": jid})),
+        ("account plane, team viewer", lambda jid: _account_plane(
+            stack, "job", bob_sub, {"id": jid}, typ="proxy-team", graph_owner=TEAM, role="viewer")),
+        ("REST /v1/jobs", lambda jid: _call(stack["hub"], "GET", f"/v1/jobs/{jid}", key="vinc_sk_bob")),
+    ]
+
+
+def test_another_owner_cannot_read_or_probe_a_job_by_counting_ids(stack, tmp_path):
+    last = _alice_makes_jobs(stack, tmp_path)
+
+    # 대조군: 앨리스는 같은 길로 자기 잡을 읽는다. 이것이 없으면 밥의 "없음"은 길이 막힌 탓일 수 있다.
+    own = [_account_plane(stack, "job", ALICE.split(":", 1)[1], {"id": f"job-{n}"})
+           for n in range(1, last + 1)]
+    assert any(JOB_MARK in body and '"status":"done"' in body.replace(" ", "") for _, body in own), own
+
+    for name, ask in _surfaces(stack):
+        unknown = _same_answer(*ask(UNKNOWN_JOB), UNKNOWN_JOB)
+        for n in range(1, last + 3):
+            jid = f"job-{n}"
+            status, body = ask(jid)
+            assert JOB_MARK not in body, f"{name}: 밥이 앨리스의 잡 {jid} 를 읽었다: {body[:400]}"
+            assert _same_answer(status, body, jid) == unknown, \
+                f"{name}: {jid} 의 답이 없는 id 의 답과 다르다(id 로 더듬을 수 있다): {status} {body[:400]}"
+
+
+def test_no_mcp_tool_reads_a_job_by_id(stack):
+    """MCP 에는 잡 상태 도구가 없다. 생기면 위 테스트의 길 목록에 넣어야 한다."""
+    status, body = _call(stack["hub"], "POST", "/mcp", key="vinc_sk_bob", body={
+        "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
+    assert status == 200, body
+    tools = json.loads(body)["result"]["tools"]
+    assert tools, body[:400]
+    hits = [t["name"] for t in tools
+            if "job" in t["name"] or "job_id" in json.dumps(t.get("inputSchema") or {})]
+    assert hits == [], hits

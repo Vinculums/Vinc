@@ -153,9 +153,11 @@ def test_activate_strips_client_out_path(app):
 
 
 def test_job_op_validates_id(app):
-    app.graph_owner_request(_assertion(op="job"), {"id": "abc123_-"})
-    method, path, _, _ = app.bridge.calls[0]
+    app.graph_owner_request(_assertion(op="job"), {"id": "abc123_-", "owner": "user:victim"})
+    method, path, params, _ = app.bridge.calls[0]
     assert (method, path) == ("GET", "/jobs/abc123_-")
+    # 사이드카가 남의 잡을 없는 잡으로 답하려면 서명된 owner 가 실려야 한다.
+    assert params == {"owner": "user:u-1"}
 
 
 def test_job_op_rejects_path_injection(app):
