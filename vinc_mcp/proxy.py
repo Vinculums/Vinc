@@ -25,7 +25,7 @@ from collections.abc import Mapping
 from typing import IO, Any
 
 from . import __version__, hubhttp, modern, run_protocol
-from .remote import _endpoint
+from .remote import endpoint
 from .rpc import LATEST_PROTOCOL_VERSION, PROTOCOL_VERSIONS, error_reply
 
 #: 호스티드의 무거운 연산은 계정 쪽에서 45초까지 허용된다. 그보다 넉넉히 기다린다.
@@ -80,7 +80,7 @@ class Proxy:
 
     def __init__(self, token: str, url: str | None = None, *, timeout: float = TIMEOUT_S):
         self.token = (token or "").strip()
-        self.url = (url or _endpoint()).rstrip("/")
+        self.url = (url or endpoint()).rstrip("/")
         self.timeout = timeout
         self.session_id: str | None = None
         self.protocol: str | None = None

@@ -239,7 +239,8 @@ def _require_elicitation(params: dict, caps: dict) -> None:
 
 def input_required(input_requests: dict | None = None, *, request_state: str | None = None,
                    client_capabilities: dict | None = None) -> dict:
-    """MRTR 의 `input_required` 결과 하나를 만든다. 아직 어느 도구에도 연결되어 있지 않다.
+    """MRTR 의 `input_required` 결과 하나를 만든다. `vinc_run_submit` 이 대기에 들어서고
+    클라이언트가 elicitation 만 선언했을 때 `run_tasks.carry` 가 부른다.
 
     - `input_requests`: `{키: {"method": "elicitation/create", "params": {...}}}`.
       키는 이 요청 안에서 유일한 문자열이다.
