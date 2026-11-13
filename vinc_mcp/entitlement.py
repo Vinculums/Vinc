@@ -5,8 +5,8 @@
 claude.ai 커넥터/데스크탑 원격 타깃의 Bearer 로 쓰면, MCP 가 이 루프백으로
 소유자를 확인해 `owner=user:{public_id}` 로 강제 스탬핑한다(멀티테넌트 격리).
 
-B2 준수: MCP 는 계정 DB·시크릿에 접근하지 않는다. 우리 Ed25519 개인키로
-짧은 어서션(iss=mcp·aud=account·경로별 typ·120s)을 서명해 신원을 증명하고, 계정이
+B2 준수: MCP 는 계정 DB·시크릿에 접근하지 않는다. 우리 Ed25519 개인키로 짧은 어서션
+(iss=mcp·aud=account·경로별 typ·본문 해시 bh·호출마다 새 jti·120s)을 서명해 신원을 증명하고, 계정이
 **우리 공개키만** 핀해 검증한다(공개키 공유 ≠ 시크릿 공유). 응답(owner·plan)은
 sha256(key) 기준 60s 캐시 — 커넥션마다 계정을 때리지 않는다.
 
@@ -14,11 +14,15 @@ sha256(key) 기준 60s 캐시 — 커넥션마다 계정을 때리지 않는다.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
+import json
 import logging
 import os
 import threading
 import time
+import uuid
+from typing import Any
 
 from . import edverify, hubhttp
 
@@ -163,11 +167,33 @@ SPACES_TYP = "spaces"
 PLAN_TYP = "plan"
 
 
-def _sign_assertion(seed: bytes, typ: str) -> str:
-    """경로의 typ 를 실은 어서션. iss·aud·iat·exp 는 계정 `gate()` 가 대조하는 그대로 둔다."""
+def _body_hash(body: bytes) -> str:
+    """계정 `bodyHash` 와 같은 값: 보내는 바이트의 sha256 을 패딩 없는 base64url 로."""
+    return base64.urlsafe_b64encode(hashlib.sha256(body).digest()).rstrip(b"=").decode("ascii")
+
+
+def _sign_assertion(seed: bytes, typ: str, body: bytes) -> str:
+    """경로의 typ 와 그 요청 본문의 bh, 호출마다 새 jti 를 실은 어서션.
+
+    iss·aud·iat·exp 는 계정 `gate()` 가 대조하는 그대로 둔다. `body` 는 실제로 보낼 바이트여야 한다:
+    다른 바이트에 서명하면 bh 를 대조하는 계정이 거절한다.
+    jti 는 소문자 16진 32자(uuid4 의 hex)다. 계정의 run-waiting 검증기는 이 모양만 받고 커뮤니티
+    검증기도 받는다. 허브의 다른 서명(`community.py`·`run_notify.py`)과 같은 모양이다."""
     now = int(time.time())
     return edverify.sign_assertion(seed, {"iss": "mcp", "aud": "account", "typ": typ,
-                                          "iat": now, "exp": now + 120})
+                                          "iat": now, "exp": now + 120,
+                                          "jti": uuid.uuid4().hex, "bh": _body_hash(body)})
+
+
+def _post(seed: bytes, path: str, typ: str, payload: dict) -> Any:
+    """계정 내부 경로에 JSON 을 POST 하고 JSON 답을 돌려준다. 서명한 바이트를 그대로 보낸다.
+
+    직렬화는 `hubhttp.post_json` 과 바이트까지 같고 헤더도 같다(Content-Type·Accept 는 JSON,
+    Authorization 없음). 직렬화를 여기서 한 번만 하고 그 바이트를 해시와 전송에 함께 쓴다.
+    다시 인코딩하면 bh 가 보낸 본문과 어긋날 수 있다."""
+    raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return hubhttp.request(_account_url() + path, data=raw, timeout=_TIMEOUT,
+                           headers={"X-Vinc-Assertion": _sign_assertion(seed, typ, raw)}).json()
 
 
 def enabled() -> bool:
@@ -211,10 +237,8 @@ def verify_key(raw: str, team: str | None = None) -> dict | None:
 
     result: dict | None = None
     try:
-        body = hubhttp.post_json(
-            _account_url() + "/internal/mcp/verify-key", token=None,
-            payload={"key": raw, **({"team": team} if team else {})},
-            headers={"X-Vinc-Assertion": _sign_assertion(seed, VERIFY_KEY_TYP)}, timeout=_TIMEOUT)
+        body = _post(seed, "/internal/mcp/verify-key", VERIFY_KEY_TYP,
+                     {"key": raw, **({"team": team} if team else {})})
         sub = body.get("sub")
         if isinstance(sub, str) and sub:
             plan = normalize_plan(body.get("plan"), source="verify-key")
@@ -283,10 +307,8 @@ def verify_member(sub: str, team: str) -> dict | None:
 
     result: dict | None = None
     try:
-        body = hubhttp.post_json(
-            _account_url() + "/internal/mcp/team-membership", token=None,
-            payload={"sub": sub, "team": team},
-            headers={"X-Vinc-Assertion": _sign_assertion(seed, TEAM_MEMBERSHIP_TYP)}, timeout=_TIMEOUT)
+        body = _post(seed, "/internal/mcp/team-membership", TEAM_MEMBERSHIP_TYP,
+                     {"sub": sub, "team": team})
         go, role = body.get("graph_owner"), body.get("role")
         if (isinstance(go, str) and go.startswith("team:")
                 and isinstance(role, str) and role):
@@ -336,10 +358,7 @@ def list_spaces(sub: str) -> list[dict] | None:
 
     rows: list[dict] | None = None
     try:
-        body = hubhttp.post_json(
-            _account_url() + "/internal/mcp/spaces", token=None,
-            payload={"sub": sub},
-            headers={"X-Vinc-Assertion": _sign_assertion(seed, SPACES_TYP)}, timeout=_TIMEOUT)
+        body = _post(seed, "/internal/mcp/spaces", SPACES_TYP, {"sub": sub})
         raw = body.get("spaces")
         if isinstance(raw, list):
             rows = []
@@ -377,10 +396,7 @@ def list_communities(sub: str) -> list[dict] | None:
             return hit[1]
     rows = None
     try:
-        body = hubhttp.post_json(
-            _account_url() + "/internal/mcp/spaces", token=None,
-            payload={"sub": sub},
-            headers={"X-Vinc-Assertion": _sign_assertion(seed, SPACES_TYP)}, timeout=_TIMEOUT)
+        body = _post(seed, "/internal/mcp/spaces", SPACES_TYP, {"sub": sub})
         raw = body.get("communities")
         if isinstance(raw, list):
             rows = [{"id": r["id"].lower(), "name": r.get("name") if isinstance(r.get("name"), str) else "",
@@ -407,10 +423,7 @@ def lookup_plan(sub: str) -> str | None:
     if seed is None:
         return None
     try:
-        body = hubhttp.post_json(
-            _account_url() + "/internal/mcp/plan", token=None,
-            payload={"sub": sub},
-            headers={"X-Vinc-Assertion": _sign_assertion(seed, PLAN_TYP)}, timeout=_TIMEOUT)
+        body = _post(seed, "/internal/mcp/plan", PLAN_TYP, {"sub": sub})
     except Exception:
         return None
     if body.get("sub") != sub:
