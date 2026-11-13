@@ -1178,6 +1178,9 @@ class MCPHTTPApp:
             if not _JOB_ID_RE.fullmatch(jid):
                 raise ValueError("invalid job id")
             # id 는 세어 맞힐 수 있는 카운터다. owner 를 실어야 사이드카가 남의 잡을 없는 잡으로 답한다.
+            # 빈 owner 는 브리지가 빼고 보내 사이드카가 소유자 없는 읽기(로컬 셸)로 받으므로 여기서 막는다.
+            if not str(owner or "").strip():
+                raise ValueError("invalid job owner")
             return self.bridge.request("GET", f"/jobs/{jid}", params={"owner": owner})
         if op == "activate":   # 클라가 호스트 임의 파일경로 지정 못 하게(활성 팩 인라인)
             args.pop("out", None)

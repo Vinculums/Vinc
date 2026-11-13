@@ -160,6 +160,14 @@ def test_job_op_validates_id(app):
     assert params == {"owner": "user:u-1"}
 
 
+def test_job_op_refuses_an_empty_owner(app):
+    # 빈 owner 는 브리지가 빼고 보내 사이드카가 소유자 없는 읽기로 받는다. 그런 읽기는 허브에서 나가지 않는다.
+    for blank in ("", "  ", None):
+        with pytest.raises(ValueError):
+            app.proxy_op("job", {"id": "job-1"}, blank, actor="user:u-1")
+    assert app.bridge.calls == []
+
+
 def test_job_op_rejects_path_injection(app):
     for bad in ("../secret", "a/b", "", "x" * 65, "a b"):
         with pytest.raises(ValueError):
