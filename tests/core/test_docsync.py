@@ -156,11 +156,14 @@ class DocSyncE2E(unittest.TestCase):
         r = docsync.import_docs(self.B, owner="user:a", payload=delta)
         self.assertEqual(r["deleted"], 1)
         self.assertIn("error", ds.get_doc(self.B, did))
-        # 재생성(삭제보다 새 시각)이 삭제를 이긴다: 삭제 툼스톤 + 더 새 문서 동시 인바운드
+        # 재생성(삭제보다 새 시각)이 삭제를 이긴다: 삭제 툼스톤 + 더 새 문서 동시 인바운드.
+        # B 는 받은 삭제를 표식으로 남기므로, 더 새 문서는 그 삭제 시각보다 새것이어야 한다.
+        gone = delta["tombstones"][0]["deleted_at"]
+        later = revstamp._fmt(revstamp._parse_ms(gone) + 60_000)
         payload = {"docs": [{"doc_id": did, "title": "부활", "origin": "",
                              "content_hash": ds._sha("부활본"),
-                             "updated_at": "2026-07-25T00:00:00Z", "text": "부활본"}],
-                   "tombstones": [{"doc_id": did, "deleted_at": "2026-07-24T23:00:00Z"}]}
+                             "updated_at": later, "text": "부활본"}],
+                   "tombstones": [{"doc_id": did, "deleted_at": gone}]}
         docsync.import_docs(self.B, owner="user:a", payload=payload)
         self.assertEqual(ds.get_doc(self.B, did)["text"], "부활본")
 

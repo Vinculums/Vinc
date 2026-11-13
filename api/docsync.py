@@ -103,7 +103,8 @@ def import_docs(store, *, owner: str, payload: dict, trusted_sender: bool = Fals
     - 로컬 있음 → **updated_at(HLC) 비교**: 원격이 더 새면 덮어쓰고, 아니면 무시
       (동률·구버전은 로컬 유지 — 결정론). 내용 동일(content_hash)이면 no-op.
     - SEC-1: 인바운드 owner 는 호출 owner 로 고정(payload 를 신뢰하지 않는다).
-    삭제 표식은 로컬 문서가 더 새로 쓰이지 않았을 때만 적용(재생성이 삭제를 이긴다).
+    삭제 표식은 로컬 문서가 더 새로 쓰이지 않았을 때만 적용(재생성이 삭제를 이긴다). 적용해 이 소유자의 문서를
+    지웠으면 그 삭제를 이 스토어의 표식으로 남긴다(`_keep_tombstone`).
 
     `trusted_sender` 는 노드 적용(`sync.apply_delta`)과 같다: 기기가 자기 허브에서 받을 때만 True 다.
     믿지 않으면 스탬프가 `revstamp.ceiling_ms()` 뒤인 문서와 문서 삭제는 적용하지 않고 결과
@@ -201,12 +202,30 @@ def import_docs(store, *, owner: str, payload: dict, trusted_sender: bool = Fals
         r = ds.delete_doc(store, doc_id, owner=owner, tombstone=False)
         if r.get("executed") and (r.get("deleted_meta") or r.get("deleted_chunks")):
             deleted += 1
+            _keep_tombstone(store, doc_id, owner, t.get("deleted_at") or "")
+        # 받은 삭제의 시각으로 시계를 민다. 시계가 느린 쪽이 그 문서를 다시 만들어도 그 삭제 뒤에 찍힌다.
+        revstamp.observe_hlc(store, t.get("deleted_at") or "", trusted=trusted_sender)
     out = {"kind": "docsync.import", "owner": owner, "applied": applied,
            "updated": updated, "skipped": skipped, "deleted": deleted}
     if refused:
         out[revstamp.CLOCK_SKEW] = refused
         out["warnings"] = [revstamp.clock_skew_warning(len(refused))]
     return out
+
+
+def _keep_tombstone(store, doc_id: str, owner: str, deleted_at: str) -> None:
+    """받은 문서 삭제를 이 스토어의 표식으로 남긴다. 삭제 시각은 원래 값 그대로, 순번은 이 스토어의 문서 순번이다.
+    그래야 이 스토어에서 받아 가는 다른 기기도 그 삭제를 받고, 지우기 전의 사본이 다시 올라와도 되살아나지 않는다.
+
+    ⚠ 이 소유자의 문서를 방금 지웠을 때만 부른다. 표식의 키는 `doc_id` 하나라 남의 id 에 표식을 남기면 그 소유자의
+    다음 업로드가 막힌다. 같은 이유로 다른 소유자의 표식은 덮지 않는다. 지울 것이 없던 삭제는 표식을 남기지 않으므로
+    이 표식은 받은 쪽에서 다시 순번을 받아 되돌아오지 않는다."""
+    held = store.run("MATCH (t:_DocTombstone) WHERE t.doc_id = $id RETURN t.owner_id AS o", {"id": doc_id})
+    if held and (held[0].get("o") or "") not in ("", owner):
+        return
+    store.run("MERGE (t:_DocTombstone {doc_id: $id}) SET t.owner_id = $o, t.deleted_at = $da, "
+              "t.sync_seq = $seq",
+              {"id": doc_id, "o": owner, "da": deleted_at, "seq": ds._next_doc_seq(store, owner)})
 
 
 def skewed_upload_docs(payload: dict) -> list[str]:

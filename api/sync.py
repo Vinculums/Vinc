@@ -172,14 +172,22 @@ def _tombstone_owner(store, node_id: str, owner: str = "") -> str:
 
 
 def put_tombstone(store, node_id: str, label: str, owner: str, deleted_at: str,
-                  rev: int) -> bool:
+                  rev: int, *, removed: bool = True) -> bool:
     """수신한 삭제를 재전파용으로 남긴다. deleted_at 은 **원래 삭제 시각 보존**(의미),
     sync_seq 는 수신측 자기 번호(다른 기기의 pull 커서용) — 노드 스탬프와 같은 규칙.
+
+    `removed=False`(이번 적용이 노드를 지우지 않았다)인데 이 소유자의 표식이 이미 같거나 늦은 삭제 시각을 가지면
+    아무것도 쓰지 않는다. 이미 아는 삭제에 새 순번을 매기면 그 표식이 보낸 쪽으로 되돌아가고, 거기서 또 새 순번을
+    받아 동기화마다 오간다. 노드를 지웠거나 더 늦은 삭제면 지금처럼 새 순번으로 적는다.
 
     반환 False = 그 자리를 **다른 소유자가 이미 쓰고 있어** 남기지 않았다(위 주석)."""
     held = _tombstone_owner(store, node_id, owner)
     if held and owner and held != owner:
         return False
+    if not removed:
+        have = get_tombstone(store, node_id, owner)
+        if have is not None and have["deleted_at"] >= (deleted_at or ""):
+            return True
     store.run("MERGE (t:_Tombstone {node_id: $id}) SET t.label = $l, t.owner_id = $o, "
               "t.deleted_at = $da, t.rev = $rev, t.sync_seq = $seq, t.origin = 'remote'",
               {"id": pkns.key(owner, node_id), "l": label, "o": owner,
@@ -197,16 +205,20 @@ def del_tombstone(store, node_id: str, owner: str = "") -> None:
 
 
 def put_edge_tombstone(store, src: str, rel: str, dst: str, owner: str,
-                       deleted_at: str) -> bool:
+                       deleted_at: str, *, removed: bool = True) -> bool:
     """수신한 엣지 삭제를 재전파용으로 남긴다(노드 put_tombstone 동형 — deleted_at
-    원본 보존, sync_seq 는 수신측 자기 번호)."""
+    원본 보존, sync_seq 는 수신측 자기 번호). `removed` 도 노드와 같다: 이번 적용이 엣지를 지우지 않았고 이 소유자의
+    표식이 같거나 늦은 삭제 시각을 가지면 새 순번을 매기지 않는다."""
     # `ekey` 만 합성한다 — `src`/`rel`/`dst` **열**은 동기화 와이어로 그대로 나가므로
     # 논리여야 한다(계약 테스트가 번들에 U+001F 가 없음을 고정한다).
     k = pkns.ekey(owner, src, rel, dst)
-    held = store.run("MATCH (t:_EdgeTombstone) WHERE t.ekey = $k RETURN t.owner_id AS o",
-                     {"k": k})
+    held = store.run("MATCH (t:_EdgeTombstone) WHERE t.ekey = $k "
+                     "RETURN t.owner_id AS o, t.deleted_at AS da", {"k": k})
     if held and (held[0].get("o") or "") and owner and held[0].get("o") != owner:
         return False                       # 남의 행 — 덮지 않는다(위 주석)
+    if (not removed and held and (held[0].get("o") or "") == (owner or "")
+            and (held[0].get("da") or "") >= (deleted_at or "")):
+        return True
     store.run("MERGE (t:_EdgeTombstone {ekey: $k}) SET t.src = $s, t.rel = $r, "
               "t.dst = $d, t.owner_id = $o, t.deleted_at = $da, t.sync_seq = $seq, "
               "t.origin = 'remote'",
@@ -1009,6 +1021,9 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
             writes.append({"node": _merged_fragment_node(label, nid, ntype, remote_snap),
                            "ua": r_ua, "rev": r_rev})
             base_updates.append((nid, label, remote_snap, r_rev, r_ua))
+            # 새로 받은 노드의 스탬프로도 시계를 민다. 안 밀면 시계가 느린 쪽이 그 노드를 곧 지울 때 삭제가 노드
+            # 스탬프보다 앞에 찍혀, 보낸 쪽이 그 삭제를 "삭제 뒤의 편집이 있다"로 읽고 무시한다.
+            revstamp.observe_hlc(store, r_ua, trusted=trusted_sender)
             continue
 
         l_rev, l_ua = local.pop("_rev"), local.pop("_ua")
@@ -1086,7 +1101,7 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
 
     # 삭제 전파(S4): 인바운드 tombstone 을 적용한다. 단 **노드가 삭제보다 나중에
     # 편집됐으면**(updated_at > deleted_at) 삭제를 무시한다(다른 기기의 재편집이 이김).
-    # 적용 시 자기 tombstone 을 남겨(put_tombstone) 다른 기기로 재전파한다.
+    # 적용 시 자기 tombstone 을 남겨(put_tombstone) 다른 기기로 재전파한다. 이미 아는 삭제는 다시 적지 않는다.
     # owner 술어 필수(risk-audit §3.2): 없으면 유효한 멤버 키 하나로 남의 concept 을
     # 지울 수 있다. deleted_at 은 clamp — 인바운드 값이라 공격자가 미래로 조작해
     # 어떤 재편집도 이기게 만들 수 있으니 서버 클록을 넘지 못하게 한다.
@@ -1129,7 +1144,8 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
                       {"id": pkns.key(owner, tid), "owner": owner})
             out["deleted"] += 1
         del_base(store, tid, owner)
-        put_tombstone(store, tid, tlabel, owner, t_da, int(t.get("rev") or 0))
+        # 노드를 지우지 않은 적용은 이미 아는 삭제에 새 순번을 매기지 않는다(`put_tombstone`).
+        put_tombstone(store, tid, tlabel, owner, t_da, int(t.get("rev") or 0), removed=bool(cur))
         revstamp.observe_hlc(store, t_da, trusted=trusted_sender)
 
     # 엣지 삭제 전파(S4 확장): 엣지는 타임스탬프가 없어 노드식 재편집 가드가 불가 —
@@ -1158,6 +1174,7 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
         pairs = [(src, dst)]
         if rel == "RELATED_TO":   # 무방향 의미 — 물리 역방향도 함께(delete_edge 동형)
             pairs.append((dst, src))
+        hit = False
         # 끝점 라벨 조합 전수(v12 — rel 하나에 조합이 여럿). delete_edge 와 동형.
         for sl, sp, dl, dp in ep:
             for s_, d_ in pairs:
@@ -1174,7 +1191,8 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
                               {"s": pkns.key(owner, s_),
                                "d": pkns.key(owner, d_), "owner": owner, **extra})
                     out["edges_deleted"] = out.get("edges_deleted", 0) + 1
-        put_edge_tombstone(store, src, rel, dst, owner, t.get("deleted_at") or "")
+                    hit = True
+        put_edge_tombstone(store, src, rel, dst, owner, t.get("deleted_at") or "", removed=hit)
         revstamp.observe_hlc(store, t.get("deleted_at") or "", trusted=trusted_sender)
 
     out["applied"] = len(writes)
