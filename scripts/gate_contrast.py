@@ -202,7 +202,7 @@ _RECEDE_LITERAL = re.compile(r"\*\s*0?\.(15|12|35|40?)\b")
 #: 같은 숫자여도 물러남이 아니다. 불투명도를 만지는 줄에만 규율을 건다.
 _RECEDE_CTX = re.compile(r"\b(opacity|fade)\b|userData\.base", re.I)
 #: 그래프를 그리는 지금의 표면들. 이름을 바꾸거나 지우면 아래에서 실패로 드러난다(조용히 건너뛰지 않는다).
-_VIEW_FILES = ("view.ts", "view-compass.ts", "view-compass-whole.ts")
+_VIEW_FILES = ("view.ts", "view-compass.ts", "view-compass-shapes.ts", "view-compass-whole.ts")
 
 
 def run_recede(app_src: Path) -> list[Finding]:
