@@ -21,9 +21,9 @@ sys.path.insert(0, str(ROOT))
 from api import docstore as ds
 from store.backend import open_store
 from store.config import StoreConfig
-from store.embedded_backend import _import_driver
+from store.embedded_backend import import_driver
 
-DRIVER, DRIVER_NAME = _import_driver()
+DRIVER, DRIVER_NAME = import_driver()
 pytestmark = pytest.mark.skipif(DRIVER is None, reason="임베디드 드라이버 미설치")
 OWNER, DOC = "failure-test-owner", "failure-test-doc"
 OLD = "이전 합성 본문입니다.\n" * 5

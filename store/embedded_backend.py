@@ -145,7 +145,7 @@ def backfill_episode_time_fields(store) -> int:
     return filled
 
 
-def _import_driver():
+def import_driver():
     """임베디드 드라이버 단일 임포트 지점(§2-2 R1 — 결합 상한). **ladybug 전용**
     (v0.5.3 — kuzu 제거, 안내는 모듈 docstring 참조). 미설치(개발 환경 등)면
     (None, None) — 호출부(`EmbeddedBackend.open`)가 스토어 unreachable 로 강등
@@ -154,6 +154,10 @@ def _import_driver():
         return __import__("ladybug"), "ladybug"
     except ImportError:
         return None, None
+
+
+# 사설 별칭. 같은 함수이고, 이 이름으로 부르는 호출부가 그대로 돈다.
+_import_driver = import_driver
 
 
 #: 엔진의 계획 캐시 범위(`enable_cached_prepared_statement`, 0.20.2 부터 있다). 값은
@@ -1253,7 +1257,7 @@ class EmbeddedBackend:
     @classmethod
     def open(cls, cfg: StoreConfig) -> "EmbeddedBackend | None":
         data_dir = cfg.data_dir or os.path.join(os.getcwd(), "vinc_store")
-        drv, name = _import_driver()
+        drv, name = import_driver()
         if drv is None:
             return None
         os.makedirs(os.path.dirname(data_dir) or ".", exist_ok=True)
@@ -1436,7 +1440,7 @@ class EmbeddedBackend:
         ``writer``: 읽기 요청 중 불가피한 쓰기(지연 인덱스 빌드·그래프 알고리즘의
         project_graph)를 **쓰기 지점으로 되돌려 보내는** 콜러블
         ``(label, fn, timeout) -> result``. 서버가 잡 큐 진입점을 주입한다."""
-        drv, _ = _import_driver()
+        drv, _ = import_driver()
         return _ReaderView(self, _open_connection(drv, self._db, self._conns), writer=writer)
 
     def _exec_idem(self, stmt: str) -> None:
@@ -2684,7 +2688,7 @@ class EmbeddedBackend:
             self.run("CHECKPOINT")
 
     def _snapshot_reopen(self, src: str, _copy, dest: str) -> str:
-        drv, _name = _import_driver()
+        drv, _name = import_driver()
         for obj in (self._conn, self._db):
             try:
                 closer = getattr(obj, "close", None)

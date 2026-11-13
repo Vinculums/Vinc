@@ -194,8 +194,32 @@ def _expected(tool, raw):
                 c.pop(k, None)
         _links(o.get("links"))
         _links((o.get("candidate_material") or {}).get("links"))
+        # 인용 단위의 widened:false 는 빠지고, 문서·관계 제목은 120자에서 잘린다(후보·노드 제목은 그대로).
+        quotes = list(o.get("quotes") or []) + [q for c in o.get("candidates") or []
+                                                 for q in c.get("quotes") or []]
+        for q in quotes:
+            if q.get("widened") is False:
+                del q["widened"]
+        long = [q for q in quotes if len(q.get("source") or "") > 120]
+        _cut_in(quotes, "source")
+        mat = o.get("candidate_material")
+        for block in [o] + ([mat] if isinstance(mat, dict) else []):
+            long += [e for e in block.get("excerpts") or [] if len(e.get("doc_title") or "") > 120]
+            _cut_in(block.get("excerpts"), "doc_title")
+            items = (block.get("links") or {}).get("items") if isinstance(block.get("links"), dict) else None
+            long += [i for i in items or [] if len(i.get("title") or "") > 120]
+            _cut_in(items, "title")
         _walk_blocks(o, flat=True)
-        note = tools.OMITTED_NOTE
+        # choose 재료: 본문이 첫 발췌를 글자 그대로 옮긴 것이면 one_liner 와 그 발췌로 짓는 body_cite 가 빠진다.
+        if isinstance(mat, dict) and mat.get("body_src") == "doc":
+            first = next((e for e in mat.get("excerpts") or [] if str(e.get("excerpt") or "").strip()), None)
+            if first is not None and mat.get("one_liner") == first.get("excerpt"):
+                del mat["one_liner"]
+                where = first.get("doc_title") or first.get("doc_id") or ""
+                cite = f"{where} · {first['section']}" if first.get("section") else where
+                if where and mat.get("body_cite") == cite:
+                    del mat["body_cite"]
+        note = tools.OMITTED_BRIEF_CUT_NOTE if long else tools.OMITTED_NOTE
     o.pop("page", None)
     if o != raw:
         o["omitted"] = note
@@ -273,6 +297,8 @@ NEIGHBOR_ROW = ("rel", "dir", "id", "title", "one_liner", "updated_at")
 LONG = "Measured 2026-10-07 on the owner's laptop: " + "one epoch takes nine minutes " * 10 + "end"
 #: search·neighbors 기본 본문이 120자에서 자르는 제목 칸. cite_id 는 search node hit 에서 id 와 같을 때만 빠진다.
 CUT = ("title", "doc_title")
+#: brief 가 자르는 칸: 인용 단위의 source, 발췌의 doc_title, 관계 항목의 title. 후보·노드 제목은 남는다.
+BRIEF_CUT = ("source", "doc_title", "title")
 
 
 def _same(got, want, keys, *, cut=(), derived_cite=None):
@@ -338,20 +364,25 @@ def test_every_must_stay_key_survives_unchanged():
     out = tools.lean_result("vinc_brief", {}, brief)
     for k in BRIEF_ENVELOPE + ("validity_note",):
         assert k in out and out[k] == brief[k], k
+    # 노드·후보 제목은 그대로, 인용 단위의 source·발췌의 doc_title·관계 항목의 title 은 잘린 꼴로 남는다.
     for k in BRIEF_NODE_KEEP:
         assert out["node"][k] == brief["node"][k], k
     for got, want in zip(out["quotes"], brief["quotes"]):
-        assert {k: got[k] for k in QUOTE_KEEP} == {k: want[k] for k in QUOTE_KEEP}
+        _same(got, want, QUOTE_KEEP, cut=BRIEF_CUT)
     assert len(out["quotes"]) == 2
-    for k in EXCERPT_KEEP:
-        assert out["excerpts"][0][k] == brief["excerpts"][0][k], k
-    for k in LINK_KEEP:
-        assert out["links"]["items"][0][k] == brief["links"]["items"][0][k], k
+    _same(out["excerpts"][0], brief["excerpts"][0], EXCERPT_KEEP, cut=BRIEF_CUT)
+    _same(out["links"]["items"][0], brief["links"]["items"][0], LINK_KEEP, cut=BRIEF_CUT)
     assert len(out["candidates"]) == 5
     for got, want in zip(out["candidates"], brief["candidates"]):
-        assert {k: got[k] for k in CAND_KEEP} == {k: want[k] for k in CAND_KEEP}
+        _same(got, want, [k for k in CAND_KEEP if k != "quotes"])
+        for gq, wq in zip(got["quotes"], want["quotes"]):
+            _same(gq, wq, QUOTE_KEEP, cut=BRIEF_CUT)
     for k in MATERIAL_KEEP:
-        assert out["candidate_material"][k] == brief["candidate_material"][k], k
+        if k != "excerpts":
+            assert out["candidate_material"][k] == brief["candidate_material"][k], k
+    _same(out["candidate_material"]["excerpts"][0], brief["candidate_material"]["excerpts"][0],
+          EXCERPT_KEEP, cut=BRIEF_CUT)
+    assert out["omitted"] == tools.OMITTED_BRIEF_CUT_NOTE
 
     node = {"kind": "node", "executed": True, "found": True,
             "node": {"id": "record:n", "title": LONG, "domain": "vinc/x", "tags": ["a", "b"],

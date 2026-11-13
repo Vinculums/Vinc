@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-SRC = (ROOT / "app" / "src" / "role-composer.ts").read_text(encoding="utf-8")
-LNB = (ROOT / "app" / "src" / "lnb.ts").read_text(encoding="utf-8")
+from _src import ROOT, read
+
+SRC = read("role-composer")
+LNB = read("lnb")
 
 import sys  # noqa: E402
 sys.path.insert(0, str(ROOT))

@@ -17,23 +17,17 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-APP = ROOT / "app"
-VIEW = (APP / "src" / "surfaces" / "view.ts").read_text(encoding="utf-8")
-EDIT = (APP / "src" / "props-edit.ts").read_text(encoding="utf-8")
-COPY = (APP / "src" / "copy.ts").read_text(encoding="utf-8")
-API = (APP / "src" / "api.ts").read_text(encoding="utf-8")
-BASICS = (APP / "src" / "node-basics.ts").read_text(encoding="utf-8")
+from _src import APP, func, read
 
-
-def _fn(src: str, name: str, nxt: str) -> str:
-    a = src.index(f"function {name}(")
-    return src[a:src.index(nxt, a)]
+VIEW = read("view")
+EDIT = read("props-edit")
+COPY = read("copy")
+API = read("api")
+BASICS = read("node-basics")
 
 
-EDITOR = _fn(VIEW, "openPropsEditor", "function propsDl(")
+EDITOR = func(VIEW, "openPropsEditor")
 SAVE = EDITOR[EDITOR.index("async function save()"):]
 BASICS_SAVE = BASICS[BASICS.index("async function save()"):]
 
@@ -48,7 +42,7 @@ class Contract(unittest.TestCase):
         self.assertIn("owner: cfg.owner", body)
 
     def test_conflict_reads_both_the_200_envelope_and_a_409(self):
-        fn = _fn(API, "isWriteConflict", "\n}\n")
+        fn = func(API, "isWriteConflict")
         for needle in ('r?.status === "conflict"', "r?.status === 409",
                        '"write_conflict"', '"preview_conflict"'):
             self.assertIn(needle, fn)
@@ -80,7 +74,10 @@ class Save(unittest.TestCase):
         self.assertIn("res?.warnings", EDITOR)
 
     def test_redraws_from_a_fresh_read_and_refreshes_the_agent_list(self):
-        self.assertIn("ctxCache = null;", EDITOR)
+        # 다시 읽기는 표면이 내준 손잡이 하나로 간다: 저장 뒤와 충돌 뒤 다시 불러오기, 두 곳이다.
+        self.assertEqual(EDITOR.count("host.reloadNode(nd)"), 2)
+        # 그 손잡이는 노드 맥락 메모를 비우고 상세 열을 새로 읽는다(메모를 거치면 옛 판을 다시 그린다).
+        self.assertIn("reloadNode: (nd) => { ctxCache = null; return loadNodeSource(nd); }", VIEW)
         self.assertIn("refreshLnb({ quiet: true })", EDITOR)
 
 

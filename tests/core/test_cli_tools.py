@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from api import cli
-from api.cli_tools import _tool_request
+from api.cli_tools import tool_request
 from vinc_mcp import tools
 
 
@@ -62,7 +62,7 @@ class ToolVerbTests(unittest.TestCase):
                     args["nodecmd" if cmd == "node" else
                          "mergecmd" if cmd == "merge" else
                          "edgecmd" if cmd == "edge" else "doccmd"] = subcmd
-                got_name, got_args, destructive = _tool_request(SimpleNamespace(**args))
+                got_name, got_args, destructive = tool_request(SimpleNamespace(**args))
                 want_guard = (flags.get("id") if cmd == "delete" else
                               "edge" if cmd == "edge" else
                               flags.get("drop") if cmd == "merge" and subcmd == "nodes"
@@ -77,7 +77,7 @@ class ToolVerbTests(unittest.TestCase):
                    "vinc_doc_delete"}
         for name in sorted(names):
             with self.subTest(name=name):
-                got_name, data, destructive = _tool_request(SimpleNamespace(
+                got_name, data, destructive = tool_request(SimpleNamespace(
                     cmd="call", tool=name, args="{}", args_file=None))
                 self.assertEqual(got_name, name)
                 self.assertEqual(data, {})
@@ -153,10 +153,10 @@ class TemporalVerbTests(unittest.TestCase):
         for cmd in ("search", "brief"):
             flags = {"cmd": cmd, "owner": None, "query": "synthetic", "top_k": 5,
                      "cursor": None, "detail": "summary", "max_excerpts": 3}
-            _, defaults, _ = _tool_request(SimpleNamespace(**flags))
+            _, defaults, _ = tool_request(SimpleNamespace(**flags))
             self.assertFalse(set(defaults) & {"mode", "historical", "as_of", "known_at"})
             options = {"mode": "historical", "historical": True, "as_of": "2020", "known_at": "2021"}
-            _, explicit, _ = _tool_request(SimpleNamespace(**flags, **options))
+            _, explicit, _ = tool_request(SimpleNamespace(**flags, **options))
             self.assertTrue(all(explicit[key] == value for key, value in options.items()))
 
 
@@ -169,7 +169,7 @@ class DocPutFileTests(unittest.TestCase):
             path.write_text("# Draft\n\nbody\n", encoding="utf-8")
             base = {"cmd": "doc", "doccmd": "put", "owner": None, "id": None, "title": None,
                     "origin": None, "file": str(path), "create_only": None}
-            name, data, _ = _tool_request(SimpleNamespace(**{**base, **flags}))
+            name, data, _ = tool_request(SimpleNamespace(**{**base, **flags}))
         self.assertEqual(name, "vinc_doc_put")
         return data
 
@@ -197,7 +197,7 @@ class DocPutFileTests(unittest.TestCase):
         with patch("api.cli_tools.run", lambda args: (seen.append(args) or ({}, 0))),                 redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
             cli.main(["--target", "local", "--format", "json", "doc", "put", "--id", "doc.existing"])
         with patch("sys.stdin", io.StringIO("body")):
-            _, data, _ = _tool_request(seen[0])
+            _, data, _ = tool_request(seen[0])
         self.assertIsNone(data["origin"])
         self.assertIsNone(data["title"])
 

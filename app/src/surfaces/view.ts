@@ -1,4 +1,4 @@
-import { api, cfg, WEB, teamsApi, isCommunitySpace, canWriteHere, viewScope, viewAccess, docMidWrite, spaceName, spaceKey, storeDownReason, messageOf, isWriteConflict, storage, restartSidecar, type GraphEdge, type GraphNode,
+import { api, cfg, WEB, teamsApi, isCommunitySpace, canWriteHere, viewScope, viewAccess, docMidWrite, spaceName, spaceKey, storeDownReason, isWriteConflict, storage, restartSidecar, type GraphEdge, type GraphNode,
          type NodeLinks, type NodeContext } from "../api";
 import { COPY } from "../copy";
 import { docTitle } from "../doc-title";
@@ -17,13 +17,12 @@ import { wireAsk, type AskItem } from "./view-ask";
 import { disposeEditorsIn, docEditorOpen, renderMarkdown } from "../doc-editor";
 import { hydrateRich } from "../rich-blocks";
 
-import { RAIL_MIN, RAIL_MAX, loadPrefs, savePrefs, dayOf, localStamp,
-         type ViewPrefs } from "../view-prefs";
+import { RAIL_MIN, RAIL_MAX, loadPrefs, savePrefs, dayOf, localStamp } from "../view-prefs";
 import { setViewHooks, refreshTopbar, setSearchFilter, setTopbarTools } from "../topbar";
 import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbScopeClearer, setLnbGraphSource, repaintLnbGraph, setLnbGraphActive,
          refreshLnb, isAgentRoleId, stripRolePrefix } from "../lnb";
-import { PROP_KINDS, propsEditable, rowsFrom, propsFrom, convertText, sameProps, propsPatchOf,
-         type PropRow, type PropKind } from "../props-edit";
+import { createPropsCard } from "./view-props-card";
+import type { N3 } from "./view-host";
 import { openFloatPanel, closeFloatPanel, isFloatPanelOpen } from "../float-panel";
 import { icon } from "../icons";
 import { setLiveRefresher } from "../live";
@@ -37,15 +36,6 @@ import { bindTopicDescription, type TopicDraft } from "../topic-description";
  *  그래프는 2D 나침반 하나다(view-compass.ts). 이 표면은 데이터를 읽어 나침반에 넘기고, 문서 열 · 노드 카드 ·
  *  상세 레일 · 주소를 맡는다. "어디"는 Level(trail)이 쥔다.
  *  근거: [[decision:the-graph-is-one-2d-compass-lens-2026-11-06]] */
-
-/** 카드 · 상세 레일 · 지도 초점이 주고받는 노드 한 개. `toN3` 가 그래프 응답에서 만든다. */
-type N3 = {
-  id: string; label: string; domain?: string; degree?: number;
-  kind?: string;              // concept | decision | episode | record | bridge | domain
-  gateway?: boolean; focus?: boolean;
-  ts?: string; historical?: boolean; conflict?: boolean;
-  x?: number; y?: number; z?: number;
-};
 
 // 2026-08-02 — **프레임 폐기(D34 개정)**. Grid(도메인별 미니 카드)·Matrix
 // (도메인×도메인 히트맵)는 발주자 지시로 제거했고, Compare(A ⇄ B)는 **Matrix 셀
@@ -140,7 +130,8 @@ export function repaintView(): void { themeRepaint?.(); }
 export async function renderView(el: HTMLElement, resume = false) {
   leaveView();
   const myGen = ++liveGen;
-  const restoreEntryCamera = resume && location.hash === "#view";
+  // 맨 `#view` 로 돌아온 마운트는 떠날 때 보던 범위(책갈피)로 연다.
+  const restoreEntryScope = resume && location.hash === "#view";
   const mountScope = viewScope();
   const accessJob = new AbortController();
   disposeView = () => accessJob.abort();
@@ -157,7 +148,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       if (myGen !== liveGen || mountScope.key !== viewScope().key) { accessJob.abort(); return; }
     }
   }
-  const bookmark = entryAccess && restoreEntryCamera ? viewSessionCache.last(entryAccess.session) : undefined;
+  const bookmark = entryAccess && restoreEntryScope ? viewSessionCache.last(entryAccess.session) : undefined;
   el.innerHTML = `
     <div id="view-canvas"></div>
     <!-- 하단 바에는 **지표만** 남는다(D71). 렌즈는 상단 바로 올라갔고,
@@ -251,7 +242,6 @@ export async function renderView(el: HTMLElement, resume = false) {
   if (!readRoute && bookmark?.domains.length)
     addr = parseViewUrl(formatViewUrl({ kind: "domains", domains: bookmark.domains }));
   // 주소의 `/as/<관점>` 칸은 읽지 않는다 — 보기는 나침반 하나다(view-prefs `VIEWPOINTS`).
-  const curPrefs = (): ViewPrefs => loadPrefs();
 
   function setMsg(html: string) {
     msg.innerHTML = html;
@@ -586,58 +576,25 @@ export async function renderView(el: HTMLElement, resume = false) {
 
 
   /** 그래프 읽기는 `/graph` 하나를 같은 인자로 부른다 — 한 함수로 접는다.
-   *
-   *  두 가지를 여기서 처리한다(2026-08-17, [[vinc.research.view-interaction-audit]]):
-   *  · **재사용**: 옵션 변경으로 다시 그릴 때는 서버가 필요 없다(좌표를 바꾸는 것은
-   *    layout·cone 뿐이고 그건 applyPrefs 가 `reuseGraph` 를 안 켠다). `layout_positions`
-   *    는 순수 함수라 같은 요청은 같은 응답이었고, 그 왕복(73~155ms)이 옵션 클릭 지연의
-   *    절반이었다.
-   *  · **순서**: 빠르게 연달아 show() 가 나면 늦게 도착한 옛 응답이 새 그림을 덮었다.
-   *    부를 때의 세대를 기억해, 돌아왔을 때 세대가 지났으면 `stale` 로 답한다. */
-  const cameraPrefs = (p: ViewPrefs) => JSON.stringify([p,
-    Math.round((canvas.clientWidth || 1200) / (canvas.clientHeight || 750) * 10) / 10]);
-  // 그래프 읽기와 가지 배치, 두 캐시의 상태는 `view-graph-loader.ts` 가 든다.
+   *  · **순서**: 빠르게 연달아 show() 가 나면 늦게 도착한 응답이 새 그림을 덮는다.
+   *    부를 때의 세대를 기억해, 돌아왔을 때 세대가 지났으면 `stale` 로 답한다.
+   *  읽기와 탭 보관소의 상태는 `view-graph-loader.ts` 가 든다. */
   const loader = createGraphLoader({
-    mountScope, accessJob, firstAccess, restoreEntryCamera, noLayout: true,
+    mountScope, accessJob, firstAccess,
     seq: () => showSeq,
     alive: () => myGen === liveGen && canvas.isConnected,
-    canvasRatio: () => Math.round((canvas.clientWidth || 1200) / (canvas.clientHeight || 750) * 10) / 10,
-    mounted: () => false,
-    cameraPrefs,
-    // 미리보기 그림은 3D 의 것이었다. 나침반은 전량이 올 때 한 번 그린다
-    showPreview: () => () => {},
-    restoreCameras: () => {},
-    // 중심에서 화면 뒤에서 가지 배치가 끝났다. 받은 그래프는 그대로 두고 배치만 갈아 끼운다.
-    layoutReady: () => {
-      loader.reuseGraph = true;
-      void show(trail[trail.length - 1], { keepPanel: true, keepDetail: true });
-    },
-    layoutFailed: () => showLayoutNote(COPY.view.layoutFailed),
   });
-  // 시간순 가지 대신 중심에서 배치를 그렸을 때의 한 줄 안내. 다음 화면이 그려지면 사라진다.
-  let layoutNote: HTMLElement | undefined;
-  function clearLayoutNote() { layoutNote?.remove(); layoutNote = undefined; }
-  function showLayoutNote(text: string) {
-    clearLayoutNote();
-    const note = document.createElement("div");
-    note.setAttribute("role", "status"); note.dataset.layoutNote = "true"; note.textContent = text;
-    note.style.cssText = "position:absolute;bottom:12px;left:12px;max-width:min(560px,70%);font-size:var(--fs-xs);"
-      + "color:hsl(var(--muted-foreground));pointer-events:none";
-    canvas.append(note); layoutNote = note;
-  }
-  let displayedScene: { key: string; prefs: string; domains: string[]; seq: number } | undefined;
-  const markDisplayed = (p: ViewPrefs, domains: string[]) => {
-    displayedScene = { key: loader.scopeKey!, prefs: cameraPrefs(p), domains: [...domains], seq: showSeq };
+  let displayedScene: { key: string; domains: string[] } | undefined;
+  const markDisplayed = (domains: string[]) => {
+    displayedScene = { key: loader.scopeKey!, domains: [...domains] };
   };
   const dispose = () => {
     const retained = loader.retained;
     if (retained && displayedScene?.key === retained.key
         && mountScope.key === viewScope().key && myGen === liveGen) {
-      viewSessionCache.remember(retained.session, retained.key, retained.revision,
-        { prefs: displayedScene.seq === showSeq ? cameraPrefs(curPrefs()) : displayedScene.prefs,
-          camera3: undefined }, displayedScene.domains);
+      viewSessionCache.remember(retained.session, retained.key, retained.revision, displayedScene.domains);
     }
-    accessJob.abort(); loader.abort(); loader.removePreview();
+    accessJob.abort(); loader.abort();
     // 떠 있는 카드는 표면 밖(`body`)에 붙어 있어서 그래프를 떠나도 혼자 남았다. 그래프의 것이니 함께 걷는다.
     closeFloatPanel();
     removalObserver.disconnect(); swapSurface();
@@ -650,9 +607,8 @@ export async function renderView(el: HTMLElement, resume = false) {
   removalObserver.observe(document.body, { childList: true, subtree: true });
   async function showGraphScope(scope: { domains?: string[] }) {
     const domains = scope.domains || [];
-    const p = curPrefs();
     setMsg(loaderBlock("branch", COPY.view.loading(domains.length ? 1 : 0)));
-    const res = await loader.fetchGraph(p, scope);
+    const res = await loader.fetchGraph(scope);
     if (res.stale) return;                        // 더 새 show() 가 이미 화면을 가져갔다
     swapSurface();
     // 도달 불가도 빈 상태와 **같은 상자**로 낸다. 붉은 배너만 다른 모양이면 같은 사정이
@@ -708,7 +664,7 @@ export async function renderView(el: HTMLElement, resume = false) {
         const prevDispose = disposeView; compassDisposeWrapped = true;
         disposeView = () => { prevDispose?.(); setSearchFilter(null); if (compass) { compass.destroy(); compass = null; } };
       }
-      markDisplayed(p, domains);
+      markDisplayed(domains);
       return;
     }
   }
@@ -1368,266 +1324,15 @@ export async function renderView(el: HTMLElement, resume = false) {
     }
   }
 
+  // 속성 절(그리기 · 편집 · 저장)은 `view-props-card.ts` 가 맡는다. 다시 읽기는 노드 맥락 메모를 비우고 이 열을 새로 그린다.
+  const { drawNodeProps } = createPropsCard({
+    detail,
+    reloadNode: (nd) => { ctxCache = null; return loadNodeSource(nd); },
+  });
+
   /** 상세 레일의 수치·관계 목록(T3·T4 · D45-V) — node-context 응답 하나가 정본이다.
    *  구 사이드카는 `links` 키 자체가 없다: 그때만 그래프 잔상(curEdges)으로 강등하고
    *  캡션도 정직하게 바꾼다(수치의 출처를 화면이 스스로 밝힌다). */
-  /** Agent 역할 계약을 읽는 순서: 임무 → 직함·팀 → 등급 → 금지·사람 몫 → 읽을 것·관문
-   *  → 나머지. 목록에 없는 키는 저장된 순서대로 뒤에 온다.
-   *  근거: [[vinc.canon.agent-roles §3]] */
-  const ROLE_PROP_ORDER = ["mission", "job_title", "team", "team_role", "tier", "rung",
-    "delegate_rung", "never", "person_only", "reads", "gates", "test_command", "repos",
-    "paths", "tools", "disallowed_tools", "isolation", "writes_graph"];
-
-  /** 속성(props) 절 — 노드가 가진 자유 속성을 **통째로** 보여 준다. 여태 이것을 보는
-   *  화면이 없었다: 서버는 props 를 실어 보냈는데 앱은 Ask 본문 한 줄과 Agent 목록의
-   *  직함·팀만 골라 썼다(발주자 지적 2026-09-25). 값은 생긴 대로 그린다(글·목록·객체).
-   *  비어 있으면 절을 그리지 않는다 — 빈 제목만 남기지 않는다.
-   *  근거: [[decision:lnb-picks-in-the-graph-open-the-floating-card-and-the-side-pane-2026-10-28]] */
-  /** 속성 절이 읽은 것 — 무슨 종인가(props 를 싣는가), 어느 판(rev)을 읽었는가. */
-  type PropsMeta = { kind?: string; rev?: number; canEdit?: boolean };
-
-  function drawNodeProps(nd: N3, props?: Record<string, unknown>, meta: PropsMeta = {}) {
-    const box = detail.querySelector<HTMLElement>("#node-props");
-    if (!box) return;
-    const P = props || {};
-    const keys = Object.keys(P);
-    // 편집할 수 있는 종이면 비어 있어도 절을 그린다 — 첫 속성을 더할 자리가 있어야 한다.
-    const editable = propsEditable(meta.kind) && meta.canEdit !== false;
-    if (keys.length === 0 && !editable) { box.innerHTML = ""; return; }
-    const role = isAgentRoleId(nd.id);
-    const order = role
-      ? [...ROLE_PROP_ORDER.filter((k) => k in P),
-         ...keys.filter((k) => !ROLE_PROP_ORDER.includes(k))]
-      : keys;
-    const V = COPY.ui.viewx;
-    box.innerHTML = `
-      <section class="node-props">
-        <div class="props-head">
-          <h3 class="hint rail-sec">${esc(V.propsTitle)}</h3>
-          ${editable ? `<button class="rail-x props-edit-btn" type="button"
-              aria-label="${esc(V.propsEditTip)}" data-tip="${esc(V.propsEditTip)}">${
-              esc(V.propsEdit)}</button>` : ""}
-        </div>
-        ${keys.length ? propsDl(P, order, 0) : `<p class="hint">${esc(V.propsEmpty)}</p>`}
-      </section>`;
-    // 역할의 이름은 직함이 있으면 그것이다 — Agent 레일(lnb.ts roleTitle)과 같은 규칙.
-    const job = role && typeof P.job_title === "string" ? P.job_title.trim() : "";
-    const h2 = detail.querySelector("h2");
-    if (job && h2) h2.textContent = job;
-    box.querySelector(".props-edit-btn")?.addEventListener("click",
-      () => openPropsEditor(nd, P, order, meta));
-  }
-
-  /** 속성 편집기 — 상세 열의 속성 절을 제자리에서 편집 줄로 바꾼다.
-   *
-   *  줄마다 이름 · 형식 · 값 · 지우기다(형식과 값의 변환은 `props-edit.ts`). 저장은
-   *  **전체 교체**다: 서버는 props 를 통째로 갈아 끼우므로 보내는 것이 늘 편집 결과
-   *  전체이고, 지운 줄이 곧 지운 속성이다.
-   *  저장 직전에 캐시를 거치지 않고 다시 읽어 **판(rev)이 편집을 시작할 때와 같을 때만**
-   *  쓴다. 그 사이 다른 창·에이전트·동기화가 고쳤으면 덮어쓰지 않고 멈춘다 — 필드 이력이
-   *  없어서 덮어쓰면 복구가 없다. owner 는 싣지 않는다(서버가 기존 소유자를 지키고,
-   *  계정 경로는 허브가 세션으로 정한다).
-   *  근거: [[decision:node-props-are-edited-in-the-document-pane-as-a-whole-and-checked-against-the-read-revision-2026-09-26]] */
-  function openPropsEditor(nd: N3, props: Record<string, unknown>, order: string[],
-                           meta: PropsMeta) {
-    const found = detail.querySelector<HTMLElement>("#node-props");
-    if (!found || !meta.kind) return;
-    const box: HTMLElement = found;     // 안쪽 함수들까지 좁힌 타입이 가도록
-    const V = COPY.ui.viewx;
-    let rows: PropRow[] = rowsFrom(props, order);
-    if (rows.length === 0) rows = [{ key: "", kind: "text", text: "" }];
-
-    const lines = (t: string) => Math.min(12, Math.max(2, t.split("\n").length));
-    const valueHTML = (r: PropRow) => {
-      if (r.kind === "bool") {
-        const on = r.text.trim() === "true";
-        return `<select class="props-val" aria-label="${esc(V.propsKinds.bool)}">
-          <option value="true"${on ? " selected" : ""}>${esc(V.propsYes)}</option>
-          <option value="false"${on ? "" : " selected"}>${esc(V.propsNo)}</option></select>`;
-      }
-      if (r.kind === "number")
-        return `<input class="props-val" type="text" inputmode="decimal" spellcheck="false"
-          value="${esc(r.text)}" aria-label="${esc(V.propsKinds.number)}">`;
-      const ph = r.kind === "list" ? ` placeholder="${esc(V.propsListHint)}"` : "";
-      const mono = r.kind === "json" ? " props-mono" : "";
-      return `<textarea class="props-val${mono}" rows="${lines(r.text)}" spellcheck="${
-        r.kind === "text"}"${ph} aria-label="${esc(V.propsKinds[r.kind])}">${esc(r.text)}</textarea>`;
-    };
-    const rowHTML = (r: PropRow, i: number) => `
-      <div class="props-erow" data-i="${i}">
-        <div class="props-erow-head">
-          <input class="props-key" type="text" value="${esc(r.key)}" spellcheck="false"
-                 autocomplete="off" placeholder="${esc(V.propsKeyPh)}" aria-label="${esc(V.propsKeyPh)}">
-          <select class="props-kind" aria-label="${esc(V.propsKindLabel)}">${PROP_KINDS.map((k) =>
-            `<option value="${k}"${k === r.kind ? " selected" : ""}>${esc(V.propsKinds[k])}</option>`)
-            .join("")}</select>
-          <button class="rail-x props-del" type="button" aria-label="${esc(V.propsRemove(r.key))}"
-                  data-tip="${esc(V.propsRemove(r.key))}">✕</button>
-        </div>
-        ${valueHTML(r)}
-        <p class="props-err" role="alert" hidden></p>
-      </div>`;
-
-    /** 화면의 줄을 그대로 읽는다 — 상태의 원천은 DOM 하나다(다시 그릴 때만 배열로 옮긴다). */
-    const collect = (): PropRow[] => [...box.querySelectorAll<HTMLElement>(".props-erow")]
-      .map((row) => ({
-        key: row.querySelector<HTMLInputElement>(".props-key")!.value,
-        kind: row.querySelector<HTMLSelectElement>(".props-kind")!.value as PropKind,
-        text: row.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
-          ".props-val")!.value,
-      }));
-    const paint = (focusRow?: number) => {
-      box.innerHTML = `
-        <section class="node-props props-editing">
-          <div class="props-head"><h3 class="hint rail-sec">${esc(V.propsTitle)}</h3></div>
-          <div class="props-rows">${rows.map(rowHTML).join("")}</div>
-          <button class="rail-x props-add" type="button">+ ${esc(V.propsAdd)}</button>
-          <p class="hint props-status" role="status"></p>
-          <div class="props-acts">
-            <button class="btn" type="button" data-props="cancel">${esc(V.propsCancel)}</button>
-            <button class="btn btn-primary" type="button" data-props="save">${esc(V.propsSave)}</button>
-          </div>
-        </section>`;
-      if (focusRow !== undefined)
-        box.querySelector<HTMLElement>(`.props-erow[data-i="${focusRow}"] .props-key`)?.focus();
-    };
-    const status = (html: string) => {
-      const el = box.querySelector<HTMLElement>(".props-status");
-      if (el) el.innerHTML = html;
-    };
-    // 편집기는 절 상자에 리스너를 단다. 접을 때 상자를 새로 갈아 끼워 그 리스너를 떼어
-    // 낸다 — 같은 상자를 다시 쓰면 다음 편집에서 클릭 하나가 두 번 처리된다.
-    const release = () => {
-      const fresh = box.cloneNode(false) as HTMLElement;
-      box.replaceWith(fresh);
-    };
-    const cancel = () => { release(); drawNodeProps(nd, props, meta); };
-    const reload = () => { release(); ctxCache = null; void loadNodeSource(nd); };
-
-    async function save() {
-      rows = collect();
-      const { props: next, errors } = propsFrom(rows);
-      box.querySelectorAll<HTMLElement>(".props-err").forEach((p) => { p.hidden = true; });
-      box.querySelectorAll(".props-erow").forEach((r) => r.removeAttribute("aria-invalid"));
-      if (errors.length) {
-        for (const er of errors) {
-          const row = box.querySelector<HTMLElement>(`.props-erow[data-i="${er.index}"]`);
-          const p = row?.querySelector<HTMLElement>(".props-err");
-          if (p) { p.textContent = V.propsErr[er.code]; p.hidden = false; }
-          row?.setAttribute("aria-invalid", "true");
-        }
-        box.querySelector<HTMLElement>(`.props-erow[data-i="${errors[0].index}"] .props-key`)?.focus();
-        return;
-      }
-      if (sameProps(next, props)) { status(esc(V.propsNoChange)); return; }
-      const acts = [...box.querySelectorAll<HTMLButtonElement>("button")];
-      acts.forEach((b) => { b.disabled = true; });
-      status(esc(V.propsSaving));
-      const conflict = () => {
-        status(`${esc(V.propsConflict)} <button class="rail-x props-reload" type="button">${
-          esc(V.propsReload)}</button>`);
-        box.querySelector(".props-reload")?.addEventListener("click", reload);
-        box.querySelector<HTMLButtonElement>('[data-props="cancel"]')!.disabled = false;
-      };
-      try {
-        // 판 확인은 서버가 쓰기와 같은 writer 안에서 한다(0.9.8 `expected_rev`): 편집을
-        // 시작한 판이 아니면 쓰지 않고 충돌로 답한다. 바뀐 키만 `props_patch` 로 싣는다.
-        // patch 로 못 싣는 편집(값으로서의 null)은 같은 판 조건으로 전체를 싣는다.
-        const patch = propsPatchOf(props, next);
-        const res: any = await api.editNode({ id: nd.id, type: meta.kind!,
-          ...(patch ? { props_patch: patch } : { props: next }) }, meta.rev ?? 0);
-        if (isWriteConflict(res)) { conflict(); return; }
-        if (res?.executed === false) throw new Error(res.error || "");
-        // ⚠ `merged` 는 실제로 들어간 것만 센다 — warnings 를 안 읽으면 건너뛴 쓰기
-        // (남이 소유한 id 등)를 성공으로 읽는다.
-        const merged = (res?.merged?.nodes?.created || 0) + (res?.merged?.nodes?.matched || 0);
-        if (!merged) throw new Error((res?.warnings || []).join(" · "));
-        release();
-        ctxCache = null;
-        await loadNodeSource(nd);       // 새 판으로 다시 그린다(편집 단추가 새 rev 를 든다)
-        // 역할의 직함·팀은 Agent 목록이 props 에서 읽는다 — 목록도 새로 읽는다.
-        if (isAgentRoleId(nd.id)) void refreshLnb({ quiet: true });
-      } catch (err: any) {
-        if (isWriteConflict(err)) { conflict(); return; }
-        acts.forEach((b) => { b.disabled = false; });
-        const why = messageOf(err, "").trim();
-        status(`<span class="error-banner">${esc(V.propsFail)}${why ? ` ${esc(why)}` : ""}</span>`);
-      }
-    }
-
-    paint();
-    box.addEventListener("click", (e) => {
-      const t = e.target as HTMLElement;
-      if (t.closest(".props-add")) {
-        rows = [...collect(), { key: "", kind: "text", text: "" }];
-        paint(rows.length - 1);
-      } else if (t.closest(".props-del")) {
-        const i = Number(t.closest<HTMLElement>(".props-erow")!.dataset.i);
-        rows = collect().filter((_, j) => j !== i);
-        paint();
-        box.querySelector<HTMLElement>(".props-add")?.focus();
-      } else if (t.closest('[data-props="cancel"]')) cancel();
-      else if (t.closest('[data-props="save"]')) void save();
-    });
-    box.addEventListener("change", (e) => {
-      const sel = (e.target as HTMLElement).closest<HTMLSelectElement>(".props-kind");
-      if (!sel) return;
-      const cur = collect();
-      const i = Number(sel.closest<HTMLElement>(".props-erow")!.dataset.i);
-      const prev = rows[i]?.kind ?? "text";
-      cur[i] = { ...cur[i], text: convertText(cur[i].text, prev, cur[i].kind) };
-      rows = cur;
-      paint();
-      box.querySelector<HTMLElement>(`.props-erow[data-i="${i}"] .props-val`)?.focus();
-    });
-    // Esc 는 편집만 접는다(열 전체를 닫는 전역 Esc 까지 가지 않게). Ctrl/Cmd+Enter 는 저장.
-    box.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") { e.stopPropagation(); cancel(); }
-      else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void save(); }
-    });
-    box.querySelector<HTMLElement>(".props-key")?.focus();
-  }
-
-  function propsDl(obj: Record<string, unknown>, keys: string[], depth: number): string {
-    return `<dl class="props-dl">${keys.map((k) => `
-      <div class="props-row"><dt>${esc(k)}</dt><dd>${propValueHTML(k, obj[k], depth)}</dd></div>`)
-      .join("")}</dl>`;
-  }
-
-  function propValueHTML(key: string, v: unknown, depth: number): string {
-    const none = `<span class="hint">${esc(COPY.ui.common.none)}</span>`;
-    if (v === null || v === undefined || v === "") return none;
-    if (typeof v === "string") {
-      // 여러 줄이거나 긴 글은 문서와 같은 렌더러로. 짧은 값은 글자 그대로 둔다.
-      return v.includes("\n") || v.length > 160
-        ? `<div class="doc-render">${renderMarkdown(v)}</div>` : inlineCode(v);
-    }
-    if (typeof v === "number" || typeof v === "boolean")
-      return `<span class="props-scalar">${esc(String(v))}</span>`;
-    if (Array.isArray(v)) {
-      if (v.length === 0) return none;
-      // `reads` 는 "이 순서로 읽어라"라서 번호를 단다. 나머지는 순서가 뜻이 아니다.
-      const tag = key === "reads" ? "ol" : "ul";
-      return `<${tag} class="props-list">${v.map((x) => `<li>${
-        typeof x === "object" && x !== null ? propValueHTML("", x, depth + 1)
-          : inlineCode(String(x))}</li>`).join("")}</${tag}>`;
-    }
-    if (typeof v === "object") {
-      const o = v as Record<string, unknown>;
-      const ks = Object.keys(o);
-      if (ks.length === 0) return none;
-      // 두 단을 넘으면 원문 JSON 으로 — 들여쓰기가 열 폭을 다 먹는다.
-      return depth >= 2
-        ? `<pre class="props-json">${esc(JSON.stringify(o, null, 2))}</pre>`
-        : propsDl(o, ks, depth + 1);
-    }
-    return esc(String(v));
-  }
-
-  /** 짧은 값 — 이스케이프하고 `코드` 표기만 살린다(역할 계약은 도구 이름을 그렇게 적는다). */
-  function inlineCode(s: string): string {
-    return esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
-  }
 
   /** 넓은 열의 연결 절 — 카드가 없는 자리라 관계를 여기 싣는다. 모양은 카드와 같다. */
   /** 항목 페이지(A2) — 넓은 열에서만. 효력 시작일(비었으면 노드가 말한 날로 한 번에 채우기),
@@ -2237,8 +1942,6 @@ export async function renderView(el: HTMLElement, resume = false) {
    *  캔버스를 투명하게 두고 나가면 revealSurface() 가 첫 그림을 페이드인한다. */
   function swapSurface() {
     displayedScene = undefined;
-    loader.removePreview();
-    clearLayoutNote();
     if (compass) { setSearchFilter(null); compass.destroy(); compass = null; }
     canvas.innerHTML = "";
     canvas.style.opacity = "0";
@@ -2277,7 +1980,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   async function show(level: Level,
                       opts?: { keepPanel?: boolean; keepCamera?: boolean; keepDetail?: boolean }) {
     const seq = ++showSeq;
-    loader.abort(); loader.removePreview();
+    loader.abort();
     setBusy(true, opts?.keepPanel ? 120 : 400);
     // 같은 범위를 다시 그리면 나침반이 보던 자리를 잇는다. 캡처는 파괴 **전에**.
     compassKeep = opts?.keepCamera && compass ? compass.snapshot() : null;
@@ -2312,7 +2015,6 @@ export async function renderView(el: HTMLElement, resume = false) {
       // 자리를 잡은 뒤 한 번 더 날리는 지연도 거기 있다. 여기서는 층만 그린다.
     } catch (e) {
       if (seq !== showSeq) return;
-      loader.removePreview();
       // 위 빈 상태와 같은 상자 — 예외 경로만 다른 모양으로 남기면
       // "왜 어떤 실패는 붉은 띠고 어떤 실패는 빈 상자인가"라는 질문만 남는다.
       //

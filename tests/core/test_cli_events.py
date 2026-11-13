@@ -18,11 +18,11 @@ def _args(**kw):
 
 
 def test_tool_request_maps_the_flags():
-    name, data, guard = cli_tools._tool_request(_args(since="3.4", role="agent-x",
+    name, data, guard = cli_tools.tool_request(_args(since="3.4", role="agent-x",
                                                       kind=["role.lesson_added"], limit=7))
     assert (name, guard) == ("vinc_events", None)
     assert data == {"since": "3.4", "role": "agent-x", "kinds": ["role.lesson_added"], "limit": 7}
-    assert cli_tools._tool_request(_args())[1] == {}
+    assert cli_tools.tool_request(_args())[1] == {}
 
 
 def test_tail_prints_one_line_per_event_and_follows_the_cursor(tmp_path):

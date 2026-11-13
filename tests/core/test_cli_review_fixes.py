@@ -120,7 +120,7 @@ def test_confirmation_is_never_asked_on_stdout_off_a_terminal(monkeypatch):
     out = io.StringIO()
     monkeypatch.setattr("sys.stdin", io.StringIO("yes\n"))
     with contextlib.redirect_stdout(out):
-        ok = cli_tools._confirm(Namespace(yes=False), "concept:x")
+        ok = cli_tools.confirm(Namespace(yes=False), "concept:x")
     assert ok is False and out.getvalue() == ""
 
 

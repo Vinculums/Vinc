@@ -7,7 +7,7 @@ import pytest
 from api import fragment, packfile, share
 from api import roles as role_read
 from api.cli import _write_role_export
-from api.cli_tools import _tool_request
+from api.cli_tools import tool_request
 from vinc_mcp import roles, tools
 from test_decision_type import _fresh_store, _restore
 
@@ -139,7 +139,7 @@ def test_cli_maps_the_verb_and_writes_the_skill_into_its_folder(tmp_path):
     from types import SimpleNamespace
     args = SimpleNamespace(cmd="role", rolecmd="export", owner=None, id="agent-release", format="skill",
                            out=str(tmp_path))
-    assert _tool_request(args) == ("vinc_role_export", {"role": "agent-release", "format": "skill"}, None)
+    assert tool_request(args) == ("vinc_role_export", {"role": "agent-release", "format": "skill"}, None)
     written = _write_role_export(export("skill"), str(tmp_path))
     assert (tmp_path / "agent-release" / "SKILL.md").read_text(encoding="utf-8").startswith("---\nname:")
     assert written["bytes"] > 0 and "content" not in written

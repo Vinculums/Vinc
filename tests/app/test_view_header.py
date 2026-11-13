@@ -17,44 +17,18 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-HTML = (ROOT / "app" / "index.html").read_text(encoding="utf-8")
-CSS = (ROOT / "app" / "src" / "app.css").read_text(encoding="utf-8")
-VIEW = (ROOT / "app" / "src" / "surfaces" / "view.ts").read_text(encoding="utf-8")
-TOPBAR = (ROOT / "app" / "src" / "topbar.ts").read_text(encoding="utf-8")
-HOME = (ROOT / "app" / "src" / "surfaces" / "home.ts").read_text(encoding="utf-8")
-DOCOPTS = (ROOT / "app" / "src" / "doc-options.ts").read_text(encoding="utf-8")
+from _src import css_block, css_rule, cut, read
 
-
-def _block(src: str, start: str, end: str) -> str:
-    a = src.index(start)
-    return src[a:src.index(end, a)]
+HTML = read("index.html")
+CSS = read("app.css")
+VIEW = read("view")
+TOPBAR = read("topbar")
+HOME = read("home")
+DOCOPTS = read("doc-options")
 
 
-def _rule(selector: str) -> str:
-    m = re.search(r"(?m)^" + re.escape(selector) + r" \{[^}]*\}", CSS)
-    assert m, f"{selector} 규칙이 없다"
-    return m.group(0)
-
-
-def _at(prelude: str) -> str:
-    """`@media …` / `@container …` 블록의 본문(중괄호 짝을 센다)."""
-    a = CSS.index(prelude)
-    i = CSS.index("{", a)
-    depth = 0
-    for j in range(i, len(CSS)):
-        if CSS[j] == "{":
-            depth += 1
-        elif CSS[j] == "}":
-            depth -= 1
-            if depth == 0:
-                return CSS[i + 1:j]
-    raise AssertionError(f"{prelude} 가 닫히지 않는다")
-
-
-HEADER = _block(HTML, '<header id="topbar">', "</header>")
+HEADER = cut(HTML, '<header id="topbar">', "</header>")
 
 
 class HeaderOrder(unittest.TestCase):
@@ -70,13 +44,13 @@ class HeaderOrder(unittest.TestCase):
         self.assertLess(find, tools)
         self.assertLess(tools, switch)
         self.assertLess(switch, docopts)
-        trail = _block(HEADER, '<div class="tb-trail">', '<div id="tb-right">')
+        trail = cut(HEADER, '<div class="tb-trail">', '<div id="tb-right">')
         self.assertIn('id="tb-graph-tools"', trail)
         self.assertIn('id="tb-docopts"', trail)
         self.assertNotIn("tb-lens", HTML)
 
     def test_the_switch_has_two_segments(self):
-        sw = _block(HEADER, 'id="tb-switch"', "</div>")
+        sw = cut(HEADER, 'id="tb-switch"', "</div>")
         self.assertIn('id="tb-to-docs"', sw)
         self.assertIn('id="tb-to-graph"', sw)
 
@@ -87,17 +61,17 @@ class HeaderOrder(unittest.TestCase):
         self.assertNotIn("tb-viewpoints", HTML)
 
     def test_document_tree_does_not_hold_the_segment(self):
-        lnb = _block(HTML, '<aside id="lnb"', "</aside>")
+        lnb = cut(HTML, '<aside id="lnb"', "</aside>")
         self.assertNotIn("tb-viewpoints", lnb)
 
 
 class HeaderIsTheTopOfTheCard(unittest.TestCase):
     def test_header_and_surface_are_two_rows_of_one_card(self):
-        self.assertIn("row-gap: 0", _rule("#shell"))
-        self.assertIn("grid-row: 1", _rule("#topbar"))
-        self.assertIn("grid-row: 2", _rule("#surface"))
-        self.assertIn("grid-row: 2", _rule("#docpane-slot"))
-        self.assertIn("border-top: 0", _rule("#surface"))
+        self.assertIn("row-gap: 0", css_rule(CSS, "#shell"))
+        self.assertIn("grid-row: 1", css_rule(CSS, "#topbar"))
+        self.assertIn("grid-row: 2", css_rule(CSS, "#surface"))
+        self.assertIn("grid-row: 2", css_rule(CSS, "#docpane-slot"))
+        self.assertIn("border-top: 0", css_rule(CSS, "#surface"))
 
     def test_header_height_is_the_lnb_top_row_formula(self):
         # 테두리 1 + 8 + 컨트롤 36 + 8 + 아래 선 1 — LNB 맨 위 줄과 같은 식.
@@ -110,19 +84,19 @@ class HeaderIsTheTopOfTheCard(unittest.TestCase):
     def test_nothing_steps_around_the_header_any_more(self):
         self.assertIn("--chrome-top: 0px;", CSS)
         self.assertNotIn("function trackChromeTop()", TOPBAR)
-        self.assertIn("top: var(--shell-gap); bottom: var(--shell-gap); right: var(--shell-gap);", _rule("#docpane"))
+        self.assertIn("top: var(--shell-gap); bottom: var(--shell-gap); right: var(--shell-gap);", css_rule(CSS, "#docpane"))
 
 
 class OneColumn(unittest.TestCase):
     def test_header_lead_follows_the_column_and_trail_the_card_edge(self):
         # 본문은 칼럼이다. 머리의 앞자리는 그 칼럼의 첫 글자선에(좁으면 본문 여백), 뒤 묶음은 카드 안쪽 끝에 선다.
         # 그래프는 본문이 카드 전체를 써서 앞자리도 카드 안쪽 끝이다
-        self.assertIn("max-width: calc(var(--page-col) + var(--page-inset) * 2)", _rule(".home"))
-        col = _rule(".tb-col")
+        self.assertIn("max-width: calc(var(--page-col) + var(--page-inset) * 2)", css_rule(CSS, ".home"))
+        col = css_rule(CSS, ".tb-col")
         self.assertIn("calc((100cqi - var(--page-col) - var(--page-inset) * 2) / 2 + var(--page-inset))", col)
         self.assertIn("max(var(--page-inset),", col)
         self.assertIn("padding: 0 var(--head-inset)", col)
-        self.assertIn("padding-left: var(--head-inset)", _rule('#shell[data-surface="view"] .tb-col'))
+        self.assertIn("padding-left: var(--head-inset)", css_rule(CSS, '#shell[data-surface="view"] .tb-col'))
 
     def test_the_header_leaves_room_for_the_body_scrollbar(self):
         bars = re.findall(r"(?m)^#topbar \{[^}]*\}", CSS)
@@ -130,8 +104,8 @@ class OneColumn(unittest.TestCase):
         self.assertIn("function trackGutter()", TOPBAR)
 
     def test_search_is_as_wide_as_the_reading_panel(self):
-        self.assertIn("width: var(--aside-w)", _rule(".tb-find-open"))
-        self.assertIn("var(--aside-w)", _rule(".home-read-grid"))
+        self.assertIn("width: var(--aside-w)", css_rule(CSS, ".tb-find-open"))
+        self.assertIn("var(--aside-w)", css_rule(CSS, ".home-read-grid"))
 
     def test_the_breadcrumb_lives_in_the_header(self):
         self.assertIn("setTopbarLead(", HOME)
@@ -151,7 +125,7 @@ class HeaderEnd(unittest.TestCase):
         self.assertNotIn("lensSlot", TOPBAR + VIEW)
 
     def test_the_options_panel_keeps_its_own_width(self):
-        self.assertIn("width: var(--lens-panel-w)", _rule("#doc-opts-panel"))
+        self.assertIn("width: var(--lens-panel-w)", css_rule(CSS, "#doc-opts-panel"))
 
     def test_documents_get_their_own_options(self):
         self.assertIn("mountDocOptions();", TOPBAR)
@@ -166,7 +140,7 @@ class HeaderEnd(unittest.TestCase):
         self.assertIn(".doc-render .cm-r-h1 { font-size: 1.5em; }", CSS)
 
     def test_view_tools_corner_is_untouched(self):
-        self.assertIn("right: calc(var(--rail-w, 0px) + var(--space-6, 1.5rem));", _rule("#view-tools"))
+        self.assertIn("right: calc(var(--rail-w, 0px) + var(--space-6, 1.5rem));", css_rule(CSS, "#view-tools"))
 
 
 class NarrowHeaderFolds(unittest.TestCase):
@@ -174,10 +148,10 @@ class NarrowHeaderFolds(unittest.TestCase):
         self.assertIn("container: topbar / inline-size", CSS)
 
     def test_switch_names_fold_before_search_does(self):
-        mid = _at("@container topbar (max-width: 760px)")
+        mid = css_block(CSS, "@container topbar (max-width: 760px)")
         self.assertIn(".tb-seg-name { display: none; }", mid)
         self.assertRegex(mid, r"\.tb-find-open \{[^}]*width: auto")
-        narrow = _at("@container topbar (max-width: 480px)")
+        narrow = css_block(CSS, "@container topbar (max-width: 480px)")
         self.assertIn(".tb-find-label { display: none; }", narrow)
 
     def test_no_viewport_wrap_left_behind(self):

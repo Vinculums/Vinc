@@ -12,18 +12,12 @@
 from __future__ import annotations
 
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-APP = ROOT / "app" / "src"
-
-
-def _read(rel: str) -> str:
-    return (APP / rel).read_text(encoding="utf-8")
+from _src import read
 
 
 class ViewWiringTests(unittest.TestCase):
-    view = _read("surfaces/view.ts")
+    view = read("view")
 
     def test_그래프_탭은_끌어_잇지_않는다(self):
         # 끌어 잇기는 3D 렌더러의 손짓이었다. 나침반에는 없으므로 그래프 탭은 그 손잡이를 넘기지 않는다
@@ -31,7 +25,7 @@ class ViewWiringTests(unittest.TestCase):
 
     def test_쓰는_길은_connect_ts_하나(self):
         """앱 전체에서 엣지를 쓰는 잇기 호출은 관계 고르기 안의 하나뿐이다."""
-        c = _read("connect.ts")
+        c = read("connect")
         self.assertEqual(c.count("api.ingestFragment("), 1)
         picker = c[c.index("function openRelationPicker"):]
         self.assertIn("api.ingestFragment(", picker)
@@ -42,9 +36,9 @@ class ViewWiringTests(unittest.TestCase):
 
     def test_없는_손짓을_가르치지_않는다(self):
         # 고르기 띠의 "Alt 를 누른 채 끌어도 이을 수 있어요" 줄은 3D 렌더러의 손짓을 가르쳤다
-        self.assertNotIn("dragHint", _read("connect.ts"))
-        self.assertNotIn("dragHint", _read("copy.ts"))
-        self.assertNotIn("pick-drag", _read("app.css"))
+        self.assertNotIn("dragHint", read("connect"))
+        self.assertNotIn("dragHint", read("copy"))
+        self.assertNotIn("pick-drag", read("app.css"))
 
 
 if __name__ == "__main__":

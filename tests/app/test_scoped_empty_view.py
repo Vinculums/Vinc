@@ -12,51 +12,40 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-APP = ROOT / "app" / "src"
-
-
-def _read(rel: str) -> str:
-    return (APP / rel).read_text(encoding="utf-8")
-
-
-def _body(src: str, head: str) -> str:
-    body = src[src.index(head):]
-    return body[:body.index("\n}")]
+from _src import func, read
 
 
 class ScopedEmptyViewTests(unittest.TestCase):
     def test_View_의_빈_자리는_범위를_보고_고른다(self):
         """지도의 빈 자리는 `emptyFor(domains)` 를 거친다. 옛 식으로 남으면 같은 거짓말이
         되살아난다."""
-        view = _read("surfaces/view.ts")
+        view = read("view")
         self.assertEqual(len(re.findall(r"setMsg\(emptyFor\(domains\)\)", view)), 1)
         self.assertNotIn("emptyInviteHtml(COPY.view.idle));", view.replace(
             "      : emptyInviteHtml(COPY.view.idle);", ""))
-        helper = _body(view, "  function emptyFor(")
+        helper = func(view, "emptyFor")
         self.assertIn("COPY.view.scopeEmpty", helper)
         self.assertIn("{ scoped: true }", helper)
 
     def test_좁힌_범위에는_전체로_나가는_길이_있다(self):
-        view = _read("surfaces/view.ts")
+        view = read("view")
         self.assertIn('msg.querySelector("[data-ei-all]")', view)
         self.assertIn("trail.length = 1;\n      void show(trail[0]);",
                       view.replace("\r\n", "\n"))
-        invite = _read("empty-invite.ts")
-        self.assertIn("data-ei-all", _body(invite, "export function emptyInviteHtml"))
+        invite = read("empty-invite")
+        self.assertIn("data-ei-all", func(invite, "emptyInviteHtml"))
 
     def test_문서는_있고_개념은_없다는_말은_스토어_전체가_빌_때만(self):
         """좁힌 범위에서는 문구를 안 바꾸고, 안 좁혔어도 노드가 하나라도 있으면 안 바꾼다."""
-        wire = _body(_read("empty-invite.ts"), "export function wireEmptyInvite")
+        wire = func(read("empty-invite"), "wireEmptyInvite")
         self.assertIn('box.hasAttribute("data-scoped")', wire)
         self.assertIn("api.navTree(cfg.owner)", wire)
         self.assertIn("counts?.kinds", wire)
         self.assertIn("if (!docs || nodes) return;", wire)
 
     def test_새_문구가_두_언어에_있다(self):
-        copy = _read("copy.ts")
+        copy = read("copy")
         self.assertEqual(copy.count("scopeEmpty:"), 2)
         self.assertEqual(copy.count("seeAllCta:"), 2)
 

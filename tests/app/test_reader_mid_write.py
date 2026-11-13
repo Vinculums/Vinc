@@ -30,22 +30,14 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "app" / "src"
-API = (SRC / "api.ts").read_text(encoding="utf-8")
-ED = (SRC / "doc-editor.ts").read_text(encoding="utf-8")
-VIEW = (SRC / "surfaces" / "view.ts").read_text(encoding="utf-8")
-COPY = (SRC / "copy.ts").read_text(encoding="utf-8")
+from _src import ROOT, at, read
+
+API = read("api")
+ED = read("doc-editor")
+VIEW = read("view")
+COPY = read("copy")
 DOCSTORE = (ROOT / "api" / "docstore.py").read_text(encoding="utf-8")
-
-
-def at(src: str, needle: str) -> int:
-    """`str.index` 의 ValueError 대신 무엇이 없어졌는지 말하는 실패를 낸다."""
-    i = src.find(needle)
-    assert i >= 0, f"소스에서 사라졌다: {needle}"
-    return i
 
 
 def branch(src: str, mount: str) -> str:

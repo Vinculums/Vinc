@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from store import embedded_backend as eb  # noqa: E402
 
-_DRIVER, _ = eb._import_driver()
+_DRIVER, _ = eb.import_driver()
 _HANGUL_TAIL = "concept:재현-가능한-측정"
 
 

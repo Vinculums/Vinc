@@ -14,9 +14,9 @@ from api.server import VincApp, make_server
 from store.backend import open_store
 from store.config import StoreConfig
 from store import pkns
-from store.embedded_backend import _import_driver
+from store.embedded_backend import import_driver
 
-pytestmark = pytest.mark.skipif(_import_driver()[0] is None, reason='native driver unavailable')
+pytestmark = pytest.mark.skipif(import_driver()[0] is None, reason='native driver unavailable')
 
 
 @pytest.fixture

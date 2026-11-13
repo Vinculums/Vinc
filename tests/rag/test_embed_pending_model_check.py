@@ -19,9 +19,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from api import docstore  # noqa: E402
 from api.auth import SessionAuth  # noqa: E402
 from api.server import VincApp  # noqa: E402
-from store.embedded_backend import _import_driver  # noqa: E402
+from store.embedded_backend import import_driver  # noqa: E402
 
-_DRIVER, _NAME = _import_driver()
+_DRIVER, _NAME = import_driver()
 
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")

@@ -21,14 +21,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from store import pkns  # noqa: E402
-from store.embedded_backend import _import_driver  # noqa: E402
+from store.embedded_backend import import_driver  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _pkseed import _seed  # noqa: E402  (스토어 직접 시드용 — tests/_pkseed.py)
 from store.lexical import lex_text  # noqa: E402  (직접 심는 청크도 put_doc 처럼 lex 를 쓴다)
 
 
-_DRIVER, _NAME = _import_driver()
+_DRIVER, _NAME = import_driver()
 
 
 @unittest.skipIf(_DRIVER is None, "임베디드 드라이버(ladybug) 미설치 — e2e skip")
@@ -1525,7 +1525,7 @@ class TwoStoreTimeRoundtrip(unittest.TestCase):
         from api import sync
         from api import revstamp
         self._diverged_pair("2019-01-01T00:00:00.000Z", "2099-01-01T00:00:00.000Z")
-        revstamp._meta_set(self.a, sync._ONESHOT_KEY, "done")
+        revstamp.meta_set(self.a, sync._ONESHOT_KEY, "done")
         sync.set_cursor(self.a, "push", 999)
         sync.set_cursor(self.a, "pull", 999)
 

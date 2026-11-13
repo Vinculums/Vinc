@@ -17,13 +17,13 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
-SRC = Path(__file__).resolve().parents[2] / "app" / "src"
+from _src import SRC, read
+
 #: ⚠ 주석을 먼저 걷는다. 안 걷으면 규칙 **앞**의 주석 본문이 선택자로 딸려 들어와
 #: `select` 규칙이 "…주석… select" 로 읽히고, 세 검사가 한꺼번에 거짓 실패한다
 #: (첫 판이 정확히 그랬다). 줄 수는 안 쓰므로 통째로 지워도 된다.
-CSS = re.sub(r"/\*.*?\*/", "", (SRC / "app.css").read_text(encoding="utf-8"), flags=re.S)
+CSS = re.sub(r"/\*.*?\*/", "", read("app.css"), flags=re.S)
 
 #: 모양을 정하는 선언. 배치(width·min-width·margin·flex 등)는 여기 없다 — 그것은
 #: 규칙마다 달라도 되고, 실제로 세 곳이 각자 다른 이유로 갖고 있다.

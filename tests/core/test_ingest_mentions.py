@@ -17,9 +17,9 @@ from api import docstore as ds  # noqa: E402
 from api import fragment  # noqa: E402
 from engines import mentions_link as ml  # noqa: E402
 from store import pkns  # noqa: E402
-from store.embedded_backend import _import_driver  # noqa: E402
+from store.embedded_backend import import_driver  # noqa: E402
 
-_DRIVER, _ = _import_driver()
+_DRIVER, _ = import_driver()
 A, B = "user:a", "user:b"
 CASH = "Keep a cash buffer of about thirty percent before adding risk."
 BOND = "A bond ladder spreads maturities so that cash comes back every year."

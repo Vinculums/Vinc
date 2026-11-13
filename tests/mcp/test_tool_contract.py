@@ -441,9 +441,10 @@ def test_degraded_states_are_named_not_just_listed():
 
 
 def test_the_reference_says_what_the_default_shape_cuts_and_what_to_cite():
-    """기본 본문은 search·neighbors 의 긴 제목만 자르고 search node hit 의 id 와 같은 cite_id 만 뺀다.
-    그 규칙은 두 도구의 `raw` 참조문만 말하고, brief·vinc_node 의 `raw` 참조문은 공용 문장 그대로다."""
-    from vinc_mcp.tools import TOOLS, _RAW_PROP, _RAW_PROP_TITLES
+    """기본 본문은 search·neighbors 의 긴 제목과 brief 의 문서·관계 제목을 자르고, search node hit 의 id 와
+    같은 cite_id 만 뺀다(brief 는 cite_id 를 빼지 않는다). search·neighbors 의 규칙은 두 도구의 `raw`
+    참조문이, brief 의 규칙은 brief 의 `raw` 참조문이 말하고, vinc_node 의 `raw` 참조문은 공용 문장 그대로다."""
+    from vinc_mcp.tools import TOOLS, _RAW_PROP, _RAW_PROP_BRIEF, _RAW_PROP_TITLES
     assert "a node hit without one: cite its `id`" in REF["vinc_search"]
     assert "cite `cite_id`." in REF["vinc_brief"] and "where it is missing" not in REF["vinc_brief"]
     raw = _RAW_PROP_TITLES["x-reference"]
@@ -456,7 +457,13 @@ def test_the_reference_says_what_the_default_shape_cuts_and_what_to_cite():
     props = {t["name"]: t["inputSchema"]["properties"]["raw"] for t in TOOLS
              if "raw" in t.get("inputSchema", {}).get("properties", {})}
     assert props["vinc_search"] is _RAW_PROP_TITLES and props["vinc_neighbors"] is _RAW_PROP_TITLES
-    assert props["vinc_brief"] is _RAW_PROP and props["vinc_node"] is _RAW_PROP
+    assert props["vinc_brief"] is _RAW_PROP_BRIEF and props["vinc_node"] is _RAW_PROP
+    brief = _RAW_PROP_BRIEF["x-reference"]
+    assert brief.startswith(_RAW_PROP["x-reference"]) and _RAW_PROP_BRIEF["description"] == _RAW_PROP["description"]
+    for phrase in ("longer than 120 characters", "quotes source", "links items title", "…=cut title.",
+                   "candidate titles, node.title and every cite_id stay whole", "widened when false",
+                   "one_liner when body_src is doc", "body_cite"):
+        assert phrase in brief and phrase not in _RAW_PROP["x-reference"], phrase
 
 
 class _AnswerBridge:

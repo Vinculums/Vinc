@@ -52,6 +52,18 @@ class VerifyHostedCorePknsMatchesCi(unittest.TestCase):
         self.assertIsNotNone(self.ci.get("timeout-minutes"))
         self.assertEqual(self.hosted.get("timeout-minutes"), self.ci.get("timeout-minutes"))
 
+    def test_every_job_has_a_timeout(self):
+        # 제한 시간이 없는 잡은 멈추면 러너 기본 여섯 시간 동안 GitHub 분을 쓴다.
+        missing = [name for name, job in self.workflow["jobs"].items()
+                   if not isinstance(job.get("timeout-minutes"), int)]
+        self.assertEqual(missing, [])
+
+    def test_the_core_timeout_is_the_same_as_ci_core(self):
+        ci_core = _load("ci.yml")["jobs"]["core"]
+        self.assertIsNotNone(ci_core.get("timeout-minutes"))
+        self.assertEqual(self.workflow["jobs"]["core"].get("timeout-minutes"),
+                         ci_core.get("timeout-minutes"))
+
     def test_it_still_runs_only_by_hand(self):
         # yaml 1.1 은 `on:` 열쇠를 True 로 읽는다.
         triggers = self.workflow.get("on", self.workflow.get(True))

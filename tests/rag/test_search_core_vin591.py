@@ -324,7 +324,7 @@ def test_d17_keep_vector_index_accepts_the_sibling_truthy_set(monkeypatch, value
     eb._keep_vec_engine_ok.cache_clear()
     monkeypatch.setenv("VINC_KEEP_VECTOR_INDEX", value)
     monkeypatch.setattr(eb, "_KEEP_VEC_INDEX_ENGINES",
-                        (str(getattr(eb._import_driver()[0], "__version__", "") or ""),))
+                        (str(getattr(eb.import_driver()[0], "__version__", "") or ""),))
     try:
         assert eb.keep_vector_index() is expect
     finally:

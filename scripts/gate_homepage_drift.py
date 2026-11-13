@@ -57,6 +57,11 @@ API_PAGE = "/docs/api/"
 START, END = "<!-- tool-reference:start -->", "<!-- tool-reference:end -->"
 #: 홈페이지 build_page.py 가 연산으로 세는 메서드.
 METHODS = ("get", "post", "put", "patch", "delete")
+#: 모든 도구가 같이 쓰는 인자. 홈페이지 build_tool_reference.py 의 COMMON 과 같다: 그 뜻은 페이지
+#: 위쪽(#common-params)에 한 번만 홈페이지가 직접 쓰고, 표의 칸에는 아래 한 줄만 싣는다. 그래서
+#: Vinc 쪽 뜻이 바뀌어도 홈페이지의 --check 는 빨개지지 않는다.
+COMMON = {"space"}
+COMMON_MEANING = "Which graph to act on; see common parameters."
 
 _TAG = re.compile(r"<[^>]+>")
 _WS = re.compile(r"\s+")
@@ -91,7 +96,8 @@ def tools_expected(reference: dict) -> list[dict]:
         mode = ("read-only" if ann.get("readOnlyHint") else
                 "destructive" if ann.get("destructiveHint") else "writes")
         params = [(p["name"], bool(p.get("required")), str(p.get("type") or ""),
-                   _plain(p.get("reference") or p.get("description") or ""))
+                   COMMON_MEANING if p["name"] in COMMON
+                   else _plain(p.get("reference") or p.get("description") or ""))
                   for p in tool.get("params") or []]
         out.append({"name": tool["name"], "mode": mode, "summary": _plain(tool.get("summary", "")),
                     "reference": _plain(tool.get("reference", "")), "params": params})
@@ -341,10 +347,14 @@ def _tool_section(t: dict) -> str:
         return _TICKS.sub(r"<code>\1</code>", html.escape(s, quote=False))
     ann = t.get("annotations") or {}
     mode = "read-only" if ann.get("readOnlyHint") else "destructive" if ann.get("destructiveHint") else "writes"
+    def meaning(p: dict) -> str:
+        if p["name"] in COMMON:
+            return 'Which graph to act on; see <a href="#common-params">common parameters</a>.'
+        return inline(p.get("reference") or p.get("description") or "")
     rows = "".join(f'<tr><td><code>{html.escape(p["name"])}</code>'
                    f'{" (required)" if p.get("required") else ""}</td>'
                    f'<td>{html.escape(str(p.get("type") or ""))}</td>'
-                   f'<td>{inline(p.get("reference") or p.get("description") or "")}</td></tr>'
+                   f'<td>{meaning(p)}</td></tr>'
                    for p in t.get("params") or [])
     table = (f'<div class="rtable"><table><thead><tr><th>Parameter</th><th>Type</th><th>Meaning</th>'
              f'</tr></thead><tbody>{rows}</tbody></table></div>') if rows else ""
@@ -373,7 +383,8 @@ def selftest() -> int:
     tools = {"tools": [
         {"name": "vinc_search", "summary": "Search `the` graph.", "reference": "Finds <things> & more.",
          "annotations": {"readOnlyHint": True},
-         "params": [{"name": "query", "type": "string", "required": True, "reference": "What to find."}]},
+         "params": [{"name": "query", "type": "string", "required": True, "reference": "What to find."},
+                    {"name": "space", "type": "string", "reference": "Omit for your graph; pass a team id."}]},
         {"name": "vinc_ingest", "summary": "Write nodes.", "reference": "Merges by id.",
          "annotations": {}, "params": [{"name": "nodes", "type": "array", "required": True,
                                         "reference": "Nodes."}]},
@@ -408,6 +419,11 @@ def selftest() -> int:
             {"name": "space", "type": "string", "reference": "Team."}), {"tool-params"}),
         ("도구 표시가 바뀌었다", lambda t, a: t["tools"][1].update(annotations={"destructiveHint": True}),
          {"tool-field"}),
+        # 공통 인자의 뜻은 홈페이지가 표에 싣지 않으므로 바뀌어도 차이가 아니다. 형식은 싣는다.
+        ("공통 인자의 뜻이 바뀌었다", lambda t, a: t["tools"][0]["params"][1].update(reference="Other."),
+         set()),
+        ("공통 인자의 형식이 바뀌었다", lambda t, a: t["tools"][0]["params"][1].update(type="object"),
+         {"tool-params"}),
         ("REST 경로가 늘었다", lambda t, a: a["paths"].update(
             {"/v1/roles": {"get": {"responses": {"200": {}}}}}), {"op-missing"}),
         ("REST 경로가 빠졌다", lambda t, a: a["paths"].pop("/v1/nodes/{id}"), {"op-extra"}),

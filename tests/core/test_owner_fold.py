@@ -25,9 +25,9 @@ sys.path.insert(0, str(ROOT))
 
 from api import owner_fold as of          # noqa: E402
 from store import pkns                    # noqa: E402
-from store.embedded_backend import _import_driver  # noqa: E402
+from store.embedded_backend import import_driver  # noqa: E402
 
-_DRIVER, _NAME = _import_driver()
+_DRIVER, _NAME = import_driver()
 L, T = of.LEGACY, of.CANON
 
 

@@ -13,8 +13,8 @@ from store.backend import open_store
 from store.config import load_config
 
 try:
-    from store.embedded_backend import _import_driver
-    _DRIVER, _ = _import_driver()
+    from store.embedded_backend import import_driver
+    _DRIVER, _ = import_driver()
 except Exception:
     _DRIVER = None
 

@@ -161,15 +161,24 @@ _RAW_PROP = {"type": "boolean", "description": (
         "vinc_node result carries a shorter `omitted` (it keeps validity whenever it is known). raw:true (or \"true\") returns the result "
         "unchanged. REST v1 and the CLI always return the full result."
     ))}
-#: vinc_search·vinc_neighbors 의 `raw`. 두 도구만 긴 제목을 자르므로 그 규칙을 공용 설명 뒤에 덧붙인다.
-#: ⚠ vinc_brief·vinc_node 는 `_RAW_PROP` 그대로다(제목을 자르지 않는다).
+#: vinc_search·vinc_neighbors 의 `raw`. 두 도구는 모든 제목 칸을 자르므로 그 규칙을 공용 설명 뒤에 덧붙인다.
+#: vinc_brief 는 `_RAW_PROP_BRIEF`, vinc_node 는 `_RAW_PROP` 그대로다(제목을 자르지 않는다).
 _RAW_PROP_TITLES = {**_RAW_PROP, "x-reference": _RAW_PROP["x-reference"] + (
     " A title longer than 120 characters is cut to at most 120 ending in \"…\", at a word boundary "
     "when one is in its second half: neighbors row title, search node_hits title and rows "
-    "doc_title; vinc_brief and vinc_node never cut a title, so read the node for the whole title. A "
+    "doc_title; vinc_node never cuts a title and vinc_brief keeps candidate and node titles whole, "
+    "so read the node for the whole title. A "
     "neighbors result with a cut title carries a short `omitted`. Search sends a row's doc_title "
     "only on the first row of each doc_id in the response and leaves out a node hit's cite_id "
     "when it equals its id (cite `id` then).")}
+#: vinc_brief 의 `raw`. 문서·관계 제목 자르기, `widened:false`, choose 재료의 겹친 본문을 덧붙인다.
+_RAW_PROP_BRIEF = {**_RAW_PROP, "x-reference": _RAW_PROP["x-reference"] + (
+    " Brief also cuts a document or relation title longer than 120 characters the same way "
+    "(quotes source, excerpts doc_title in the result and in candidate_material, links items "
+    "title) and then adds \"…=cut title.\" to `omitted`; candidate titles, node.title and every "
+    "cite_id stay whole. Quotes leave out widened when false. candidate_material leaves out "
+    "one_liner when body_src is doc and it is exactly the text of its first excerpt, and "
+    "body_cite when it is that excerpt's doc_title · section.")}
 
 # F1 개방층: type enum 을 제거했다 — 서버가 라우팅 SSoT 이며 이제 *모든* 타입을
 # 영속한다(6종 전용 테이블 / 그 외 Entity·TYPED 캐리어). 스키마 수준 거부는
@@ -1393,7 +1402,7 @@ TOOLS: list[dict] = [
                              "description": "How many canonical document excerpts to "
                                             "attach to a resolved node."},
             "historical": _HISTORICAL_PROP,
-            "as_of": _AS_OF_SEARCH_PROP, "raw": _RAW_PROP, "kinds": _KINDS_PROP,
+            "as_of": _AS_OF_SEARCH_PROP, "raw": _RAW_PROP_BRIEF, "kinds": _KINDS_PROP,
             "owner": {"type": "string"},
         }, "required": ["query"]},
         "run": _t_brief,
@@ -2713,8 +2722,9 @@ SHRINKERS = {"vinc_search": _shrink_search_result,
 # rpc 의 tools/call 결과에만 건다. 핸들러 출력은 그대로라 REST v1·SDK·`vinc call`·평가 하네스의
 # cli·v1 경로는 꼴이 바뀌지 않는다. `raw` 가 참(true 나 문자열 "true")이면 아무것도 빼지 않는다.
 # 규칙은 하나다: 차 있지 않은 칸, 건강한 기본값, 같은 객체의 다른 칸에서 되찾을 수 있는 값은 뺀다.
-# 값을 바꾸는 것은 하나뿐이다: search·neighbors 에서 120자를 넘는 제목은 "…" 로 자른다(`cut_title`,
-# 노드 제목은 vinc_node 가 준다). vinc_brief 의 기본 본문은 제목을 자르지 않는다.
+# 값을 바꾸는 것은 하나뿐이다: 120자를 넘는 제목은 "…" 로 자른다(`cut_title`, 노드 제목은 vinc_node 가
+# 준다). search·neighbors 는 모든 제목 칸을, vinc_brief 는 문서·관계 제목만 자른다(후보와 노드 제목은 고르는
+# 근거이자 답이라 그대로다). 자를 것이 없는 vinc_brief 는 본문이 한 글자도 바뀌지 않는다.
 # 저장된 `props` 안은 어느 도구에서도 건드리지 않는다(쓰기가 props 를 통째로 갈아 끼운다).
 #: 줄이는 도구. vinc_node·vinc_neighbors 는 칸 규칙만 타고 LEAN_DROP 에 행이 없다.
 LEAN_TOOLS = ("vinc_search", "vinc_brief", "vinc_node", "vinc_neighbors")
@@ -2741,6 +2751,11 @@ LEAN_DROP: dict[str, dict[str, tuple[str, ...]]] = {
 OMITTED_NOTE = ("Omitted: empty, default, derived, duplicate, diagnostic keys, fixed notes, page, "
                 "created_at. No validity: unknown if interval_invalid or no valid_from/until, else "
                 "current. raw:true has all.")
+#: 문서·관계 제목을 하나라도 자른 vinc_brief 의 한 줄: `OMITTED_NOTE` 에 "…=cut title." 만 끼운다.
+#: ⚠ 자른 제목이 없는 brief 는 `OMITTED_NOTE` 그대로다(자를 것이 없는 brief 의 본문이 그래야 그대로다).
+OMITTED_BRIEF_CUT_NOTE = ("Omitted: empty, default, derived, duplicate, diagnostic keys, fixed notes, page, "
+                          "created_at. No validity: unknown if interval_invalid or no valid_from/until, else "
+                          "current. …=cut title. raw:true has all.")
 #: vinc_search 의 한 줄. 잘린 제목("…")과 node hit 의 빠진 cite_id 를 읽는 법도 말한다.
 #: ⚠ 190자 상한 안에 둔다(호출마다 실린다).
 OMITTED_SEARCH_NOTE = ("Omitted: empty, default, derived, duplicate, diagnostic, created_at. …=cut title. "
@@ -2791,6 +2806,9 @@ OMITTED_KINDS: tuple[tuple[str, str, str, str], ...] = (
     ("vinc_brief", "*links", "offset", "default"),
     ("vinc_brief", "*links", "truncated", "default"),
     ("vinc_brief", "*links/items[]", "evidence", "default"),
+    ("vinc_brief", "*quotes[]", "widened", "default"),
+    ("vinc_brief", "/candidate_material", "one_liner", "duplicate"),
+    ("vinc_brief", "/candidate_material", "body_cite", "derived"),
     ("vinc_node", "/node", "sync_seq", "internal"),
     ("vinc_node", "/node", "owner_id", "internal"),
     ("vinc_node", "/node", "tenant_id", "internal"),
@@ -2950,7 +2968,7 @@ def _lean_links(links: Any) -> None:
         links.pop("offset")
 
 
-#: search·neighbors 기본 본문에서 제목 칸이 갖는 최대 글자 수("…" 포함). vinc_node 와 vinc_brief 의
+#: 기본 본문에서 제목 칸이 갖는 최대 글자 수("…" 포함). vinc_node 의 제목과 vinc_brief 의 후보·노드
 #: 제목은 자르지 않는다.
 TITLE_MAX = 120
 _ELLIPSIS = "\u2026"
@@ -3022,7 +3040,7 @@ def _cut_key(rows: Any, key: str) -> bool:
 
 def _lean_titles(name: str, out: dict) -> None:
     """neighbors·search 의 긴 제목 자르기와 search 의 문서 제목 한 번만·node hit 의 id 와 같은 cite_id
-    빼기. ⚠ vinc_brief·vinc_node 에는 걸지 않는다(brief 기본 본문은 main 과 바이트까지 같다)."""
+    빼기. vinc_brief 는 `_lean_brief_quotes_and_titles`, vinc_node 는 제목을 자르지 않는다."""
     if name == "vinc_neighbors":
         if _cut_key(out.get("neighbors"), "title"):
             out["omitted"] = CUT_TITLE_NOTE
@@ -3043,6 +3061,46 @@ def _lean_titles(name: str, out: dict) -> None:
         for hit in out.get("node_hits") or []:
             if isinstance(hit, dict) and hit.get("cite_id") and hit["cite_id"] == hit.get("id"):
                 hit.pop("cite_id")
+
+
+def _lean_brief_quotes_and_titles(out: dict) -> bool:
+    """vinc_brief: 인용 단위의 `widened:false` 를 빼고, 120자를 넘는 문서·관계 제목(quotes 의 source,
+    결과와 choose 재료의 excerpts doc_title·links 항목 title)을 자른다. 하나라도 잘랐으면 참.
+    ⚠ 후보·노드·절의 제목, 모든 cite_id, 인용 문장(text)과 doc_id 는 건드리지 않는다."""
+    quotes = [q for q in out.get("quotes") or [] if isinstance(q, dict)] \
+        if isinstance(out.get("quotes"), list) else []
+    for cand in out.get("candidates") or []:
+        if isinstance(cand, dict) and isinstance(cand.get("quotes"), list):
+            quotes += [q for q in cand["quotes"] if isinstance(q, dict)]
+    for q in quotes:
+        if q.get("widened") is False:
+            q.pop("widened")
+    cut = _cut_key(quotes, "source")
+    material = out.get("candidate_material")
+    for block in [out] + ([material] if isinstance(material, dict) else []):
+        cut = _cut_key(block.get("excerpts"), "doc_title") or cut
+        if isinstance(block.get("links"), dict):
+            cut = _cut_key(block["links"].get("items"), "title") or cut
+    return cut
+
+
+def _lean_material_body(material: dict) -> None:
+    """choose 재료의 본문이 발췌를 옮긴 것(`body_src:"doc"`)이고 one_liner 가 그 발췌의 excerpt 와 바이트까지
+    같을 때만 one_liner 를 뺀다. body_cite 는 같은 발췌에 남은 doc_title(없으면 doc_id)·section 으로 다시
+    지은 문자열과 같을 때만 뺀다(제목이 잘렸으면 다르므로 남는다). 축소기가 그 발췌를 덜었으면 그대로 둔다."""
+    excerpts = material.get("excerpts")
+    if material.get("body_src") != "doc" or not isinstance(excerpts, list):
+        return
+    # 본문은 글자가 있는 첫 발췌다(api.query._brief_body). 축소기는 뒤에서부터 덜므로 첫 발췌가 마지막까지 남는다.
+    first = next((e for e in excerpts if isinstance(e, dict) and str(e.get("excerpt") or "").strip()), None)
+    one = material.get("one_liner")
+    if first is None or not isinstance(one, str) or one != first.get("excerpt"):
+        return
+    material.pop("one_liner")
+    where = str(first.get("doc_title") or first.get("doc_id") or "")
+    sec = str(first.get("section") or "")
+    if where and material.get("body_cite") == ((where + " · " + sec) if sec else where):
+        material.pop("body_cite")
 
 
 def _walk_dicts(node: Any, fn: Callable[[dict], None]) -> None:
@@ -3104,6 +3162,8 @@ def lean_project(name: str, args: dict, out: Any) -> Any:
             _lean_links(out["candidate_material"].get("links"))
         if "cite_grounds" in out and out.get("cite_grounds") == out.get("grounds"):
             out.pop("cite_grounds")
+        if _lean_brief_quotes_and_titles(out):
+            out["omitted"] = OMITTED_BRIEF_CUT_NOTE     # lean_finish 가 읽고 맨 끝으로 옮긴다
     if name == "vinc_search":
         _lean_titles(name, out)
     flat = name == "vinc_brief"
@@ -3112,13 +3172,17 @@ def lean_project(name: str, args: dict, out: Any) -> Any:
 
 
 def lean_finish(name: str, projected: dict, original: Any) -> dict:
-    """`lean_project` (그리고 축소기) 뒤의 마지막 단계: 축소기만 읽는 `page` 를 빼고, 무엇이든
-    빠졌으면 `omitted` 한 줄을 붙인다(search·brief·node). neighbors 는 제목을 잘랐을 때만
-    `_lean_titles` 가 붙인 `CUT_TITLE_NOTE` 를 싣는다."""
+    """`lean_project` (그리고 축소기) 뒤의 마지막 단계: 축소기만 읽는 `page` 를 빼고, choose 재료의
+    겹친 본문을 빼고(축소가 끝난 뒤라야 본문을 실은 발췌가 남았는지 안다), 무엇이든 빠졌으면 `omitted`
+    한 줄을 맨 끝에 붙인다(search·brief·node). brief 는 제목을 잘랐을 때만 `OMITTED_BRIEF_CUT_NOTE` 다.
+    neighbors 는 제목을 잘랐을 때만 `_lean_titles` 가 붙인 `CUT_TITLE_NOTE` 를 싣는다."""
     projected.pop("page", None)
+    if name == "vinc_brief" and isinstance(projected.get("candidate_material"), dict):
+        _lean_material_body(projected["candidate_material"])
     if name != "vinc_neighbors" and projected != original:
-        projected["omitted"] = {"vinc_node": OMITTED_NODE_NOTE,
-                                "vinc_search": OMITTED_SEARCH_NOTE}.get(name, OMITTED_NOTE)
+        cut = name == "vinc_brief" and projected.pop("omitted", None) == OMITTED_BRIEF_CUT_NOTE
+        projected["omitted"] = OMITTED_BRIEF_CUT_NOTE if cut else {
+            "vinc_node": OMITTED_NODE_NOTE, "vinc_search": OMITTED_SEARCH_NOTE}.get(name, OMITTED_NOTE)
     return projected
 
 

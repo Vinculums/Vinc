@@ -17,7 +17,7 @@ import re
 
 from store import pkns, run_state
 
-from . import query as q, role_contract
+from . import query as q, readkit, role_contract
 
 #: 내는 이벤트. 순서가 `events/list` 의 순서다.
 KINDS = ("role.reading_changed", "run.citation_superseded", "role.lesson_added",
@@ -32,7 +32,7 @@ EVAL_CARD_PREFIX = "record:eval-card-"
 RUN_PREFIX = "episode:run-"
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 500
-TITLE_CAP = 200
+TITLE_CAP = readkit.TITLE_CAP
 
 _CURSOR = re.compile(r"(\d{1,18})\.(\d{1,18})")
 _NEEDS = {"role.reading_changed": {"docs"}, "run.citation_superseded": {"nodes", "docs"},
@@ -77,15 +77,7 @@ def parse_kinds(value) -> tuple[str, ...]:
 
 
 def clamp_limit(value) -> int:
-    if value in (None, ""):
-        return DEFAULT_LIMIT
-    try:
-        n = int(value)
-    except (TypeError, ValueError):
-        raise ValueError("invalid_limit: expected an integer") from None
-    if not 1 <= n <= MAX_LIMIT:
-        raise ValueError(f"invalid_limit: expected 1..{MAX_LIMIT}")
-    return n
+    return readkit.clamp_limit(value, default=DEFAULT_LIMIT, maximum=MAX_LIMIT)
 
 
 def role_id(value) -> str | None:
@@ -106,29 +98,13 @@ def _now() -> str:
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
-def _props(raw) -> dict:
-    if isinstance(raw, dict):
-        return raw
-    try:
-        out = json.loads(raw) if raw else {}
-    except (TypeError, ValueError):
-        return {}
-    return out if isinstance(out, dict) else {}
-
-
-def _title(value) -> str:
-    return str(value or "")[:TITLE_CAP]
-
-
-def _run(plan: q.QueryPlan, store) -> list[dict]:
-    res = q.execute(plan, None, store=store)
-    if not res.get("executed"):
-        raise _StoreFailed(res.get("error") or res.get("note") or "store query failed")
-    return list(res.get("rows") or [])
-
-
-class _StoreFailed(RuntimeError):
-    pass
+# 읽기 도구는 `api/readkit.py` 에 있다. 아래 사설 이름은 같은 객체를 가리키며 이 모듈 안의 호출과
+# 바깥에서 사설 이름으로 부르는 곳이 그대로 돈다.
+_props = readkit.props
+_title = readkit.title
+_run = readkit.run_plan
+_StoreFailed = readkit.StoreFailed
+_superseded_by = readkit.superseded_by
 
 
 def head(store, owner: str) -> tuple[int, int]:
@@ -193,20 +169,6 @@ def _attached(store, owner: str, label: str, pk: str, rels: str, ids: list[str])
         {"ids": pkns.keys(owner, ids), "owner": owner,
          "prefix": pkns.key(owner, role_contract.ID_PREFIX)}), store)
     return [(pkns.strip(r["id"]), pkns.strip(r["role"])) for r in rows]
-
-
-def _superseded_by(store, owner: str, label: str, pk: str, ids: list[str]) -> dict[str, str]:
-    if not ids:
-        return {}
-    rows = _run(q.QueryPlan(
-        f"events_supersedes_{label}",
-        f"MATCH (a:{label})-[:SUPERSEDES]->(b:{label}) WHERE b.{pk} IN $ids "
-        f"AND a.owner_id = $owner AND b.owner_id = $owner RETURN a.{pk} AS by, b.{pk} AS id",
-        {"ids": pkns.keys(owner, ids), "owner": owner}), store)
-    out: dict[str, str] = {}
-    for r in rows:
-        out.setdefault(pkns.strip(r["id"]), pkns.strip(r["by"]))
-    return out
 
 
 def _runs(store, owner: str) -> list[tuple[str, dict]]:

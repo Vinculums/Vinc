@@ -39,6 +39,7 @@ INSTANCE = "0198c0de-aaaa-7bbb-8ccc-ddddeeeeffff"
 CIMD_URL = "https://cimd.example/oauth/client.json"
 CALLBACK = "https://cimd.example/callback"
 PUBLIC_IP = "93.184.216.34"
+PUBLIC_IP6 = "2606:2800:220:1:248:1893:25c8:1946"
 UNREACHABLE = "client metadata document is not reachable"
 NOT_ALLOWED = "client metadata URL is not allowed"
 INVALID = "client metadata document is not valid"
@@ -133,6 +134,12 @@ class _HttpsToLocal(urllib.request.HTTPHandler):
                             req)
 
 
+def _addrinfo(ips, port):
+    """`getaddrinfo` 가 주는 모양 그대로. IPv6 는 AF_INET6 과 네 칸짜리 소켓 주소다."""
+    return [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", (ip, port, 0, 0)) if ":" in ip
+            else (socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, port)) for ip in ips]
+
+
 def _route_cimd_to(monkeypatch, port, *, resolved=(PUBLIC_IP,)):
     """CIMD 의 https 주소를 첫 서버(평문)로 보낸다. 어느 전송을 쓰든 그리로 간다:
     확인한 주소로 붙는 전송이면 이름 풀기와 연결을 바꿔 끼우고, urllib 의 기본 urlopen 으로
@@ -140,7 +147,7 @@ def _route_cimd_to(monkeypatch, port, *, resolved=(PUBLIC_IP,)):
     connected: list[str] = []
 
     def resolve(host, port_, *a, **kw):
-        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, port_)) for ip in resolved]
+        return _addrinfo(resolved, port_)
 
     def connect(ip, port_, host, timeout):
         connected.append(ip)
@@ -188,7 +195,11 @@ class _NoConnect:
 @pytest.mark.parametrize("url", ["https://127.0.0.1/client.json",
                                  "https://10.1.2.3/client.json",
                                  "https://[::1]/client.json",
-                                 "https://169.254.169.254/client.json"])
+                                 "https://169.254.169.254/client.json",
+                                 "https://[fd00::1]/client.json",        # IPv6 고유로컬
+                                 "https://[fe80::1]/client.json",        # IPv6 링크로컬
+                                 "https://[fec0::1]/client.json",        # IPv6 사이트로컬
+                                 "https://[::ffff:10.0.0.5]/client.json"])  # IPv6 에 실은 사설 IPv4
 def test_cimd_fetch_refuses_a_literal_non_public_address(url, monkeypatch):
     never = _NoConnect()
     monkeypatch.setattr(oauth, "_cimd_connect", never)
@@ -199,15 +210,16 @@ def test_cimd_fetch_refuses_a_literal_non_public_address(url, monkeypatch):
 
 
 @pytest.mark.parametrize("resolved", [("10.0.0.5",), ("192.168.1.10",), ("127.0.0.1",),
-                                      (PUBLIC_IP, "10.0.0.5")])
+                                      (PUBLIC_IP, "10.0.0.5"),
+                                      ("::1",), ("fd12:3456::1",), ("fe80::1",), ("fec0::1",),
+                                      ("::ffff:127.0.0.1",), (PUBLIC_IP6, "fd00::1")])
 def test_cimd_fetch_refuses_a_name_that_resolves_to_a_non_public_address(resolved, monkeypatch):
     """이름이 공인 주소와 사설 주소로 함께 풀리면 거절한다(하나라도 공인이 아니면 거절).
 
     문장은 못 풀린 이름과 같은 "not reachable" 이다. 밖에서 이름 풀이를 가를 수 없어야 한다."""
     never = _NoConnect()
     monkeypatch.setattr(oauth, "_cimd_resolve",
-                        lambda host, port, *a, **kw: [(socket.AF_INET, socket.SOCK_STREAM, 6, "",
-                                                       (ip, port)) for ip in resolved])
+                        lambda host, port, *a, **kw: _addrinfo(resolved, port))
     monkeypatch.setattr(oauth, "_cimd_connect", never)
     with pytest.raises(ValueError) as exc:
         oauth.fetch_cimd(CIMD_URL)
@@ -215,13 +227,15 @@ def test_cimd_fetch_refuses_a_name_that_resolves_to_a_non_public_address(resolve
     assert never.calls == []
 
 
-def test_cimd_fetch_reads_a_public_address_and_connects_to_the_checked_one(servers, monkeypatch):
+@pytest.mark.parametrize("public", [PUBLIC_IP, PUBLIC_IP6])
+def test_cimd_fetch_reads_a_public_address_and_connects_to_the_checked_one(public, servers,
+                                                                           monkeypatch):
     first = servers(lambda h: _json(_doc()))
-    connected = _route_cimd_to(monkeypatch, first.port)
+    connected = _route_cimd_to(monkeypatch, first.port, resolved=(public,))
 
     assert oauth.fetch_cimd(CIMD_URL) == _doc()
     # 이름을 다시 풀지 않고 확인한 주소로 붙는다.
-    assert connected == [PUBLIC_IP]
+    assert connected == [public]
     method, path, _ = first.seen[0]
     assert (method, path) == ("GET", "/oauth/client.json")
 

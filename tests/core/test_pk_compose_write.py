@@ -27,7 +27,7 @@ import pytest  # noqa: E402
 
 from api import docstore, fragment  # noqa: E402
 from store import pkns  # noqa: E402
-from store.embedded_backend import _exec_to_dicts, _import_driver  # noqa: E402
+from store.embedded_backend import _exec_to_dicts, import_driver  # noqa: E402
 
 OWNER = "user:019fae48-real-account"
 PHYS = f"{OWNER}\x1f"
@@ -387,7 +387,7 @@ def test_merge_episode_composes_the_episode_key(monkeypatch, flag, expected):
 # Round trip against a real store — write composed, read back logical
 # ---------------------------------------------------------------------------
 
-@unittest.skipIf(_import_driver()[0] is None, "embedded driver not installed")
+@unittest.skipIf(import_driver()[0] is None, "embedded driver not installed")
 class NamespacedRoundTripTests(unittest.TestCase):
     """The whole point of the strip hook: nothing above store/ ever sees the
     separator, even though the primary key carries it."""

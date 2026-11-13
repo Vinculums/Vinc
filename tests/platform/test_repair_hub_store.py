@@ -24,7 +24,7 @@ from api import docstore as ds  # noqa: E402
 from store import pkns  # noqa: E402
 from store import embedded_backend as eb  # noqa: E402
 
-_DRIVER, _ = eb._import_driver()
+_DRIVER, _ = eb.import_driver()
 _SEP = pkns.SEP
 _TEXT = "".join(f"Paragraph {i} about the hub store and its repair.\n\n" for i in range(120))
 _N = len(ds.chunk_doc(_TEXT))

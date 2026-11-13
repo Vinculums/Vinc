@@ -3,9 +3,10 @@
 줄이는 것: 순위 진단(rows 의 score, node_hits 의 rrf_score 는 남는다), 시간 블록의 차 있지 않은 칸과
 날짜에서 되찾을 수 있는 칸, brief 의 평평한 시간 사본과 관계의 빈 칸, 노드 팔이 건강할 때의 진단,
 vinc_node 의 빈 칸과 노드에 이미 있는 시간 값, neighbors 의 빈 칸·rev·되풀이한 도메인, search 의
-id 와 같은 node hit cite_id 와 한 응답 안에서 되풀이한 문서 제목. search·neighbors 에서 120자를
-넘는 제목은 "…" 로 자른다. vinc_brief 의 기본 본문은 main 과 바이트까지 같다.
-`raw:true`(또는 "true")면 그대로 나간다. 합성 데이터만 쓴다.
+id 와 같은 node hit cite_id 와 한 응답 안에서 되풀이한 문서 제목, brief 인용 단위의 widened:false 와
+choose 재료에서 첫 발췌를 글자 그대로 되풀이한 one_liner·body_cite. search·neighbors 의 제목과 brief 의
+문서·관계 제목은 120자를 넘으면 "…" 로 자른다(brief 의 후보·노드 제목은 그대로다). 자를 것이 없는 brief 는
+본문이 한 글자도 바뀌지 않는다. `raw:true`(또는 "true")면 그대로 나간다. 합성 데이터만 쓴다.
 """
 import copy
 import json
@@ -384,11 +385,13 @@ def test_the_note_states_the_validity_rule_the_slim_block_relies_on():
     """`omitted` 의 validity 문장을 그대로 따라 읽으면 모든 구간 꼴에서 저장 쪽 validity 가 나온다."""
     from store import search_temporal
     clause = "No validity: unknown if interval_invalid or no valid_from/until, else current."
-    for note in (tools.OMITTED_NOTE, tools.OMITTED_SEARCH_NOTE):
+    for note in (tools.OMITTED_NOTE, tools.OMITTED_SEARCH_NOTE, tools.OMITTED_BRIEF_CUT_NOTE):
         assert clause in note and "raw:true" in note
-    # search 의 줄은 잘린 제목과 node hit 의 빠진 cite_id 를 읽는 법도 말한다. brief 의 줄은 말하지 않는다.
+    # search 의 줄은 잘린 제목과 node hit 의 빠진 cite_id 를 읽는 법도 말한다. brief 는 cite_id 를 빼지 않고,
+    # 제목을 잘랐을 때만 "…=cut title." 이 든 줄을 싣는다.
     assert "…=cut title" in tools.OMITTED_SEARCH_NOTE and "No cite_id: id." in tools.OMITTED_SEARCH_NOTE
     assert "…" not in tools.OMITTED_NOTE and "cite_id" not in tools.OMITTED_NOTE
+    assert "…=cut title." in tools.OMITTED_BRIEF_CUT_NOTE and "cite_id" not in tools.OMITTED_BRIEF_CUT_NOTE
 
     def read_as_the_note_says(t):
         if "validity" in t:
@@ -407,8 +410,8 @@ def test_the_note_states_the_validity_rule_the_slim_block_relies_on():
     assert "raw:true" in tools.OMITTED_NODE_NOTE and len(tools.OMITTED_NODE_NOTE) <= 70
 
 
-#: search·neighbors 기본 본문이 자를 수 있는 제목 칸. 다른 칸의 값은 바뀌면 안 된다.
-TITLE_KEYS = ("title", "doc_title")
+#: 기본 본문이 자를 수 있는 제목 칸(brief 인용 단위의 source 포함). 다른 칸의 값은 바뀌면 안 된다.
+TITLE_KEYS = ("title", "doc_title", "source")
 
 
 def _is_cut(raw, lean):
@@ -452,10 +455,14 @@ def _rich_results():
     search["node_hits"][0]["title"] = LONG
     search["rows"][0]["doc_title"] = search["rows"][1]["doc_title"] = LONG
     choose = _choose_brief()
+    # 본문이 첫 발췌를 글자 그대로 옮긴 재료(one_liner·body_cite 가 빠진다)와 widened:false 인 인용 단위.
+    choose["candidate_material"].update(one_liner="e", body_src="doc", body_cite="d")
     choose["candidate_material"]["excerpts"] = [{"doc_id": "d", "excerpt": "e", "temporal": _block(),
                                                  **_flat(_block())}]
     choose["candidate_material"]["links"] = {"executed": True, "offset": 0, "truncated": False,
                                              "items": [_link_item(1)]}
+    choose["candidates"][0]["quotes"] = [{"doc_id": "d", "source": "D", "section": "1",
+                                          "cite_id": "concept:doc.d", "text": "q", "widened": False}]
     yield "vinc_search", search
     yield "vinc_brief", choose
     yield "vinc_brief", _resolved_brief()
@@ -469,7 +476,7 @@ DEFAULTS = {"interval_invalid": (False,), "claim_status": ("unscoped", "unassess
             "validity": ("unknown",), "validity_note": (tools.HIDDEN_NOTE,),
             "claim_assessment_scope": ("stored_fields", "retrieved_candidates"),
             "total_count_capped": (False,), "executed": (True,), "offset": (0,),
-            "truncated": (False,), "evidence": (False,)}
+            "truncated": (False,), "evidence": (False,), "widened": (False,)}
 
 
 def _at(obj, where):
@@ -513,6 +520,9 @@ DROP_TABLE = (
     ("vinc_brief", "*links", "offset", "default"),
     ("vinc_brief", "*links", "truncated", "default"),
     ("vinc_brief", "*links/items[]", "evidence", "default"),
+    ("vinc_brief", "*quotes[]", "widened", "default"),
+    ("vinc_brief", "/candidate_material", "one_liner", "duplicate"),
+    ("vinc_brief", "/candidate_material", "body_cite", "derived"),
     ("vinc_node", "/node", "sync_seq", "internal"),
     ("vinc_node", "/node", "owner_id", "internal"),
     ("vinc_node", "/node", "tenant_id", "internal"),
@@ -550,6 +560,9 @@ def _still_readable(raw, lean, where, key, value):
     here = _at(lean, where)
     if value in ((here.get("temporal") or {}).get(key), lean.get("grounds")):
         return True
+    if key == "one_liner":
+        # choose 재료의 one_liner 는 같은 재료에 남은 발췌의 excerpt 와 글자까지 같을 때만 빠진다.
+        return any(isinstance(e, dict) and e.get("excerpt") == value for e in here.get("excerpts") or [])
     if key == "doc_title":
         # 같은 doc_id 의 앞선 행이 (잘렸을 수 있는) 그 제목을 싣는다.
         i = int(where.rsplit("[", 1)[1][:-1])
@@ -667,7 +680,7 @@ def test_a_title_that_would_cut_to_nothing_is_cut_hard_and_never_to_an_ellipsis_
         assert cut == text[:119] + "…" and len(cut) == 120, repr(text[:4])
 
 
-def test_long_titles_are_cut_in_neighbors_and_search_only():
+def test_long_titles_are_cut_but_never_a_brief_candidate_or_node_title():
     nb = _neighbors()
     nb["neighbors"][0]["title"] = LONG
     nb["neighbors"][1]["title"] = _words(120)
@@ -680,11 +693,14 @@ def test_long_titles_are_cut_in_neighbors_and_search_only():
     out = tools.lean_result("vinc_search", {}, search)
     assert out["rows"][0]["doc_title"] == tools.cut_title(LONG)
     assert out["node_hits"][0]["title"] == tools.cut_title(LONG)
-    # brief 와 vinc_node 의 제목은 어느 자리든 자르지 않는다(아래 brief 테스트가 더 넓게 본다).
+    # brief 의 후보·노드 제목과 vinc_node 의 제목은 자르지 않는다(아래 brief 테스트가 더 넓게 본다).
     choose = _choose_brief()
     choose["candidates"][0]["title"] = LONG
     out = tools.lean_result("vinc_brief", {}, choose)
-    assert out["candidates"][0]["title"] == LONG
+    assert out["candidates"][0]["title"] == LONG and out["omitted"] == tools.OMITTED_NOTE
+    resolved = _resolved_brief()
+    resolved["node"]["title"] = LONG
+    assert tools.lean_result("vinc_brief", {}, resolved)["node"]["title"] == LONG
     node = _record_node(title=LONG)
     assert tools.lean_result("vinc_node", {}, node)["node"]["title"] == LONG
 
@@ -776,11 +792,14 @@ def test_search_leaves_out_only_a_node_hit_cite_id_equal_to_its_id():
     assert hits[2]["cite_id"] is None and hits[2]["cite_unavailable"]
 
 
-#: main 의 brief `omitted` 줄. brief 기본 본문은 main 과 바이트까지 같아야 하므로 상수를 읽지 않고
-#: 글자로 박아 둔다(이 줄을 바꾸는 일은 brief 의 꼴을 바꾸는 일이라 따로 잰 뒤에 한다).
+#: brief `omitted` 줄 두 벌을 상수를 읽지 않고 글자로 박아 둔다. 자른 제목이 없는 brief 는 앞의 줄(줄이기의
+#: 기본 줄)이고, 문서·관계 제목을 하나라도 잘랐으면 그 줄에 "…=cut title." 만 끼운 뒤의 줄이다.
 MAIN_BRIEF_NOTE = ("Omitted: empty, default, derived, duplicate, diagnostic keys, fixed notes, page, "
                    "created_at. No validity: unknown if interval_invalid or no valid_from/until, else "
                    "current. raw:true has all.")
+MAIN_BRIEF_CUT_NOTE = ("Omitted: empty, default, derived, duplicate, diagnostic keys, fixed notes, page, "
+                       "created_at. No validity: unknown if interval_invalid or no valid_from/until, else "
+                       "current. …=cut title. raw:true has all.")
 T300 = (LONG * 3)[:300]
 _TITLE_LIKE = ("title", "doc_title", "source", "body_cite")
 
@@ -861,31 +880,205 @@ def _strings(node):
             yield from _strings(v)
 
 
+def _whole_title(where):
+    """brief 가 자르지 않는 제목 자리: 후보의 title, 노드와 절의 제목, 재료의 body_cite."""
+    return (where[0] == "candidates" and len(where) == 3) or where[0] in ("node", "section") \
+        or where[-1] == "body_cite"
+
+
 @pytest.mark.parametrize("label,src", list(_brief_cases()), ids=lambda v: v if isinstance(v, str) else "")
-def test_brief_default_text_is_as_on_main(label, src):
-    """vinc_brief 의 기본 본문은 main 과 같다: 어느 제목도 "…" 로 자르지 않고, `widened` 는 값과 함께
-    남고, `omitted` 줄은 main 의 글자 그대로다. 호스트가 받는 길(줄이기와 축소기)을 그대로 지난다."""
+def test_brief_default_text_changes_only_by_the_brief_rules(label, src):
+    """vinc_brief 의 기본 본문: 문서·관계 제목(quotes source, excerpts doc_title, links 항목 title)만 120자에서
+    자르고 후보·노드·절의 제목은 그대로 둔다. 인용 단위는 widened:false 만 빠지고, 모든 cite_id 가 남는다.
+    `omitted` 는 자른 제목이 있을 때만 "…=cut title." 이 든 줄이다. 호스트가 받는 길(줄이기와 축소기)을
+    그대로 지난다."""
+    assert tools.OMITTED_NOTE == MAIN_BRIEF_NOTE and tools.OMITTED_BRIEF_CUT_NOTE == MAIN_BRIEF_CUT_NOTE
     text = rpc._mcp_text("vinc_brief", {}, src)
     reply = rpc._result_text(text, "vinc_brief", {}, src)
     assert not reply["isError"], reply
     out = json.loads(reply["content"][0]["text"])
-    assert out["omitted"] == MAIN_BRIEF_NOTE == tools.OMITTED_NOTE
     assert ("shrunk" in out) == (label == "shrunk")
-    before = set(_strings(src))
-    assert all(t in before for t in _strings(out) if "\u2026" in t), label
-    widened, titles = [], []
+    widened, titles, cites = [], [], []
     _walk_all(src, lambda d, w: widened.append((w, d["widened"])) if "widened" in d else None)
     _walk_all(src, lambda d, w: titles.extend((w + (k,), d[k]) for k in _TITLE_LIKE if k in d))
+    _walk_all(src, lambda d, w: cites.append((w, d["cite_id"])) if "cite_id" in d else None)
+    long = [w for w, v in titles if not _whole_title(w) and len(v) > 120]
+    assert out["omitted"] == (MAIN_BRIEF_CUT_NOTE if long else MAIN_BRIEF_NOTE), label
     assert widened or label in ("choose with section", "none")
     for where, value in widened:
         got = _at_path(out, where)
-        assert isinstance(got, dict) and got.get("widened") is value, (label, where)
+        assert isinstance(got, dict) and ("widened" in got) == value and got.get("widened", False) is value, \
+            (label, where)
+    # 축소기가 덜어낸 발췌만 없을 수 있다. 남은 제목은 그대로이거나 cut_title 로 잘린 꼴이다.
+    gone = lambda where, got: got is None and label == "shrunk" and where[0] == "excerpts"
     for where, value in titles:
         got = _at_path(out, where)
-        # 축소기가 덜어낸 발췌만 없을 수 있다. 남은 제목은 받은 그대로다.
-        assert got == value or (got is None and label == "shrunk" and where[0] == "excerpts"), \
-            (label, where)
-    assert "\u2026" not in json.dumps(out, ensure_ascii=False)
+        want = value if _whole_title(where) else tools.cut_title(value)
+        assert got == want or gone(where, got), (label, where)
+    for where, value in cites:
+        got = _at_path(out, where)
+        assert (got or {}).get("cite_id") == value or gone(where, got), (label, where)
+    # 그 밖의 글자는 하나도 바뀌지 않는다(새로 생긴 문자열은 잘린 제목과 omitted 줄뿐이다).
+    before = set(_strings(src)) | {tools.cut_title(v) for _w, v in titles}
+    assert all(t in before for t in _strings(out)
+               if t != out["omitted"] and not (label == "shrunk" and t == out.get("note"))), label
+    if "candidate_material" in src:   # 발췌와 공백 하나가 다른 본문은 겹친 것이 아니다
+        assert out["candidate_material"]["one_liner"] == src["candidate_material"]["one_liner"]
+
+
+def _nothing_to_cut():
+    """자를 것이 없는 brief 두 벌: widened:true 인 인용 단위, 120자 이하의 제목, 발췌와 공백 하나가 다른
+    choose 재료 본문, 발췌와 같은 확정 답의 one_liner(확정 답에는 재료 규칙이 걸리지 않는다)."""
+    choose = _choose_brief()
+    choose["candidates"][0]["quotes"] = [{"doc_id": "d", "source": _words(120), "section": "2.1",
+                                          "cite_id": "concept:doc.d", "text": "C0 holds.", "widened": True}]
+    choose["candidate_material"].update(
+        cite_id="concept:c0", one_liner="The text.", body_src="doc", body_cite="Doc D · 2.1",
+        excerpts=[{"doc_id": "d", "doc_title": "Doc D", "section": "2.1", "excerpt": "The text. ",
+                   "cite_id": "concept:doc.d", "method": "fts", "temporal": _block(), **_flat(_block())}],
+        links={"executed": True, "offset": 0, "truncated": False, "items": [_link_item(1)]})
+    resolved = _resolved_brief()
+    resolved.update(one_liner="body", body_src="doc", body_cite="d")
+    resolved["quotes"] = [{"doc_id": "d", "source": "Doc D", "section": "1", "cite_id": "concept:doc.d",
+                           "text": "N is n.", "widened": True}]
+    resolved["excerpts"][0].update(doc_title=_words(120), cite_id="concept:doc.d", excerpt="body")
+    resolved["links"]["items"][0]["title"] = _words(120)
+    return {"choose": choose, "resolved": resolved}
+
+
+#: 위 두 brief 를 문서·관계 제목, widened, 재료 본문 규칙이 없는 줄이기로 만든 본문(빈칸 없는 JSON).
+#: 자를 것이 없는 brief 는 이 글자와 하나도 다르지 않아야 한다.
+NOTHING_TO_CUT_TEXT = {
+    "choose": ("{\"kind\":\"brief\",\"executed\":true,\"query\":\"what is c\",\"status\":\"choose\",\"candidates\":[{\"id\":\"conce"
+               "pt:c0\",\"cite_id\":\"concept:c0\",\"title\":\"C0\",\"domain\":\"vinc/x\",\"kind\":\"concept\",\"temporal\":{\"updat"
+               "ed_at\":\"2026-02-01T00:00:00Z\"},\"quotes\":[{\"doc_id\":\"d\",\"source\":\"word word word word word word w"
+               "ord word word word word word word word word word word word word word word word word wordx\",\"sect"
+               "ion\":\"2.1\",\"cite_id\":\"concept:doc.d\",\"text\":\"C0 holds.\",\"widened\":true}]},{\"id\":\"concept:c1\",\"ci"
+               "te_id\":\"concept:c1\",\"title\":\"C1\",\"domain\":\"vinc/x\",\"kind\":\"concept\",\"temporal\":{\"updated_at\":\"20"
+               "26-02-01T00:00:00Z\"}},{\"id\":\"concept:c2\",\"cite_id\":\"concept:c2\",\"title\":\"C2\",\"domain\":\"vinc/x\",\""
+               "kind\":\"concept\",\"temporal\":{\"updated_at\":\"2026-02-01T00:00:00Z\"}}],\"grounds\":[],\"arms\":\"fts+vect"
+               "or\",\"validity_filtered\":1,\"candidate_material\":{\"candidate\":\"concept:c0\",\"one_liner\":\"The text.\""
+               ",\"body_src\":\"doc\",\"excerpts\":[{\"doc_id\":\"d\",\"doc_title\":\"Doc D\",\"section\":\"2.1\",\"excerpt\":\"The t"
+               "ext. \",\"cite_id\":\"concept:doc.d\",\"method\":\"fts\",\"temporal\":{\"updated_at\":\"2026-02-01T00:00:00Z\"}"
+               "}],\"cite_id\":\"concept:c0\",\"body_cite\":\"Doc D · 2.1\",\"links\":{\"items\":[{\"id\":\"concept:m1\",\"title\""
+               ":\"M1\",\"domain\":\"vinc/x\",\"type\":\"ABOUT\",\"dir\":\"out\",\"kind\":\"concept\",\"temporal\":{\"updated_at\":\"20"
+               "26-02-01T00:00:00Z\"}}]}},\"omitted\":\"Omitted: empty, default, derived, duplicate, diagnostic keys"
+               ", fixed notes, page, created_at. No validity: unknown if interval_invalid or no valid_from/until"
+               ", else current. raw:true has all.\"}"),
+    "resolved": ("{\"kind\":\"brief\",\"executed\":true,\"status\":\"resolved\",\"node\":{\"id\":\"concept:n\",\"cite_id\":\"concept:"
+                 "n\",\"title\":\"N\",\"domain\":\"vinc/x\",\"kind\":\"concept\",\"validity\":\"unknown\",\"temporal\":{\"updated_at\":"
+                 "\"2026-02-01T00:00:00Z\"},\"validity_basis\":\"legacy_visibility\",\"claim_validity\":\"unknown\"},\"one_li"
+                 "ner\":\"body\",\"excerpts\":[{\"doc_id\":\"d\",\"text\":\"body\",\"temporal\":{\"updated_at\":\"2026-02-01T00:00:0"
+                 "0Z\",\"valid_from\":\"2026-01\"},\"doc_title\":\"word word word word word word word word word word word "
+                 "word word word word word word word word word word word word wordx\",\"cite_id\":\"concept:doc.d\",\"ex"
+                 "cerpt\":\"body\"}],\"links\":{\"degree\":2,\"out\":2,\"in\":0,\"items\":[{\"id\":\"concept:m0\",\"title\":\"word wor"
+                 "d word word word word word word word word word word word word word word word word word word word"
+                 " word word wordx\",\"domain\":\"vinc/x\",\"type\":\"ABOUT\",\"dir\":\"out\",\"evidence_text\":\"M0 is about N.\","
+                 "\"kind\":\"concept\",\"temporal\":{\"updated_at\":\"2026-02-01T00:00:00Z\"}},{\"id\":\"concept:m1\",\"title\":\"M"
+                 "1\",\"domain\":\"vinc/x\",\"type\":\"ABOUT\",\"dir\":\"out\",\"kind\":\"concept\",\"temporal\":{\"updated_at\":\"2026-"
+                 "02-01T00:00:00Z\"}}]},\"grounds\":[\"concept:n\",\"d\"],\"body_src\":\"doc\",\"body_cite\":\"d\",\"quotes\":[{\"do"
+                 "c_id\":\"d\",\"source\":\"Doc D\",\"section\":\"1\",\"cite_id\":\"concept:doc.d\",\"text\":\"N is n.\",\"widened\":tr"
+                 "ue}],\"omitted\":\"Omitted: empty, default, derived, duplicate, diagnostic keys, fixed notes, page,"
+                 " created_at. No validity: unknown if interval_invalid or no valid_from/until, else current. raw:"
+                 "true has all.\"}"),
+}
+
+
+def test_a_brief_with_nothing_to_cut_keeps_the_pinned_text():
+    for label, src in _nothing_to_cut().items():
+        assert rpc._mcp_text("vinc_brief", {}, src) == NOTHING_TO_CUT_TEXT[label], label
+
+
+def _material_brief(one_liner="The text.", excerpt="The text.", body_src="doc", doc_title="Doc D",
+                    section="2.1", lead=None):
+    """첫 후보 재료가 발췌 하나를 본문으로 옮긴 choose. `lead` 를 주면 글자 없는 발췌가 앞에 선다."""
+    brief = _choose_brief()
+    ex = [{"doc_id": "d", "doc_title": doc_title, "section": section, "excerpt": excerpt,
+           "cite_id": "concept:doc.d", "method": "fts", "temporal": _block(), **_flat(_block())}]
+    if lead is not None:
+        ex.insert(0, {**copy.deepcopy(ex[0]), "excerpt": lead})
+    where = doc_title or "d"
+    brief["candidate_material"].update(cite_id="concept:c0", one_liner=one_liner, body_src=body_src,
+                                       body_cite=(where + " · " + section) if section else where,
+                                       excerpts=ex)
+    return brief
+
+
+def test_choose_material_leaves_out_its_body_only_when_it_repeats_the_excerpt_word_for_word():
+    out = tools.lean_result("vinc_brief", {}, _material_brief())
+    m = out["candidate_material"]
+    assert "one_liner" not in m and "body_cite" not in m and out["omitted"] == MAIN_BRIEF_NOTE
+    assert (m["candidate"], m["cite_id"], m["body_src"]) == ("concept:c0", "concept:c0", "doc")
+    assert m["excerpts"][0]["excerpt"] == "The text." and m["excerpts"][0]["cite_id"] == "concept:doc.d"
+    # 절이 없으면 body_cite 는 문서 제목뿐이다. 글자 없는 앞 발췌를 건너뛴 본문도 그 발췌와 같으면 빠진다.
+    for src in (_material_brief(section=""), _material_brief(lead="  ")):
+        m = tools.lean_result("vinc_brief", {}, src)["candidate_material"]
+        assert "one_liner" not in m and "body_cite" not in m
+    # 공백 하나라도 다르거나, 본문이 one_liner·props 에서 왔거나, 다른 글이거나, raw 면 그대로다.
+    for src, args in ((_material_brief(excerpt="The text. "), {}), (_material_brief(body_src="one_liner"), {}),
+                      (_material_brief(body_src="props"), {}), (_material_brief(one_liner="Other."), {}),
+                      (_material_brief(), {"raw": True}), (_material_brief(), {"raw": "true"})):
+        m = tools.lean_result("vinc_brief", args, src)["candidate_material"]
+        assert m["one_liner"] == src["candidate_material"]["one_liner"]
+        assert m["body_cite"] == src["candidate_material"]["body_cite"]
+    # 발췌 제목이 잘리면 남은 칸으로 body_cite 를 다시 지을 수 없으므로 body_cite 는 남는다.
+    src = _material_brief(doc_title=LONG)
+    out = tools.lean_result("vinc_brief", {}, src)
+    m = out["candidate_material"]
+    assert "one_liner" not in m and m["body_cite"] == src["candidate_material"]["body_cite"]
+    assert m["excerpts"][0]["doc_title"] == tools.cut_title(LONG) and out["omitted"] == MAIN_BRIEF_CUT_NOTE
+
+
+def test_a_shrunk_choose_keeps_its_material_body_when_the_excerpt_it_repeats_is_dropped():
+    # 후보 인용이 상한을 넘겨 축소기가 재료의 발췌부터 덜어낸다: 본문을 실은 발췌가 사라지면 본문은 남는다.
+    src = _material_brief()
+    for c in src["candidates"]:
+        c["quotes"] = [{"doc_id": "d", "source": "S", "section": "1", "cite_id": "concept:doc.d",
+                        "text": "x" * 30000, "widened": True}]
+    reply = rpc._result_text(rpc._mcp_text("vinc_brief", {}, src), "vinc_brief", {}, src)
+    assert not reply["isError"], reply
+    out = json.loads(reply["content"][0]["text"])
+    m = out["candidate_material"]
+    assert "shrunk" in out and m["excerpts"] == []
+    assert m["one_liner"] == "The text." and m["body_cite"] == "Doc D · 2.1"
+    # 축소 뒤에도 그 발췌가 남으면 겹친 본문은 빠진다.
+    src = _material_brief()
+    src["candidate_material"]["excerpts"].append({**copy.deepcopy(src["candidate_material"]["excerpts"][0]),
+                                                  "excerpt": "y" * 80000})
+    reply = rpc._result_text(rpc._mcp_text("vinc_brief", {}, src), "vinc_brief", {}, src)
+    out = json.loads(reply["content"][0]["text"])
+    m = out["candidate_material"]
+    assert "shrunk" in out and len(m["excerpts"]) == 1 and "one_liner" not in m and "body_cite" not in m
+
+
+def test_brief_cuts_document_and_relation_titles_and_says_so_once():
+    choose = _choose_brief()
+    choose["candidates"][0]["title"] = LONG
+    choose["candidates"][1]["quotes"] = _quotes(2)
+    choose["candidate_material"]["excerpts"] = [{"doc_id": "d", "doc_title": LONG, "excerpt": "e",
+                                                 "cite_id": "concept:doc.d"}]
+    choose["candidate_material"]["links"] = {"items": [{**_link_item(1), "title": LONG}]}
+    out = tools.lean_result("vinc_brief", {}, choose)
+    cut = tools.cut_title(LONG)
+    assert out["candidates"][0]["title"] == LONG
+    assert [q["source"] for q in out["candidates"][1]["quotes"]] == [cut, cut]
+    assert out["candidate_material"]["excerpts"][0]["doc_title"] == cut
+    assert out["candidate_material"]["links"]["items"][0]["title"] == cut
+    assert out["omitted"] == MAIN_BRIEF_CUT_NOTE and list(out)[-1] == "omitted"
+    assert json.dumps(out, ensure_ascii=False).count("…=cut title.") == 1
+    # 같은 brief 를 raw 로 읽으면 처음 그대로다.
+    assert tools.lean_result("vinc_brief", {"raw": True}, choose) is choose
+    assert choose["candidate_material"]["excerpts"][0]["doc_title"] == LONG
+    # 확정 답: 노드 제목은 그대로, 발췌·관계·인용 단위의 제목은 잘린다.
+    res = _resolved_brief()
+    res["node"]["title"] = LONG
+    res["excerpts"][0]["doc_title"] = LONG
+    res["links"]["items"][1]["title"] = LONG
+    res["quotes"] = _quotes(1)
+    out = tools.lean_result("vinc_brief", {}, res)
+    assert out["node"]["title"] == LONG and out["excerpts"][0]["doc_title"] == cut
+    assert out["links"]["items"][1]["title"] == cut and out["quotes"][0]["source"] == cut
+    assert out["omitted"] == MAIN_BRIEF_CUT_NOTE
 
 
 def test_failures_and_notes_in_the_envelope_survive():
@@ -1116,6 +1309,9 @@ def test_the_default_text_is_smaller_by_the_package_target(label, name, result, 
 
 def test_the_notes_stay_short():
     assert len(tools.OMITTED_NOTE) <= 190 and len(tools.OMITTED_SEARCH_NOTE) <= 190
+    # 제목을 자른 brief 의 줄은 brief 의 줄에 "…=cut title. " 만 더한 것이다(그 brief 에서만 실린다).
+    assert tools.OMITTED_BRIEF_CUT_NOTE == tools.OMITTED_NOTE.replace(" raw:true", " …=cut title. raw:true")
+    assert len(tools.OMITTED_BRIEF_CUT_NOTE) == len(tools.OMITTED_NOTE) + len("…=cut title. ") <= 205
     assert len(tools.OMITTED_NODE_NOTE) <= 70
 
 
