@@ -2,7 +2,8 @@
 """고른 스페이스가 있을 수 있는 값인가를 네 자리가 같은 술어(`spaces.valid_space`)로 보고, 그 답이
 main 의 네 자리와 값마다 같은가.
 
-네 자리: `/mcp` 의 Events 구독과 도구 호출(`http_server`), REST v1 의 쿼리 `space` 와 도구
+네 자리: `/mcp` 의 Events 구독과 도구 호출(지금은 `mcp_post`, 기대값을 뽑은 main 리비전에서는
+`http_server`), REST v1 의 쿼리 `space` 와 도구
 게이트(`rest_api`). 자리는 원문에서 모양으로 찾는다: `valid_space=` 로 넘기는 술어 셋과, REST 가
 `space_not_found` 로 거절하는 조건 하나.
 
@@ -30,10 +31,13 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))
 
-from vinc_mcp import http_server as hs, rest_api, spaces   # noqa: E402
+from vinc_mcp import http_server as hs, mcp_post, rest_api, spaces   # noqa: E402
 
 FIXTURE = Path(__file__).with_name("fixtures") / "valid_space_main.json"
+#: 기대값을 뽑는 main 리비전에서 네 자리가 있는 파일(`--write`).
 FILES = ("vinc_mcp/http_server.py", "vinc_mcp/rest_api.py")
+#: 지금 트리에서 네 자리가 있는 파일과 그 모듈. `/mcp` 의 두 자리는 `mcp_post.answer` 안에 있다.
+HEAD_FILES = (("vinc_mcp/mcp_post.py", mcp_post), ("vinc_mcp/rest_api.py", rest_api))
 U = "0198c0de-1111-7222-8333-444455556666"
 
 #: 네 자리가 받거나 거절할 수 있는 값의 모양. 문자열은 부르는 쪽의 정규화(공백 제거·소문자)를
@@ -125,7 +129,7 @@ def generate(rev: str) -> dict:
 
 def _head_sites() -> list[tuple[str, str, object]]:
     out = []
-    for path, module in zip(FILES, (hs, rest_api)):
+    for path, module in HEAD_FILES:
         for where, kind, text in _sites((ROOT / path).read_text(encoding="utf-8"), path):
             out.append((where, kind, _accepts(kind, text, vars(module))))
     return out

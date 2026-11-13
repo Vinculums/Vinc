@@ -234,3 +234,93 @@ test('gather and compassOf leave the model as it was', () => {
   for (const n of [...M.topics.values(), ...M.nodes]) { gather(n); compassOf(n, null, S0({ koff: new Set(['record']) })); }
   assert.equal(shot(), before);
 });
+
+// ── 펼친 나무와 팔(view-compass-tree.ts): 모델 · 이웃 모으기와 그리기 쪽 손잡이(색 · 이름표 · 글자 폭 · 종류 이름)의 대역으로 DOM 없이 부른다 ──
+// 자리 하나하나는 view-compass-unify.test.mjs 의 기준 자리(golden)가 지킨다. 여기서는 손잡이를 부르는 방식과 배치의 규칙을 본다.
+const TR = await import(gm.tree);
+const LOOK = { colv: (n) => `c:${n.id}`, titleOf: (n) => (n.k === 'topic' ? n.path.split('/').pop() || 'All topics' : n.t), GW: () => 7,
+  KIND: { decision: 'Decisions', record: 'Records', episode: 'Events', doc: 'Docs' } };
+const treeOf = (b, look = LOOK) => ({ ...b, ...TR.compassTree(b, look) });
+const allOpen = (M) => new Map([...M.topics.values()].map((t) => [t.id, new Set([...t.sub].map((s) => `topic:${s}`))]));
+
+test('extentPts: the points a node takes on screen, with its label, by role', () => {
+  const { extentPts } = TR.compassTree({ compassOf: () => null }, LOOK);
+  const it = (role, x = {}) => ({ id: 'i', role, k: 'concept', x: 100, y: 50, r: 10, label: 'abcdef', ang: 0, ...x });
+  assert.deepEqual(extentPts(it('shelf')), [[70, 10], [300, 62]]);
+  assert.deepEqual(extentPts(it('left', { pinned: true })), [[40, 0], [280, 100]], 'a pinned node takes its label too');
+  assert.deepEqual(extentPts(it('hub', { k: 'topic' })), [[60, 30], [140, 100]], 'a topic hub: the ring and the name under it');
+  assert.deepEqual(extentPts(it('hub')), [[-80, 20], [130, 90]], 'a node hub: the name to its lower left');
+  assert.deepEqual(extentPts(it('right', { k: 'topic', ang: Math.PI })), [[90, 36], [110, 64], [100 - (10 + 12 + 7 * 10), 50]], 'a subtopic name runs flat, to the left when it faces left');
+  assert.deepEqual(extentPts(it('left')), [[90, 40], [110, 60], [100 + 10 + 12 + 7 * 6, 50]], 'a fan name runs along its angle as long as the name');
+});
+
+test('layoutTree: the root sits at the origin facing 12 o\'clock and asks the handles for colour, label and glyph width as it places', () => {
+  const calls = [], look = { ...LOOK, colv: (n) => { calls.push(['colv', n.id]); return LOOK.colv(n); }, titleOf: (n) => { calls.push(['titleOf', n.id]); return LOOK.titleOf(n); } };
+  const t = treeOf(topicGraph(), look), root = t.M.topics.get('lab');
+  const L = t.layoutTree(root, new Map(), root.id, S0({ path: [root] }));
+  assert.equal(L.comps.length, 1); assert.equal(L.focus.hub.id, 'topic:lab');
+  assert.deepEqual([L.focus.hub.x, L.focus.hub.y, L.focus.hub.r, L.focus.hub.role, L.focus.hub.level, L.focus.th12], [0, 0, 24, 'hub', 0, -90]);
+  assert.equal(L.focus.hub.c, 'c:topic:lab'); assert.equal(L.focus.hub.label, 'lab');
+  assert.deepEqual(L.items.map((o) => [o.id, o.role]), [['topic:lab', 'hub'], ['topic:lab/x', 'right'], ['topic:lab/y', 'right']], 'the subtopics stand at 3 o\'clock');
+  assert.deepEqual(calls, L.items.flatMap((o) => [['colv', o.id], ['titleOf', o.id]]), 'each placed node asks its colour, then its label, in placing order');
+});
+
+test('layoutTree: opened layers go out breadth first, each from its slot in the parent, with the path as its chain', () => {
+  const t = treeOf(topicGraph()), root = t.M.topics.get('lab'), x = t.M.topics.get('lab/x'), one = t.M.topics.get('lab/x/one');
+  const L = t.layoutTree(root, new Map([['topic:lab', new Set(['topic:lab/x'])], ['topic:lab/x', new Set(['topic:lab/x/one'])]]), one.id, S0({ path: [root, x, one] }));
+  assert.deepEqual(L.comps.map((c) => [c.hub.id, c.level, c.parent && c.parent.hub.id, c.focus]), [['topic:lab', 0, null, false], ['topic:lab/x', 1, 'topic:lab', false], ['topic:lab/x/one', 2, 'topic:lab/x', true]]);
+  assert.deepEqual(L.comps[2].chain.map((n) => n.id), ['topic:lab', 'topic:lab/x', 'topic:lab/x/one']);
+  for (const c of L.comps.slice(1)) assert.equal(((c.th12 % 90) + 90) % 90, 0, `${c.hub.id} stands on one of four directions`);
+  assert.ok(L.comps[0].items.some((o) => o.link && o.link.id === 'topic:lab/x') === false && L.comps[0].slots.has('topic:lab/x'), 'an opened child leaves a slot, not a leaf');
+  assert.equal(L.items.filter((o) => o.id === 'topic:lab/x').length, 1, 'a node is placed once');
+  assert.equal(L.sets.length, 1, 'only the current layer lays out its lists'); assert.equal(L.sets[0].comp, L.focus);
+  assert.ok(L.comps[1].stub && /Records 3/.test(L.comps[1].stub.text), 'a passed layer folds its lists into a count');
+  const lx = t.layoutTree(x, new Map(), x.id, S0({ path: [x] })), lists = lx.boxes(lx.focus).at(-1), w = Math.max(lx.focus.cp.E, 3 * 105 + 60);
+  close(lists[0], -w, 'the current layer reserves its three list columns below it when pushing others away'); close(lists[2], w);
+});
+
+test('layoutTree: canon places every topic without filters, and a layer cache in S.cps is reused', () => {
+  const t = treeOf(topicGraph()), root = t.M.topics.get('lab'), cps = new Map();
+  const S = S0({ mode: 'all', path: [root], canon: true, koff: new Set(['record']), cps });
+  const A = t.layoutTree(root, allOpen(t.M), null, S);
+  assert.deepEqual(A.comps.map((c) => c.hub.id), ['topic:lab', 'topic:lab/x', 'topic:lab/y', 'topic:lab/x/one', 'topic:lab/x/two']);
+  assert.equal(A.focus, A.comps.at(-1), 'no focus id: the last layer placed is the current one'); assert.equal(A.sets[0].comp, A.focus);
+  assert.deepEqual(A.sets.slice(1).map((st) => st.comp.hub.id), A.comps.filter((c) => c !== A.focus && c.kinds.length).map((c) => c.hub.id),
+    'all mode also lays out the lists of every other layer that has them');
+  assert.ok(A.items.some((o) => o.id === 'record:r1'), 'canon does not filter switched-off kinds');
+  assert.deepEqual([...cps.keys()], A.comps.map((c) => `${c.hub.id}|${c.parent ? c.parent.hub.id : ''}`), 'one cached layer per placed layer, keyed by its parent');
+  const first = new Map(cps); t.layoutTree(root, allOpen(t.M), null, S);
+  assert.ok([...first].every(([k, v]) => cps.get(k) === v), 'the second layout reuses each layer from the cache');
+});
+
+test('crossCanon: the root keeps its place, every subtopic gets one of four arms, and given arms are kept', () => {
+  const t = treeOf(built(['a', 'b', 'c', 'd', 'e'].flatMap((a) => [cn(`concept:${a}1`, 'concept', `lab/${a}`), cn(`concept:${a}2`, 'concept', `lab/${a}/in`)]))), root = t.M.topics.get('lab');
+  const C0 = t.layoutTree(root, allOpen(t.M), null, S0({ mode: 'all', path: [root], canon: true }));
+  const P = TR.crossCanon(C0);
+  assert.deepEqual(P.out.get('topic:lab'), { x: 0, y: 0, th12: -90 });
+  assert.deepEqual([...P.arms.keys()].sort(), ['topic:lab/a', 'topic:lab/b', 'topic:lab/c', 'topic:lab/d', 'topic:lab/e']);
+  assert.ok([...P.arms.values()].every((i) => i >= 0 && i <= 3));
+  for (const id of P.arms.keys()) { const o = P.out.get(id); assert.deepEqual(o.route[0], [0, 0], `${id} starts from the root`); assert.deepEqual(o.route.at(-1), [o.x, o.y]);
+    assert.equal(o.th12, [-90, 180, 90, 0][P.arms.get(id)], `${id} faces its arm`); }
+  assert.ok(P.out.has('topic:lab/a/in'), 'deeper topics are placed too');
+  const fixed = new Map([...P.arms].map(([k]) => [k, 2]));
+  assert.ok([...TR.crossCanon(C0, null, fixed).arms.values()].every((i) => i === 2), 'given arms are kept as they are');
+  const lone = treeOf(built([cn('concept:z', 'concept', 'lab')])), r = lone.M.topics.get('lab');
+  const P1 = TR.crossCanon(lone.layoutTree(r, allOpen(lone.M), null, S0({ mode: 'all', path: [r], canon: true })));
+  assert.deepEqual([[...P1.out], [...P1.arms]], [[['topic:lab', { x: 0, y: 0, th12: -90 }]], []], 'no subtopics: only the root');
+});
+
+test('packPath: nothing to pack without arms or without a topic under a topic; otherwise every open topic layer gets its packed place', () => {
+  const t = treeOf(topicGraph()), root = t.M.topics.get('lab'), x = t.M.topics.get('lab/x'), one = t.M.topics.get('lab/x/one');
+  const P = TR.crossCanon(t.layoutTree(root, allOpen(t.M), null, S0({ mode: 'all', path: [root], canon: true })));
+  const L1 = t.layoutTree(root, new Map([['topic:lab', new Set(['topic:lab/x'])]]), x.id, S0({ path: [root, x], dirs: P.out }));
+  assert.equal(t.packPath(L1, null), null, 'no arms');
+  assert.deepEqual([...t.packPath(L1, P.arms).keys()], ['topic:lab', 'topic:lab/x'], 'a topic layer under a topic (the root too) is packed');
+  const a = t.M.byId.get('concept:a'), Ln = t.layoutTree(a, new Map([['concept:a', new Set(['concept:b'])]]), 'concept:b', S0({ path: [a, t.M.byId.get('concept:b')] }));
+  assert.equal(t.packPath(Ln, P.arms), null, 'no topic layer under a topic: parent-relative placement stays');
+  const ex = new Map([['topic:lab', new Set(['topic:lab/x'])], ['topic:lab/x', new Set(['topic:lab/x/one'])]]);
+  const L2 = t.layoutTree(root, ex, one.id, S0({ path: [root, x, one], dirs: P.out }));
+  const place = t.packPath(L2, P.arms);
+  assert.deepEqual([...place.keys()], ['topic:lab', 'topic:lab/x', 'topic:lab/x/one']);
+  assert.equal(place.get('topic:lab/x').th12, P.out.get('topic:lab/x').th12, 'a packed layer faces the way its arm does');
+});

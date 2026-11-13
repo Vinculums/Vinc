@@ -4,6 +4,7 @@
 // 배치 결과(LZ)를 읽으려고 그 한 줄만 전역으로 내보낸다.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { installDom, El } from './mini-dom.mjs';
 import { loadCompass } from './helpers/compass-load.mjs';
 
@@ -117,4 +118,81 @@ test('layers opened one at a time sit at a readable distance from their parent',
     for (const c of LZ().comps.slice(1)) { const p = c.parent.hub, d = Math.hypot(c.hub.x - p.x, c.hub.y - p.y);
       assert.ok(d >= 300 && d <= 1600, `${c.hub.id} is ${Math.round(d)} from ${p.id}`); }
   }
+});
+
+// ── 배치의 기준 자리(golden): 고정된 그래프 하나(노드 29)를 정해진 걸음으로 펴 보고(끝에 꺾여 들어가는 길 하나를 더한다), 걸음마다 배치(LZ)의 노드 자리 · 층 · 목록과
+// 팔의 계획(어림한 것과 잰 것, 모두 편 정해진 자리)을 순서 그대로 적어 view-compass-golden.json 과 견준다. 배치 코드를 옮기거나
+// 고칠 때 자리 · 팔 · 순서가 하나라도 달라지면 여기서 걸린다. 같은 걸음으로 파일을 다시 쓰려면 COMPASS_GOLDEN=write 로 돌린다
+// (그때 바뀐 자리는 PR 에서 설명해야 한다). 이 시험만 따로 적재한 나침반을 쓴다: 층 크기 캐시(MEAS_CACHE)가 다른 시험과 섞이지 않게.
+const GOLDEN_URL = new URL('./view-compass-golden.json', import.meta.url);
+const GHOOKS = [['LZ = { hub: L.focus.hub, ...L };', 'LZ = globalThis.__gLZ = { hub: L.focus.hub, ...L };'],
+  ['PLAN_EST = crossCanon(CANONL);', 'PLAN_EST = crossCanon(CANONL); globalThis.__gEst = { L: CANONL, P: PLAN_EST };'],
+  ['PLAN_MEAS = crossCanon(CANONL, meas);', 'PLAN_MEAS = globalThis.__gMeas = crossCanon(CANONL, meas);']];
+const goldenCompass = await loadCompass({ patch: (js) => GHOOKS.reduce((s, [a, b]) => {
+  assert.equal(s.split(a).length, 2, `the compass still has one "${a}"`); return s.replace(a, b); }, js) });
+/** 고정된 그래프: 한 최상위(lab) 아래 영역 셋과 하위 주제 셋, 개념 · 문서 · 결정 · 기록 · 사건 · 다리, 뜻 · 방향 · 붙음 · 대체 관계 */
+function goldenGraph() {
+  const N = (id, kind, domain, x = {}) => ({ id, kind, title: id.split(':')[1], label: id.split(':')[1], domain, ts: '2026-11-01', degree: 1, ...x });
+  const nodes = [N('concept:top1', 'concept', 'lab'),
+    N('concept:a1', 'concept', 'lab/a'), N('concept:a2', 'concept', 'lab/a'), N('concept:doc.notes-a', 'concept', 'lab/a'),
+    ...['x1', 'x2', 'x3', 'x4'].map((t, i) => N(`concept:${t}`, 'concept', 'lab/a/x', { content_ts: `2026-11-0${i + 1}` })),
+    N('concept:y1', 'concept', 'lab/a/y'), N('concept:y2', 'concept', 'lab/a/y'),
+    N('concept:b1', 'concept', 'lab/b'), N('concept:b2', 'concept', 'lab/b'), N('concept:b3', 'concept', 'lab/b'),
+    N('concept:c1', 'concept', 'lab/c'), N('concept:z1', 'concept', 'lab/c/z'), N('concept:z2', 'concept', 'lab/c/z'),
+    N('decision:d-x', 'decision', 'lab/a/x', { valid_from: '2026-11-05' }), N('decision:d-x-old', 'decision', 'lab/a/x', { valid_from: '2026-09-01' }),
+    N('decision:d-b', 'decision', 'lab/b', { valid_from: '2026-10-10' }),
+    ...[1, 2, 3, 4].map((i) => N(`record:r-x${i}`, 'record', 'lab/a/x', { ts: `2026-10-1${i}`, content_ts: `2026-10-1${i}` })),
+    N('record:r-b1', 'record', 'lab/b', { content_ts: '2026-10-20' }), N('record:r-b2', 'record', 'lab/b', { content_ts: '2026-10-21' }),
+    N('episode:e-y', 'episode', 'lab/a/y', { ts: '2026-11-06' }), N('episode:e-c', 'episode', 'lab/c', { ts: '2026-11-07' }),
+    N('bridge:j-in', 'bridge', ''), N('bridge:j-out', 'bridge', '')];
+  const E = (source, target, type) => ({ source, target, type });
+  const edges = [E('concept:x1', 'concept:x2', 'RELATED_TO'), E('concept:x1', 'concept:x3', 'RELATED_TO'), E('concept:x2', 'concept:b1', 'RELATED_TO'),
+    E('concept:a1', 'concept:x1', 'RELATED_TO'), E('concept:y1', 'concept:y2', 'RELATED_TO'), E('concept:b1', 'concept:b2', 'RELATED_TO'),
+    E('concept:c1', 'concept:z1', 'RELATED_TO'), E('concept:z1', 'concept:z2', 'RELATED_TO'), E('concept:top1', 'concept:a1', 'RELATED_TO'),
+    E('concept:x4', 'concept:x1', 'DERIVES_FROM'), E('concept:x3', 'concept:x4', 'PREREQUISITE_OF'), E('concept:z2', 'concept:c1', 'INHERITS_FROM'),
+    E('decision:d-x', 'decision:d-x-old', 'SUPERSEDES'), E('decision:d-x', 'concept:x1', 'ABOUT'), E('episode:e-y', 'concept:y1', 'ABOUT'),
+    E('episode:e-c', 'concept:c1', 'ABOUT'), E('decision:d-b', 'concept:b1', 'ABOUT'),
+    ...[1, 2, 3, 4].map((i) => E(`record:r-x${i}`, i < 3 ? 'concept:x1' : 'concept:x2', 'ATTACHES_TO')),
+    E('record:r-b1', 'concept:b1', 'ATTACHES_TO'), E('record:r-b2', 'concept:b3', 'MENTIONS'), E('concept:doc.notes-a', 'concept:a2', 'MENTIONS'),
+    E('bridge:j-in', 'concept:x1', 'CONNECTS'), E('bridge:j-in', 'concept:y1', 'CONNECTS'), E('bridge:j-out', 'concept:x2', 'CONNECTS'), E('bridge:j-out', 'concept:b1', 'CONNECTS')];
+  return { nodes, edges };
+}
+const r6 = (v) => (v == null ? null : Math.round(v * 1e6) / 1e6);
+const pts = (l) => (l || []).map(([x, y]) => [r6(x), r6(y)]);
+/** 배치 하나: 놓인 순서대로 노드(id · 역할 · 층 · 자리 · 반지름 · 층 허브 · 고정), 층(허브 · 12시 · 깊이 · 지금 층 · 부모 · 길만 · 부모 선 · 줄 순서 · 접힌 목록 표), 목록 자리 */
+const goldenLayout = (L) => ({
+  focus: L.focus.hub.id, mode: L.mode, side: L.side, a6: r6(L.a6), BY: r6(L.BY), Q: L.Q && [r6(L.Q.x), r6(L.Q.y)],
+  items: L.items.map((o) => [o.id, o.role, o.level, r6(o.x), r6(o.y), r6(o.r), o.comp ?? null, o.pinned ? 1 : 0, r6(o.ang)]),
+  comps: L.comps.map((c) => [c.hub.id, r6(c.th12), c.level, c.focus ? 1 : 0, c.parent ? c.parent.hub.id : null, c.pinOnly ? 1 : 0, r6(c.free), pts(c.hub.route),
+    c.items.map((o) => (o.link ? `>${o.link.id}` : o.id)), c.stub ? [r6(c.stub.x), r6(c.stub.y), c.stub.text] : null, (c.kinds || []).map((k) => [k.k, k.all.length])]),
+  sets: L.sets.map((s) => [s.hub.id, s.mode, s.side, r6(s.BY), [r6(s.Q.x), r6(s.Q.y)], s.shelves.map((sh) => [sh.k, r6(sh.x), sh.items.map((o) => o.id)])]),
+  pinned: (L.pinned || []).map((o) => [o.id, o.role, r6(o.x), r6(o.y)]) });
+const goldenPlan = (P) => ({ arms: [...P.arms], out: [...P.out].map(([id, t]) => [id, r6(t.x), r6(t.y), r6(t.th12), pts(t.route)]) });
+
+test('layout golden: a fixed graph walked step by step keeps every position, arm and order', async () => {
+  const steps = [], G = goldenGraph(), host = () => { const el = document.createElement('div'); document.body.append(el); return el; };
+  const rec = (label, h) => steps.push({ label, centre: h.centre(), layout: goldenLayout(globalThis.__gLZ) });
+  const A = goldenCompass.mountCompass(host(), goldenCompass.compassDataFrom(G.nodes, G.edges), { store: 'golden-a' });
+  rec('mount: the root with the estimated arms', A);
+  steps.push({ label: 'estimated arms and the canonical layout (all topics open)', plan: goldenPlan(globalThis.__gEst.P), layout: goldenLayout(globalThis.__gEst.L) });
+  await idle();
+  steps.push({ label: 'measured arms', plan: goldenPlan(globalThis.__gMeas) });
+  for (const id of ['topic:lab/a', 'topic:lab/a/x', 'concept:x1', 'concept:x2', 'concept:b1', 'bridge:j-out', 'topic:lab/c/z', 'topic:lab']) { A.open(id); rec(`open ${id}`, A); }
+  localStorage.setItem('vinc.pins:golden-b', JSON.stringify(['concept:z2', 'record:r-b1']));
+  const B = goldenCompass.mountCompass(host(), goldenCompass.compassDataFrom(G.nodes, G.edges),
+    { store: 'golden-b', restore: { path: ['topic:lab', 'topic:lab/a', 'topic:lab/a/x'], koff: ['decision'] } });
+  rec('restored path with two pins and decisions switched off', B);
+  for (const id of ['topic:lab/b', 'concept:b1']) { B.open(id); rec(`pinned: open ${id}`, B); }
+  // 꺾여 들어가는 길(부모 기준으로 놓은 층이 앞선 층과 겹쳐 밀려나는 자리): 이 파일의 겹침 시험이 쓰는 그래프(smallGraph(4))와 길 그대로
+  const T = smallGraph(4), Cm = goldenCompass.mountCompass(host(), goldenCompass.compassDataFrom(T.nodes, T.edges), { store: 'golden-c' });
+  await idle();
+  for (const id of ['topic:root/alpha', 'topic:root/alpha/one', 'concept:alpha-one-3']) { Cm.open(id); rec(`turning: open ${id}`, Cm); }
+  const next = globalThis.__gLZ.items.find((o) => (o.role === 'up' || o.role === 'left') && o.comp === 'concept:alpha-one-3' && !o.id.includes('@@'));
+  Cm.open(next.id); rec(`turning: open ${next.id}`, Cm);
+  for (const id of ['topic:root', 'bridge:link-2', 'concept:gamma-three-8', 'concept:gamma-one-5']) { Cm.open(id); rec(`turning: open ${id}`, Cm); }
+  const got = JSON.parse(JSON.stringify({ graph: 'goldenGraph (29 nodes), then smallGraph(4) for the turning path', steps }));
+  if (process.env.COMPASS_GOLDEN === 'write') { writeFileSync(process.env.COMPASS_GOLDEN_FILE || GOLDEN_URL, `${JSON.stringify(got, null, 1)}\n`); return; }
+  const want = JSON.parse(readFileSync(GOLDEN_URL, 'utf8'));
+  assert.equal(got.steps.length, want.steps.length);
+  for (let i = 0; i < want.steps.length; i++) assert.deepStrictEqual(got.steps[i], want.steps[i], `step ${i}: ${want.steps[i].label}`);
 });
