@@ -1614,7 +1614,8 @@ def merge_fragment(fragment: dict, *, store, themes=None,
                    stamp_edges: bool = True,
                    max_domains: int | None = None,
                    read_back: bool = False,
-                   authored: bool = False) -> dict:
+                   authored: bool = False,
+                   edge_ends: list | None = None) -> dict:
     """fragment 전체 MERGE 를 트랜잭션 하나로 쓴다(`store.write_batch`). 계약은 :func:`_merge_fragment_once`.
 
     커밋이 한 번이라 문장마다 WAL 을 디스크에 내리지 않고, 도중에 예외가 나면 아무것도 남지 않는다.
@@ -1628,7 +1629,7 @@ def merge_fragment(fragment: dict, *, store, themes=None,
     메모리에 들고 있으므로, 로컬 본문 상한(256MB)까지 오는 fragment 하나가 메모리를 다 쓸 수 있다.
     근거: [[vinc.manual.core]] §3"""
     kwargs = dict(store=store, themes=themes, stamp_edges=stamp_edges, max_domains=max_domains,
-                  read_back=read_back, authored=authored)
+                  read_back=read_back, authored=authored, edge_ends=edge_ends)
     if _item_count(fragment) > BATCH_MAX_ITEMS:
         return _merge_fragment_once(fragment, **kwargs)
     result, first = write_batch.run_batched(
@@ -1643,7 +1644,8 @@ def _merge_fragment_once(fragment: dict, *, store, themes=None,
                          stamp_edges: bool = True,
                          max_domains: int | None = None,
                          read_back: bool = False,
-                         authored: bool = False) -> dict:
+                         authored: bool = False,
+                         edge_ends: list | None = None) -> dict:
     """fragment 전체 MERGE. 반환 = D11 §4 계약(+ dedupe/partial/개방층 확장):
     ``{merged:{nodes:{created,matched}, edges:{created,[skipped_duplicate]}},
     warnings:[…], executed:…, [partial:True], [proposed_types:[…]],
@@ -1656,9 +1658,12 @@ def _merge_fragment_once(fragment: dict, *, store, themes=None,
 
     ``stamp_edges``: 신규 생성된 동기화 대상 엣지(CC 4종·ABOUT)의 양 끝 노드에
     revstamp(엣지 추가·재생성의 증분 동기화 전파 — _stamp_edge_endpoints 주석).
-    **sync apply 경로만 False** — 원격발 엣지를 다시 스탬프하면 에코가 된다. False 면 대신 이 호출이
-    새로 만들었거나 근거·신뢰도를 바꾼 엣지의 양 끝을 ``edge_ends`` 에 (라벨, PK 열, 물리 키)로 싣는다.
-    받은 쪽(`api.sync.apply_delta`)이 그 끝점에 새 순번을 매겨 다음 델타에 싣는다.
+    **sync apply 경로만 False** — 원격발 엣지를 다시 스탬프하면 에코가 된다.
+
+    ``edge_ends``(선택): 목록을 주면 이 호출이 새로 만들었거나 근거·신뢰도를 바꾼 엣지의 양 끝을
+    (라벨, PK 열, 물리 키)로 채운다. 묶음을 버리고 다시 쓰면 다시 채우므로 시도마다 비운다. 동기화
+    적용(`api.sync.apply_delta`)이 ``stamp_edges=False`` 와 함께 주고, 그 끝점에 새 순번을 매겨 다음
+    델타에 싣는다. 응답에는 싣지 않는다(물리 키가 응답에 나가지 않게).
 
     ``max_domains``(선택): 무료 등급 주제 개수 상한(AP-1 §3.3). **기본 None = 무제한**
     이라는 점이 설계의 핵심이다 — sync 복제·로컬 경로가 아무 코드 변경 없이 자동
@@ -1671,6 +1676,8 @@ def _merge_fragment_once(fragment: dict, *, store, themes=None,
     저장형 전량을 되돌리면 응답이 요청보다 커지고 아무도 그것을 읽지 않는다. 되읽기가
     필요한 곳은 사람이 손으로 페이로드를 짜는 자리다."""
     warnings: list[str] = []
+    if edge_ends is not None:
+        edge_ends.clear()
     if store is None:
         return _finalize({"merged": None, "executed": False}, warnings + ["no reachable store"])
     created = matched = e_created = e_skipped_dup = 0
@@ -1758,7 +1765,6 @@ def _merge_fragment_once(fragment: dict, *, store, themes=None,
             _born_cache.append(revstamp.hlc_now(store))
         return _born_cache[0]
 
-    edge_ends: list | None = None if stamp_edges else []
     for e in edges:
         st, dt = types.get((e.get("from") or "").strip(), ""), types.get((e.get("to") or "").strip(), "")
         etype = (e.get("type") or "").strip()
@@ -1782,8 +1788,6 @@ def _merge_fragment_once(fragment: dict, *, store, themes=None,
     # 왜 whoami 로는 안 되는지: [[decision:identity-rides-on-the-first-door-not-a-whoami]].
     result = {"merged": {"nodes": {"created": created, "matched": matched}, "edges": edges_out},
               "executed": True, "owner": owner}
-    if edge_ends is not None:
-        result["edge_ends"] = edge_ends
     if fold.proposed:
         result["proposed_types"] = fold.proposed
     if read_back and types:

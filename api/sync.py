@@ -1079,14 +1079,13 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
 
     beaten: list[dict] = []
     edges = _edges_after_deletions(store, owner, bundle, set(refused), beaten)
-    ends: list = []                  # 이 묶음이 새로 만들었거나 바꾼 엣지의 양 끝(fragment `edge_ends`)
+    ends: list = []                  # 이 묶음이 새로 만들었거나 바꾼 엣지의 양 끝(merge_fragment 가 채운다)
     if writes or edges:
         # stamp_edges=False — 원격발 엣지를 끝점 스탬프하면 다음 push 로 무변경 노드가
         # 에코된다(엣지 전파 스탬프는 **원 저작 기기**에서만, fragment 주석 참조).
         res = frag.merge_fragment(
             {"owner": owner, "nodes": [w["node"] for w in writes],
-             "edges": edges}, store=store, stamp_edges=False)
-        ends = res.get("edge_ends") or []
+             "edges": edges}, store=store, stamp_edges=False, edge_ends=ends)
         out["executed"] = bool(res.get("executed"))
         out["edges"] = (res.get("merged") or {}).get("edges", {}).get("created", 0)
         out["warnings"] += res.get("warnings") or []
