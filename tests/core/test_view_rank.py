@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from api import query as q  # noqa: E402
+from api import graph_read, query as q  # noqa: E402
 from store.embedded_backend import import_driver  # noqa: E402
 
 _DRIVER, _NAME = import_driver()
@@ -263,8 +263,8 @@ class GraphSelect(_Store):
                 return fn(*a, **kw)
             return wrapped
 
-        with mock.patch.object(q, "graph_rows_for_ids_plan", spy(q.graph_rows_for_ids_plan)), \
-                mock.patch.object(q, "_GRAPH_READ_PLANS",
+        with mock.patch.object(graph_read, "graph_rows_for_ids_plan", spy(q.graph_rows_for_ids_plan)), \
+                mock.patch.object(graph_read, "_GRAPH_READ_PLANS",
                                   tuple(spy(f) for f in q._GRAPH_READ_PLANS)):
             res = self.g(depth=2, max_nodes=5, select="prize")
         self.assertEqual(res["selection"]["kept"], 5)
@@ -275,7 +275,7 @@ class GraphSelect(_Store):
 
     def test_the_cap_counts_concepts(self):
         from unittest import mock
-        with mock.patch.object(q, "PRIZE_REACH_CAP", 13):
+        with mock.patch.object(graph_read, "PRIZE_REACH_CAP", 13):
             res = self.g(depth=2, max_nodes=10, select="prize")
         self.assertEqual(res["selection"]["method"], "layers")
         self.assertIn("reach 14 ", res["selection"]["note"])

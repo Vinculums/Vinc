@@ -59,7 +59,7 @@
     "api/packfile.py": 4,
     "api/preference.py": 5,
     "api/procutil.py": 3,
-    "api/query.py": 141,
+    "api/query.py": 111,
     "api/refs.py": 5,
     "api/remote_client.py": 2,
     "api/revstamp.py": 2,
