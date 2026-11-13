@@ -303,7 +303,8 @@ def leak_brief_rank_without_arms():
         return sorted(rows, key=lambda h: (-1 if (strict and h.get("sem_decisive")) else 0,
                                            -Q._brief_int(h.get("hit_tokens")),
                                            -Q._brief_int(h.get("title_tokens"))))
-    with mock.patch.object(Q, "_brief_rank", rank):
+    from api import brief as B
+    with mock.patch.object(B, "_brief_rank", rank):
         yield
 
 
