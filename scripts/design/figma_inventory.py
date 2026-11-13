@@ -115,7 +115,7 @@ REFERENCE_ONLY = {
 #: 매니페스트에 새로 들어왔지만 아직 보드를 그리지 않은 상태. 값이 None 인 상태는 부패가 아니라
 #: 선언된 결손(gap)으로 센다. 보드를 그리면 여기서 지운다.
 BOARD_PENDING = frozenset({
-    "community__home", "community__page-read", "community__talk", "community__lounge",
+    "community__home", "community__page-read", "community__talk",
     "community__agent-share", "community__agent-take",
 })
 MANIFEST_ROUTE_ALIAS = {"/this-page-is-not-here/": "/404"}
