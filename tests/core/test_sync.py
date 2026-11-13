@@ -198,10 +198,29 @@ def test_apply_edge_tombstone_scopes_owner():
         assert params["owner"] == OWNER
 
 
-def test_apply_node_tombstone_scopes_owner_and_clamps_future_deleted_at(monkeypatch):
-    """노드 툼스톤 적용 — owner 술어 없으면 남의 concept 을 지울 수 있고, deleted_at
-    을 clamp 하지 않으면 공격자가 미래 시각을 넣어 어떤 재편집도 이기게 만든다.
-    허용 스큐 안의 미래 시각은 서버 클록으로 당겨 적용하고, 그보다 먼 시각은 받지 않는다."""
+class _MetaFake(_SubFake):
+    """`_SyncMeta`(시계·순번)를 기억하는 가짜. 받은 삭제 시각을 시계가 따라가는지 본다."""
+    def __init__(self, responses=None):
+        super().__init__(responses)
+        self.meta = {}
+
+    def run(self, cypher, params=None):
+        p = dict(params or {})
+        if "MERGE (m:_SyncMeta {key: $k})" in cypher:
+            self.calls.append((cypher, p))
+            self.meta[p["k"]] = p["v"]
+            return []
+        if "MATCH (m:_SyncMeta) WHERE m.key = $k " in cypher:
+            self.calls.append((cypher, p))
+            return [{"v": self.meta[p["k"]]}] if p["k"] in self.meta else []
+        return super().run(cypher, params)
+
+
+def test_apply_node_tombstone_scopes_owner_and_bounds_future_deleted_at(monkeypatch):
+    """노드 툼스톤 적용 — owner 술어 없으면 남의 concept 을 지울 수 있고, 미래 시각을
+    그대로 받으면 공격자가 어떤 재편집도 이기게 만든다. 믿지 않는 쪽의 허용 스큐 뒤 시각은 받지 않는다. 스큐 안의
+    시각은 자르지 않고 적고 받는 쪽 시계가 그것을 따라간다(그 뒤의 재편집은 그 뒤에 찍힌다). 받는 쪽 시계가 따라가지
+    않는 시각(믿는 쪽에서 온 한도 밖의 값)만 이 스토어의 시계로 자른다."""
     now = 1_800_000_000_000
     monkeypatch.setattr(sync.revstamp, "_wall_ms", lambda: now)
     sent = sync.revstamp._fmt(now + 4 * 60 * 1000)
@@ -213,7 +232,7 @@ def test_apply_node_tombstone_scopes_owner_and_clamps_future_deleted_at(monkeypa
     }, store=far)
     assert refused["deleted"] == 0 and refused["clock_skew"] == ["concept:victim"], refused
     assert not [c for c, _ in far.calls if "DETACH DELETE x" in c or "MERGE (t:_Tombstone" in c]
-    fake = _SubFake({"RETURN x.updated_at AS ua": [{"ua": "2020-01-01T00:00:00.000Z"}]})
+    fake = _MetaFake({"RETURN x.updated_at AS ua": [{"ua": "2020-01-01T00:00:00.000Z"}]})
     out = sync.apply_delta(owner=OWNER, bundle={
         "nodes": [], "edges": [],
         "tombstones": [{"node_id": "concept:victim", "label": "Concept", "deleted_at": sent}],
@@ -227,7 +246,18 @@ def test_apply_node_tombstone_scopes_owner_and_clamps_future_deleted_at(monkeypa
         assert params["owner"] == OWNER
     tomb = [(c, p) for c, p in fake.calls if "MERGE (t:_Tombstone" in c]
     assert tomb, "재전파용 자기 tombstone 이 기록돼야 한다"
-    assert tomb[0][1]["da"] < sent, "미래로 조작된 deleted_at 이 서버 클록으로 clamp 돼야 한다"
+    assert tomb[0][1]["da"] == sent, "스큐 안의 삭제는 보낸 시각 그대로 적는다(스토어마다 같은 시각)"
+    assert sync.revstamp.hlc_now(fake) > sent, "받는 쪽 시계가 그 삭제 시각을 따라간다"
+    # 믿는 쪽(기기가 받는 허브)이어도 시계가 따라가지 않는 먼 시각은 이 스토어의 시계로 자른다.
+    held = _MetaFake({"RETURN x.updated_at AS ua": [{"ua": "2020-01-01T00:00:00.000Z"}]})
+    beyond = sync.revstamp._fmt(now + 24 * 60 * 60 * 1000)
+    out = sync.apply_delta(owner=OWNER, trusted_sender=True, bundle={
+        "nodes": [], "edges": [], "clock": sync.revstamp._fmt(now),
+        "tombstones": [{"node_id": "concept:victim", "label": "Concept", "deleted_at": beyond}],
+    }, store=held)
+    tomb = [(c, p) for c, p in held.calls if "MERGE (t:_Tombstone" in c]
+    assert out["deleted"] == 1 and tomb and tomb[0][1]["da"] < sent, out
+    assert sync.revstamp.hlc_now(held) < sent, "따라가지 않은 먼 삭제는 시계를 밀지 않는다"
 
 
 def test_apply_stamp_loop_scopes_owner():

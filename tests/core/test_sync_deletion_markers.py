@@ -8,6 +8,10 @@
   막 받은 노드를 지우면 그 삭제가 기기에 남는다.
 - 받는 쪽이 이미 같은 삭제를 알면 표식에 새 순번을 매기지 않는다. 그래서 표식이 동기화마다 오가지 않는다. 지운 것을
   다시 만든 뒤의 삭제는 그대로 건너간다.
+- 삭제 하나는 모든 스토어에서 같은 시각을 갖는다. 받는 쪽은 받은 삭제의 시각으로 시계를 먼저 밀고 자르지 않고 적는다.
+  그래서 느린 기기와 빠른 기기가 있어도 그 삭제 뒤에 다시 만든 노드가 모든 스토어에 간다.
+- 엣지 삭제는 양 끝이 그 삭제보다 늦게 찍힌 엣지를 지우지 않는다(들어오는 엣지를 표식에 견주는 규칙과 같다). 그래서
+  되돌아온 표식이 그 뒤에 다시 만든 엣지를 지우지 않는다.
 - 허브가 받은 문서 삭제도 표식을 남긴다. 그래서 다른 기기가 그 삭제를 받는다.
 - 한 스토어의 시계(`last_hlc`)는 그 스토어의 소유자들이 함께 쓴다. 다른 소유자의 업로드는 그 시계를 허브 벽시계 +
   `revstamp.MAX_SKEW_MS` 까지만 민다. 한 소유자 안의 인과 순서는 그대로다.
@@ -339,6 +343,227 @@ def test_a_deletion_made_after_the_node_and_edge_are_made_again_still_crosses(wo
         _run(st, remote, clocks)
     assert [_row(st) for st in (hub, dev, dev2)] == [None] * 3
     assert [_edges(st) for st in (hub, dev, dev2)] == [0, 0, 0]
+
+
+# ── 삭제 하나는 모든 스토어에서 같은 시각이다 ─────────────────────────────────
+def _gone_at(store, nid="concept:n"):
+    got = sync.get_tombstone(store, nid, A)
+    return got["deleted_at"] if got else None
+
+
+@pytest.mark.parametrize("behind", [2 * HOUR, 26 * HOUR, 400 * DAY], ids=["2h", "26h", "400d"])
+def test_a_slow_device_that_makes_a_node_again_after_its_deletion_reaches_the_hub(world, behind):
+    """허브가 지운 노드를 느린 기기가 받는다. 기기 시계가 그 삭제 시각까지 간 뒤에 적으므로 기기의 표식은 허브의 표식과
+    같은 시각이고, 기기가 그 뒤에 다시 만든 노드는 그 삭제보다 늦게 찍혀 허브에 간다. 기기가 보낸 같은 삭제는 허브에서
+    새 순번을 받지 않는다."""
+    hub, _dev, dev2, clocks, remote, traffic = world
+    _seed_hub(hub, clocks, ds.doc_id_for_origin(A, "marker-note"))
+    _run(dev2, remote, clocks, offset=-behind)
+    clocks.hub += 10 * SECOND
+    with clocks.at_hub():
+        assert q.delete_node("concept:n", owner=A, store=hub).get("executed")
+    gone_at = _gone_at(hub)
+    clocks.hub += 10 * SECOND
+    _run(dev2, remote, clocks, offset=-behind)
+    assert _row(dev2) is None and _gone_at(dev2) == gone_at
+    clocks.hub += SECOND
+    start = len(traffic)
+    _run(dev2, remote, clocks, offset=-behind)
+    assert _per_sync(traffic, start) == (0, 0)
+    clocks.hub += 10 * SECOND
+    clocks.offset = -behind
+    _write(dev2, "made again after the deletion")
+    clocks.offset = 0
+    assert _row(dev2)["ua"] > gone_at
+    for _ in range(2):
+        clocks.hub += SECOND
+        _run(dev2, remote, clocks, offset=-behind)
+    assert [(_row(st) or {}).get("title") for st in (hub, dev2)] == ["made again after the deletion"] * 2
+
+
+def test_a_fast_devices_deletion_keeps_its_time_and_a_later_node_reaches_the_deleter(world):
+    """상한 안에서 4분 빠른 기기가 노드를 지운다. 허브는 그 시각을 자르지 않고 적고(허브 시계가 거기까지 간다), 되돌아온
+    표식은 같은 시각이라 기기가 다시 적지 않는다. 시계가 맞는 둘째 기기는 그 시각 뒤에 다시 만들고, 그것이 지운 기기에도
+    간다."""
+    hub, dev, dev2, clocks, remote, traffic = world
+    fast = 4 * MINUTE
+    _seed_hub(hub, clocks, ds.doc_id_for_origin(A, "marker-note"))
+    _run(dev, remote, clocks, offset=fast)
+    _run(dev2, remote, clocks)
+    clocks.hub += 30 * SECOND
+    clocks.offset = fast
+    assert q.delete_node("concept:n", owner=A, store=dev).get("executed")
+    clocks.offset = 0
+    gone_at = _gone_at(dev)
+    for st, off in ((dev, fast), (dev, fast), (dev2, 0)):
+        clocks.hub += SECOND
+        _run(st, remote, clocks, offset=off)
+    assert [_gone_at(st) for st in (hub, dev, dev2)] == [gone_at] * 3
+    assert int(revstamp.meta_get(hub, "last_hlc", "0")) >= revstamp._parse_ms(gone_at)
+    start = len(traffic)
+    for st, off in ((dev, fast), (dev2, 0), (dev, fast)):
+        clocks.hub += SECOND
+        _run(st, remote, clocks, offset=off)
+    assert _per_sync(traffic, start) == (0, 0)
+    clocks.hub += 10 * SECOND
+    _write(dev2, "made again on the second device")
+    assert _row(dev2)["ua"] > gone_at
+    for st, off in ((dev2, 0), (dev, fast), (dev2, 0), (dev, fast)):
+        clocks.hub += SECOND
+        _run(st, remote, clocks, offset=off)
+    assert [(_row(st) or {}).get("title") for st in (hub, dev, dev2)] == ["made again on the second device"] * 3
+
+
+def test_a_known_deletion_sent_back_with_an_earlier_time_ends_at_that_time_everywhere(world):
+    """갱신하지 않은 앱은 받은 삭제의 시각을 자기 시계로 잘라 되돌려 보낸다. 허브는 같은 삭제의 다른 시각을 받아 새
+    순번으로 내보내고, 기기들이 그것을 한 번 받아 되돌린 뒤로는 표식이 오가지 않는다. 그래서 그 앱이 자른 시각 뒤에
+    다시 만든 노드가 모든 스토어에 간다(허브가 늦은 시각을 지키면 그 노드는 허브에서 막힌다)."""
+    hub, dev, dev2, clocks, remote, traffic = world
+    _seed_hub(hub, clocks, ds.doc_id_for_origin(A, "marker-note"))
+    for st in (dev, dev2):
+        _run(st, remote, clocks)
+    clocks.hub += 10 * SECOND
+    with clocks.at_hub():
+        assert q.delete_node("concept:n", owner=A, store=hub).get("executed")
+    gone_at = _gone_at(hub)
+    for st in (dev, dev2):
+        clocks.hub += SECOND
+        _run(st, remote, clocks)
+    assert [_gone_at(st) for st in (hub, dev, dev2)] == [gone_at] * 3
+    cut = revstamp._fmt(revstamp._parse_ms(gone_at) - 5 * SECOND)
+    later = revstamp._fmt(revstamp._parse_ms(gone_at) - 2 * SECOND)
+    clocks.hub += SECOND
+    with clocks.at_hub():
+        out = sync.apply_upload(owner=A, store=hub, bundle={
+            "nodes": [], "edges": [], revstamp.HANDLES: [revstamp.CLOCK_SKEW],
+            "tombstones": [{"node_id": "concept:n", "label": "Concept", "deleted_at": cut, "rev": 1}]})
+    assert _gone_at(hub) == cut, out
+    counts = []
+    for st in (dev, dev2, dev, dev2):
+        clocks.hub += SECOND
+        start = len(traffic)
+        _run(st, remote, clocks)
+        counts.append(_per_sync(traffic, start))
+    assert [_gone_at(st) for st in (hub, dev, dev2)] == [cut] * 3
+    assert counts == [(1, 1), (1, 1), (0, 0), (0, 0)], counts
+    clocks.hub += SECOND
+    with clocks.at_hub():
+        out = sync.apply_upload(owner=A, store=hub, bundle={
+            "edges": [], revstamp.HANDLES: [revstamp.CLOCK_SKEW],
+            "nodes": [{"id": "concept:n", "type": "concept", "title": "made again on an old app",
+                       "domain": "marker", "tags": [], "props": {}, "_rev": 1, "_updated_at": later}]})
+    assert out["kept_deleted"] == 0, out
+    for st in (dev, dev2):
+        clocks.hub += SECOND
+        _run(st, remote, clocks)
+    assert [(_row(st) or {}).get("title") for st in (hub, dev, dev2)] == ["made again on an old app"] * 3
+
+
+# ── 엣지 삭제는 그 뒤에 다시 만든 엣지를 지우지 않는다 ───────────────────────
+def _edit_ends_and_link(store, title):
+    """양 끝을 고치고 같은 엣지를 다시 만든다(허브가 끝점을 다시 적어야 엣지가 다른 기기로 간다)."""
+    assert frag.merge_fragment({"owner": A, "nodes": [
+        {"id": "concept:s", "type": "concept", "title": "s " + title, "domain": "marker"},
+        {"id": "concept:d", "type": "concept", "title": "d " + title, "domain": "marker"}], "edges": [
+        {"from": "concept:s", "to": "concept:d", "type": "relates_to"}]}, store=store)["executed"]
+
+
+def test_an_edge_the_deleter_adds_back_after_its_deletion_crossed_stays(world):
+    """기기가 엣지를 지우고 동기화한 뒤 같은 엣지를 다시 더한다. 허브의 표식이 처음 되돌아올 때 그 엣지는 양 끝이 삭제
+    뒤에 찍혀 있어 지워지지 않고, 허브에도 간다. 허브는 그 엣지가 이긴 표식을 지운다: 끝점의 필드가 그대로라 허브의
+    끝점 스탬프는 삭제 전 값이고, 표식이 남으면 처음 동기화하는 기기가 엣지와 표식을 함께 받아 엣지를 지운다."""
+    hub, dev, dev2, clocks, remote, _traffic = world
+    _seed_hub(hub, clocks, ds.doc_id_for_origin(A, "marker-note"))
+    _run(dev, remote, clocks)
+    clocks.hub += SECOND
+    assert q.delete_edge("concept:s", "relates_to", "concept:d", owner=A, store=dev).get("executed")
+    clocks.hub += SECOND
+    _run(dev, remote, clocks)
+    assert [_edges(st) for st in (hub, dev)] == [0, 0]
+    clocks.hub += SECOND
+    assert frag.merge_fragment({"owner": A, "nodes": [], "edges": [
+        {"from": "concept:s", "to": "concept:d", "type": "relates_to"}]}, store=dev)["executed"]
+    for _ in range(3):
+        clocks.hub += SECOND
+        _run(dev, remote, clocks)
+        assert [_edges(st) for st in (hub, dev)] == [1, 1]
+    assert hub.run("MATCH (t:_EdgeTombstone) RETURN t.ekey AS k") == []
+    clocks.hub += SECOND
+    _run(dev2, remote, clocks)
+    assert [_edges(st) for st in (hub, dev, dev2)] == [1, 1, 1]
+
+
+def test_an_edge_made_again_elsewhere_survives_the_deleters_first_echo(world):
+    """첫 기기가 엣지를 지우고 한 번 동기화한다. 둘째 기기가 그 삭제를 받은 뒤 양 끝을 고쳐 다시 만든다. 첫 기기는 다음
+    동기화에 그 엣지와 허브의 표식을 함께 받는데, 표식은 그 엣지를 지우지 않고 첫 기기도 허브로 지우라고 보내지 않는다."""
+    hub, dev, dev2, clocks, remote, _traffic = world
+    _seed_hub(hub, clocks, ds.doc_id_for_origin(A, "marker-note"))
+    for st in (dev, dev2):
+        _run(st, remote, clocks)
+    clocks.hub += SECOND
+    assert q.delete_edge("concept:s", "relates_to", "concept:d", owner=A, store=dev).get("executed")
+    for st in (dev, dev2):
+        clocks.hub += SECOND
+        _run(st, remote, clocks)
+    assert [_edges(st) for st in (hub, dev, dev2)] == [0, 0, 0]
+    clocks.hub += SECOND
+    _edit_ends_and_link(dev2, "edited")
+    for st in (dev2, dev, dev2, dev, dev2):
+        clocks.hub += SECOND
+        _run(st, remote, clocks)
+    assert [_edges(st) for st in (hub, dev, dev2)] == [1, 1, 1]
+
+
+def test_an_edge_deleted_made_again_and_deleted_again_is_gone_everywhere(world):
+    """둘째 기기가 지우고 다시 만든 엣지를(그 사이 되돌아온 자기 표식이 지우지 않는다) 첫 기기가 다시 지우면 어디에도
+    남지 않는다. 둘째 삭제는 받은 끝점 스탬프 뒤에 찍히므로 양 끝 규칙에 걸리지 않는다."""
+    hub, dev, dev2, clocks, remote, _traffic = world
+    _seed_hub(hub, clocks, ds.doc_id_for_origin(A, "marker-note"))
+    for st in (dev, dev2):
+        _run(st, remote, clocks)
+    clocks.hub += SECOND
+    assert q.delete_edge("concept:s", "relates_to", "concept:d", owner=A, store=dev2).get("executed")
+    for st in (dev2, dev):
+        clocks.hub += SECOND
+        _run(st, remote, clocks)
+    clocks.hub += SECOND
+    _edit_ends_and_link(dev2, "again")
+    for st in (dev2, dev):
+        clocks.hub += SECOND
+        _run(st, remote, clocks)
+    assert [_edges(st) for st in (hub, dev, dev2)] == [1, 1, 1]
+    clocks.hub += SECOND
+    assert q.delete_edge("concept:s", "relates_to", "concept:d", owner=A, store=dev).get("executed")
+    for st in (dev, dev2, dev, dev2):
+        clocks.hub += SECOND
+        _run(st, remote, clocks)
+    assert [_edges(st) for st in (hub, dev, dev2)] == [0, 0, 0]
+
+
+def test_an_edge_marker_spares_only_an_edge_whose_both_ends_are_later(world):
+    """한 스토어에서 본 규칙. 양 끝이 모두 삭제 시각보다 늦으면 지우지 않고 표식도 남기지 않는다. 한쪽 끝만 늦으면 지운다."""
+    hub, _dev, _dev2, clocks, _remote, _traffic = world
+    _seed_hub(hub, clocks, ds.doc_id_for_origin(A, "marker-note"))
+    marker = {"src": "concept:s", "rel": "RELATED_TO", "dst": "concept:d"}
+
+    def kept():
+        return hub.run("MATCH (t:_EdgeTombstone) WHERE t.owner_id = $o RETURN t.deleted_at AS da", {"o": A})
+
+    with clocks.at_hub():
+        clocks.hub += SECOND
+        before = revstamp._fmt(clocks.hub)
+        clocks.hub += SECOND
+        _write(hub, "s later", nid="concept:s")
+        clocks.hub += SECOND
+        between = revstamp._fmt(clocks.hub)
+        clocks.hub += SECOND
+        _write(hub, "d later", nid="concept:d")
+        out = sync.apply_delta(owner=A, store=hub, bundle={
+            "nodes": [], "edges": [], "edge_tombstones": [{**marker, "deleted_at": before}]})
+        assert out.get("edges_deleted", 0) == 0 and _edges(hub) == 1 and kept() == [], out
+        out = sync.apply_delta(owner=A, store=hub, bundle={
+            "nodes": [], "edges": [], "edge_tombstones": [{**marker, "deleted_at": between}]})
+        assert _edges(hub) == 0 and kept() == [{"da": between}], out
 
 
 # ── 허브가 받은 문서 삭제도 표식을 남긴다 ─────────────────────────────────────
