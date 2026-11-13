@@ -215,7 +215,9 @@ def verify_assertion(public: bytes, token: str, *, now: float | None = None,
         return None
     t = time.time() if now is None else now
     exp = payload.get("exp")
-    if exp is not None and (not isinstance(exp, (int, float)) or t > exp):
+    # exp 도 유한한 수만 받는다. NaN 은 `t > exp` 가 늘 거짓이라 영영 만료되지 않는다.
+    if exp is not None and (isinstance(exp, bool) or not isinstance(exp, (int, float))
+                            or not math.isfinite(exp) or t > exp):
         return None
     if max_age is not None or max_skew is not None:
         # iat 를 보는 검사는 둘 다 유한한 수인 iat 만 받는다. NaN 은 어느 비교도 거짓이고

@@ -77,6 +77,16 @@ def test_max_age_alone_refuses_an_iat_that_is_not_a_finite_number():
     assert ev.verify_assertion(pub, fresh, now=1000, max_age=120, max_skew=60) is not None
 
 
+def test_an_exp_that_is_not_a_finite_number_never_passes():
+    # NaN exp 는 `now > exp` 가 늘 거짓이라, 걸러내지 않으면 영영 만료되지 않는 토큰이 된다.
+    seed = bytes(range(32))
+    pub = ev.secret_to_public(seed)
+    for exp in (float("nan"), float("inf"), float("-inf"), True, "2000"):
+        tok = ev.sign_assertion(seed, {"exp": exp})
+        assert ev.verify_assertion(pub, tok, now=1000) is None, exp
+    assert ev.verify_assertion(pub, ev.sign_assertion(seed, {"exp": 2000.5}), now=1000) is not None
+
+
 def test_malformed_tokens_return_none():
     pub = ev.secret_to_public(bytes(range(32)))
     for bad in ["", "no-dot", "a.b.c", "!!.!!", "x." + "A" * 10]:
