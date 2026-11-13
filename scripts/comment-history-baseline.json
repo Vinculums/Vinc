@@ -3,7 +3,7 @@
     "what": "files -> history-marker comment lines, counted by scripts/gate_comment_history.py",
     "regenerate": "python -X utf8 scripts/gate_comment_history.py --write-baseline",
     "new_file_allowance": 3,
-    "total": 2350
+    "total": 2347
   },
   "files": {
     ".github/actions/runner-preflight/action.yml": 3,
@@ -321,7 +321,7 @@
     "vinc_mcp/burst.py": 1,
     "vinc_mcp/capability_maps.py": 2,
     "vinc_mcp/entitlement.py": 3,
-    "vinc_mcp/http_server.py": 47,
+    "vinc_mcp/http_server.py": 44,
     "vinc_mcp/hubhttp.py": 2,
     "vinc_mcp/install.py": 2,
     "vinc_mcp/keychain.py": 2,

@@ -43,7 +43,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from store import httpbody
 from store.envflag import truthy
 
-from . import burst, community, edverify, entitlement, modern, selfhost, spaces, toolcall, tools, viewurl
+from . import account_assertion, burst, community, edverify, entitlement, modern, selfhost, spaces, toolcall, tools, viewurl
 
 from .bridge import Bridge
 from .oauth import CONNECT_TTL, OAuthGate
@@ -814,14 +814,9 @@ class MCPHTTPApp:
         틀려진다. 검사는 그 논증과 독립으로 세워 둔다."""
         if not self.purge_enabled():
             raise PermissionError("purge is not configured")
-        payload = edverify.verify_assertion(self.account_public, assertion or "", max_age=120)
-        if not payload or payload.get("typ") != "purge" \
-                or payload.get("iss") != "account" or payload.get("aud") != "mcp":
-            raise PermissionError("invalid or expired purge request")
-        if not self._body_matches(payload, raw_body):
-            raise PermissionError("request body does not match the signed digest")
-        if not self._claim_jti(payload):
-            raise PermissionError("this approval was already used")
+        payload = account_assertion.verify(
+            self.account_public, assertion, raw_body, ("purge",),
+            refusal="invalid or expired purge request", once=self._claim_jti)
         sub = payload.get("sub")
         if not isinstance(sub, str) or not sub:
             raise ValueError("purge request is missing a subject")
@@ -841,14 +836,9 @@ class MCPHTTPApp:
         """
         if not self.purge_enabled():
             raise PermissionError("purge is not configured")
-        payload = edverify.verify_assertion(self.account_public, assertion or "", max_age=120)
-        if not payload or payload.get("typ") != "purge-team" \
-                or payload.get("iss") != "account" or payload.get("aud") != "mcp":
-            raise PermissionError("invalid or expired team purge request")
-        if not self._body_matches(payload, raw_body):
-            raise PermissionError("request body does not match the signed digest")
-        if not self._claim_jti(payload):
-            raise PermissionError("this approval was already used")
+        payload = account_assertion.verify(
+            self.account_public, assertion, raw_body, ("purge-team",),
+            refusal="invalid or expired team purge request", once=self._claim_jti)
         graph_owner = payload.get("graph_owner")
         if not isinstance(graph_owner, str) or not _TEAM_OWNER_RE.fullmatch(graph_owner):
             raise ValueError("team purge request has an invalid graph owner")
@@ -865,12 +855,9 @@ class MCPHTTPApp:
         스토어에 쓴다. 지문이 본문을 묶으므로 잡은 어서션으로 다른 owner 를 물을 수는 없다."""
         if not self.account_public:
             raise PermissionError("quota view is not configured")
-        payload = edverify.verify_assertion(self.account_public, assertion or "", max_age=120)
-        if not payload or payload.get("typ") != "quota" \
-                or payload.get("iss") != "account" or payload.get("aud") != "mcp":
-            raise PermissionError("invalid or expired quota request")
-        if not self._body_matches(payload, raw_body):
-            raise PermissionError("request body does not match the signed digest")
+        account_assertion.verify(
+            self.account_public, assertion, raw_body, ("quota",),
+            refusal="invalid or expired quota request", once=None)
         try:
             spaces = json.loads(raw_body or b"{}").get("spaces")
         except (ValueError, AttributeError):
@@ -907,14 +894,9 @@ class MCPHTTPApp:
         근거: [[vinc.plan.backoffice-and-stats-2026-09-12]]"""
         if not self.account_public:
             raise PermissionError("usage dump is not configured")
-        payload = edverify.verify_assertion(self.account_public, assertion or "", max_age=120)
-        if not payload or payload.get("typ") != "usage" \
-                or payload.get("iss") != "account" or payload.get("aud") != "mcp":
-            raise PermissionError("invalid or expired usage request")
-        if not self._body_matches(payload, raw_body):
-            raise PermissionError("request body does not match the signed digest")
-        if not self._claim_jti(payload):
-            raise PermissionError("this approval was already used")
+        account_assertion.verify(
+            self.account_public, assertion, raw_body, ("usage",),
+            refusal="invalid or expired usage request", once=self._claim_jti)
         stats = self.bridge.request("GET", "/owner-stats")
         if not stats.get("executed"):
             # 그래프를 못 읽은 것을 "노드 0"으로 내면 운영자는 데이터가 사라진 줄 안다.
@@ -961,51 +943,15 @@ class MCPHTTPApp:
     _seen_jti: dict
 
     def _claim_jti(self, payload: dict) -> bool:
-        """이 어서션을 처음 쓰는가. `jti` 는 **필수다**(근거는 `_body_matches` 주석)."""
-        jti = payload.get("jti")
-        if not isinstance(jti, str) or not jti:
-            return False
-        now = time.time()
+        """이 어서션을 처음 쓰는가(`account_assertion.claim_jti`). 표는 앱 하나에 하나이고 jti 를
+        소비하는 `/internal/*` 경로가 함께 쓴다: 한 경로에서 쓴 jti 는 다른 경로에서도 거절된다."""
         seen = getattr(self, "_seen_jti", None)
         if seen is None:
             seen = self._seen_jti = {}
-        for k, exp in [(k, e) for k, e in seen.items() if e <= now]:
-            seen.pop(k, None)
-        if jti in seen:
-            return False
-        # 창보다 조금 길게 잡는다 — 시계 어긋남으로 만료가 앞당겨지면 재생이 열린다.
-        seen[jti] = now + 180
-        return True
+        return account_assertion.claim_jti(seen, payload)
 
-    @staticmethod
-    def _body_matches(payload: dict, raw: bytes | None) -> bool:
-        """서명된 지문과 받은 본문이 같은가.
-
-        어서션은 owner 와 op 를 묶지만 **인자는 서명되지 않은 본문에서 읽힌다.** 그래서
-        잡은 어서션을 유효 창 안에 다른 인자로 재생할 수 있었다(감사 2026-08-18 M2).
-
-        `bh` 는 이제 **필수다.** 이 자리는 예전에 "없으면 통과"였고, 그 주석이 스스로
-        "필수로 올리는 것은 별도 변경"이라 적어 두었다 — 이것이 그 변경이다. 넘어온 조건:
-
-          · 계정이 `bh`·`jti` 를 서명에 실은 것은 `bc22584`(2026-08-20)이고, 그 뒤
-            account-deploy 가 여러 번 성공했다(최근 2026-09-02). 2주째 라이브다.
-          · 이 경로들(`/internal/purge-owner`·`purge-team`·`graph-owner`·`usage`)을 부르는
-            것은 **계정과 테스트뿐**이다(전 리포 grep). 다른 소비자가 없다.
-
-        그래서 "구 계정이 아직 안 보낼 수 있다"는 전제가 더는 참이 아니고, 통과시키는
-        쪽이 오히려 위험하다: `/internal/*` 은 공개 도달 가능하고 남은 관문이 서명
-        하나뿐이라(감사 M2), 지문 없는 어서션을 받아 준다는 것은 잡은 어서션을 유효
-        창 안에 **다른 인자로** 재생할 여지를 남겨 두는 것이다.
-
-        ⚠ 되돌릴 일이 생기면(계정을 `bc22584` 이전으로 롤백하는 경우뿐이다) 여기를
-        `return True` 로 되돌리는 것이 아니라 **계정을 먼저 되돌린다.** 순서를 뒤집으면
-        그 사이 창이 곧 구멍이다."""
-        want = payload.get("bh")
-        if not isinstance(want, str) or not want:
-            return False
-        got = base64.urlsafe_b64encode(
-            hashlib.sha256(raw or b"").digest()).rstrip(b"=").decode("ascii")
-        return secrets.compare_digest(got, want)
+    #: 서명된 지문과 받은 본문이 같은가. 검사 본체는 `account_assertion.body_matches` 다.
+    _body_matches = staticmethod(account_assertion.body_matches)
 
     def graph_owner_request(self, assertion: str, args: dict,
                             raw_body: bytes | None = None) -> dict:
@@ -1026,16 +972,11 @@ class MCPHTTPApp:
         owner 는 어느 경우에도 서명 페이로드에서만 온다 — args 의 owner 는 pop 한다."""
         if not self.graph_enabled():
             raise PermissionError("graph proxy is not configured")
-        payload = edverify.verify_assertion(self.account_public, assertion or "", max_age=120)
-        typ = payload.get("typ") if payload else None
-        if not payload or typ not in ("proxy", "proxy-team", "proxy-conversion", "proxy-community") \
-                or payload.get("iss") != "account" or payload.get("aud") != "mcp":
-            raise PermissionError("invalid or expired proxy request")
-        # 서명된 지문과 받은 본문이 같은가 · 이 어서션을 처음 쓰는가(감사 M2).
-        if not self._body_matches(payload, raw_body):
-            raise PermissionError("request body does not match the signed digest")
-        if not self._claim_jti(payload):
-            raise PermissionError("this approval was already used")
+        payload = account_assertion.verify(
+            self.account_public, assertion, raw_body,
+            ("proxy", "proxy-team", "proxy-conversion", "proxy-community"),
+            refusal="invalid or expired proxy request", once=self._claim_jti)
+        typ = payload.get("typ")
         sub = payload.get("sub")
         if not isinstance(sub, str) or not sub:
             raise ValueError("proxy request is missing a subject")
