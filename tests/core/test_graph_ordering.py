@@ -8,7 +8,7 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
 
-from api import cli, fragment, query as q, query_base
+from api import cli, fragment, graph_read, query as q, query_base
 from test_decision_type import _fresh_store, _restore
 
 OWNER = "user:graph-order"
@@ -66,14 +66,15 @@ class GraphOrdering(unittest.TestCase):
             with self.subTest(seed=seed):
                 expected = q.graph(owner=OWNER, seed=seed, depth=1, store=self.store)
                 with patch.object(q, "execute", side_effect=reverse_rows), \
-                        patch.object(query_base, "execute", side_effect=reverse_rows):
+                        patch.object(query_base, "execute", side_effect=reverse_rows), \
+                        patch.object(graph_read, "execute", side_effect=reverse_rows):
                     actual = q.graph(owner=OWNER, seed=seed, depth=1, store=self.store)
                 self.assertEqual(json.dumps(expected), json.dumps(actual))
 
     def test_sorting_preserves_ppr_layout_and_every_payload_value(self):
         for seed in (None, "concept:z"):
             with self.subTest(seed=seed):
-                with patch.object(q, "_order_graph_result"):
+                with patch.object(graph_read, "_order_graph_result"):
                     before = q.graph(owner=OWNER, seed=seed, store=self.store)
                 after = q.graph(owner=OWNER, seed=seed, store=self.store)
                 self.assertEqual({n["id"]: n for n in before["nodes"]},
