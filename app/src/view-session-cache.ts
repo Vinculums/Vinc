@@ -1,12 +1,9 @@
 import type { GraphNode, GraphEdge } from "./api";
-import type { LayoutGraph } from "./view-layout";
 
 type CachedGraph = { executed: boolean; nodes?: GraphNode[]; edges?: GraphEdge[];
   topicEdges?: GraphEdge[]; partial?: boolean; snapshot?: unknown; graphSnapshotPending?: boolean };
 type ViewBookmark = { domains: string[] };
-type ViewCameraState = { prefs: string; camera3?: unknown };
-export type Entry = { revision: string; raw: string; layoutKey?: string; layout?: string;
-  state?: string; size: number; expires: number };
+export type Entry = { revision: string; raw: string; size: number; expires: number };
 /** 한 세션이 들고 있는 완료 DTO 묶음. 스페이스를 떠날 때 잠깐 보관하려고 내보낸다. */
 export type RetainedSnapshot = { session: string; revision: string; entries: [string, Entry][] };
 
@@ -33,7 +30,7 @@ export class ViewSessionCache {
   /** 메모리만이 아니라 보관해 둔 것까지 버린다: 로그인이 풀렸거나 계정이 바뀌었다. */
   purge(): void { this.clear(); for (const fn of this.purgeListeners) fn(); }
   onPurge(fn: () => void): void { this.purgeListeners.push(fn); }
-  /** 지금 세션의 살아 있는 항목. 없으면 undefined. 카메라 상태는 포함하지만 책갈피는 아니다. */
+  /** 지금 세션의 살아 있는 항목. 없으면 undefined. 책갈피는 포함하지 않는다. */
   snapshot(): RetainedSnapshot | undefined {
     this.prune();
     if (!this.session || !this.revision || !this.entries.size) return;
@@ -74,43 +71,27 @@ export class ViewSessionCache {
     this.entries.delete(key); this.entries.set(key, e);
     return JSON.parse(e.raw);
   }
-  getLayout(session: string, key: string, revision: string, layoutKey: string): LayoutGraph | undefined {
-    if (!this.current(session, revision)) return;
-    const e = this.entries.get(key);
-    return e?.layoutKey === layoutKey && e.layout ? JSON.parse(e.layout) : undefined;
-  }
-  getState(session: string, key: string, revision: string, prefs: string): ViewCameraState | undefined {
-    if (!this.current(session, revision)) return;
-    const e = this.entries.get(key), state: ViewCameraState | undefined = e?.state && JSON.parse(e.state);
-    return state?.prefs === prefs ? state : undefined;
-  }
-  put(session: string, key: string, revision: string, graph: CachedGraph, generation: number,
-      layout?: { key: string; graph: LayoutGraph }): boolean {
+  put(session: string, key: string, revision: string, graph: CachedGraph, generation: number): boolean {
     if (!this.current(session, revision) || generation !== this.epoch || !graph.executed
         || graph.partial || graph.snapshot || graph.graphSnapshotPending
         || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) return false;
-    const raw = JSON.stringify(graph), shaped = layout && JSON.stringify(layout.graph);
-    // UTF-16 strings are the retained graph representation; include key/state and fixed entry overhead.
-    const previous = this.entries.get(key);
-    const size = (raw.length + (shaped?.length || 0) + key.length + session.length
-      + (previous?.state?.length || 0)) * 2 + 1024;
+    const raw = JSON.stringify(graph);
+    // UTF-16 strings are the retained graph representation; include the key and fixed entry overhead.
+    const size = (raw.length + key.length + session.length) * 2 + 1024;
     if (size + (this.bookmark?.length || 0) * 2 > this.maxBytes || key.length > 16_384) return false;
     this.entries.delete(key);
     while (this.entries.size && (this.entries.size >= this.maxEntries || this.bytes + size > this.maxBytes))
       this.entries.delete(this.entries.keys().next().value!);
-    this.entries.set(key, { revision, raw, layoutKey: layout?.key, layout: shaped,
-      state: previous?.state, size,
-      expires: this.clock() + this.ttl });
+    this.entries.set(key, { revision, raw, size, expires: this.clock() + this.ttl });
     return true;
   }
-  remember(session: string, key: string, revision: string, state: ViewCameraState, domains: string[]) {
-    if (!this.current(session, revision)) return;
-    const e = this.entries.get(key); if (!e) return;
-    const next = JSON.stringify(state), bookmark = JSON.stringify({ domains });
-    if (next.length + bookmark.length > 8192) return;
-    const delta = (next.length - (e.state?.length || 0)) * 2;
-    if (this.bytes + delta + (bookmark.length - (this.bookmark?.length || 0)) * 2 > this.maxBytes) return;
-    e.size += delta; e.state = next; this.bookmark = bookmark; this.bookmarkExpires = this.clock() + this.ttl;
+  /** 떠나는 마운트가 보던 범위(주제)를 책갈피로 남긴다. 그 범위의 항목이 이 세션·표식에 보관돼 있을 때만 남긴다. */
+  remember(session: string, key: string, revision: string, domains: string[]) {
+    if (!this.current(session, revision) || !this.entries.has(key)) return;
+    const bookmark = JSON.stringify({ domains });
+    if (bookmark.length > 8192) return;
+    if (this.bytes + (bookmark.length - (this.bookmark?.length || 0)) * 2 > this.maxBytes) return;
+    this.bookmark = bookmark; this.bookmarkExpires = this.clock() + this.ttl;
   }
   last(session: string): ViewBookmark | undefined {
     this.prune();

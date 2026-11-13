@@ -342,8 +342,6 @@ const EN = {
     idleCta: "Import files",
     loading: (d: number) => d > 0 ? `Arranging ${d} topics…` : "Arranging this View…",
     preview: "Partial overview · Loading the full View…",
-    // 시간순 가지 배치가 오래 걸리면 중심에서 배치로 먼저 보여 준다(그동안의 안내).
-    layoutFailed: "Time branches couldn't be laid out for this graph, so it's shown by centre.",
     error: "View couldn't load. Retry anytime. Your documents are untouched.",
     // 스토어를 못 읽는 상태 전용. "비어 있다"와 **반드시 다른 말**이어야 한다 —
     // 사이드카가 읽지 못하는 것을 빈 View 로 그리면 정보 유실과 구분되지 않는다.
@@ -941,12 +939,11 @@ const EN = {
       options: "Options",
       allTopics: "All topics",
       labels: "Labels", off: "off",
-      arrows: "Direction arrows", on: "on",
+      on: "on",
       edgeShowName: {
         none: "nodes only",
       } as Record<string, string>,
       show: "show", hide: "hide",
-      spread: "Spread",
       // 옵션 묶음 이름(2026-08-05). 여덟 개가 한 줄로 늘어서 있던 것을 세 갈래로
       // 나눈다 — "무엇에 대한 손잡이인가"가 먼저 읽혀야 고를 수 있다.
       // v2 — **값마다 한 줄 설명 한 벌**. 옛 per-row Help 키들(edgeShowHelp·layoutHelp
@@ -957,17 +954,11 @@ const EN = {
       help: {
         links: "The better connected a mark, the bigger it is. Size is centrality.",
         none: "No names drawn. Shape and place carry everything.",
-        spread: "Multiplies the coordinates you were given. It follows your hand as you drag.",
-        nodeScale: "Keeps the size encoding and scales the whole View.",
         when: "Only what existed at that point. Concepts with no date of their own stay visible.",
       } as Record<string, string>,
-      nodeScale: "Node scale",
       // 이름은 "무엇이 보이게 되는가"로 짓는다. `cone`·`반각`은 구현의 말이라
       // 화면에 내지 않는다 — 사용자가 고르는 것은 가지가 얼마나 벌어지느냐다.
       when: "Time cursor",
-      // 주제 틴트 — 이름에 "색"이 아니라 "주제"가 먼저 오는 이유: 고르는 것은 색이
-      // 아니라 "주제를 색으로 볼까"다.
-      timeBasis: "Time",
     },
     viewx: {
       shareCta: "Share",
@@ -2000,7 +1991,6 @@ const KO: Deck = {
     idleCta: "파일 추가하기",
     loading: (d) => d > 0 ? `주제 ${d}개를 배치하는 중…` : "View를 배치하는 중…",
     preview: "일부 개요 · 전체 View를 불러오는 중…",
-    layoutFailed: "이 그래프는 시간순 가지로 그리지 못해 중심에서 배치로 보여 드려요",
     error: "View를 불러오지 못했어요. 다시 시도해 보세요. 문서는 그대로 있어요",
     storeDown: "지금은 저장된 정보를 읽을 수 없어요. 읽기 문제라서 잃어버린 것은 없어요. Vinc를 다시 실행하고, 다른 Vinc가 이미 켜져 있지 않은지 확인해 주세요",
     storeDownWhy: "자세히",
@@ -2535,24 +2525,19 @@ const KO: Deck = {
       options: "옵션",
       allTopics: "모든 주제",
       labels: "이름", off: "끔",
-      arrows: "방향 화살표", on: "켬",
+      on: "켬",
       edgeShowName: {
         none: "노드만",
       } as Record<string, string>,
       show: "표시", hide: "숨김",
-      spread: "간격",
       // v2 — 값마다 한 줄 설명 한 벌(EN 쪽 주석 참조). 바닥 고정 줄이 받는다.
       close: "닫기",
       help: {
         links: "연결이 많은 마디가 큽니다. 크기가 곧 중심성이에요",
         none: "이름을 그리지 않아요. 형태와 자리만 남아요",
-        spread: "받은 좌표를 그 배수로 벌려요. 끄는 동안 바로 따라와요",
-        nodeScale: "크기 인코딩은 그대로 두고 전체를 키워요",
         when: "그 시점에 있던 것만 보여요. 자기 날짜가 없는 개념은 계속 보여요",
       } as Record<string, string>,
-      nodeScale: "크기 배율",
       when: "시점",
-      timeBasis: "기준",
     },
     viewx: {
       shareCta: "공유하기",

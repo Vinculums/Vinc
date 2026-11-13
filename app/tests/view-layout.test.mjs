@@ -26,47 +26,6 @@ const temporalLayout = async (...args) => {
 };
 const { routeAcrossTopics } = await source("../src/view-layout-avoid.ts");
 const { layoutInWorker } = await source("../src/view-layout-client.ts");
-const { LAYOUTS, normalizeLayout, serverLayoutFor, isRootsLayout, loadPrefs, savePrefs } = await source("../src/view-prefs.ts");
-
-test("one layout remains and every saved layout folds into time branches", () => {
-  const saved = new Map();
-  globalThis.localStorage = { getItem: k => saved.get(k) ?? null, setItem: (k, v) => saved.set(k, v) };
-  try {
-    // 첫 그림(판 4): 나침반 · 시간순 가지 · 선 상시 · 범례는 관계 선만.
-    assert.deepEqual([loadPrefs().view, loadPrefs().layout, loadPrefs().edges, loadPrefs().edgeOff],
-      ["compass", "temporalRoots", "always", ["directed", "cross", "bridge"]]);
-    assert.deepEqual(LAYOUTS, ["temporalRoots"]);
-    assert.equal(serverLayoutFor("temporalRoots"), "hub");
-    assert.equal(isRootsLayout(loadPrefs().layout), true);
-    // 보기는 나침반 하나다: 저장된 다른 관점(3d 포함)은 나침반으로 읽는다. 2D 전용이던 선 `focus` 는 `none` 이다.
-    for (const view of ["3d", "2d", "timeline", "bundle"]) {
-      saved.set("vinc.view.prefs", JSON.stringify({ view, edges: "focus", pv: 4 }));
-      assert.deepEqual([loadPrefs().view, loadPrefs().edges], ["compass", "none"]);
-    }
-    // 저장된 배치는 무엇이든(걷은 `hub`, 0.9.7 의 `rank`·`rankedRoots`, 그 전 이름, 모르는 값) 시간순 가지다.
-    for (const retired of ["hub", "rank", "rankedRoots", "radial", "dendro", "toString", "unknown"]) {
-      assert.equal(normalizeLayout(retired), "temporalRoots");
-      for (const pv of [undefined, 2, 4]) {
-        saved.set("vinc.view.prefs", JSON.stringify({ layout: retired, pv }));
-        assert.equal(loadPrefs().layout, "temporalRoots");
-      }
-    }
-    // 판을 올려도 판 2 사용자가 고른 크기 1 은 기본값으로 되돌아가지 않는다.
-    saved.set("vinc.view.prefs", JSON.stringify({ nodeScale: 1, cone: 1, pv: 2 }));
-    assert.equal(loadPrefs().nodeScale, 1); assert.equal(loadPrefs().cone, 1);
-    saved.set("vinc.view.prefs", JSON.stringify({ nodeScale: 1, cone: 1 }));
-    assert.equal(loadPrefs().nodeScale, 0.7); assert.equal(loadPrefs().cone, 0.7);
-    // 판 4 이전 저장값은 첫 그림 넷만 한 번 새 기본으로 옮기고, 나머지 고른 값은 둔다.
-    saved.set("vinc.view.prefs", JSON.stringify({ view: "2d", layout: "hub", edges: "none", edgeOff: [],
-      nodeScale: 1.4, pv: 3 }));
-    assert.deepEqual([loadPrefs().view, loadPrefs().layout, loadPrefs().edges, loadPrefs().edgeOff, loadPrefs().nodeScale],
-      ["compass", "temporalRoots", "always", ["directed", "cross", "bridge"], 1.4]);
-    savePrefs({ ...loadPrefs(), edges: "particles", edgeOff: [] });
-    assert.equal(JSON.parse(saved.get("vinc.view.prefs")).pv, 4);
-    assert.deepEqual([loadPrefs().edges, loadPrefs().edgeOff], ["particles", []], "a choice made after the move stays");
-  } finally { delete globalThis.localStorage; }
-});
-
 const { routeLength, simplifyRoute } = await source("../src/view-route.ts");
 const { shortenPlanarRoutes } = await source("../src/view-route-shortcuts.ts");
 await AvoidLib.load(fileURLToPath(new URL("../node_modules/libavoid-js/dist/libavoid.wasm", import.meta.url)));
