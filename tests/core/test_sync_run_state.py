@@ -106,29 +106,30 @@ def _state(props: dict) -> dict:
 @pytest.mark.parametrize("remote_newer", [True, False], ids=["remote-newer", "local-newer"])
 def test_a_store_keeps_its_own_run_state_when_a_bundle_brings_another(open_store, remote_newer):
     store = open_store("receiver")
-    own = _own_run(store)
+    own = _own_run(store, {"trace_ref": "trace:laptop"})
     ua = "2099-01-01T00:00:00.000Z" if remote_newer else "2000-01-01T00:00:00.000Z"
     incoming = {"run_id": "sync-rule", "role": "concept:agent-x", "host": "device 2.0",
-                **FORGED_STATE}
+                "trace_ref": "trace:device", **FORGED_STATE}
     out = sync.apply_delta(owner=OWNER, bundle=_bundle(_run_node(incoming, rev=7, ua=ua)),
                            store=store)
     assert out["executed"] is True and out[run_state.CODE] == [RUN], out
     assert any(w.startswith(run_state.CODE + ":") for w in out["warnings"]), out
     after = _stored_props(store)
     assert _state(after) == _state(own)
-    # 상태가 아닌 필드는 보통의 3-way 규칙을 따른다: 더 새로운 쪽이 이긴다.
-    assert after["host"] == ("device 2.0" if remote_newer else "laptop")
+    # 상태와 카드(`run_state.CARD_KEYS`)가 아닌 필드는 보통의 3-way 규칙을 따른다: 더 새로운 쪽이 이긴다.
+    # 사람을 기다리는 실행의 카드(host 등)는 받는 스토어의 값이 남는다.
+    assert after["trace_ref"] == ("trace:device" if remote_newer else "trace:laptop")
+    assert after["host"] == "laptop"
 
 
 def test_a_bundle_that_carries_the_same_state_reports_nothing(open_store):
     store = open_store("receiver")
     own = _own_run(store)
-    out = sync.apply_delta(owner=OWNER, bundle=_bundle(_run_node({**own, "host": "device"},
-                                                                  ua="2099-01-01T00:00:00.000Z")),
-                           store=store)
+    node = _run_node({**own, "trace_ref": "trace:device"}, ua="2099-01-01T00:00:00.000Z")
+    out = sync.apply_delta(owner=OWNER, bundle=_bundle(node), store=store)
     assert run_state.CODE not in out, out
     assert not any(w.startswith(run_state.CODE) for w in out["warnings"]), out
-    assert _stored_props(store)["host"] == "device"
+    assert _stored_props(store)["trace_ref"] == "trace:device"
 
 
 def test_a_run_the_store_never_saw_keeps_its_questions_and_drops_its_answers(open_store):
@@ -234,11 +235,20 @@ def test_the_question_and_answer_keys_split_the_protocol_state_without_overlap()
 def test_a_run_without_props_in_the_bundle_leaves_the_stored_props_alone(open_store):
     store = open_store("receiver")
     own = _own_run(store)
-    out = sync.apply_delta(owner=OWNER, bundle=_bundle(_run_node(None, title="Renamed",
+    out = sync.apply_delta(owner=OWNER, bundle=_bundle(_run_node(None,
                                                                  ua="2099-01-01T00:00:00.000Z")),
                            store=store)
     assert run_state.CODE not in out, out
     assert _stored_props(store) == own
+    # 제목을 바꾼 것도 props 를 건드리지 않는다. 기다리는 실행의 제목은 카드라 받는 스토어의 값이 남고 그렇다고 알린다.
+    out = sync.apply_delta(owner=OWNER, bundle=_bundle(_run_node(None, title="Renamed",
+                                                                 ua="2099-01-01T00:00:00.000Z")),
+                           store=store)
+    assert out[run_state.CODE] == [RUN], out
+    assert _stored_props(store) == own
+    rows = store.run("MATCH (e:Episode) WHERE e.episode_id = $id RETURN e.title AS t",
+                     {"id": pkns.key(OWNER, RUN)})
+    assert [r["t"] for r in rows] == ["Run"], rows
 
 
 @pytest.mark.parametrize("spell", [" {}", "{} ", "\t{}\n", " {}"],

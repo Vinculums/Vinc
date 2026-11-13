@@ -156,6 +156,9 @@ def _preview_body(store, *, owner, operation, arguments):
         details = {}
         if operation == "delete":
             ident = arguments["node"]
+            if pkns.SEP in ident:
+                # 물리 키의 구분자가 든 id 는 어떤 노드의 id 도 아니다. 읽기가 그것을 물리 키로 읽지 않게 거른다.
+                raise PreviewRefused("preview_target_unavailable")
             if ident.startswith("domain:") or ident.partition(":")[0] not in query._SEED_TABLES:
                 raise PreviewRefused("preview_kind_not_supported")
             if arguments.get("stray_type") is not None:

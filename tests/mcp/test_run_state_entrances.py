@@ -275,7 +275,8 @@ def test_sync_push_applies_ordinary_nodes_beside_a_run_and_names_the_kept_run(hu
                "domain": "vinc/test", "props": {"note": "pushed with a run"}}
     status, out = _push(hub, concept, _episode(eid, _forged(before)))
     assert status == 200 and out["executed"] is True, out
-    assert out["applied"] == 2, out
+    # 실행은 허브가 받을 것이 없다: 상태와 카드(제목)가 허브의 값으로 남아 저장된 행과 같다.
+    assert out["applied"] == 1 and out["skipped_stale"] == 1, out
     _withheld(out, eid)
     got = hub.tool("vinc_node", node_id=concept["id"], raw=True)
     assert got["found"] is True and got["node"]["title"] == "Neighbour", got
@@ -286,14 +287,33 @@ def test_sync_push_applies_ordinary_nodes_beside_a_run_and_names_the_kept_run(hu
 def test_sync_push_keeps_other_run_fields_under_the_normal_sync_rules(hub):
     eid = _waiting_run(hub, "entr-sync-fields")
     before = hub.stored(eid)
+    title = hub.tool("vinc_node", node_id=eid, raw=True)["node"]["title"]
     props = {**_forged(before), "host": "device-cli 1.0", "trace_ref": "trace:device"}
     status, out = _push(hub, {**_episode(eid, props), "title": "Run from the device"})
     assert status == 200 and out["executed"] is True, out
     after = hub.stored(eid)
-    # 상태 키가 아닌 필드는 기기의 값이 이긴다(기기 스탬프가 더 새롭다).
-    assert after["host"] == "device-cli 1.0" and after["trace_ref"] == "trace:device"
+    # 상태 키와 카드(제목·host, `run_state.CARD_KEYS`)가 아닌 필드는 기기의 값이 이긴다(기기 스탬프가
+    # 더 새롭다). 사람을 기다리는 실행의 카드는 허브의 값이 남는다.
+    assert after["trace_ref"] == "trace:device" and "host" not in after
     assert {k: after.get(k) for k in run_protocol.STATE_KEYS} == \
         {k: before.get(k) for k in run_protocol.STATE_KEYS}
+    listed = hub.tool("vinc_runs", run=eid)["runs"]
+    assert listed[0]["title"] == title
+
+    # 사람이 답해 다시 일하는 실행의 카드는 보통의 규칙을 따른다. 상태는 여전히 허브의 값이다.
+    answered = hub.proxy("run-answer", {"run": eid, "ask": int(before["asks"]),
+                                        "answer": "approve"}, auth="session")
+    assert answered["executed"] and answered["state"] == "working", answered
+    recorded = hub.stored(eid)
+    # 답의 저장보다 확실히 새로운 스탬프로 보낸다(스탬프가 새로운 쪽이 이긴다).
+    node = {**_episode(eid, props), "title": "Run from the device", "_rev": 1,
+            "_updated_at": _stamp(5)}
+    status, out = hub.post("/sync/push", {"bundle": {"nodes": [node], "edges": []}})
+    assert status == 200 and out["executed"] is True, out
+    after = hub.stored(eid)
+    assert after["host"] == "device-cli 1.0" and after["trace_ref"] == "trace:device"
+    assert {k: after.get(k) for k in run_protocol.STATE_KEYS} == \
+        {k: recorded.get(k) for k in run_protocol.STATE_KEYS}
     listed = hub.tool("vinc_runs", run=eid)["runs"]
     assert listed[0]["title"] == "Run from the device"
 
@@ -301,7 +321,9 @@ def test_sync_push_keeps_other_run_fields_under_the_normal_sync_rules(hub):
 def test_sync_push_that_echoes_the_hub_state_reports_nothing(hub):
     eid = _waiting_run(hub, "entr-sync-echo")
     before = hub.stored(eid)
-    status, out = _push(hub, _episode(eid, dict(before)))
+    # 되울림은 허브가 가진 그대로다: 제목도 허브의 것이다.
+    title = hub.tool("vinc_node", node_id=eid, raw=True)["node"]["title"]
+    status, out = _push(hub, {**_episode(eid, dict(before)), "title": title})
     assert status == 200 and out["executed"] is True, out
     assert "run_state_protected" not in out
     assert not any(w.startswith("run_state_protected") for w in out.get("warnings") or [])

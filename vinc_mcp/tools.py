@@ -678,8 +678,10 @@ def _t_ingest(args, bridge):
         return {"kind": "ingest", "executed": False, "error": "run_state_protected",
                 "nodes": blocked,
                 "note": ("Refused: a run record's " + ", ".join(run_protocol.STATE_KEYS)
-                         + " belong to the run protocol. Answer a waiting run with vinc_run_submit, "
-                         "or as a person in " + run_protocol.PERSON_PATH + ". Nothing was written.")}
+                         + " belong to the run protocol, and props_patch cannot change its "
+                         + " or ".join(_run_state.ROLE_KEYS) + ". Answer a waiting run with "
+                         "vinc_run_submit, or as a person in " + run_protocol.PERSON_PATH
+                         + ". Nothing was written.")}
     fragment = {"nodes": args.get("nodes") or [], "edges": args.get("edges") or [],
                 "owner": _owner(args, bridge), **_mutation_options(args)}
     if "review_claims" in args:

@@ -83,8 +83,10 @@ def _shapes(path: str) -> list[str]:
 
 PATHS = (list(run_state.PROPS) + [f"pending.{k}" for k in run_state.PENDING_PROPS]
          + [f"used.{k}" for k in run_protocol.USAGE_KEYS])
-#: (ii) 의 길로 쓸 수 있는 이름. 프로토콜 상태 키는 도구 쓰기가 거절한다(`run_state.writes`).
-HELD_PATHS = [p for p in PATHS if p.split(".")[0] not in run_state.STATE_KEYS]
+#: (ii) 의 길로 쓸 수 있는 이름. 프로토콜 상태 키와 역할 키는 `props_patch` 를 거절하고(`run_state.writes`),
+#: 대기 중인 실행의 카드 키도 거절한다(`run_state.CARD_KEYS`). 그 이름들은 (i) 의 길로만 온다.
+HELD_PATHS = [p for p in PATHS if p.split(".")[0] not in
+              run_state.STATE_KEYS + run_state.ROLE_KEYS + run_state.CARD_KEYS]
 ACTIONS = ("runs-waiting", "vinc_runs list", "vinc_runs run", "vinc_run_start",
            "vinc_run_submit output", "vinc_run_submit answer", "tasks/get", "tasks/cancel",
            "events feed", "notification payload", "run-answer decline", "run-answer approve")
@@ -290,8 +292,13 @@ def _person_side(hub: Hub, case: _Case, cards: dict, before: dict) -> tuple[dict
     return answers[0], answers[1]
 
 
+def _same_contract(props: dict, pinned) -> bool:
+    """기록이 연 때의 역할 계약 해시가 지금 계약의 해시와 같은가. 해시가 없거나 null 이면 견줄 것이 없다."""
+    return props.get("role_hash") in (None, pinned)
+
+
 def _check_after(case: _Case, cards: dict, before: dict, after_agent: dict, after: dict,
-                 declined: dict, approved: dict) -> None:
+                 declined: dict, approved: dict, *, pinned: str) -> None:
     a, b = case.eids
     # 에이전트의 행동 뒤에도 A 는 그대로다: 승인도 답도 없고 대기 여부도 같다.
     _unanswered(case, after_agent[a])
@@ -302,11 +309,12 @@ def _check_after(case: _Case, cards: dict, before: dict, after_agent: dict, afte
         assert run_state.readable(after[a]).get("approved", []) == [], (case, after[a])
     else:
         assert declined["executed"] is False, (case, declined)
-    if _waits(before[b]) and run_protocol._role_of(before[b]) == ROLE:
+    if (_waits(before[b]) and run_protocol._role_of(before[b]) == ROLE
+            and _same_contract(before[b], pinned)):
         assert approved["executed"] is True and approved["state"] == "working", (case, approved)
         assert after[b]["approved"] == cards[b]["decision"]["actions"], (case, after[b], cards[b])
         return
-    # 역할을 못 읽거나 대기가 아니면 아무것도 승인되지 않고 기록은 그대로 대기한다.
+    # 역할을 못 읽거나, 연 때의 계약과 다르거나, 대기가 아니면 아무것도 승인되지 않고 기록은 그대로 대기한다.
     assert approved["executed"] is False, (case, approved)
     _unanswered(case, after[b])
     assert _waits(after[b]) == _waits(before[b]), (case, after[b])
@@ -324,7 +332,8 @@ def _round(hub: Hub, cases: list[_Case], goods: list[str], cursor: str, template
     answers = {repr(c): _person_side(hub, c, cards, before) for c in cases}
     after = _snapshot(hub, eids)
     for case in cases:
-        _check_after(case, cards, before, after_agent, after, *answers[repr(case)])
+        _check_after(case, cards, before, after_agent, after, *answers[repr(case)],
+                     pinned=template["role_hash"])
     still = {item["id"] for item in hub.proxy("runs-waiting", {"limit": _LIMIT})["runs"]}
     assert set(goods) <= still and not {c.eids[0] for c in cases} & still, sorted(still)
 

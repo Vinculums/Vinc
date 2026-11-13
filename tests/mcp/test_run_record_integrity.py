@@ -56,16 +56,6 @@ def _pushed(hub: Hub, eid: str, props: dict) -> None:
     assert status == 200 and out["executed"] is True and out["applied"] == 1, out
 
 
-def _patch_step(hub: Hub, eid: str, value) -> None:
-    """`vinc_ingest` 의 `props_patch` 로 `step` 만 바꾼다(프로토콜 상태가 아니라 받아들여진다)."""
-    node = hub.tool("vinc_node", node_id=eid, raw=True)["node"]
-    out = hub.tool("vinc_ingest", nodes=[{"id": eid, "type": "episode", "title": node["title"],
-                                          "props_patch": {"step": value},
-                                          "expected_rev": node["rev"]}])
-    assert out.get("executed") is True and out.get("error") is None, out
-    assert hub.tool("vinc_node", node_id=eid, raw=True)["node"]["props"]["step"] == value
-
-
 def _tool(hub: Hub, name: str, **arguments) -> dict:
     """`hub.tool` 과 같되, 도구 결과 대신 JSON-RPC 오류가 오면 그 오류를 보이며 실패한다."""
     status, reply = hub.post("/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
@@ -93,8 +83,11 @@ def test_one_malformed_run_record_of_each_kind_hides_no_waiting_run(hub):
     checks_eid, checks_props = _unseen("integ-bad-checks")
     checks_props["pending"]["checks"] = 5
     _pushed(hub, checks_eid, checks_props)
-    step_eid = _waiting_run(hub, "integ-bad-step")
-    _patch_step(hub, step_eid, "x")
+    # 대기 중인 실행의 `step` 은 카드에 보여 도구 쓰기와 동기화가 못 바꾼다(`run_state.CARD_KEYS`). 잘못된
+    # 값은 허브가 처음 보는 실행으로만 들어온다.
+    step_eid, step_props = _unseen("integ-bad-step", step="x")
+    _pushed(hub, step_eid, step_props)
+    assert hub.tool("vinc_node", node_id=step_eid, raw=True)["node"]["props"]["step"] == "x"
     bad = [asks_eid, checks_eid, step_eid]
 
     # 승인함(웹 프록시 runs-waiting): 일곱 실행이 모두 보이고 잘못된 값은 안전한 값으로 읽힌다.
@@ -254,18 +247,20 @@ def test_start_and_submit_on_a_run_record_without_state_refuse_with_invalid_run_
 # ── 6. 역할이나 run_id 를 읽을 수 없는 대기도 사람이 거절해 닫는다 ─────────────
 
 _DROP = object()
-#: (쓰는 길, 키, 값). unseen 은 허브가 처음 보는 실행의 동기화 업로드, patch 는 대기 중인 실행에
-#: `vinc_ingest` 의 `props_patch`. 역할 값은 역할 하나를 가리키지 않는 모양을 하나씩 든다.
+#: (쓰는 길, 키, 값). unseen 은 허브가 처음 보는 실행의 동기화 업로드다. 역할 값은 역할 하나를 가리키지
+#: 않는 모양을 하나씩 든다. 가진 실행의 역할은 `props_patch` 가 거절하고 동기화가 남기며
+#: (`run_state.ROLE_KEYS`), 기다리는 실행의 run_id 는 카드라 둘 다 못 바꾼다(`run_state.CARD_KEYS`). 그래서
+#: 그 모양은 처음 보는 실행으로만 온다.
 _NO_ROLE_OR_RUN_ID = {
     "unseen-no-run_id": ("unseen", "run_id", _DROP),
     "unseen-no-role": ("unseen", "role", _DROP),
-    "patch-run_id-null": ("patch", "run_id", None),
-    "patch-role-null": ("patch", "role", None),
-    "patch-role-text": ("patch", "role", "x"),
-    "patch-role-number": ("patch", "role", 5),
-    "patch-role-dict": ("patch", "role", {"a": 1}),
-    "patch-role-list": ("patch", "role", ["x"]),
-    "patch-role-unknown": ("patch", "role", "concept:agent-nobody"),
+    "unseen-run_id-null": ("unseen", "run_id", None),
+    "unseen-role-null": ("unseen", "role", None),
+    "unseen-role-text": ("unseen", "role", "x"),
+    "unseen-role-number": ("unseen", "role", 5),
+    "unseen-role-dict": ("unseen", "role", {"a": 1}),
+    "unseen-role-list": ("unseen", "role", ["x"]),
+    "unseen-role-unknown": ("unseen", "role", "concept:agent-nobody"),
 }
 TASKS = {"extensions": {run_tasks.EXTENSION: {}}}
 
@@ -280,17 +275,13 @@ def _patch(hub: Hub, eid: str, **fields) -> None:
 
 def _malformed(hub: Hub, case: str, run_id: str) -> str:
     """`_NO_ROLE_OR_RUN_ID` 의 기록 하나를 만든다. 대기 중이고 승인함에 보인다."""
-    how, key, value = _NO_ROLE_OR_RUN_ID[case]
-    if how == "unseen":
-        eid, props = _unseen(run_id)
-        if value is _DROP:
-            props.pop(key)
-        else:
-            props[key] = value
-        _pushed(hub, eid, props)
+    _how, key, value = _NO_ROLE_OR_RUN_ID[case]
+    eid, props = _unseen(run_id)
+    if value is _DROP:
+        props.pop(key)
     else:
-        eid = _waiting_run(hub, run_id)
-        _patch(hub, eid, **{key: value})
+        props[key] = value
+    _pushed(hub, eid, props)
     assert hub.stored(eid)["state"] == "waiting"
     return eid
 
@@ -379,7 +370,7 @@ def test_the_agent_tools_and_tasks_answer_a_protocol_result_on_such_a_run(hub, c
     start = _tool(hub, "vinc_run_start", role=ROLE, task="Review the change.", run_id=run_id)
     if _role_unreadable(case):
         # 역할 id 모양의 다른 역할이면 그 run_id 는 다른 역할의 것이다.
-        error = "run_id_in_use" if case == "patch-role-unknown" else "invalid_run_state"
+        error = "run_id_in_use" if case == "unseen-role-unknown" else "invalid_run_state"
         assert start["executed"] is False and start["error"] == error, start
     else:
         assert start["executed"] is True and start["state"] == "waiting", start
