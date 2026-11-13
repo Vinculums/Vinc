@@ -177,7 +177,7 @@ def test_secret_url_and_ttl_validation():
 def test_only_public_addresses_pass():
     for ip in ("127.0.0.1", "10.0.0.1", "172.16.0.1", "192.168.1.1", "169.254.169.254",
                "100.64.0.1", "0.0.0.0", "224.0.0.1", "::1", "fe80::1", "fc00::1",
-               "::ffff:10.0.0.1", "2002:a00:1::", "not-an-ip"):
+               "fec0::1", "::ffff:10.0.0.1", "2002:a00:1::", "not-an-ip"):
         assert events.public_address(ip) is False, ip
     for ip in (PUBLIC_IP, "2606:4700:4700::1111"):
         assert events.public_address(ip) is True, ip
