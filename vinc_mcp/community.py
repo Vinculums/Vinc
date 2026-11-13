@@ -19,9 +19,8 @@ READ_TOOL = "vinc_community_read"
 READ_ACTIONS = ("agent_detail", "agent_export", "agent_take_preview", "agent_take_result",
                 "feed", "post", "topics")
 ACTIONS = (
-    "page_save", "page_revert", "talk_create", "talk_comment", "lounge_create",
-    "lounge_comment", "react", "report", "moderate", "appoint_operator", "resolve_report",
-    "social_edit", "community_join", "community_leave", "community_create", "community_edit",
+    "page_save", "page_revert", "react", "report", "moderate", "appoint_operator", "resolve_report",
+    "social_edit", "community_edit",
     "share_create", "share_version", "share_withdraw", "share_moderate", "pack_share", "agent_take",
     "post_create", "post_reply", "topic_save",
 )
@@ -240,17 +239,13 @@ def resolve(sub: str, space: str):
 
 def write(auth: dict, args: dict):
     owner, member = auth.get("owner"), auth.get("member")
-    creating = args.get("action") == "community_create"
-    if creating and isinstance(owner, str) and owner.startswith("user:"):
-        member, target = owner, None
-    elif not creating and is_space(owner):
-        target = owner[10:]
-    else:
-        raise PermissionError("Community creation requires personal identity; other writes require a community space.")
+    # 모든 쓰기는 명시한 커뮤니티 주소 하나로 간다. 목록에 없는 동작은 도구 스키마를 지나지 않은 호출이라도 계정으로 보내지 않는다.
+    if not is_space(owner) or args.get("action") not in ACTIONS:
+        raise PermissionError("Community writes require an explicit community space and an action of vinc_community_write.")
     if (not isinstance(member, str) or not member.startswith("user:") or auth.get("scope") != "full"):
         raise PermissionError("A full-access authenticated community request is required.")
     return _request("/internal/mcp/community", {
-        "sub": member[5:], "community": target, "action": args["action"],
+        "sub": member[5:], "community": owner[10:], "action": args["action"],
         "payload": args["payload"], "client_name": args["client_name"].strip(),
         "channel": "mcp", "scope": "full",
     }, "community-write", write=True)

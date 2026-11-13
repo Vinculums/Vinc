@@ -53,12 +53,9 @@ def preflight(name: str, args: dict, *, base_auth: dict,
         return Outcome("read_only", auth=auth,
                        message=(f"this key is read-only: {name} writes to the graph. "
                                 "Mint a full-access key at https://vincs.io/account"))
-    if name == community.WRITE_TOOL:
-        creating = args.get("action") == "community_create"
-        if ((creating and not str(auth.get("owner") or "").startswith("user:"))
-                or (not creating and not is_community)):
-            return Outcome("role_denied", auth=auth,
-                           message="Community creation uses personal identity; all other actions require community:<uuid> space.")
+    if name == community.WRITE_TOOL and not is_community:
+        return Outcome("role_denied", auth=auth,
+                       message="Community writes require an explicit community:<uuid> space.")
     if name == community.READ_TOOL and not is_community:
         return Outcome("role_denied", auth=auth,
                        message="Community reads require an explicit community:<uuid> space.")
