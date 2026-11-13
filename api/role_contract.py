@@ -10,8 +10,10 @@
 "props 가 없다"고 말하면 거짓 경고다. 신규 생성일 때만 "빠졌다"를 말한다.
 
 상수 다섯(TOPICS · DOMAIN · ID_PREFIX · ROSTER_CONCEPT · RUNGS)은 `vinc_mcp/roles.py` 에도 있다.
-`api` 는 `vinc_mcp` 를 import 하지 않으므로(호스티드 MCP 이미지와 허브의 짐이 다르다)
-한 벌로 합치지 않고 테스트가 둘이 같음을 고정한다(tests/core/test_role_contract.py).
+두 벌로 두고 tests/core/test_role_contract.py 가 같음을 대조한다(TOPICS 는 첫 값인 DOMAIN 만).
+층 규칙이 사본을 강요하는 것은 아니다: 소유 게이트(`scripts/gate_ownership.py` 의 LAYER_BANS)가
+막는 방향은 `vinc_mcp` → `api` 이고, `api` → `vinc_mcp` 는 열려 있다(`server.py` 도 `vinc_mcp.roles`
+를 import 한다). 한쪽에서 가져다 쓸지, 사본과 대조 테스트를 유지할지는 열린 결정이다.
 
 근거: [[vinc.canon.agent-roles §6]] · [[decision:agent-role-contract-is-warned-at-write-not-refused-2026-09-25]]
 """
