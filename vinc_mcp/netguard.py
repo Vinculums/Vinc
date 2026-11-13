@@ -3,8 +3,8 @@
 
 하는 것:
 
-  - `public_address(text)` — 전 세계에서 닿는 주소인가. 사설·루프백·링크로컬·멀티캐스트·예약은
-    아니다. IPv6 안에 IPv4 를 싣는 모양(매핑·6to4·Teredo)은 안의 주소까지 본다.
+  - `public_address(text)` — 전 세계에서 닿는 주소인가. 사설(IPv6 고유로컬·사이트로컬 포함)·루프백·
+    링크로컬·멀티캐스트·예약은 아니다. IPv6 안에 IPv4 를 싣는 모양(매핑·6to4·Teredo)은 안의 주소까지 본다.
   - `public_ips(host, port, resolver)` — 이름을 풀어 주소들을 돌려준다. 못 풀면 `Unresolved`,
     풀린 주소 가운데 **하나라도** 공인이 아니면 `NotPublic` 이다.
   - `tls_connect(ip, port, host, timeout)` — 확인한 주소로 붙고 인증서는 이름으로 본다.
@@ -34,12 +34,16 @@ class NotPublic(Exception):
 
 
 def public_address(text: str) -> bool:
-    """전 세계에서 닿는 주소인가. 사설·루프백·링크로컬·멀티캐스트·예약은 아니다."""
+    """전 세계에서 닿는 주소인가. 사설(IPv6 고유로컬·사이트로컬 포함)·루프백·링크로컬·멀티캐스트·예약은 아니다."""
     try:
         ip = ipaddress.ip_address(text.split("%", 1)[0])
     except ValueError:
         return False
     if ip.version == 6:
+        # 사이트로컬(fec0::/10)은 폐기된 대역이라 `is_global` 이 참으로 답하지만, 내부망에서는 아직
+        # 사설 주소로 쓰인다. 고유로컬(fc00::/7)과 같게 막는다.
+        if ip.is_site_local:
+            return False
         for inner in (ip.ipv4_mapped, ip.sixtofour, (ip.teredo or (None, None))[1]):
             if inner is not None and not public_address(str(inner)):
                 return False
