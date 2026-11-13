@@ -38,7 +38,7 @@ Vinculums/Vinc#121 의 근본 처방(선택지 1). 발주자 결정: 2026-08-30.
   _DocTombstone    않는다(`pkns.has_sep` 로 **거부**할 뿐이다). 그대로 나른다.
   _SyncMeta        커서·매핑. 그대로 나른다.
   _SchemaMeta      대상 스토어 자신의 사실이라 **안 나른다**(#115 와 같은 판단).
-  _MergeRejection  `pair_key`·`a_id`·`b_id` 는 전부 **논리** id 다(api/query.py
+  _MergeRejection  `pair_key`·`a_id`·`b_id` 는 전부 **논리** id 다(api/merge_candidates.py
                    `rejection_pair_key`). 그대로 나른다.
   _SyncBase        owner 열이 없지만 `node_id` 는 노드 id 이고, 키가 아직 전역
                    네임스페이스 하나이므로 **id 하나에 노드 하나**다 — 그 노드의
