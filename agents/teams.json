@@ -26,7 +26,6 @@
       "label": "RAG (retrieval, rerank, embed, eval)",
       "roles": [],
       "paths": [
-        "scripts/eval_search.py",
         "rag_eval/",
         "scripts/benchmark/",
         "scripts/bench_models.py",
