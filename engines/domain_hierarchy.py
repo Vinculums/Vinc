@@ -208,7 +208,7 @@ def backfill(store, *, owner: str | None = None, rename: dict | None = None) -> 
     ``rename``(선택): ``{옛 도메인: 새 도메인}``. 열과 엣지를 같이 옮긴다. 평면
     도메인을 계층 아래로 넣을 때 쓴다(`design` → `vinc/design`). revstamp 는 찍지
     **않는다** — 이행은 내용 변경이 아니라 표현 보정이고, 366 노드에 스탬프를 찍으면
-    모든 기기가 전량을 다시 받는다. 사용자 주도 개명은 `query.rename_domain` 이다.
+    모든 기기가 전량을 다시 받는다. 사용자 주도 개명은 `graph_edit.rename_domain` 이다.
 
     반환 ``{scanned, linked, renamed, domains, edges, by_label}``.
 
