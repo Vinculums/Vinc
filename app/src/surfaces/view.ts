@@ -17,8 +17,7 @@ import { wireAsk, type AskItem } from "./view-ask";
 import { disposeEditorsIn, docEditorOpen, renderMarkdown } from "../doc-editor";
 import { hydrateRich } from "../rich-blocks";
 
-import { RAIL_MIN, RAIL_MAX, loadPrefs, savePrefs, dayOf, localStamp,
-         type ViewPrefs } from "../view-prefs";
+import { RAIL_MIN, RAIL_MAX, loadPrefs, savePrefs, dayOf, localStamp } from "../view-prefs";
 import { setViewHooks, refreshTopbar, setSearchFilter, setTopbarTools } from "../topbar";
 import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbScopeClearer, setLnbGraphSource, repaintLnbGraph, setLnbGraphActive,
          refreshLnb, isAgentRoleId, stripRolePrefix } from "../lnb";
@@ -140,7 +139,8 @@ export function repaintView(): void { themeRepaint?.(); }
 export async function renderView(el: HTMLElement, resume = false) {
   leaveView();
   const myGen = ++liveGen;
-  const restoreEntryCamera = resume && location.hash === "#view";
+  // 맨 `#view` 로 돌아온 마운트는 떠날 때 보던 범위(책갈피)로 연다.
+  const restoreEntryScope = resume && location.hash === "#view";
   const mountScope = viewScope();
   const accessJob = new AbortController();
   disposeView = () => accessJob.abort();
@@ -157,7 +157,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       if (myGen !== liveGen || mountScope.key !== viewScope().key) { accessJob.abort(); return; }
     }
   }
-  const bookmark = entryAccess && restoreEntryCamera ? viewSessionCache.last(entryAccess.session) : undefined;
+  const bookmark = entryAccess && restoreEntryScope ? viewSessionCache.last(entryAccess.session) : undefined;
   el.innerHTML = `
     <div id="view-canvas"></div>
     <!-- 하단 바에는 **지표만** 남는다(D71). 렌즈는 상단 바로 올라갔고,
@@ -251,7 +251,6 @@ export async function renderView(el: HTMLElement, resume = false) {
   if (!readRoute && bookmark?.domains.length)
     addr = parseViewUrl(formatViewUrl({ kind: "domains", domains: bookmark.domains }));
   // 주소의 `/as/<관점>` 칸은 읽지 않는다 — 보기는 나침반 하나다(view-prefs `VIEWPOINTS`).
-  const curPrefs = (): ViewPrefs => loadPrefs();
 
   function setMsg(html: string) {
     msg.innerHTML = html;
@@ -586,58 +585,25 @@ export async function renderView(el: HTMLElement, resume = false) {
 
 
   /** 그래프 읽기는 `/graph` 하나를 같은 인자로 부른다 — 한 함수로 접는다.
-   *
-   *  두 가지를 여기서 처리한다(2026-08-17, [[vinc.research.view-interaction-audit]]):
-   *  · **재사용**: 옵션 변경으로 다시 그릴 때는 서버가 필요 없다(좌표를 바꾸는 것은
-   *    layout·cone 뿐이고 그건 applyPrefs 가 `reuseGraph` 를 안 켠다). `layout_positions`
-   *    는 순수 함수라 같은 요청은 같은 응답이었고, 그 왕복(73~155ms)이 옵션 클릭 지연의
-   *    절반이었다.
-   *  · **순서**: 빠르게 연달아 show() 가 나면 늦게 도착한 옛 응답이 새 그림을 덮었다.
-   *    부를 때의 세대를 기억해, 돌아왔을 때 세대가 지났으면 `stale` 로 답한다. */
-  const cameraPrefs = (p: ViewPrefs) => JSON.stringify([p,
-    Math.round((canvas.clientWidth || 1200) / (canvas.clientHeight || 750) * 10) / 10]);
-  // 그래프 읽기와 가지 배치, 두 캐시의 상태는 `view-graph-loader.ts` 가 든다.
+   *  · **순서**: 빠르게 연달아 show() 가 나면 늦게 도착한 응답이 새 그림을 덮는다.
+   *    부를 때의 세대를 기억해, 돌아왔을 때 세대가 지났으면 `stale` 로 답한다.
+   *  읽기와 탭 보관소의 상태는 `view-graph-loader.ts` 가 든다. */
   const loader = createGraphLoader({
-    mountScope, accessJob, firstAccess, restoreEntryCamera, noLayout: true,
+    mountScope, accessJob, firstAccess,
     seq: () => showSeq,
     alive: () => myGen === liveGen && canvas.isConnected,
-    canvasRatio: () => Math.round((canvas.clientWidth || 1200) / (canvas.clientHeight || 750) * 10) / 10,
-    mounted: () => false,
-    cameraPrefs,
-    // 미리보기 그림은 3D 의 것이었다. 나침반은 전량이 올 때 한 번 그린다
-    showPreview: () => () => {},
-    restoreCameras: () => {},
-    // 중심에서 화면 뒤에서 가지 배치가 끝났다. 받은 그래프는 그대로 두고 배치만 갈아 끼운다.
-    layoutReady: () => {
-      loader.reuseGraph = true;
-      void show(trail[trail.length - 1], { keepPanel: true, keepDetail: true });
-    },
-    layoutFailed: () => showLayoutNote(COPY.view.layoutFailed),
   });
-  // 시간순 가지 대신 중심에서 배치를 그렸을 때의 한 줄 안내. 다음 화면이 그려지면 사라진다.
-  let layoutNote: HTMLElement | undefined;
-  function clearLayoutNote() { layoutNote?.remove(); layoutNote = undefined; }
-  function showLayoutNote(text: string) {
-    clearLayoutNote();
-    const note = document.createElement("div");
-    note.setAttribute("role", "status"); note.dataset.layoutNote = "true"; note.textContent = text;
-    note.style.cssText = "position:absolute;bottom:12px;left:12px;max-width:min(560px,70%);font-size:var(--fs-xs);"
-      + "color:hsl(var(--muted-foreground));pointer-events:none";
-    canvas.append(note); layoutNote = note;
-  }
-  let displayedScene: { key: string; prefs: string; domains: string[]; seq: number } | undefined;
-  const markDisplayed = (p: ViewPrefs, domains: string[]) => {
-    displayedScene = { key: loader.scopeKey!, prefs: cameraPrefs(p), domains: [...domains], seq: showSeq };
+  let displayedScene: { key: string; domains: string[] } | undefined;
+  const markDisplayed = (domains: string[]) => {
+    displayedScene = { key: loader.scopeKey!, domains: [...domains] };
   };
   const dispose = () => {
     const retained = loader.retained;
     if (retained && displayedScene?.key === retained.key
         && mountScope.key === viewScope().key && myGen === liveGen) {
-      viewSessionCache.remember(retained.session, retained.key, retained.revision,
-        { prefs: displayedScene.seq === showSeq ? cameraPrefs(curPrefs()) : displayedScene.prefs,
-          camera3: undefined }, displayedScene.domains);
+      viewSessionCache.remember(retained.session, retained.key, retained.revision, displayedScene.domains);
     }
-    accessJob.abort(); loader.abort(); loader.removePreview();
+    accessJob.abort(); loader.abort();
     // 떠 있는 카드는 표면 밖(`body`)에 붙어 있어서 그래프를 떠나도 혼자 남았다. 그래프의 것이니 함께 걷는다.
     closeFloatPanel();
     removalObserver.disconnect(); swapSurface();
@@ -650,9 +616,8 @@ export async function renderView(el: HTMLElement, resume = false) {
   removalObserver.observe(document.body, { childList: true, subtree: true });
   async function showGraphScope(scope: { domains?: string[] }) {
     const domains = scope.domains || [];
-    const p = curPrefs();
     setMsg(loaderBlock("branch", COPY.view.loading(domains.length ? 1 : 0)));
-    const res = await loader.fetchGraph(p, scope);
+    const res = await loader.fetchGraph(scope);
     if (res.stale) return;                        // 더 새 show() 가 이미 화면을 가져갔다
     swapSurface();
     // 도달 불가도 빈 상태와 **같은 상자**로 낸다. 붉은 배너만 다른 모양이면 같은 사정이
@@ -708,7 +673,7 @@ export async function renderView(el: HTMLElement, resume = false) {
         const prevDispose = disposeView; compassDisposeWrapped = true;
         disposeView = () => { prevDispose?.(); setSearchFilter(null); if (compass) { compass.destroy(); compass = null; } };
       }
-      markDisplayed(p, domains);
+      markDisplayed(domains);
       return;
     }
   }
@@ -2237,8 +2202,6 @@ export async function renderView(el: HTMLElement, resume = false) {
    *  캔버스를 투명하게 두고 나가면 revealSurface() 가 첫 그림을 페이드인한다. */
   function swapSurface() {
     displayedScene = undefined;
-    loader.removePreview();
-    clearLayoutNote();
     if (compass) { setSearchFilter(null); compass.destroy(); compass = null; }
     canvas.innerHTML = "";
     canvas.style.opacity = "0";
@@ -2277,7 +2240,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   async function show(level: Level,
                       opts?: { keepPanel?: boolean; keepCamera?: boolean; keepDetail?: boolean }) {
     const seq = ++showSeq;
-    loader.abort(); loader.removePreview();
+    loader.abort();
     setBusy(true, opts?.keepPanel ? 120 : 400);
     // 같은 범위를 다시 그리면 나침반이 보던 자리를 잇는다. 캡처는 파괴 **전에**.
     compassKeep = opts?.keepCamera && compass ? compass.snapshot() : null;
@@ -2312,7 +2275,6 @@ export async function renderView(el: HTMLElement, resume = false) {
       // 자리를 잡은 뒤 한 번 더 날리는 지연도 거기 있다. 여기서는 층만 그린다.
     } catch (e) {
       if (seq !== showSeq) return;
-      loader.removePreview();
       // 위 빈 상태와 같은 상자 — 예외 경로만 다른 모양으로 남기면
       // "왜 어떤 실패는 붉은 띠고 어떤 실패는 빈 상자인가"라는 질문만 남는다.
       //
