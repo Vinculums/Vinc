@@ -26,7 +26,7 @@ UNITS: dict[str, tuple[str, ...]] = {
              "src/surfaces/view-edge.ts"),
     "view-compass": ("src/surfaces/view-compass.ts", "src/surfaces/view-compass-model.ts",
                      "src/surfaces/view-compass-gather.ts", "src/surfaces/view-compass-tree.ts",
-                     "src/surfaces/view-compass-shapes.ts"),
+                     "src/surfaces/view-compass-shapes.ts", "src/surfaces/view-compass-side.ts"),
     "home": ("src/surfaces/home.ts",),
     "settings": ("src/surfaces/settings.ts",),
     "agents-board": ("src/surfaces/agents-board.ts",),
