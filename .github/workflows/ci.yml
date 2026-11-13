@@ -685,6 +685,11 @@ jobs:
         if: env.FULL_OS == 'true'
         with:
           python-version: '3.11'
+          # 꾸러미를 확장마다 새 venv 에 까는 단계가 이 잡 시간의 대부분이다(최근 런: ubuntu 126초, windows 284초, macOS 172초).
+          # 내려받은 꾸러미를 pip 캐시로 다시 쓴다. 키는 꾸러미 정의(pyproject.toml)와 OS·파이썬 판이다.
+          # 머지 큐 런은 main 의 캐시만 읽으므로, main 에서 이 워크플로를 손으로 한 번 띄우면(workflow_dispatch) 캐시가 생긴다.
+          cache: pip
+          cache-dependency-path: integrations/vincs/python/pyproject.toml
       - name: Build wheel from standalone sdist
         if: env.FULL_OS == 'true'
         run: |
