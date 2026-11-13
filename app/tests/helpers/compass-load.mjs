@@ -1,6 +1,6 @@
 // 나침반 테스트의 적재기 하나: 실제 view-compass.ts 를 적재하고, 그것이 들여오는 모듈의 대역과 실제 모듈 목록을 이 파일 한 곳이 갖는다.
 // 나침반이 새 모듈을 들여오거나 몸통이 새 파일로 갈라지면 `compassImports` 에만 줄을 더한다(테스트 파일은 고치지 않는다).
-// 문구 · 이스케이프 · 테마 토큰은 대역이고, 모델 · 상태 · 전체 보기 · 키 · 색 계산 · 주제 색 표는 실제 코드다.
+// 문구 · 이스케이프 · 테마 토큰은 대역이고, 모델 · 이웃 모으기 · 상태 · 전체 보기 · 키 · 색 계산 · 주제 색 표는 실제 코드다.
 import { tsUrl, copyStub, COMPONENTS_STUB } from '../ts-load.mjs';
 
 /** 테마 토큰 대역: 주제 보석 다섯 개와 두 모드의 바탕 · 글자 색 */
@@ -20,10 +20,12 @@ export function compassModules() {
   built ??= (async () => {
     const tint = await tsUrl('view-tint.ts', { './theme': THEME_STUB, './area-key': await tsUrl('area-key.ts') });
     const table = await tsUrl('topic-tint-table.ts', { './view-tint': tint });
+    const model = await tsUrl('surfaces/view-compass-model.ts', { '../topic-tint-table': table });
     return {
       tint,
       table,
-      model: await tsUrl('surfaces/view-compass-model.ts', { '../topic-tint-table': table }),
+      model,
+      gather: await tsUrl('surfaces/view-compass-gather.ts', { './view-compass-model': model }),
       state: await tsUrl('surfaces/view-compass-state.ts'),
       whole: await tsUrl('surfaces/view-compass-whole.ts'),
       keys: await tsUrl('keys.ts'),
@@ -42,6 +44,7 @@ async function compassImports(copy) {
     '../topic-tint-table': m.table,
     '../theme': THEME_STUB,
     './view-compass-model': m.model,
+    './view-compass-gather': m.gather,
     './view-compass-state': m.state,
     './view-compass-whole': m.whole,
     '../keys': m.keys,

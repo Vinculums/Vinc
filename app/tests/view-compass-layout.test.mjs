@@ -101,3 +101,136 @@ test('the parent lines of an opened path carry both ends so hovering a node ligh
   assert.ok(routes.length > 0);
   for (const p of routes) { assert.ok(p.getAttribute('data-a'), 'data-a'); assert.ok(p.getAttribute('data-b'), 'data-b'); }
 });
+
+// ── 이웃 모으기와 층 하나의 내용(view-compass-gather.ts): 모델을 받아 DOM 없이 바로 부른다 ──────────────────────────
+// 나침반이 쓰는 것과 같은 모듈 인스턴스다. 관계 이름표(C.rel)는 키 이름 그대로인 대역이다.
+const gm = await compassModules();
+const model = await import(gm.model), G = await import(gm.gather);
+const RELS = Object.fromEntries(['parentTopic', 'concept', 'subtopic', 'topic', 'attachedTo', 'replacedOld', 'replacedNew', 'source', 'derived',
+  'parent', 'inherited', 'next', 'prev'].map((k) => [k, k]));
+/** 모델이 읽는 노드 하나(compassDataFrom 의 모양) */
+const cn = (id, k, d, x = {}) => ({ id, k, t: id.split(':')[1], d, ts: '2026-11-01', g: 1, m: 0, ...x });
+const built = (nodes, edges = []) => { const M = model.compassModel({ nodes, edges }, { rootTopic: 'All topics' }); return { M, ...G.compassGather(M, { rel: RELS }) }; };
+const ids = (l) => l.map((u) => u.n.id);
+const rels = (l) => l.map((u) => `${u.rel} ${u.n.id}`);
+const S0 = (x = {}) => ({ mode: 'path', path: [], place: null, dirs: null, canon: false, koff: new Set(), more: [], pins: new Set(), pinChain: new Set(), ...x });
+const close = (a, b, msg = '') => assert.ok(Math.abs(a - b) < 1e-9, `${msg} ${a} vs ${b}`);
+const units = (n, k = 'concept') => Array.from({ length: n }, (_, i) => ({ n: cn(`${k}:u${i}`, k, 'lab') }));
+
+test('fanPlace spreads a fan evenly about its middle angle and grows the radius until it fits', () => {
+  const f = G.fanPlace(units(3), { x: 10, y: 20 }, -135, -45, 150, 9, () => 7);
+  assert.equal(f.R, 150, 'three fit inside the minimum radius');
+  close(f.pos[1].ang, -Math.PI / 2, 'the middle one sits on the middle angle'); close(f.pos[1].x, 10); close(f.pos[1].y, 20 - 150);
+  close(f.pos[0].x - 10, -(f.pos[2].x - 10), 'the ends mirror each other'); close(f.pos[0].y, f.pos[2].y);
+  close(f.pos[1].ang - f.pos[0].ang, 23 / 150, 'each one takes its width plus the gap on the arc');
+  const big = G.fanPlace(units(40), { x: 0, y: 0 }, 0, 90, 150, 9, () => 7);
+  close(big.R, (40 * 23) / (Math.PI / 2), 'many: the radius grows until they fill the span');
+  close(big.pos[0].ang, 23 / big.R / 2); close(big.pos[39].ang, Math.PI / 2 - 23 / big.R / 2);
+});
+
+test('colPlace lays a vertical fan as two columns with an empty lane between them', () => {
+  const c = G.colPlace(units(4), { x: 0, y: 0 }, 90, 0, () => 7);
+  assert.deepEqual(c.pos.map((p) => [p.ang, p.x, p.y]), [[Math.PI, -47, 67], [Math.PI, -47, 89], [0, 47, 67], [0, 47, 89]], 'half left, half right, downward');
+  assert.equal(c.R, 100);
+  const up = G.colPlace(units(4), { x: 0, y: 0, r: 30 }, -90, -1, () => 12);
+  assert.deepEqual(up.pos.map((p) => [p.x, p.y]), [[-52, -80], [-52, -112], [-52, -144], [-52, -176]], 'side -1: the left column only, upward, from the hub rim');
+  assert.equal(up.R, 192);
+  assert.ok(G.colPlace(units(3), { x: 0, y: 0 }, 90, 1, () => 7).pos.every((p) => p.ang === 0 && p.x === 47), 'side 1: the right column only');
+  assert.deepEqual(G.colPlace(units(3), { x: 0, y: 0 }, 90, 0, () => 7).pos.map((p) => p.ang), [Math.PI, Math.PI, 0], 'an odd count puts the extra one on the left');
+  assert.deepEqual([1, 100, 400].map((count) => G.subR({ k: 'topic', count })), [9, 19, 24], 'a subtopic grows with its count between 9 and 24');
+  assert.deepEqual([cn('concept:c', 'concept', 'lab'), cn('record:r', 'record', 'lab'), cn('record:m', 'record', 'lab', { m: 2 })].map((n) => G.sizeU({ n })), [7, 5.5, 7]);
+  assert.deepEqual([G.ROWS, G.REL, G.rad(180), G.todeg(Math.PI)], [18, { up: [-26, 26], left: [-135, -45], right: [45, 135] }, Math.PI, 180]);
+});
+
+/** 주제 lab/x: 개념 · 문서 · 목록 · 하위 주제 둘 · 다리 셋(하위 주제 사이 · 층 밖으로도 · 끝이 이 주제 자신) */
+const topicGraph = () => built([
+  cn('concept:a', 'concept', 'lab/x', { m: 2 }), cn('concept:b', 'concept', 'lab/x', { m: 1 }), cn('concept:hub', 'concept', 'lab/x', { m: 1, g: 5 }),
+  cn('concept:doc.n', 'doc', 'lab/x'), cn('record:r1', 'record', 'lab/x', { ts: '2026-10-01' }), cn('record:r2', 'record', 'lab/x', { ts: '2026-11-05' }),
+  cn('person:p', 'person', 'lab/x'), cn('decision:d', 'decision', 'lab/x', { ts: '2026-09-01' }), cn('episode:e', 'episode', 'lab/x'),
+  cn('concept:o1', 'concept', 'lab/x/one'), cn('concept:o2', 'concept', 'lab/x/one'), cn('concept:o3', 'concept', 'lab/x/one'), cn('concept:t1', 'concept', 'lab/x/two'),
+  cn('concept:y1', 'concept', 'lab/y'), cn('bridge:j', 'bridge', ''), cn('bridge:out', 'bridge', 'lab/x'), cn('bridge:self', 'bridge', 'lab/x')],
+[['concept:a', 'concept:b', 'RELATED_TO'], ['bridge:j', 'concept:o1', 'CONNECTS'], ['bridge:j', 'concept:t1', 'CONNECTS'],
+  ['bridge:out', 'concept:o2', 'CONNECTS'], ['bridge:out', 'concept:y1', 'CONNECTS'], ['bridge:self', 'concept:a', 'CONNECTS']]);
+
+test('gather around a topic: parent up, its concepts left, subtopics right, bridges between subtopics, the rest in the lists', () => {
+  const { M, gather } = topicGraph();
+  const g = gather(M.topics.get('lab/x'));
+  assert.deepEqual(g.up.map((u) => [u.n.id, u.rel, u.main]), [['topic:lab', 'parentTopic', true]]);
+  assert.deepEqual(ids(g.left), ['concept:a', 'concept:hub', 'concept:b', 'concept:doc.n', 'bridge:self'], 'meaning nodes, most meaning relations first, then most links');
+  assert.ok(g.left.every((u) => u.rel === 'concept'));
+  assert.deepEqual(ids(g.right), ['topic:lab/x/one', 'topic:lab/x/two'], 'subtopics, the largest first');
+  assert.deepEqual(g.bridges.map((b) => [b.n.id, b.subs, b.outside]), [['bridge:j', ['lab/x/one', 'lab/x/two'], false], ['bridge:out', ['lab/x/one'], true]],
+    'a bridge whose ends reach a subtopic stands among the subtopics; outside says it also leaves this topic');
+  assert.deepEqual(Object.fromEntries(Object.entries(g.shelf).map(([k, l]) => [k, l.map((n) => n.id)])),
+    { decision: ['decision:d'], record: ['record:r2', 'person:p', 'record:r1'], episode: ['episode:e'], doc: [] }, 'newest first; an unknown kind joins the records');
+  const root = gather(M.topics.get('lab'));
+  assert.deepEqual(root.up, [], 'the root has no parent');
+  assert.deepEqual(ids(root.right), ['topic:lab/x', 'topic:lab/y']);
+});
+
+test('gather around a node: each relation goes to its place by kind and direction', () => {
+  const nodes = ['a', 'b', 'hub', 'newer', 'older', 'src', 'kid', 'par', 'heir', 'nxt', 'prv'].map((t) => cn(`concept:${t}`, 'concept', 'lab/x', { m: t === 'hub' ? 3 : 0 }));
+  nodes.push(cn('record:r1', 'record', 'lab/x', { ts: '2026-10-01' }), cn('record:r2', 'record', 'lab/x', { ts: '2026-11-01' }));
+  const { M, gather } = built(nodes, [['concept:a', 'concept:b', 'RELATED_TO'], ['record:r1', 'concept:a', 'ABOUT'], ['record:r2', 'concept:a', 'MENTIONS'],
+    ['concept:a', 'concept:hub', 'ATTACHES_TO'], ['concept:newer', 'concept:a', 'SUPERSEDES'], ['concept:a', 'concept:older', 'SUPERSEDES'],
+    ['concept:a', 'concept:src', 'DERIVES_FROM'], ['concept:kid', 'concept:a', 'DERIVES_FROM'], ['concept:a', 'concept:par', 'INHERITS_FROM'],
+    ['concept:heir', 'concept:a', 'INHERITS_FROM'], ['concept:a', 'concept:nxt', 'PREREQUISITE_OF'], ['concept:prv', 'concept:a', 'PREREQUISITE_OF'],
+    ['concept:hub', 'concept:a', 'RELATED_TO']]);
+  const g = gather(M.byId.get('concept:a'));
+  assert.deepEqual(rels(g.up), ['topic topic:lab/x', 'attachedTo concept:hub', 'replacedNew concept:newer', 'source concept:src', 'parent concept:par', 'prev concept:prv']);
+  assert.equal(g.up[0].main, true, 'its topic is the main parent');
+  assert.deepEqual(rels(g.right), ['replacedOld concept:older', 'derived concept:kid', 'inherited concept:heir', 'next concept:nxt']);
+  assert.deepEqual(rels(g.left), ['RELATED_TO concept:hub', 'RELATED_TO concept:b'], 'meaning relations by their type, most meaning relations first');
+  assert.deepEqual(g.shelf.record.map((n) => n.id), ['record:r2', 'record:r1'], 'what attaches to it is listed, newest first');
+  assert.ok(g.left.every((u) => u.e && (u.e.a.id === 'concept:a' || u.e.b.id === 'concept:a')), 'each unit carries its edge');
+});
+
+test('compassOf drops the parent, filters switched-off kinds but keeps topics, the path and pins, and caps the fans', () => {
+  const { M, compassOf } = topicGraph();
+  const x = M.topics.get('lab/x'), r1 = M.byId.get('record:r1');
+  assert.deepEqual(compassOf(x, 'topic:lab', S0()).G.up, [], 'the parent is already at 12 o\'clock');
+  const off = compassOf(x, null, S0({ koff: new Set(['record', 'concept']) }));
+  assert.deepEqual(off.G.shelf.record, [], 'switched-off records leave the list');
+  assert.deepEqual(ids(off.G.left), ['concept:doc.n', 'bridge:self'], 'switched-off concepts leave the fan; documents and bridges stay');
+  assert.deepEqual(ids(off.G.right), ['topic:lab/x/one', 'topic:lab/x/two'], 'topics are never filtered');
+  assert.deepEqual(compassOf(x, null, S0({ koff: new Set(['record']), path: [r1], pins: new Set(['record:r2']) })).G.shelf.record.map((n) => n.id),
+    ['record:r2', 'person:p', 'record:r1'], 'a pinned node and a node on the path stay; an unknown kind is a concept in the legend');
+  assert.equal(compassOf(x, null, S0({ koff: new Set(['record']), canon: true })).G.shelf.record.length, 3, 'canon filters nothing');
+  const many = Array.from({ length: 25 }, (_, i) => cn(`concept:n${i}`, 'concept', 'lab/z'));
+  const big = built([cn('concept:c', 'concept', 'lab/z'), ...many], many.map((n) => ['concept:c', n.id, 'RELATED_TO']));
+  const c = big.M.byId.get('concept:c');
+  assert.equal(big.compassOf(c, null, S0()).G.left.length, 20, 'the left fan takes 20');
+  const kept = big.compassOf(c, null, S0({ path: [big.M.byId.get('concept:n24')] })).G.left;
+  assert.equal(kept.length, 20); assert.equal(kept[19].n.id, 'concept:n24', 'a node on the path past the cap stays, in its order');
+});
+
+test('compassOf measures the layer: fan radii, the compass rim and the rim with its lists', () => {
+  const { M, compassOf } = topicGraph();
+  const cp = compassOf(M.topics.get('lab/x'), 'topic:lab', S0()), probe = { x: 0, y: 0, r: 22 };
+  assert.equal(cp.node.id, 'topic:lab/x');
+  assert.equal(cp.rL, Math.max(G.fanPlace(cp.G.left, probe, 0, 90, 150, 9, G.sizeU).R, G.colPlace(cp.G.left, probe, 90, 0, G.sizeU).R));
+  assert.equal(cp.rR, Math.max(G.fanPlace(cp.G.right, probe, 0, 90, 170, 40, G.sizeU).R, G.colPlace(cp.G.right, probe, 90, 0, G.sizeU).R));
+  assert.equal(cp.E, Math.max(cp.rL, cp.rR, 120) + 70);
+  assert.equal(cp.shelfN, 5);
+  assert.equal(cp.FP, Math.max(cp.E, cp.E * .6 + 3 * 210, cp.E * .7 + 46 + 3 * 17 + 30), 'three list columns, three rows at most');
+  const leaf = (n) => built(Array.from({ length: n }, (_, i) => cn(`record:r${i}`, 'record', 'lab/w')));
+  const two = leaf(2), w2 = two.compassOf(two.M.topics.get('lab/w'), 'topic:lab', S0());
+  assert.deepEqual([w2.rL, w2.rR, w2.E, w2.shelfN, w2.FP], [0, 0, 190, 2, 324], 'no fans: the smallest rim; one column of two rows');
+  const thirty = leaf(30), w30 = thirty.compassOf(thirty.M.topics.get('lab/w'), 'topic:lab', S0());
+  assert.equal(w30.FP, 190 * .7 + 46 + 18 * 17 + 30, 'a long list counts only the rows shown before it folds');
+  const kids = Array.from({ length: 16 }, (_, i) => cn(`concept:k${i}`, 'concept', 'lab/v')), sibs = Array.from({ length: 20 }, (_, i) => cn(`concept:s${i}`, 'concept', 'lab/v'));
+  const wide = built([cn('concept:c', 'concept', 'lab/v'), ...kids, ...sibs], [...kids.map((n) => [n.id, 'concept:c', 'DERIVES_FROM']), ...sibs.map((n) => ['concept:c', n.id, 'RELATED_TO'])]);
+  const cw = wide.compassOf(wide.M.byId.get('concept:c'), null, S0());
+  close(cw.rR, (16 * (2 * 7 + 40)) / (Math.PI / 2), 'a full right fan: sixteen with a 40 gap over a quarter turn');
+  close(cw.rL, (20 * (2 * 7 + 9)) / (Math.PI / 2), 'a full left fan: twenty with a 9 gap over a quarter turn');
+  close(cw.E, cw.rR + 70);
+});
+
+test('gather and compassOf leave the model as it was', () => {
+  const { M, gather, compassOf } = topicGraph();
+  const shot = () => JSON.stringify([[...M.topics.values()].map((t) => [t.id, t.count, t.ts, [...t.sub], t.direct.map((n) => n.id)]),
+    M.nodes.map((n) => [n.id, n.d, n.m, n.g]), [...M.adj].map(([k, l]) => [k, l.map((e) => [e.a.id, e.b.id, e.t])])]);
+  const before = shot();
+  for (const n of [...M.topics.values(), ...M.nodes]) { gather(n); compassOf(n, null, S0({ koff: new Set(['record']) })); }
+  assert.equal(shot(), before);
+});
