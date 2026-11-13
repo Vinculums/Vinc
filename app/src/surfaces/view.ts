@@ -24,6 +24,7 @@ import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbScopeClearer, s
 import { createPropsCard } from "./view-props-card";
 import { createRail } from "./view-rail";
 import { createCards, detailErrorHTML } from "./view-cards";
+import { createEdgeDetail } from "./view-edge";
 import type { N3, ViewHost } from "./view-host";
 import { openFloatPanel, closeFloatPanel, isFloatPanelOpen } from "../float-panel";
 import { setLiveRefresher } from "../live";
@@ -138,7 +139,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   if (docpane) docpane.append(railGrip);
   const msg = el.querySelector<HTMLElement>("#view-msg")!;
   const metricsBar = el.querySelector<HTMLElement>("#view-metrics")!;
-  // 떼어 낸 묶음(레일 · 속성 절 · 카드)에 내주는 손잡이 한 벌. 화살표가 읽는 닫힌 변수는 아래에서 선언되고, 부를 때 읽는다.
+  // 떼어 낸 묶음(레일 · 속성 절 · 카드 · 관계 상세)에 내주는 손잡이 한 벌. 화살표가 읽는 닫힌 변수는 아래에서 선언되고, 부를 때 읽는다.
   const host: ViewHost = {
     detail,
     reloadNode: (nd) => { ctxCache = null; return loadNodeSource(nd); },
@@ -151,7 +152,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     closeRail: () => rail.closeRail(),
     railFor,
     focusNode,
-    openEdgeDetail,
+    openEdgeDetail: (e) => openEdgeDetail(e),
     openTopicCard,
     homeCardPos,
     topicColour: (domain) => compass?.colour(domain),
@@ -161,7 +162,13 @@ export async function renderView(el: HTMLElement, resume = false) {
     focusedId: () => focusId,
     nodeContextOnce: (id) => nodeContextOnce(id),
     dropNodeContext: () => { ctxCache = null; },
-    showLevel: () => show(trail[trail.length - 1]),
+    showLevel: (opts) => show(trail[trail.length - 1], opts),
+    openRail: () => rail.openRail(),
+    railHeadHTML: (caption) => rail.railHeadHTML(caption),
+    wireRailHead: () => rail.wireRailHead(),
+    curNodes: () => curNodes,
+    curEdges: () => curEdges,
+    openDetail,
   };
   // 레일(폭 · 그립 · 크기 · 머리 · 열고 닫기)은 `view-rail.ts` 가 맡는다. 만들 때 저장된 폭으로 닫힌 채 시작한다.
   const rail = createRail(host, { el, shell, docpane, railGrip });
@@ -845,135 +852,8 @@ export async function renderView(el: HTMLElement, resume = false) {
     void loadNodeSource(nd);
   }
 
-  async function openEdgeDetail(e: { id?: string; source: string; target: string; type: string;
-                                     srcTitle?: string; dstTitle?: string }) {
-    // D45-V 1단계 — 흐름 선 클릭: "왜 A 가 B 로 이어지는가". 클릭=고정(pin) —
-    // 상세 패널 자리를 그대로 쓴다(노드 상세와 같은 표면, ESC/다른 클릭으로 이동).
-    openRail();
-    detail.innerHTML = `<p class="hint">${loaderInline(COPY.ui.viewx.relLoading)}</p>`;
-    const pending = detail.firstChild, graphAtOpen = curEdges;
-    // Use only an exact authored relation from this already-authorized graph.
-    // A parallel relation without an ID must never borrow another one's evidence.
-    const matches = curEdges.filter(x => !x.presentation && x.source === e.source
-      && x.target === e.target && x.type === e.type && (!e.id || x.id === e.id));
-    const known = matches.length === 1 ? matches[0] : undefined;
-    try {
-      let res: Awaited<ReturnType<typeof api.edgeContext>>;
-      try { res = await api.edgeContext(cfg.owner, e.source, e.target, e.type); }
-      catch (error) { if (!known) throw error; res = { executed: false }; }
-      let guessed = false;   // 서버가 이 관계를 못 읽었다 — 근거가 있는지도 모른다
-      if (detail.hidden || detail.firstChild !== pending || curEdges !== graphAtOpen) return;
-      if (!res.executed && known) res = { executed: true,
-        confidence: known.confidence, evidence: known.evidence,
-        src: { id: e.source, title: curNodes.find(n => n.id === e.source)?.label || e.srcTitle },
-        dst: { id: e.target, title: curNodes.find(n => n.id === e.target)?.label || e.dstTitle } };
-      // 관계 상세 조회는 개념끼리만 안다(결정·기록이 낀 관계는 거절한다). 이름을 들고 왔으면
-      // 근거 없이 그 관계를 그대로 보이고 지우는 문은 남긴다 — 이은 것을 못 지우면 안 된다.
-      if (!res.executed) {
-        if (!e.srcTitle || !e.dstTitle) {
-          detail.innerHTML = `<p class="hint">${COPY.ui.viewx.relFail}</p>`;
-          return;
-        }
-        res = { executed: true };
-        guessed = true;
-      }
-      const a = res.src?.title || e.srcTitle || e.source, b = res.dst?.title || e.dstTitle || e.target;
-      const sentence = (COPY.ui.viewx.relSentence[e.type]
-        || COPY.ui.viewx.relSentence.RELATED_TO)(a, b);
-      const conf = res.confidence && res.confidence > 0
-        ? ` <span class="hint">· ${COPY.ui.viewx.relConfidence(res.confidence)}</span>` : "";
-      // 양 끝은 한 줄 설명만 보인다. 문서 발췌로 메우지 않는다: 잘린 마크다운은 문장으로
-      // 읽히지 않는다. 설명이 없으면 제목(위 h2)이 그 자리를 한다.
-      const side = (t: string, s?: { one_liner?: string }) => {
-        const body = s?.one_liner || "";
-        return body ? `
-          <div class="list-row" style="display:block">
-            <span class="title" style="font-size:.85em">${esc(t)}</span>
-            <p class="hint" style="margin:.15rem 0 0">${esc(body)}</p>
-          </div>` : "";
-      };
-      // 열 머리(크기 · 닫기)를 함께 싣는다 — 여태 이 화면만 머리가 없어 Esc 말고는 나갈 문이 없었다.
-      detail.innerHTML = `
-        ${railHeadHTML(esc(COPY.author.linkDetailTip))}
-        <h2>${esc(a)} → ${esc(b)}</h2>
-        <p>${esc(sentence)}${conf}</p>
-        ${guessed ? "" : `<p class="hint" style="margin-bottom:.3rem">${COPY.ui.viewx.relEvidence}</p>
-        ${res.evidence
-          ? `<p>${esc(res.evidence)}</p>`
-          : `<p class="hint">${COPY.ui.viewx.relEvidenceNone}</p>`}`}
-        ${side(a, res.src)}${side(b, res.dst)}
-        <p class="rail-acts"><button class="btn btn-quiet" id="edge-del">${
-          esc(COPY.author.edgeDel)}</button></p>
-        <p class="hint" id="edge-del-msg" role="status"></p>`;
-      wireRailHead();
-      // 연결 지우기(흐름 F 의 짝). 여태 API 는 있는데 부르는 곳이 없었다. 되돌릴 수 없으므로
-      // 확인을 받고, 지운 것이 0 이면(지울 수 없는 종류·이미 없음) 그렇게 말한다.
-      detail.querySelector("#edge-del")!.addEventListener("click", async () => {
-        const A = COPY.author;
-        const say = (t: string) => { const m = detail.querySelector("#edge-del-msg"); if (m) m.textContent = t; };
-        const guard = api.previewDeleteEdge(cfg.owner, e.source, e.target, e.type);
-        if (!await confirmDestructive(esc(A.edgeDelAsk(a, b)), COPY.ui.viewx.delConfirm,
-                                      COPY.ui.viewx.delCancel)) return;
-        try {
-          const r = await api.deleteEdge(cfg.owner, e.source, e.target, e.type, await guard);
-          if (!r.executed) { say(A.edgeDelFail); return; }
-          if (!r.deleted?.edges) { say(r.note ? A.edgeDelUnsupported : A.edgeDelFail); return; }
-          closeRail();
-          void show(trail[trail.length - 1], { keepPanel: true, keepCamera: true });
-        } catch { say(A.edgeDelFail); }
-      });
-    } catch {
-      if (!detail.hidden && detail.firstChild === pending && curEdges === graphAtOpen)
-        detail.innerHTML = `<p class="hint">${COPY.ui.viewx.relFail}</p>`;
-    }
-  }
-
-  /** 합계 구간 클릭 → 개념 목록 드릴다운(D45-V2 3단계). "이 숫자는 어떤 개념들인가".
-   *  개념 클릭 → 그 개념 상세(node-context)로 한 홉 더(문서는 거기서). */
-  async function openDrilldown(domain: string, mark: string, seed?: string) {
-    openRail();
-    detail.innerHTML = `<p class="hint">${loaderInline(COPY.ui.viewx.drillLoading)}</p>`;
-    try {
-      const res = await api.ledgerDrilldown(cfg.owner, domain, mark, seed);
-      if (detail.hidden) return;
-      if (!res.executed) { detail.innerHTML = `<p class="hint">${COPY.ui.viewx.drillFail}</p>`; return; }
-      const items = res.items || [];
-      const segName = (COPY.ui.viewx.seg as Record<string, string>)[mark] || mark;
-      const head = `<h2>${esc(COPY.ui.viewx.drillHeader(domain, segName, res.total || 0))}</h2>`;
-      if (items.length === 0) {
-        detail.innerHTML = head + `<p class="hint">${COPY.ui.viewx.drillEmpty}</p>`;
-        return;
-      }
-      // V10 — 목록 안 필터. 40행짜리 제목의 벽에서 원하는 것을 눈으로 찾게 두지 않는다.
-      const rowsHtml = (q: string) => items
-        .filter((it) => !q || (it.title + " " + (it.one_liner || "")).toLowerCase().includes(q))
-        .map((it) => `
-        <div class="list-row drill-c" data-id="${esc(it.concept_id)}" data-lab="${esc(it.title)}"
-             data-dom="${esc(domain)}" style="display:block;cursor:pointer">
-          <span class="title" style="font-size:.9em">${esc(it.title)}</span>
-          ${it.one_liner ? `<p class="hint" style="margin:.1rem 0 0">${esc(it.one_liner)}</p>` : ""}
-        </div>`).join("");
-      const wireRows = () => detail.querySelectorAll<HTMLElement>(".drill-c").forEach((row) =>
-        row.addEventListener("click", () => openDetail({
-          id: row.dataset.id!, label: row.dataset.lab!, domain: row.dataset.dom!,
-          degree: 0,
-        } as N3)));
-      detail.innerHTML = head
-        + (items.length > 8
-          ? `<input id="drill-q" class="rail-filter" type="search" autocomplete="off"
-               placeholder="${esc(COPY.ui.viewx.drillFilter)}" />` : "")
-        + `<div id="drill-list">${rowsHtml("")}</div>`;
-      detail.querySelector<HTMLInputElement>("#drill-q")?.addEventListener("input", (e) => {
-        const q = (e.target as HTMLInputElement).value.trim().toLowerCase();
-        detail.querySelector<HTMLElement>("#drill-list")!.innerHTML = rowsHtml(q);
-        wireRows();
-      });
-      wireRows();
-      return;
-    } catch {
-      if (!detail.hidden) detail.innerHTML = `<p class="hint">${COPY.ui.viewx.drillFail}</p>`;
-    }
-  }
+  // 관계 상세(연결 줄의 관계 이름이 연다)와 지표 바의 드릴다운은 `view-edge.ts` 가 맡는다.
+  const { openEdgeDetail, openDrilldown } = createEdgeDetail(host);
 
   // 속성 절(그리기 · 편집 · 저장)은 `view-props-card.ts` 가 맡는다. 다시 읽기는 노드 맥락 메모를 비우고 이 열을 새로 그린다.
   const { drawNodeProps } = createPropsCard(host);

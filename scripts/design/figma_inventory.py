@@ -184,6 +184,8 @@ DIALOGS = {
     "surfaces/view.ts:confirmDestructive": "App · View · node-delete-confirm / dark",
     # 지도 위 노드 카드의 지우기(view-cards.ts)도 같은 노드 지우기 확인이다.
     "surfaces/view-cards.ts:confirmDestructive": "App · View · node-delete-confirm / dark",
+    # 관계 상세의 관계 지우기(view-edge.ts)도 같은 파괴 확인이다. 관계 지우기의 확인 창을 따로 찍은 보드는 없다.
+    "surfaces/view-edge.ts:confirmDestructive": "App · View · node-delete-confirm / dark",
     # 문서 홈의 문서 지우기는 같은 파괴 확인(confirmDestructive)이다. 따로 찍은 보드는 없고 노드 지우기 보드가 그 모양이다.
     "surfaces/home.ts:confirmDestructive": "App · View · node-delete-confirm / dark",
     # 작업하는 자리에서 만들기(Part 3). 옛 `new-node-sheet` 폼은 컴포저로 바뀌었다 — 옛 보드는
