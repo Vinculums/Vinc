@@ -438,7 +438,7 @@ export async function renderView(el: HTMLElement, resume = false) {
     // (여기에 "파일을 추가하세요"를 대면 백엔드가 죽었을 때 거짓 조언이 된다).
     if (!res.executed) { setMsg(readFailedBox()); return; }
     // 주제 설명의 문서 미러는 그 주제의 노드가 아니다(주제가 글을 못 담아 문서로 둔 것). 지도·트리·수에서 빼고
-    // 설명은 주제 상세가 보여 준다. 표시는 서버가 단다(`api/query.py` `_mark_topic_descriptions`)
+    // 설명은 주제 상세가 보여 준다. 표시는 서버가 단다(`api/graph_read.py` `_mark_topic_descriptions`)
     const nodes: GraphNode[] = (res.nodes || []).filter((n) => !n.topic_description);
     if (nodes.length === 0) {
       // 전체가 비었으면 가져오기까지 붙인다 — 빈 첫 화면이 막다른 골목이면 안 된다.
