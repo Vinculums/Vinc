@@ -149,3 +149,34 @@ def test_rest_and_mcp_outages_return_retryable_503(path, body, team_only):
         server.shutdown()
         server.server_close()
         thread.join(5)
+
+
+@pytest.mark.parametrize("answer,status", [("outage", 503), (None, 401),
+                                           ({"owner": "user:u1", "plan": "free", "scope": "read"}, 204)])
+def test_session_close_during_an_outage_returns_retryable_503(answer, status):
+    """`DELETE /mcp`(세션 종료)도 검증 장애를 503 으로 답한다. 연결을 답 없이 끊지 않는다.
+    거절된 키는 401, 통과한 키는 204 그대로다."""
+    def verify(raw, team=None):
+        if answer == "outage":
+            raise E.VerificationUnavailable()
+        return answer
+
+    server = make_server(MCPHTTPApp(Bridge(), verify_key=verify), "127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{server.server_address[1]}/mcp",
+            method="DELETE", headers={"Authorization": "Bearer vinc_ro_secret"})
+        try:
+            response = urllib.request.urlopen(req, timeout=5)
+        except urllib.error.HTTPError as error:
+            response = error
+        with response:
+            assert response.status == status
+            if status == 503:
+                assert response.headers["Retry-After"] == "1"
+                assert "secret" not in response.read().decode()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(5)

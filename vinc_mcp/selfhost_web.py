@@ -374,7 +374,7 @@ def _owns(path: str) -> bool:
 def _web_ops() -> dict[tuple[str, str], str]:
     """(방법, 경로) → op. 허브 `_PROXY_OPS` 하나에서 만든다: 웹 경로는 사이드카 경로와 같고,
     커뮤니티 op 는 셀프호스트에 없다. 계정의 GET_OPS·POST_OPS 와 같은 표면이다."""
-    from .http_server import _PROXY_OPS
+    from .proxy_ops import _PROXY_OPS
     return {(m, p): op for op, (m, p) in _PROXY_OPS.items()
             if p and not op.startswith("community-")}
 
