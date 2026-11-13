@@ -175,7 +175,7 @@ resource "azurerm_monitor_metric_alert" "db_storage_ratchet" {
 # ⚠ 이 앱은 terraform 이 안 든다(generated.tf 에 없다) — 그래서 리소스 참조가 아니라
 # id 문자열이다. 위 web test 들이 insights_id 를 그렇게 쓰는 것과 같은 이유다.
 locals {
-  account_app_id = "/subscriptions/${var.subscription_id}/resourceGroups/${var.resource_group_name}/providers/Microsoft.App/containerApps/vinc-account"
+  account_app_id = "/subscriptions/${var.subscription_id}/resourceGroups/${var.resource_group_name}/providers/Microsoft.App/containerApps/vinc-account-vnet"
 }
 
 resource "azurerm_monitor_metric_alert" "account_memory_headroom" {
@@ -231,7 +231,7 @@ resource "azurerm_monitor_metric_alert" "account_memory_headroom" {
 # 어려운 쓰기 유실이 났을 수 있다는 신호라, DB 래칫과 같은 급이다("되돌릴 수 없는
 # 사건을 사람이 볼 수 있는 창으로").
 locals {
-  hub_app_id = "/subscriptions/${var.subscription_id}/resourceGroups/${var.resource_group_name}/providers/Microsoft.App/containerApps/vinc-hub"
+  hub_app_id = "/subscriptions/${var.subscription_id}/resourceGroups/${var.resource_group_name}/providers/Microsoft.App/containerApps/vinc-hub-vnet"
 }
 
 resource "azurerm_monitor_metric_alert" "hub_replica_overlap" {
