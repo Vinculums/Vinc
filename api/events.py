@@ -371,16 +371,22 @@ def _citations(store, owner, recs, decs, docs, emit) -> None:
 
 def _waiting(runs: list[dict], owner: str, emit) -> None:
     """실행이 사람 앞에서 대기에 들어선 순간. 알림(푸시)이 읽으므로 행동 설명·질문·작업은 싣지 않고
-    id·스페이스·제목·만료만 싣는다. id 는 (실행, 질문 번호, 물은 때)에 묶인다."""
+    id·스페이스·제목·만료만 싣는다. id 는 (실행, 질문 번호, 물은 때)에 묶인다.
+
+    역할이 없는 대기(null 이거나 키가 없다)도 승인함에 보이므로 나간다. 역할은 빈 문자열이고, 제목은
+    저장된 제목 대신 episode id 로 짓는다(`run_protocol._title`): 그런 기록의 제목은 보낸 쪽의 글이다."""
+    from vinc_mcp import run_protocol as rp
+
     for row in runs:
         props = run_state.readable(row.get("props"))
         pending = props.get("pending") if isinstance(props.get("pending"), dict) else {}
         at, role = str(pending.get("asked_at") or ""), role_id(props.get("role"))
-        if props.get("state") != "waiting" or not at or not role:
+        if props.get("state") != "waiting" or not at:
             continue
         run_id, ask = pkns.strip(row["id"]), props["asks"]
+        title = _title(row.get("title") if role else rp._title({**props, "run_id": ""}, run_id))
         emit("run.waiting", (run_id, ask, at),
-             {"run": run_id, "role": role, "space": owner, "title": _title(row.get("title")),
+             {"run": run_id, "role": role or "", "space": owner, "title": title,
               "ask": ask, "asked_at": at, "expires_at": str(pending.get("expires_at") or "")},
              {**row, "ts": at}, "n")
 

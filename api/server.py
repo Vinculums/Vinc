@@ -2606,7 +2606,11 @@ class VincApp:
         if not token:
             return 400, {"error": "missing field: token (member key)"}
         owner = body.get("owner") or "user:local"   # 앱이 자기 로컬 owner 를 실어 보낸다
-        remote = sync.RemoteHTTP(token, body.get("base"))
+        # pull 은 허브의 실행 상태를 믿는다. 받을 곳은 본문이 아니라 기기의 설정이 정한다.
+        hub, refused = sync.trusted_hub(body.get("base"))
+        if refused:
+            return 400, refused
+        remote = sync.RemoteHTTP(token, hub)
         return self._submit_exclusive(
             "sync", lambda: sync.run(self.store, self.cfg, owner=owner, remote=remote),
             "a sync is already in progress")
@@ -2857,6 +2861,12 @@ class VincApp:
             return 400, {"error": "from account moves only to a database location"}
         if source == "account" and not body.get("token"):
             return 400, {"error": "missing field: token (member key)"}
+        hub = None
+        if source == "account":
+            # 계정에서 옮기기는 허브의 실행 상태를 그대로 믿는다(`pull_everything`). 받을 곳은 기기의 설정이 정한다.
+            hub, refused = sync.trusted_hub(body.get("base"))
+            if refused:
+                return 400, refused
         if isinstance(to, DatabaseLocation):
             check, err = _check_database({**to.to_dict(), "password": body.get("password")})
             if err:
@@ -2874,7 +2884,7 @@ class VincApp:
                 return 409, {"error": "risky_database", "check": check}
             password = body["password"]
             run = lambda: self._move_to_database(to, password, source=source, body=body,  # noqa: E731
-                                                 copy_only=copy_only)
+                                                 copy_only=copy_only, hub=hub)
         elif isinstance(to, FolderLocation):
             info = localmode.inspect_folder(to.path or str(store_config.vinc_home()))
             if not info["ok"]:
@@ -2900,7 +2910,7 @@ class VincApp:
         return self._config_view()
 
     def _move_to_database(self, to, password: str, *, source, body: dict,
-                          copy_only: bool = False) -> dict:
+                          copy_only: bool = False, hub: str | None = None) -> dict:
         from store.neo4j_backend import Neo4jBackend, installation_holder
         target = Neo4jBackend(to.uri, user=to.user, password=password, database=to.database,
                               holder=installation_holder(store_config.installation_id()))
@@ -2912,7 +2922,8 @@ class VincApp:
                 target.provision(dim=self.cfg.embedding_dim)
                 owner = body.get("owner") or "tenant:local"
                 rep = sync.pull_everything(target, self.cfg, owner=owner,
-                                           remote=sync.RemoteHTTP(body["token"], body.get("base")))
+                                           remote=sync.RemoteHTTP(body["token"],
+                                                                  hub or sync.configured_hub()))
             else:
                 rep = migrate.copy_store(self.store, target, dim=self.cfg.embedding_dim)
         finally:
@@ -2966,7 +2977,11 @@ class VincApp:
         if not token:
             return 400, {"error": "missing field: token (member key)"}
         owner = body.get("owner") or "tenant:local"
-        remote = sync.RemoteHTTP(token, body.get("base"))
+        # 계정 전부 받기는 허브의 실행 상태를 그대로 믿는다. 받을 곳은 기기의 설정이 정한다.
+        hub, refused = sync.trusted_hub(body.get("base"))
+        if refused:
+            return 400, refused
+        remote = sync.RemoteHTTP(token, hub)
         return self._submit_move("sync:pull-all", lambda: sync.pull_everything(
             self.store, self.cfg, owner=owner, remote=remote))
 

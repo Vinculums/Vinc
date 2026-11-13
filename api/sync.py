@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 
 from . import fragment as frag
 from . import revstamp
@@ -896,8 +897,10 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
     (에코 완전 제거). 스탬프 규칙(§S2)은 그대로: sync_seq 는 수신측 자기 번호.
 
     `trusted_sender` 는 보낸 쪽을 믿는가다. 기기가 자기 허브에서 받는 pull 만 True 를 넘기고, 허브가
-    기기 묶음을 받는 길(사이드카 `/sync/apply-delta`)은 언제나 기본값 False 다. 규칙 둘이 이것을 읽는다:
+    기기 묶음을 받는 길(사이드카 `/sync/apply-delta`)은 언제나 기본값 False 다. 규칙 셋이 이것을 읽는다:
       - 실행 기록: 처음 보는 실행의 대기·승인·답을 보낸 쪽 그대로 받는가(`store/run_state.py` `keep_own`).
+      - 실행 기록의 삭제 표식: 믿지 않으면 사람이 아직 답할 수 있는 질문을 가진 실행(`run_state.waiting`)은
+        지우지 않고 결과 `run_state_protected` 에 이름을 남긴다. 끝난 실행의 삭제는 받는다.
       - 시계: 믿지 않으면 스탬프가 `revstamp.ceiling_ms()` 뒤인 노드·노드 삭제·엣지 삭제는 저장하지 않고
         결과 `clock_skew` 에 이름을 남긴다(자르지 않는다: 자르면 보낸 쪽과 다른 스탬프의 사본이 생긴다).
         나머지는 적용한다. 믿으면 스탬프를 그대로 받는다. 믿으면 묶음의 `clock`(보낸 허브의 벽시계)을 적용 전에
@@ -1082,11 +1085,17 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
         pk = _SYNC_PK.get(tlabel or "")
         if not tid or not pk:
             continue
+        run = tlabel == "Episode" and run_state.run_id(tid) == tid
         cur = store.run(f"MATCH (x:{tlabel}) WHERE x.{pk} = $id AND x.owner_id = $owner "
-                        "RETURN x.updated_at AS ua",
+                        "RETURN x.updated_at AS ua" + (", x.props AS props" if run else ""),
                         {"id": pkns.key(owner, tid), "owner": owner})
         if cur and (cur[0].get("ua") or "") > t_da:
             continue                          # 삭제 이후 재편집됨 → 삭제 무시
+        if run and cur and not trusted_sender and run_state.waiting(cur[0].get("props")):
+            # 사람이 아직 답할 수 있는 질문을 가진 실행은 믿지 않는 쪽의 삭제 표식으로 지우지 않는다(묘비도 안 남긴다).
+            # 끝난 실행과 만료된 질문의 삭제는 받는다: 소유자가 기기에서 지운 것이 허브에도 간다.
+            protected.append(tid)
+            continue
         if cur:
             store.run(f"MATCH (x:{tlabel}) WHERE x.{pk} = $id AND x.owner_id = $owner "
                       "DETACH DELETE x",
@@ -1200,12 +1209,40 @@ def apply_upload(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
 # 그 헛트래픽은 S3 의 base(로컬≠base 일 때만 push)가 완전히 없앤다.
 
 
+#: 기기가 믿는 허브. 기기의 설정(이 환경 변수)이 정하고, 없으면 Vinc 의 허브다.
+HUB_URL_ENV = "VINC_SYNC_URL"
+DEFAULT_HUB = "https://mcp.vincs.io"
+#: 믿는 pull 의 요청 본문이 다른 허브를 댄 거절의 오류 코드.
+UNTRUSTED_HUB = "untrusted_hub"
+
+
+def configured_hub() -> str:
+    """이 기기가 동기화하는 허브의 주소(끝의 `/` 없이)."""
+    return (os.environ.get(HUB_URL_ENV) or "").strip().rstrip("/") or DEFAULT_HUB
+
+
+def trusted_hub(base) -> tuple[str, dict | None]:
+    """믿는 pull(기기의 동기화·계정 전부 받기·계정에서 옮기기)이 갈 허브와 거절 하나.
+
+    믿는 pull 은 받은 실행 기록의 대기·승인·답을 그대로 받는다(`apply_delta` 의 `trusted_sender`). 그래서
+    받을 곳은 요청이 아니라 기기의 설정(`configured_hub`)이 정한다. 본문의 `base` 가 없거나 그와 같으면
+    (끝의 `/` 는 무시한다) 그 허브로 가고, 다르면 거절한다: 다른 허브의 상태를 믿을 근거가 없다."""
+    hub = configured_hub()
+    asked = base.strip().rstrip("/") if isinstance(base, str) else base
+    if asked in (None, "") or asked == hub:
+        return hub, None
+    return hub, {"error": UNTRUSTED_HUB, "note": (
+        f"Refused: this pull trusts the run states it receives, so it goes only to this "
+        f"device's hub ({hub}), and the request named another one. Leave base out, or set "
+        f"{HUB_URL_ENV} where the Vinc app starts its engine. Nothing was started.")}
+
+
 class RemoteHTTP:
     """syncclient 를 감싼 원격 어댑터(프로덕션). 회원 키·기본 mcp.vincs.io."""
 
     def __init__(self, token: str, base: str | None = None):
         self.token = token
-        self.base = base or "https://mcp.vincs.io"
+        self.base = base or DEFAULT_HUB
 
     def pull(self, since: int, everything: bool = False) -> dict:
         from vinc_mcp import syncclient

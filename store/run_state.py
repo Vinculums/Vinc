@@ -11,6 +11,11 @@
 - 받는 스토어가 처음 보는 실행은 믿음이 한쪽으로만 간다. 기기는 자기 허브를 믿어 허브의 상태를
   그대로 받고(`trusted=True`, 기기의 pull 만), 허브는 기기를 믿지 않아 질문(`QUESTION_KEYS`)만
   받고 답(`ANSWER_KEYS`)은 버린다(기본값).
+- 실행의 역할(`ROLE_KEYS`)은 상태 키처럼 지킨다: `props_patch` 는 거절하고, 동기화는 프로토콜이
+  가진 실행(`held`)의 저장된 역할을 남긴다.
+- 프로토콜이 가진 실행 기록에 props 를 통째로 쓰는 쓰기는 거절한다(`api/mutation_contract.py`,
+  `whole_props_refusal`). 사람이 아직 답할 수 있는 질문을 가진 실행(`waiting`)은 도구 삭제
+  (`api/query.py` `delete_node`)와 믿지 않는 쪽의 삭제 표식(`api/sync.py` `apply_delta`)이 지우지 않는다.
 
 ``store/`` 는 맨 아래 층이라(``scripts/gate_ownership.py`` 의 ``LAYER_BANS``) ``api`` 와
 ``vinc_mcp`` 가 둘 다 이것을 가져다 쓴다.
@@ -31,6 +36,10 @@ ANSWER_KEYS = ("approved", "answer", "answered_at", "answered_actions", "answere
                "answer_text")
 #: 실행 기록의 프로토콜 상태 필드. 도구 쓰기로는 바꾸지 못하고, 가진 실행에는 동기화로 건너가지 않는다.
 STATE_KEYS = QUESTION_KEYS + ANSWER_KEYS
+#: 실행을 연 역할과 그때의 역할 계약 해시. 승인은 이 역할의 정책과 견주므로 상태 키처럼 지킨다:
+#: `props_patch` 로는 못 바꾸고, 프로토콜이 가진 실행에는 동기화로 건너가지 않는다. 통째의 props 는
+#: 클라이언트의 실행 기록(`vinc_client.record_run`)도 역할을 실어 쓰므로 여기서 거절하지 않는다.
+ROLE_KEYS = ("role", "role_hash")
 #: 믿지 않는 쪽에서 온 질문의 대기 종류. 누가 답해도 되는지는 보낸 쪽의 말을 따르지 않는다.
 _PERSON_ONLY = "person_only"
 #: 막힌 쓰기의 오류 코드이자 동기화 결과가 남긴 실행을 싣는 필드 이름.
@@ -41,6 +50,8 @@ _MISSING = object()
 #: 사람에게 묻는 요청의 최대 수명(초). 실행 프로토콜이 받는 `expires_in_s` 의 상한이고, 믿지 않는
 #: 쪽에서 온 질문도 받는 스토어의 시계로 이 안에서 만료된다.
 EXPIRES_MAX_S = 43200
+#: 만료 시각이 없는 요청의 수명(초). 물은 때부터 센다.
+EXPIRES_DEFAULT_S = 3600
 _STAMP = "%Y-%m-%dT%H:%M:%SZ"
 #: 정수로 읽는 횟수 문자열의 최대 자릿수. 더 긴 문자열은 수로 읽지 않는다.
 _COUNT_DIGITS = 18
@@ -54,8 +65,8 @@ VERDICTS = ("pass", "fail", "delivered", "partial", "blocked")
 VERDICT_NOTE_MAX = 300
 #: 실행 프로토콜과 읽는 쪽(승인함·실행 목록·이벤트·알림·Tasks)이 읽는 실행 기록의 props 이름.
 #: 생성 시험(`tests/mcp/test_run_record_property.py`)이 이 이름마다 잘못된 모양의 값을 넣어 본다.
-PROPS = ("run_id", "role", "outcome", "state", "step", "asks", "task", "subject", "host",
-         "started_at", "ended_at", "end_reason", "expired_at", "last_asked_at", "used",
+PROPS = ("run_id", "role", "role_hash", "outcome", "state", "step", "asks", "task", "subject",
+         "host", "started_at", "ended_at", "end_reason", "expired_at", "last_asked_at", "used",
          "cited_ids", "citations_missing", "capabilities_used", "capability_flags", "pending",
          "approved", "answer", "answered_at", "answered_actions", "answered_by", "answer_via",
          "answer_text", "task_cancelled", "verdict", "verdict_note")
@@ -173,21 +184,45 @@ def readable(props) -> dict:
 
 
 def writes(nodes) -> list[str]:
-    """실행 기록의 프로토콜 상태 필드를 고치려는 노드 id 들(공백을 벗긴 id).
+    """실행 기록의 프로토콜 상태 필드나 역할을 고치려는 노드 id 들(공백을 벗긴 id).
 
     도구로 `state`·`approved`·`answer` 를 바꿀 수 있으면 에이전트 자격이 사람만 답하는 대기를
-    스스로 풀 수 있다. host·trace_ref 같은 나머지 필드는 그대로 `props_patch` 로 더한다."""
+    스스로 풀 수 있다. `props_patch` 로 `role`·`role_hash` 를 바꾸면 승인이 다른 역할의 정책과
+    견주어진다. host·trace_ref 같은 나머지 필드는 그대로 `props_patch` 로 더한다."""
     blocked = []
     for node in nodes if isinstance(nodes, list) else []:
         rid = run_id(node.get("id")) if isinstance(node, dict) else None
         if rid is None:
             continue
-        keys = set()
-        for field in ("props", "props_patch"):
-            keys |= set(props_of(node.get(field)))
-        if keys & set(STATE_KEYS):
+        keys = set(props_of(node.get("props")))
+        patched = set(props_of(node.get("props_patch")))
+        if (keys | patched) & set(STATE_KEYS) or patched & set(ROLE_KEYS):
             blocked.append(rid)
     return blocked
+
+
+def held(props) -> bool:
+    """실행 프로토콜이 가진 실행 기록인가: 저장된 props 에 실행 상태(`state`)가 있다.
+
+    프로토콜이 쓰는 기록은 늘 `state` 를 싣는다. 클라이언트가 쓰는 실행 기록(`vinc_client.record_run`)은
+    싣지 않고, 도구 쓰기는 상태 키를 못 쓰므로(`writes`) 그런 기록이 프로토콜의 것이 되지도 않는다."""
+    return "state" in props_of(props)
+
+
+def whole_props_refusal(rid: str) -> str:
+    """프로토콜이 가진 실행 기록에 props 를 통째로 쓰려는 쓰기를 거절하는 문장."""
+    return (f"Refused: {rid} is a run record the run protocol keeps. A whole props would replace "
+            f"its state ({', '.join(QUESTION_KEYS[:2])}, {', '.join(ANSWER_KEYS[:2])}, ...) and its "
+            f"{', '.join(ROLE_KEYS)}, task and outcome. Send props_patch with the expected_rev you "
+            f"read from vinc_node to change other keys. Nothing was written.")
+
+
+def delete_refusal(rid: str) -> str:
+    """사람이 아직 답할 수 있는 질문을 가진 실행을 지우려는 삭제를 거절하는 문장."""
+    return (f"Refused: {rid} is a run waiting for a person's answer, and deleting it would take "
+            f"the question off the person's approvals unanswered. A person declines it in the "
+            f"Approvals screen of the Vinc app, or the question expires; after that it can be "
+            f"deleted. Nothing was deleted.")
 
 
 def keep_own(incoming, own, *, trusted: bool = False) -> tuple[dict, bool]:
@@ -197,18 +232,23 @@ def keep_own(incoming, own, *, trusted: bool = False) -> tuple[dict, bool]:
     가진 실행은 들어온 상태 키를 버리고 저장된 상태 키를 그대로 싣는다(props 는 쓸 때 통째로
     바뀌므로 빼기만 하면 저장된 상태가 지워진다). 처음 보는 실행은 `trusted` 가 가른다:
     믿는 쪽(기기가 자기 허브에서 받을 때)이면 그대로, 아니면 `questions_only` 로 간다.
-    나머지 키는 보통의 동기화 규칙을 따른다.
-    돌려주는 것은 (바꾼 props, 들어온 상태가 남긴 상태와 달랐는가)."""
+    프로토콜이 가진 실행(`held`)이면 역할(`ROLE_KEYS`)도 저장된 값을 남긴다: 승인은 그 역할의 정책과
+    견준다. 나머지 키는 보통의 동기화 규칙을 따른다.
+    돌려주는 것은 (바꾼 props, 들어온 상태·역할이 남긴 값과 달랐는가)."""
     incoming = props_of(incoming)
+    keys = STATE_KEYS
     if own is None:
         if trusted:
             return incoming, False
         kept = questions_only(incoming)
     else:
-        kept = {k: v for k, v in props_of(own).items() if k in STATE_KEYS}
-    props = {k: v for k, v in incoming.items() if k not in STATE_KEYS}
+        own = props_of(own)
+        if held(own):
+            keys = STATE_KEYS + ROLE_KEYS
+        kept = {k: v for k, v in own.items() if k in keys}
+    props = {k: v for k, v in incoming.items() if k not in keys}
     props.update(kept)
-    differed = any(incoming.get(k, _MISSING) != kept.get(k, _MISSING) for k in STATE_KEYS)
+    differed = any(incoming.get(k, _MISSING) != kept.get(k, _MISSING) for k in keys)
     return props, differed
 
 
@@ -218,6 +258,30 @@ def _parse(text) -> datetime.datetime | None:
             tzinfo=datetime.timezone.utc)
     except ValueError:
         return None
+
+
+def expires_at(pending: dict) -> str:
+    """요청의 만료 시각. 만료 필드가 없는 기록은 물은 때부터 `EXPIRES_DEFAULT_S` 로 센다."""
+    if pending.get("expires_at"):
+        return str(pending["expires_at"])
+    asked = _parse(pending.get("asked_at"))
+    return (asked + datetime.timedelta(seconds=EXPIRES_DEFAULT_S)).strftime(_STAMP) if asked else ""
+
+
+def expired(pending: dict, now: datetime.datetime) -> bool:
+    """요청이 `now` 에 만료됐는가. 만료 시각을 못 읽으면 만료되지 않았다."""
+    until = _parse(expires_at(pending))
+    return until is not None and now >= until
+
+
+def waiting(props, now: datetime.datetime | None = None) -> bool:
+    """사람이 아직 답할 수 있는 질문을 가진 실행인가: 대기 중이고 요청이 만료되지 않았다.
+
+    만료된 질문에는 누구도 답할 수 없고 읽는 쪽은 막힌 채 끝난 실행으로 읽는다(`run_protocol.as_read`)."""
+    read = readable(props)
+    if read.get("state") != "waiting":
+        return False
+    return not expired(read.get("pending") or {}, now or datetime.datetime.now(datetime.timezone.utc))
 
 
 def _within_limit(pending: dict, now: datetime.datetime | None) -> dict:
@@ -273,11 +337,12 @@ def questions_only(props, now: datetime.datetime | None = None) -> dict:
 
 
 def warning(ids: list[str]) -> str:
-    """상태를 남긴 실행들을 알리는 경고 한 줄. 결과의 `CODE` 필드에 전체 목록이 함께 간다."""
+    """상태·역할을 남겼거나 지우지 않은 실행들을 알리는 경고 한 줄. 결과의 `CODE` 필드에 전체 목록이 간다."""
     named = ", ".join(ids[:_NAMED_MAX])
     more = f" and {len(ids) - _NAMED_MAX} more" if len(ids) > _NAMED_MAX else ""
     return (f"{CODE}: kept this store's protocol state ({STATE_KEYS[0]}, "
-            f"{', '.join(ANSWER_KEYS[:2])}, ...) on {len(ids)} run record(s): {named}{more}. "
-            f"A run this store never saw keeps its question but no approval or answer. A run's "
-            f"waiting, approval and answer change only through the run protocol of the store "
-            f"that records them.")
+            f"{', '.join(ANSWER_KEYS[:2])}, ...) and role on {len(ids)} run record(s): "
+            f"{named}{more}. A run this store never saw keeps its question but no approval or "
+            f"answer, and a delete marker does not remove a run that waits for a person. A run's "
+            f"waiting, approval, answer and role change only through the run protocol of the "
+            f"store that records them.")

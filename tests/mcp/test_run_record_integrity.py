@@ -255,17 +255,18 @@ def test_start_and_submit_on_a_run_record_without_state_refuse_with_invalid_run_
 
 _DROP = object()
 #: (쓰는 길, 키, 값). unseen 은 허브가 처음 보는 실행의 동기화 업로드, patch 는 대기 중인 실행에
-#: `vinc_ingest` 의 `props_patch`. 역할 값은 역할 하나를 가리키지 않는 모양을 하나씩 든다.
+#: `vinc_ingest` 의 `props_patch`. 역할 값은 역할 하나를 가리키지 않는 모양을 하나씩 든다. 가진 실행의
+#: 역할은 `props_patch` 가 거절하고 동기화가 남기므로(`run_state.ROLE_KEYS`) 그 모양은 처음 보는 실행으로만 온다.
 _NO_ROLE_OR_RUN_ID = {
     "unseen-no-run_id": ("unseen", "run_id", _DROP),
     "unseen-no-role": ("unseen", "role", _DROP),
     "patch-run_id-null": ("patch", "run_id", None),
-    "patch-role-null": ("patch", "role", None),
-    "patch-role-text": ("patch", "role", "x"),
-    "patch-role-number": ("patch", "role", 5),
-    "patch-role-dict": ("patch", "role", {"a": 1}),
-    "patch-role-list": ("patch", "role", ["x"]),
-    "patch-role-unknown": ("patch", "role", "concept:agent-nobody"),
+    "unseen-role-null": ("unseen", "role", None),
+    "unseen-role-text": ("unseen", "role", "x"),
+    "unseen-role-number": ("unseen", "role", 5),
+    "unseen-role-dict": ("unseen", "role", {"a": 1}),
+    "unseen-role-list": ("unseen", "role", ["x"]),
+    "unseen-role-unknown": ("unseen", "role", "concept:agent-nobody"),
 }
 TASKS = {"extensions": {run_tasks.EXTENSION: {}}}
 
@@ -379,7 +380,7 @@ def test_the_agent_tools_and_tasks_answer_a_protocol_result_on_such_a_run(hub, c
     start = _tool(hub, "vinc_run_start", role=ROLE, task="Review the change.", run_id=run_id)
     if _role_unreadable(case):
         # 역할 id 모양의 다른 역할이면 그 run_id 는 다른 역할의 것이다.
-        error = "run_id_in_use" if case == "patch-role-unknown" else "invalid_run_state"
+        error = "run_id_in_use" if case == "unseen-role-unknown" else "invalid_run_state"
         assert start["executed"] is False and start["error"] == error, start
     else:
         assert start["executed"] is True and start["state"] == "waiting", start

@@ -36,6 +36,31 @@ def merge_patch(current, patch):
     return result
 
 
+def _whole_run_props(store, nodes, owner: str) -> None:
+    """프로토콜이 가진 실행 기록에 props 를 통째로 쓰는 노드가 있으면 아무것도 쓰기 전에 거절한다.
+
+    통째의 props 는 저장된 props 를 갈아 끼우므로 대기·승인·답과 역할·작업·outcome 이 지워진다(목록·
+    수·JSON 글도 같다). 프로토콜 자신의 저장은 실행 상태(`state`)를 싣고 도구 쓰기는 상태 키를 못 싣으므로
+    (`run_state.writes`), 상태 없는 통째의 props 만 저장된 행을 읽어 본다. `props_patch` 는 저장된 props 에
+    합쳐지므로 여기를 지나지 않는다. 같은 쓰기 잡 안에서 읽으므로 그 사이에 든 답이 없다."""
+    from api import query
+    from store import run_state
+
+    for entry in nodes if isinstance(nodes, list) else []:
+        if not isinstance(entry, dict) or entry.get("props") is None or "props_patch" in entry:
+            continue
+        rid = run_state.run_id(entry.get("id"))
+        if rid is None or run_state.held(entry["props"]):
+            continue
+        found = query.execute(query.node_plan(rid, owner=owner), store=store)
+        if not found.get("executed") or found.get("rows") is None:
+            raise MutationConflict("write_precondition_unavailable", node_id=rid)
+        rows = found.get("rows") or []
+        if rows and run_state.held(rows[0].get("props")):
+            raise MutationConflict(run_state.CODE, node_id=rid, nodes=[rid],
+                                   note=run_state.whole_props_refusal(rid))
+
+
 def prepare_fragment(store, fragment: dict, owner: str) -> dict:
     """모든 사전 조건을 읽은 뒤에만 쓰기 입력을 만든다. 실패하면 변경은 없다."""
     from api import query
@@ -44,6 +69,7 @@ def prepare_fragment(store, fragment: dict, owner: str) -> dict:
     if type(global_create) is not bool:
         raise MutationConflict("invalid_create_only")
     nodes = fragment.get("nodes") or []
+    _whole_run_props(store, nodes, owner)
     guarded = global_create or any(isinstance(n, dict) and any(
         field in n for field in ("expected_rev", "create_only", "props_patch")) for n in nodes)
     if not guarded:

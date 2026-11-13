@@ -21,6 +21,10 @@ abandoned). 일이 무엇으로 끝났는가는 에이전트가 출력과 함께
 답한다. `ask_first`(먼저 묻기)는 호스트가 사람에게 물어 그 답을 `vinc_run_submit` 으로 내도 된다.
 요청은 만료된다(기본 1시간, 최대 12시간). 만료된 요청에는 누구도 답할 수 없고 실행은 막힌 채
 끝난다.
+
+실행은 연 때의 역할 계약에 묶인다. 기록의 `role`·`role_hash` 는 도구 쓰기와 동기화가 바꾸지 못하고
+(`store/run_state.py` `ROLE_KEYS`), 역할 노드가 실행 중에 바뀌어 계약 해시가 기록과 다르면 그 단계와
+승인은 `role_changed` 로 끝나고 아무것도 바꾸지 않는다. 사람의 거절은 역할을 읽지 않으므로 그래도 닫는다.
 근거: [[vinc.research.agent-harness-and-eval-without-a-model-api-2026-10-25]]
 """
 from __future__ import annotations
@@ -56,7 +60,7 @@ DECISION_KINDS = ("person_only", "ask_first")
 #: 답이 어느 길로 왔는가. person 은 서명된 세션 프록시, agent 는 도구 호출이다.
 ANSWER_VIA = ("person", "agent")
 #: 사람에게 묻는 요청의 수명(초). 호스트가 `expires_in_s` 로 고르고, 안 주면 기본값이다.
-EXPIRES_DEFAULT_S = 3600
+EXPIRES_DEFAULT_S = _run_rule.EXPIRES_DEFAULT_S
 EXPIRES_MIN_S = 60
 EXPIRES_MAX_S = _run_rule.EXPIRES_MAX_S
 #: 호스트가 적은 행동 설명(person_only_requests 의 reason)을 요청에 남기는 상한.
@@ -125,16 +129,14 @@ def _parse_stamp(text) -> datetime.datetime | None:
 
 
 def expires_at(pending: dict) -> str:
-    """요청의 만료 시각. 만료 필드가 없는 기록은 물은 때부터 기본 수명으로 센다."""
-    if pending.get("expires_at"):
-        return str(pending["expires_at"])
-    asked = _parse_stamp(pending.get("asked_at"))
-    return _stamp(asked + datetime.timedelta(seconds=EXPIRES_DEFAULT_S)) if asked else ""
+    """요청의 만료 시각. 만료 필드가 없는 기록은 물은 때부터 기본 수명으로 센다.
+
+    규칙은 `store/run_state.py` 한 벌이다: 삭제와 동기화의 삭제 표식이 같은 규칙으로 대기를 가른다."""
+    return _run_rule.expires_at(pending)
 
 
 def expired(pending: dict, now: datetime.datetime | None = None) -> bool:
-    until = _parse_stamp(expires_at(pending))
-    return until is not None and (now or _now()) >= until
+    return _run_rule.expired(pending, now or _now())
 
 
 #: 요청이 만료돼 끝난 실행의 사유. 읽기가 보이는 것과 다음 제출·답이 저장하는 것이 같은 문장이다.
@@ -219,6 +221,23 @@ def _no_role() -> dict:
                     + PERSON_PATH + ". Start a new run with another run_id.")
 
 
+def _role_changed() -> dict:
+    """실행을 연 뒤 역할 계약이 바뀐 실행 기록. 바뀐 정책으로 이어 가지 않으므로 아무것도 바꾸지 않는다."""
+    return _failure("role_changed", "Refused: this run's role contract changed after the run "
+                    "started (its hash is not the one the run recorded), so nothing was approved "
+                    "and nothing changed. A person can decline a waiting run in " + PERSON_PATH
+                    + ". Start a new run to work under the role as it is now.")
+
+
+def _contract_moved(props: dict, got: dict) -> bool:
+    """기록이 연 때의 역할 계약 해시(`role_hash`)와 지금 읽은 계약의 해시가 다른가.
+
+    해시는 `roles.contract` 의 고정(pin)과 같은 내용 해시다: 정책(person_only·never·게이트·절차)이
+    바뀌면 움직인다. 해시가 없는 기록(프로토콜이 열지 않은 기록)은 견줄 것이 없어 다르다고 하지 않는다."""
+    pinned = props.get("role_hash")
+    return pinned is not None and pinned != got.get("hash")
+
+
 def _text(value) -> str:
     return value if isinstance(value, str) else ""
 
@@ -232,7 +251,8 @@ def _role_of(props: dict) -> str | None:
 
 
 def _record_role(bridge, owner: str, props: dict) -> tuple[dict | None, dict | None]:
-    """(기록의 역할 계약, 실패). 역할을 못 읽거나 그래프에 없으면 `_no_role`, 읽기 실패는 그대로."""
+    """(기록의 역할 계약, 실패). 역할을 못 읽거나 그래프에 없으면 `_no_role`, 읽기 실패는 그대로.
+    실행을 연 뒤 계약이 바뀌었으면 `_role_changed`: 승인과 다음 단계를 바뀐 정책과 견주지 않는다."""
     role = _role_of(props)
     if role is None:
         return None, _no_role()
@@ -241,6 +261,8 @@ def _record_role(bridge, owner: str, props: dict) -> tuple[dict | None, dict | N
         return None, {**got, "kind": "run"}
     if not got.get("found"):
         return None, _no_role()
+    if _contract_moved(props, got):
+        return None, _role_changed()
     return got, None
 
 
@@ -339,9 +361,11 @@ def _budget_left(policy: dict, props: dict) -> dict:
 
 def _view(props: dict, eid: str, policy: dict | None = None, **extra) -> dict:
     # 저장된 값을 못 읽어도 보기는 만든다: run_id 는 episode id 로, outcome 은 열린 실행의 것으로 읽는다.
+    # 보기는 도구 결과의 상한 안에 든다: run_id 는 그 모양(`_RUN_ID`)일 때만 싣고 task 는 `TASK_MAX` 에서 자른다.
     state = props.get("state")
+    run_id = _text(props.get("run_id"))
     out = {"kind": "run", "executed": True, "run": eid,
-           "run_id": _text(props.get("run_id")) or eid, "role": _text(props.get("role")),
+           "run_id": run_id if _RUN_ID.fullmatch(run_id) else eid, "role": _text(props.get("role")),
            "state": _text(state), "outcome": _text(props.get("outcome")) or OPEN_OUTCOME,
            "step": _run_rule.count(props.get("step")), **extra}
     if props.get("capability_flags"):
@@ -381,7 +405,7 @@ def _view(props: dict, eid: str, policy: dict | None = None, **extra) -> dict:
                        "person_only_requests before taking it when the role lists it as person "
                        "only or asks first. Report done work as " + RESTATE + ".")
         if policy is not None:
-            out["task"] = props.get("task", "")
+            out["task"] = _text(props.get("task"))[:TASK_MAX]
             out["policy"] = {k: policy[k] for k in ("reads", "gates", "output_kind", "act_policy",
                                                     "capabilities", "person_only", "never",
                                                     "cites")
@@ -441,7 +465,10 @@ def start(args: dict, bridge, owner: str) -> dict:
             return _failure("run_id_in_use", "Invalid: this run_id belongs to another role.")
         if existing.get("state") not in STATES:
             return _no_state()
-        return _view(as_read(existing), eid, got["props"], resumed=True)
+        read = as_read(existing)
+        if read.get("state") != "done" and _contract_moved(existing, got):
+            return _role_changed()
+        return _view(read, eid, got["props"], resumed=True)
     props = {"run_id": run_id, "role": got["id"], "outcome": OPEN_OUTCOME, "state": "working",
              "step": 0, "task": task, "started_at": _stamp(_now()), "role_rev": got.get("rev"),
              "role_hash": got.get("hash"), "used": {}, "approved": []}

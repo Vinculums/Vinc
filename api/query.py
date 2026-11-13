@@ -8632,6 +8632,16 @@ def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None,
             base["note"] = f"node not found: {node_id}"
             return base
         base["found"] = True
+        from store import run_state   # 국소 사용 — 고정한 api.query 이름 목록에 더하지 않는다
+        if stray is None and label == "Episode" and run_state.run_id(node_id) == node_id:
+            # 사람이 아직 답할 수 있는 질문을 가진 실행은 지우지 않는다: 지우면 질문이 답 없이 승인함에서
+            # 사라진다. 끝난 실행과 만료된 질문은 소유자가 지운다. 같은 쓰기 잡 안에서 읽는다.
+            held = store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id{scope} RETURN n.props AS props",
+                             params)
+            if held and run_state.waiting(held[0].get("props")):
+                base.update(executed=False, error=run_state.CODE,
+                            note=run_state.delete_refusal(node_id))
+                return base
         deg = store.run(
             f"MATCH (n:{label})-[r]-() WHERE n.{pk} = $id{scope} RETURN count(DISTINCT r) AS c", params)
         edges = int(deg[0].get("c")) if deg else 0
