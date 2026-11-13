@@ -107,19 +107,37 @@ jobs:
       - name: Gates (registry, core)
         run: python -X utf8 scripts/gates.py --ci core
 
+  # ci.yml 이 네 조각으로 나눠 도는 켠 모드 전량을 여기서는 한 번에 돈다. 설치 스텝·Neo4j 서비스·
+  # env·제한 시간은 그 조각 잡과 글자 그대로 같아야 한다(tests/platform/test_verify_hosted_matches_ci.py).
+  # 서비스와 URI 가 없으면 전량 스위트 안의 Neo4j 쪽 테스트가 조용히 skip 된다.
   core-pkns:
     name: core (hosted, VINC_PK_NAMESPACED=on)
     if: inputs.core_pkns
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      neo4j:
+        image: neo4j:2026.01-community
+        env:
+          NEO4J_AUTH: neo4j/vinc-conformance-ci
+          NEO4J_dbms_usage__report_enabled: "false"
+          NEO4J_server_memory_heap_max__size: 1G
+        ports:
+          - 7687:7687
+        options: >-
+          --health-cmd "cypher-shell -u neo4j -p vinc-conformance-ci 'RETURN 1'"
+          --health-interval 5s --health-timeout 10s --health-retries 40
     env:
       VINC_PK_NAMESPACED: "on"
+      VINC_CONFORMANCE_NEO4J_URI: bolt://localhost:7687
+      VINC_CONFORMANCE_NEO4J_PASSWORD: vinc-conformance-ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install deps (ladybug pinned + argon2 + pytest + pypdf)
-        run: pip install ladybug==0.21.2 argon2-cffi pyyaml pytest pypdf
+      - name: Install deps (ladybug pinned + neo4j driver + argon2 + pytest + pytest-split + pypdf)
+        run: pip install ladybug==0.21.2 neo4j==6.4.1 argon2-cffi pyyaml pytest pytest-split==0.11.0 pypdf
       - name: Point to bundled G0 extensions (no network)
         run: echo "VINC_LBUG_EXT_DIR=$GITHUB_WORKSPACE/packaging/lbug_extensions" >> "$GITHUB_ENV"
       - name: Assert driver is importable (no silent skips)

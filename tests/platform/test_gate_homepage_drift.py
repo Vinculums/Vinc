@@ -10,6 +10,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -18,6 +19,13 @@ from pathlib import Path
 from scripts import gate_homepage_drift as g
 
 _ROOT = Path(__file__).resolve().parents[2]
+_FIXTURES = _ROOT / "tests" / "fixtures"
+#: 홈페이지 scripts/html_strip.mjs 의 COMMENT 와 같은 식. 조건부 주석(<!--[if)은 남긴다.
+_COMMENT = re.compile(r"<!--(?!\[if)[\s\S]*?-->")
+
+
+def _strip_comments(page: str) -> str:
+    return _COMMENT.sub("", page)
 
 
 def _repo_json() -> tuple[dict, dict]:
@@ -93,6 +101,39 @@ class HomepageDriftTests(unittest.TestCase):
         text = summary.read_text(encoding="utf-8")
         self.assertIn("이 변경이 만든 차이", text)
         self.assertIn("기준 커밋에서도 이미 있던 차이", text)
+
+    def test_the_deployed_page_without_comments_reads_like_its_source(self):
+        """배포 압축은 HTML 주석을 걷어 tool-reference 표지가 없다. 생성된 절은 section.tref 로 찾는다.
+
+        두 픽스처는 홈페이지 원본 도구 페이지의 앞 세 절이고, deployed 는 그 원본을 홈페이지의
+        scripts/minify_deploy.mjs 로 돌린 결과다."""
+        source = (_FIXTURES / "homepage_tools_page_source.html").read_text(encoding="utf-8")
+        deployed = (_FIXTURES / "homepage_tools_page_deployed.html").read_text(encoding="utf-8")
+        self.assertIn(g.START, source)
+        self.assertNotIn("<!--", deployed)
+        read = g.tools_on_page(deployed)
+        self.assertEqual(read, g.tools_on_page(source))
+        self.assertEqual([t["name"] for t in read], ["vinc_community_read", "vinc_community_write", "vinc_search"])
+        self.assertTrue(all(t["summary"] and t["reference"] and t["mode"] for t in read), read)
+
+    def test_a_page_from_this_tree_with_comments_stripped_still_passes(self):
+        tools, api = _repo_json()
+        pages = {g.TOOLS_PAGE: _strip_comments(g._tools_page(tools["tools"])), g.API_PAGE: g._api_page(api)}
+        self.assertNotIn("<!--", pages[g.TOOLS_PAGE])
+        rc, out = _run(lambda url, **_: next(v for k, v in pages.items() if url.endswith(k)))
+        self.assertEqual(rc, 0, out)
+        self.assertIn("PASS", out)
+
+    def test_tool_sections_split_by_other_content_are_no_verdict(self):
+        tools, _api = _repo_json()
+        first, second = tools["tools"][:2]
+        page = ("<article>" + g._tool_section(first) + "<p>hand-written</p>"
+                + g._tool_section(second) + "</article>")
+        with self.assertRaises(g.Unreadable):
+            g.tools_on_page(page)
+        # 표지가 한쪽만 남아도 결론 없음이다.
+        with self.assertRaises(g.Unreadable):
+            g.tools_on_page(g.START + g._tool_section(first))
 
     def _tree(self, tools: dict, api: dict) -> Path:
         root = Path(tempfile.mkdtemp(prefix="drift_"))

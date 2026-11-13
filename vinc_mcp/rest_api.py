@@ -117,15 +117,35 @@ def _partial_search(name: str, result: dict) -> dict:
     return out
 
 
+_ACCOUNT_CODE_RE = re.compile(r"[a-z][a-z0-9_]*")
+
+
+def _account_details(error) -> dict:
+    """계정 거절의 오류 객체를 v1 details 로 옮긴다. v1 code 는 상태로 정하므로 계정 코드
+    (username_required 등)는 account_code 로, 계정의 request_id 는 account_request_id 로 싣고
+    나머지 필드(currentRevision 등)는 이름 그대로 둔다. 문장 하나뿐인 문자열 거절은 싣지 않는다."""
+    if isinstance(error, dict):
+        details = {key: value for key, value in error.items() if key not in ("code", "message", "request_id")}
+        if error.get("code"):
+            details["account_code"] = str(error["code"])
+        if error.get("request_id"):
+            details["account_request_id"] = str(error["request_id"])
+        return details
+    if isinstance(error, str) and _ACCOUNT_CODE_RE.fullmatch(error):
+        return {"account_code": error}
+    return {}
+
+
 def _failure(name: str, result: dict, *, by_id: bool = False) -> tuple | None:
     """도구 결과 모양을 v1 상태로 옮긴다. 표는 tests/mcp/test_rest_v1.py 의 FAILURE_CASES 가 고정한다.
     반환은 (status, code, message) 또는 (status, code, message, details)."""
-    error = str(result.get("error") or "")
     if name in (community.WRITE_TOOL, community.READ_TOOL) and result.get("status") in (400, 401, 403, 404, 409, 410, 429):
         status = result["status"]
         code = {400: "invalid_argument", 401: "not_authenticated", 403: "role_forbidden",
                 404: "not_found", 409: "conflict", 410: "gone", 429: "quota_exceeded"}[status]
-        return status, code, error
+        # message 는 계정의 문장이다. 오류 객체를 str() 하면 파이썬 repr 이 나간다.
+        return status, code, _message(result), _account_details(result.get("error"))
+    error = str(result.get("error") or "")
     note = str(result.get("note") or "")
     reason = (error + " " + note).lower()
     if name == "vinc_operation_status" and result.get("executed") is True:
