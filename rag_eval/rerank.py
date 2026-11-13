@@ -58,6 +58,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from api import query as q                                   # noqa: E402
 from store.backend import open_store                         # noqa: E402
 from store.config import load_config                         # noqa: E402
+from store.querybase import is_conventions_chunk_id           # noqa: E402
 
 from rag_eval import search as es                                     # noqa: E402
 from vinc_rag.rerank import (Reranker, gate, parse_model_spec, peak_rss_mb,  # noqa: E402
@@ -381,16 +382,17 @@ def main() -> int:
                 vec = store.vector_search(qvec, q.SEARCH_POOL_CAP, filters)
             except Exception:
                 vec = []
-            kw = [r for r in kw if not str(r.get("id") or "").startswith(q._CONV_PREFIX)]
-            vec = [r for r in vec if not str(r.get("id") or "").startswith(q._CONV_PREFIX)]
+            # 관례(GRAPH.md) 청크는 융합 전에 뺀다. 프로덕션 `_chunk_arms` 와 같은 함수로 걸러야
+            # 대조군이 같은 후보를 본다(구 고정 id 와 owner 파생 id 둘 다).
+            kw = [r for r in kw if not is_conventions_chunk_id(r.get("id"))]
+            vec = [r for r in vec if not is_conventions_chunk_id(r.get("id"))]
             # ⚠ 조사 절단은 **전문 팔에만** 건다. 질의 자체를 바꿔 인코딩하면 벡터 팔도
             # 함께 변해 두 원인이 섞인다 — 재려는 것은 전문 팔 하나다.
             kw_ko = None
             if args.ko_strip:
                 kw_ko = store.fulltext_search(ko_stripped_text(text),
                                               q.SEARCH_POOL_CAP, filters)
-                kw_ko = [r for r in kw_ko
-                         if not str(r.get("id") or "").startswith(q._CONV_PREFIX)]
+                kw_ko = [r for r in kw_ko if not is_conventions_chunk_id(r.get("id"))]
                 s = score_ext(es._docs_of(store, kw_ko[:PAGE]), truth, PAGE)
                 per["fts_ko"].append(s); by_lang[lang]["fts_ko"].append(s)
                 rec["fts_ko"] = s["rank"]
