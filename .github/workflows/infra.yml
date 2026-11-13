@@ -168,6 +168,14 @@ jobs:
               body: '## terraform plan\n\n```\n' + body + '\n```',
             });
 
+      # vinc-mysql01 영구 규칙의 원천 목록이 vinc-cae 의 실제 아웃바운드 IP 와 같은가. 다르면 이 PR 을
+      # 머지하기 전에 목록을 맞춘다. plan 코멘트 뒤에 두어 plan 은 어느 쪽이든 PR 에 남는다.
+      - name: Declared database egress IPs match the environment
+        run: |
+          set -o pipefail
+          az containerapp show --name vinc-account -g vincsRG \
+            --query properties.outboundIpAddresses -o json | python3 scripts/check_mysql_firewall.py
+
   # ── dispatch: 유일한 쓰기 지점 ─────────────────────────────────────────────
   apply:
     if: github.event_name == 'workflow_dispatch'
@@ -225,6 +233,13 @@ jobs:
             grep -vE '^(azurerm_|data\.).*: (Refreshing|Reading|Read complete|Refresh complete)' /tmp/plan.txt | tail -c 60000
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # 낡은 목록을 apply 하면 vinc-account 의 새 DB 연결이 막힌다. 다르면 여기서 멈춘다.
+      - name: Declared database egress IPs match the environment
+        run: |
+          set -o pipefail
+          az containerapp show --name vinc-account -g vincsRG \
+            --query properties.outboundIpAddresses -o json | python3 scripts/check_mysql_firewall.py
 
       # ⚠ 입력이 정확히 `apply` 여야 돈다. 방아쇠를 두 번 당기게 만드는 이유는
       #   오타나 잘못 누른 버튼이 인프라를 바꾸면 안 되기 때문이다 — 이 평면의
