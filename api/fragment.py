@@ -1066,6 +1066,17 @@ def _stamp_edge_endpoints(store, rel: str, ends: _Ends, src: str, dst: str,
     _drop_edge_tombstone(store, pkns.ekey(owner, src, rel, dst), osc=osc, op=op)
 
 
+def _edge_changed(store, rel: str, ends: _Ends, src: str, dst: str, owner: str, *, osc: bool,
+                  warnings: list[str], stamp: bool, changed: list | None) -> None:
+    """이 쓰기가 엣지를 새로 만들었거나 근거·신뢰도를 바꿨다. ``stamp`` 면 양 끝을 스탬프하고
+    (`_stamp_edge_endpoints`), ``changed`` 가 있으면 양 끝 (라벨, PK 열, 물리 키)를 담는다.
+    동기화 적용(``stamp_edges=False``)은 스탬프하지 않고 그 목록을 받아 끝점에 새 순번을 매긴다(`api.sync`)."""
+    if stamp:
+        _stamp_edge_endpoints(store, rel, ends, src, dst, owner, osc=osc, warnings=warnings)
+    if changed is not None:
+        changed.extend((label, pk, nid) for (label, pk), nid in zip(ends, (src, dst)))
+
+
 def _drop_edge_tombstone(store, ekey: str, *, osc: bool, op: dict) -> None:
     """엣지가 (다시) 생겼으니 그 엣지의 삭제 표식을 지운다. 쓰기 묶음 안이면 그 owner 에게 표식이
     하나도 없을 때 지우기를 건너뛴다: 표식은 삭제 경로(`api.sync`·`api.query`)만 만들고 merge 는
@@ -1128,8 +1139,10 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
                 stamp_edges: bool = True,
                 rollup: dict[str, list[str]] | None = None,
                 declared: set[str] | None = None,
-                born=None) -> str | None:
+                born=None, changed: list | None = None) -> str | None:
     """단일 엣지 MERGE. 반환 = 'created' | 'skipped_duplicate' | None(스킵).
+
+    ``changed``: 주면 이 MERGE 가 새로 만들었거나 근거·신뢰도를 바꾼 엣지의 양 끝을 담는다(`_edge_changed`).
 
     SEC-3: owner_explicit(강제 owner 경로)면 owner-스코프 끝점(Concept/Record/Bridge/
     Episode/Entity)을 owner_id 로 스코프한다 — 내 fragment 가 남의 노드 ID 를
@@ -1317,9 +1330,9 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
             f"MERGE (a)-[r:{_SUPERSEDES_REL}]->(b){b_set}{ev_set}",
             {"s": ksrc, "d": kdst, **op, **ev_p, **b_p})
-        if _edge_values_change(was, ev_p) and stamp_edges:
-            _stamp_edge_endpoints(store, _SUPERSEDES_REL, ends, ksrc, kdst, eowner,
-                                  osc=osc, warnings=warnings)
+        if _edge_values_change(was, ev_p):
+            _edge_changed(store, _SUPERSEDES_REL, ends, ksrc, kdst, eowner, osc=osc,
+                          warnings=warnings, stamp=stamp_edges, changed=changed)
         _warn_supersede_interval(store, st, ends, ksrc, kdst, src, dst, warnings)
         return "created"
     if etype in _EC_EDGES:
@@ -1344,9 +1357,9 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
             f"MERGE (a)-[r:{rel}]->(b){b_set}{ev_set}",
             {"s": ksrc, "d": kdst, **op, **ev_p, **b_p})
-        if _edge_values_change(was, ev_p) and stamp_edges:
-            _stamp_edge_endpoints(store, rel, ends, ksrc, kdst, eowner,
-                                  osc=osc, warnings=warnings)
+        if _edge_values_change(was, ev_p):
+            _edge_changed(store, rel, ends, ksrc, kdst, eowner, osc=osc,
+                          warnings=warnings, stamp=stamp_edges, changed=changed)
         return "created"
     # 커뮤니티 위키의 관계는 종류와 무관하게 이 표로 간다. 기록 출발도 ATTACHES_TO 가 아니다:
     # 반영기가 그래프를 rel 이름으로 읽어 지난 관계를 지우기 때문이다.
@@ -1386,9 +1399,9 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
                         f"MATCH (b:{dl})-[r:RELATED_TO]->(a:{sl}) "
                         f"WHERE b.{dp} = $d AND a.{sp} = $s{_o('b')}{_o('a')}{ev_set}",
                         {"s": ksrc, "d": kdst, **op, **ev_p})
-                    if _edge_values_change(held, ev_p) and stamp_edges:
-                        _stamp_edge_endpoints(store, "RELATED_TO", rends, kdst, ksrc,
-                                              eowner, osc=osc, warnings=warnings)
+                    if _edge_values_change(held, ev_p):
+                        _edge_changed(store, "RELATED_TO", rends, kdst, ksrc, eowner, osc=osc,
+                                      warnings=warnings, stamp=stamp_edges, changed=changed)
                 return "skipped_duplicate"
         rel = _CC_EDGES[etype]
         was = _edge_values(store, rel, ends, ksrc, kdst, owner=owner, osc=osc)
@@ -1399,9 +1412,9 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
             f"MERGE (a)-[r:{rel}]->(b){b_set}{ev_set}",
             {"s": ksrc, "d": kdst, **op, **ev_p, **b_p})
-        if _edge_values_change(was, ev_p) and stamp_edges:
-            _stamp_edge_endpoints(store, rel, ends, ksrc, kdst, eowner,
-                                  osc=osc, warnings=warnings)
+        if _edge_values_change(was, ev_p):
+            _edge_changed(store, rel, ends, ksrc, kdst, eowner, osc=osc,
+                          warnings=warnings, stamp=stamp_edges, changed=changed)
         return "created"
     if st == "record" and dt in _SEMANTIC_TYPES:
         # Record 참여 엣지 — ATTACHES_TO{type}로 원 타입 보존(스키마 §5-2 주석).
@@ -1413,11 +1426,23 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         # 같은 쌍의 다른 타입 부착이 한 엣지로 접혀 앞의 타입·근거를 덮는다.
         ev_set, ev_p = _ev_set("r", "ATTACHES_TO")
         b_set, b_p = _birth_set("r")
+        held = None
+        if changed is not None:
+            # 같은 타입의 부착만 본다(다른 타입은 다른 엣지다). 목록을 받을 때만 읽는다.
+            rows = store.run(
+                f"MATCH (a:Record)-[r:ATTACHES_TO]->(b:{dl}) "
+                f"WHERE a.record_id = $s AND b.{dp} = $d AND r.type = $t{_o('a')}{_o('b')} "
+                "RETURN r.evidence AS ev, r.confidence AS conf",
+                {"s": ksrc, "d": kdst, "t": etype, **op})
+            held = {"evid": rows[0].get("ev"), "conf": rows[0].get("conf")} if rows else None
         store.run(
             f"MATCH (a:Record), (b:{dl}) "
             f"WHERE a.record_id = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
             f"MERGE (a)-[r:ATTACHES_TO {{type: $t}}]->(b){b_set}{ev_set}",
             {"s": ksrc, "d": kdst, "t": etype, **op, **ev_p, **b_p})
+        if changed is not None and _edge_values_change(held, ev_p):
+            _edge_changed(store, "ATTACHES_TO", (("Record", "record_id"), (dl, dp)), ksrc, kdst,
+                          eowner, osc=osc, warnings=warnings, stamp=False, changed=changed)
         if stamp_edges:
             _stamp_edge_endpoints(store, "ATTACHES_TO", (("Record", "record_id"), (dl, dp)),
                                   ksrc, kdst, eowner, osc=osc, warnings=warnings)
@@ -1589,7 +1614,8 @@ def merge_fragment(fragment: dict, *, store, themes=None,
                    stamp_edges: bool = True,
                    max_domains: int | None = None,
                    read_back: bool = False,
-                   authored: bool = False) -> dict:
+                   authored: bool = False,
+                   edge_ends: list | None = None) -> dict:
     """fragment 전체 MERGE 를 트랜잭션 하나로 쓴다(`store.write_batch`). 계약은 :func:`_merge_fragment_once`.
 
     커밋이 한 번이라 문장마다 WAL 을 디스크에 내리지 않고, 도중에 예외가 나면 아무것도 남지 않는다.
@@ -1603,7 +1629,7 @@ def merge_fragment(fragment: dict, *, store, themes=None,
     메모리에 들고 있으므로, 로컬 본문 상한(256MB)까지 오는 fragment 하나가 메모리를 다 쓸 수 있다.
     근거: [[vinc.manual.core]] §3"""
     kwargs = dict(store=store, themes=themes, stamp_edges=stamp_edges, max_domains=max_domains,
-                  read_back=read_back, authored=authored)
+                  read_back=read_back, authored=authored, edge_ends=edge_ends)
     if _item_count(fragment) > BATCH_MAX_ITEMS:
         return _merge_fragment_once(fragment, **kwargs)
     result, first = write_batch.run_batched(
@@ -1618,7 +1644,8 @@ def _merge_fragment_once(fragment: dict, *, store, themes=None,
                          stamp_edges: bool = True,
                          max_domains: int | None = None,
                          read_back: bool = False,
-                         authored: bool = False) -> dict:
+                         authored: bool = False,
+                         edge_ends: list | None = None) -> dict:
     """fragment 전체 MERGE. 반환 = D11 §4 계약(+ dedupe/partial/개방층 확장):
     ``{merged:{nodes:{created,matched}, edges:{created,[skipped_duplicate]}},
     warnings:[…], executed:…, [partial:True], [proposed_types:[…]],
@@ -1633,6 +1660,11 @@ def _merge_fragment_once(fragment: dict, *, store, themes=None,
     revstamp(엣지 추가·재생성의 증분 동기화 전파 — _stamp_edge_endpoints 주석).
     **sync apply 경로만 False** — 원격발 엣지를 다시 스탬프하면 에코가 된다.
 
+    ``edge_ends``(선택): 목록을 주면 이 호출이 새로 만들었거나 근거·신뢰도를 바꾼 엣지의 양 끝을
+    (라벨, PK 열, 물리 키)로 채운다. 묶음을 버리고 다시 쓰면 다시 채우므로 시도마다 비운다. 동기화
+    적용(`api.sync.apply_delta`)이 ``stamp_edges=False`` 와 함께 주고, 그 끝점에 새 순번을 매겨 다음
+    델타에 싣는다. 응답에는 싣지 않는다(물리 키가 응답에 나가지 않게).
+
     ``max_domains``(선택): 무료 등급 주제 개수 상한(AP-1 §3.3). **기본 None = 무제한**
     이라는 점이 설계의 핵심이다 — sync 복제·로컬 경로가 아무 코드 변경 없이 자동
     면제되고, 위험이 "면제를 잊음"(상한 초과 사용자의 복제 파손)에서 "적용을
@@ -1644,6 +1676,8 @@ def _merge_fragment_once(fragment: dict, *, store, themes=None,
     저장형 전량을 되돌리면 응답이 요청보다 커지고 아무도 그것을 읽지 않는다. 되읽기가
     필요한 곳은 사람이 손으로 페이로드를 짜는 자리다."""
     warnings: list[str] = []
+    if edge_ends is not None:
+        edge_ends.clear()
     if store is None:
         return _finalize({"merged": None, "executed": False}, warnings + ["no reachable store"])
     created = matched = e_created = e_skipped_dup = 0
@@ -1738,7 +1772,7 @@ def _merge_fragment_once(fragment: dict, *, store, themes=None,
             fold.fold("edge", etype)   # TYPED 캐리어행 엣지 타입만 어휘 편입
         r = _merge_edge(store, e, types, warnings, owner=owner,
                         owner_explicit=owner_explicit, stamp_edges=stamp_edges,
-                        rollup=edge_rollup, declared=declared, born=_born)
+                        rollup=edge_rollup, declared=declared, born=_born, changed=edge_ends)
         e_created += (r == "created")
         e_skipped_dup += (r == "skipped_duplicate")
     _flush_edge_warnings(edge_rollup, warnings)

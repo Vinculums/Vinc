@@ -1079,12 +1079,13 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
 
     beaten: list[dict] = []
     edges = _edges_after_deletions(store, owner, bundle, set(refused), beaten)
+    ends: list = []                  # 이 묶음이 새로 만들었거나 바꾼 엣지의 양 끝(merge_fragment 가 채운다)
     if writes or edges:
         # stamp_edges=False — 원격발 엣지를 끝점 스탬프하면 다음 push 로 무변경 노드가
         # 에코된다(엣지 전파 스탬프는 **원 저작 기기**에서만, fragment 주석 참조).
         res = frag.merge_fragment(
             {"owner": owner, "nodes": [w["node"] for w in writes],
-             "edges": edges}, store=store, stamp_edges=False)
+             "edges": edges}, store=store, stamp_edges=False, edge_ends=ends)
         out["executed"] = bool(res.get("executed"))
         out["edges"] = (res.get("merged") or {}).get("edges", {}).get("created", 0)
         out["warnings"] += res.get("warnings") or []
@@ -1109,6 +1110,9 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
                   {"id": pkns.key(owner, node["id"]), "owner": owner,
                    "ua": w["ua"], "rev": int(w["rev"]),
                    "seq": revstamp.next_seq(store, owner)})
+    # 이 묶음이 새로 만들었거나 바꾼 엣지를 이 스토어의 다음 델타에 싣는다(허브가 받은 엣지가 다른 기기로 간다).
+    written = {(frag._NODE_MAP[w["node"]["type"]][0], pkns.key(owner, w["node"]["id"])) for w in writes}
+    _hand_on_edge_ends(store, owner, bundle, ends, written, {*refused, *protected})
     # 출생 화해는 **스탬프 루프 뒤**다: 신규 노드는 방금 merge_fragment 가 수신측
     # 시각으로 `created` 를 찍었으므로(fragment `_merge_node`), 그 위에 min 을 얹어야
     # 원본의 출생이 남는다.
@@ -1231,6 +1235,49 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
         out[run_state.CODE] = sorted(set(protected))
         out["warnings"].append(run_state.warning(out[run_state.CODE]))
     return out
+
+
+def _hand_on_edge_ends(store, owner: str, bundle: dict, ends: list, written: set, kept: set) -> None:
+    """이 묶음이 이 스토어에 새로 만들었거나 근거·신뢰도를 바꾼 엣지의 양 끝에 새 순번을 매긴다. 그래서 이 스토어의
+    다음 델타가 그 양 끝과 엣지를 함께 싣는다: 델타의 엣지는 양 끝이 같은 델타에 있을 때만 실린다(`export_delta`).
+    끝점의 필드가 그대로면 병합은 그 노드를 쓰지 않으므로 순번이 그대로고, 엣지는 이 스토어에만 남는다. 이 묶음이 쓴
+    노드(`written`)는 이미 새 순번을 받았으므로 건너뛴다. 같은 엣지를 다시 보낸 것만으로는 여기 오지 않는다. 그래서
+    허브에서 엣지를 받은 기기는 그것을 한 번 되올리고(허브에는 이미 있어 아무것도 바뀌지 않는다) 거기서 멈춘다. 믿는
+    pull 과 믿지 않는 업로드가 같은 규칙을 따른다: 상한 안의 묶음은 두 길에서 같은 결과를 낸다.
+
+    묶음이 그 끝점을 실어 왔고 그 스탬프가 더 늦으면(`syncmerge.node_remote_newer`) 그 스탬프를 받는다. 엣지를 만든
+    기기가 엣지를 만들며 찍은 것이다. 이 스토어의 스탬프를 그대로 두면, 그 엣지의 삭제를 이미 아는 기기가 그 삭제 뒤에
+    다시 만든 엣지를 삭제 앞의 것으로 읽고 버린다(`_edges_after_deletions`). 이 스토어의 지금 시각으로 찍지 않는다: 엣지를
+    만든 기기가 그 뒤에 그 엣지를 지우면 그 삭제가 이 시각보다 앞에 찍힐 수 있다(그 기기는 이 시각을 본 적이 없다).
+    `kept` 의 노드는 순번만 받는다: 받지 않은 노드(`clock_skew`, 스탬프가 상한 뒤)와 이 스토어의 실행 상태를 남긴
+    실행(`run_state_protected`)이다. 묶음의 스탬프가 이 스토어의 내용을 말하지 않는다."""
+    if not ends:
+        return
+    sent: dict[tuple[str, str], tuple[str, int, str]] = {}
+    for n in bundle.get("nodes") or []:
+        nid, label = n.get("id"), _SYNC_TYPES.get(n.get("type") or "")
+        rid = run_state.run_id(nid)
+        if rid is not None:
+            nid = rid
+        if not nid or not label or nid in kept or _physical(nid):
+            continue
+        sent[(label, pkns.key(owner, nid))] = (nid, int(n.get("_rev") or 0), n.get("_updated_at") or "")
+    seen: set = set()
+    for label, pk, key in ends:
+        if label not in _SYNC_LABELS or (label, key) in written or (label, key) in seen:
+            continue
+        seen.add((label, key))
+        # owner 술어 필수(risk-audit §3.2): 남의 노드에 순번을 매기면 그 사람의 다음 동기화에 유령 변경이 실린다.
+        match = f"MATCH (x:{label}) WHERE x.{pk} = $id AND x.owner_id = $owner "
+        rows = store.run(match + "RETURN x.rev AS rev, x.updated_at AS ua", {"id": key, "owner": owner})
+        if not rows:
+            continue
+        rev, ua = int(rows[0].get("rev") or 0), rows[0].get("ua") or ""
+        got = sent.get((label, key))
+        if got and syncmerge.node_remote_newer(rev, ua, got[1], got[2], got[0]):
+            rev, ua = max(rev, got[1]), got[2]
+        store.run(match + "SET x.updated_at = $ua, x.rev = $rev, x.sync_seq = $seq",
+                  {"id": key, "owner": owner, "ua": ua, "rev": rev, "seq": revstamp.next_seq(store, owner)})
 
 
 def _endpoint_stamps_before(store, owner: str, bundle: dict) -> dict[tuple[str, str], str]:
