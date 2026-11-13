@@ -43,7 +43,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from store import httpbody
 from store.envflag import truthy
 
-from . import burst, community, edverify, entitlement, modern, selfhost, toolcall, tools, viewurl
+from . import burst, community, edverify, entitlement, modern, selfhost, spaces, toolcall, tools, viewurl
 
 from .bridge import Bridge
 from .oauth import CONNECT_TTL, OAuthGate
@@ -298,12 +298,9 @@ def _role_allows(role: str, op: str) -> bool:
 #: 있는지와 어떤 역할인지를 증명한다. 그래서 팀 id 를 안다는 것만으로는 아무것도
 #: 못 하고, 키 하나로 모든 스페이스를 쓸 수 있다(스페이스마다 키를 발급할 필요가 없다).
 #: 근거: [[decision:the-space-is-an-argument-and-the-default-is-personal]]
-#: 스페이스 id 의 모양. 주소(`/t/<uuid>/mcp`)와 인자(`space`) **양쪽이 같은 것을
-#: 쓴다** — 두 벌로 두면 한쪽만 조여도 다른 쪽이 뚫린 채 남는다.
-_UUID = (r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
-         r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
-_UUID_RE = re.compile(r"\A" + _UUID + r"\Z")
-_SPACE_PATH_RE = re.compile(r"\A/t/(" + _UUID + r")(/.*)?\Z")
+#: 스페이스 id 의 모양은 `spaces.UUID` 한 벌이다. 주소(`/t/<uuid>/mcp`)와 인자(`space`)
+#: **양쪽이 같은 것을 쓴다** — 두 벌로 두면 한쪽만 조여도 다른 쪽이 뚫린 채 남는다.
+_SPACE_PATH_RE = re.compile(r"\A/t/(" + spaces.UUID + r")(/.*)?\Z")
 
 #: `_auth_for` 의 세 번째 답. 붙여넣은 주소가 `?space=local`(데스크탑 로컬 모드의
 #: 그래프)을 가리킨다 — 닿을 수 없는 팀(None)과는 거절 문구가 다르다.
@@ -1720,7 +1717,7 @@ class _Handler(BaseHTTPRequestHandler):
                         "vinc_events", args if isinstance(args, dict) else {}, base_auth=auth,
                         address_space=space,
                         authenticate=lambda want: self._auth(want, presented_at="/mcp"),
-                        valid_space=lambda want: bool(_UUID_RE.fullmatch(want)) or community.is_space(want))
+                        valid_space=spaces.valid_space)
                 if method != "tools/call" and not str(method or "").startswith(_ROLE_READS):
                     return toolcall.Outcome("ok", auth=auth)
                 params = m.get("params") or {}
@@ -1729,7 +1726,7 @@ class _Handler(BaseHTTPRequestHandler):
                     (params.get("name") or "") if method == "tools/call" else "vinc_role", args, base_auth=auth,
                     address_space=space,
                     authenticate=lambda want: self._auth(want, presented_at="/mcp"),
-                    valid_space=lambda want: bool(_UUID_RE.fullmatch(want)) or community.is_space(want))
+                    valid_space=spaces.valid_space)
 
             # 배치는 기존 게이트 우선순위를 유지한다: 모든 메시지의 스페이스를
             # 먼저 보고, 그 다음 역할, 읽기 전용 키 순서로 첫 거절을 고른다.

@@ -7,10 +7,10 @@ import re
 import secrets
 from urllib.parse import parse_qs, urlparse
 
-from . import community, entitlement, rest_routes, toolcall, tools
+from . import community, entitlement, rest_routes, spaces, toolcall, tools
 from store import request_timing
 from store.envflag import truthy_strict
-from .http_server import MAX_BODY, _UUID_RE
+from .http_server import MAX_BODY
 
 #: v1 결과 상한. MCP 의 72,000자(rpc.MAX_RESULT_CHARS)는 모델 컨텍스트용 상한이라 스크립트가
 #: 받는 v1 에는 쓰지 않는다 — 쓰면 4 MB 로 넣은 문서를 되읽지 못하고, 이미 적용된 쓰기가
@@ -266,7 +266,7 @@ def _handle(handler, method: str) -> bool:
     if "space" in query:
         query["space"] = query["space"].strip().lower()   # /mcp 와 같은 정규화
     space = query.get("space") or "personal"
-    if space != "personal" and not _UUID_RE.fullmatch(space) and not community.is_space(space):
+    if space != "personal" and not spaces.valid_space(space):
         fail(404, "space_not_found", "No such space.")
         return True
     header = handler.headers.get("Authorization") or ""
@@ -315,7 +315,7 @@ def _handle(handler, method: str) -> bool:
             gated = toolcall.preflight(
                 route.tool, args, base_auth=auth, address_space=None,
                 authenticate=lambda want: handler._auth(want, presented_at="/mcp"),
-                valid_space=lambda want: bool(_UUID_RE.fullmatch(want)) or community.is_space(want))
+                valid_space=spaces.valid_space)
     except Exception:
         fail(503, "upstream_unavailable", "Space membership verification is unavailable.",
              extra={"Retry-After": "1"})
