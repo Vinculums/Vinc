@@ -3416,7 +3416,14 @@ def validate_args(name: str, args: dict | None) -> None:
 def call(name: str, args: dict | None, bridge: Bridge,
          forced_owner: str | None = None,
          entitlements: dict | None = None,
-         hub: bool = False, community_write=None, community_read=None) -> dict:
+         hub: bool = False, community_write=None, community_read=None, *, ctx=None) -> dict:
+    # ctx(`toolcall.CallContext`)가 오면 owner · 자격 · 커뮤니티 콜백을 거기서 읽는다. 따로 받는
+    # 키워드는 그것을 쓰는 호출자(CLI · events · 테스트)의 길이고, 둘을 함께 주면 TypeError 다.
+    if ctx is not None:
+        if any(v is not None for v in (forced_owner, entitlements, community_write, community_read)):
+            raise TypeError("pass ctx or the separate keywords, not both")
+        forced_owner, entitlements = ctx.forced_owner, ctx.entitlements
+        community_write, community_read = ctx.community_write, ctx.community_read
     tool = _BY_NAME.get(name)
     if tool is None:
         raise KeyError(f"unknown tool: {name}")

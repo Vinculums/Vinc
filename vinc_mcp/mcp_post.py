@@ -117,17 +117,8 @@ def answer(handler, auth: dict, space: str | None, profile: str | None):
         # 2026-09-19 계정 정책: 개인 Free와 TEAM 공유 예산은 서로 독립이다.
         # 멤버 신원은 권한 검증에만 쓰고 소비는 해석된 그래프 owner로 센다.
         # 팀은 매번 계정 멤버십 검증을 거치며 등급도 TEAM으로 해석된다.
-        ents = (handler.app.entitlements_for(a["plan"]) if a["owner"] else None)
         spent: dict = {}
-        reply = d.handle(m, forced_owner=a["owner"], plan=a["plan"],
-                         quota=handler.app.quota_for(a, spent),
-                         quota_view=handler.app.quota_view,
-                         entitlements=ents,
-                         community_write=(lambda args: handler.app.community_write(a, args))
-                         if handler.app.community_write is not None else None,
-                         community_read=(lambda args: handler.app.community_read(a, args))
-                         if handler.app.community_read is not None else None,
-                         events_auth=_events_auth(a), profile=profile)
+        reply = d.handle(m, ctx=handler.app.call_context(a, spent, profile=profile))
         if m.get("method") != "tools/call":
             return reply
         return _with_quota_meta(reply, handler.app.quota_meta(spent))

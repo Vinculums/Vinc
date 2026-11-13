@@ -119,14 +119,20 @@ class Dispatcher:
         self.events = None
 
     # 반환 None = 응답 없음(notification 또는 id 없는 요청).
-    # forced_owner: 원격 인증경로가 해석한 소유자(멀티테넌트 강제 스탬핑, B-B2).
-    # plan: 소유자 티어(B-D2 쿼터에서 사용) — 로컬 stdio 는 둘 다 None.
-    # entitlements: 등급에서 해석된 숫자(주제 상한 등) — 사이드카로 그대로 실린다.
+    # ctx: 인증을 마친 호출의 값 묶음(`toolcall.CallContext`). 허브는 `MCPHTTPApp.call_context` 로
+    # 만들어 넘기고, 로컬 stdio 는 아무것도 안 넘긴다(빈 값: owner·등급 없음).
+    # forced_owner … profile 아홉 키워드는 ctx 의 필드를 하나씩 받는 모양이고, 그렇게 부르는
+    # 호출자를 위해 한 릴리스 동안 그대로 받는다. ctx 와 함께 주면 TypeError 다.
+    # profile 이 None 이면 `all` 이다.
     def handle(self, msg: dict, forced_owner: str | None = None,
                plan: str | None = None, quota=None, quota_view=None,
                entitlements: dict | None = None, community_write=None, community_read=None,
-               events_auth: dict | None = None, profile: str | None = None) -> dict | None:
-        # profile: 연결의 도구 프로파일(`tools.TOOL_PROFILES`). None 이면 `all` 이고 지금과 바이트까지 같다.
+               events_auth: dict | None = None, profile: str | None = None, *,
+               ctx: toolcall.CallContext | None = None) -> dict | None:
+        ctx = toolcall.context_of(ctx, forced_owner=forced_owner, plan=plan, quota=quota,
+                                  quota_view=quota_view, entitlements=entitlements,
+                                  community_write=community_write, community_read=community_read,
+                                  events_auth=events_auth, profile=profile)
         method = msg.get("method")
         msg_id = msg.get("id")
         params = msg.get("params") or {}
@@ -141,12 +147,7 @@ class Dispatcher:
         if bad is not None:
             return None if msg_id is None else bad.reply(msg_id)
         try:
-            result = self._dispatch(method, params, forced_owner=forced_owner,
-                                    plan=plan, quota=quota, quota_view=quota_view,
-                                    entitlements=entitlements,
-                                    community_write=community_write, community_read=community_read,
-                                    modern_version=version, events_auth=events_auth,
-                                    profile=profile)
+            result = self._dispatch(method, params, ctx=ctx, modern_version=version)
         except events.EventsError as e:
             return None if msg_id is None else e.reply(msg_id)
         except modern.MissingClientCapability as e:
@@ -168,18 +169,15 @@ class Dispatcher:
             result = modern.complete(result)
         return {"jsonrpc": "2.0", "id": msg_id, "result": result}
 
-    def _dispatch(self, method: str, params: dict, *, forced_owner: str | None = None,
-                  plan: str | None = None, quota=None, quota_view=None,
-                  entitlements: dict | None = None, community_write=None, community_read=None,
-                  modern_version: str | None = None, events_auth: dict | None = None,
-                  profile: str | None = None) -> dict:
+    def _dispatch(self, method: str, params: dict, *, ctx: toolcall.CallContext | None = None,
+                  modern_version: str | None = None) -> dict:
+        ctx = ctx if ctx is not None else toolcall.CallContext()
+        forced_owner, plan, quota, profile = ctx.forced_owner, ctx.plan, ctx.quota, ctx.profile
         if method in run_tasks.METHODS and modern_version is not None:
-            return self._tasks(method, params, forced_owner=forced_owner, plan=plan, quota=quota,
-                               events_auth=events_auth)
+            return self._tasks(method, params, ctx)
         if method.startswith("events/") and modern_version is not None:
             # Events 확장은 모던 세대에서만 연다. 핸드셰이크 세대에는 -32601 그대로다.
-            return self._events(method, params, forced_owner=forced_owner, plan=plan,
-                                quota=quota, events_auth=events_auth)
+            return self._events(method, params, ctx)
         if method == "server/discover" and modern_version is not None:
             # 모던 세대의 `initialize` 자리. 핸드셰이크 세대에서는 모르는 메서드다(-32601).
             # `instructions` 는 initialize 와 같은 문단이고, 소유자와 팀 이름을 담으므로
@@ -273,10 +271,7 @@ class Dispatcher:
                 args = run_protocol.with_host(name, args, self.client)
             # REST도 같은 검증→한도→도구 호출을 탄다. MCP 봉투만 여기서 만든다.
             # 근거: [[decision:mcp-argument-errors-are-tool-results-not-protocol-errors-2026-09-24]]
-            outcome = toolcall.execute(name, args, self.bridge,
-                                       forced_owner=forced_owner, plan=plan, quota=quota,
-                                       quota_view=quota_view, entitlements=entitlements,
-                                       hub=self.hub, community_write=community_write, community_read=community_read)
+            outcome = toolcall.execute(name, args, self.bridge, ctx, hub=self.hub)
             if outcome.kind == "protocol_error":
                 raise outcome.error
             if outcome.kind != "ok":
@@ -333,9 +328,9 @@ class Dispatcher:
                                     self.bridge, forced_owner=forced_owner)
         raise _MethodNotFound(method)
 
-    def _events(self, method: str, params: dict, *, forced_owner: str | None, plan,
-                quota, events_auth: dict | None) -> dict:
+    def _events(self, method: str, params: dict, ctx: toolcall.CallContext) -> dict:
         """Events 확장. 피드 계산은 사이드카, 구독과 전달은 `self.events`(Runtime)."""
+        forced_owner, plan, quota, events_auth = ctx.forced_owner, ctx.plan, ctx.quota, ctx.events_auth
         if method == "events/list":
             return modern.with_cache_hints(
                 {"events": events.definitions(webhook=self.events is not None)}, method)
@@ -366,9 +361,9 @@ class Dispatcher:
         return self.events.subscribe(params, principal=principal, owner=forced_owner,
                                      can_write=bool((events_auth or {}).get("can_write")))
 
-    def _tasks(self, method: str, params: dict, *, forced_owner: str | None, plan, quota,
-               events_auth: dict | None) -> dict:
+    def _tasks(self, method: str, params: dict, ctx: toolcall.CallContext) -> dict:
         """Tasks 확장. 작업은 실행 기록에서 매번 계산하므로 이 프로세스는 상태를 들지 않는다."""
+        forced_owner, plan, quota, events_auth = ctx.forced_owner, ctx.plan, ctx.quota, ctx.events_auth
         if not run_tasks.tasks_declared(run_tasks.client_capabilities(params)):
             raise modern.MissingClientCapability({"extensions": {run_tasks.EXTENSION: {}}})
         owner = forced_owner or self.bridge.owner

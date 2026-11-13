@@ -41,7 +41,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from store import httpbody
 from store.envflag import truthy
 
-from . import account_assertion, burst, edverify, entitlement, hub_auth, hub_quota, mcp_post, modern, proxy_ops, spaces, tools, viewurl
+from . import account_assertion, burst, edverify, entitlement, hub_auth, hub_quota, mcp_post, modern, proxy_ops, spaces, toolcall, tools, viewurl
 
 from .bridge import Bridge
 # 베어러 해석은 `hub_auth` 에 있다. 이 모듈과 테스트가 이 이름으로 부르므로 여기서 같은 객체를
@@ -225,6 +225,23 @@ class MCPHTTPApp:
 
     def quota_for(self, auth: dict, spent: dict | None = None):
         return hub_quota.quota_for(self, auth, spent)
+
+    def call_context(self, auth: dict, spent: dict | None = None, *,
+                     profile: str | None = None) -> toolcall.CallContext:
+        """인증을 마친 호출 하나의 값 묶음. `/mcp` 는 메시지마다, REST v1 은 요청마다 이것을 만든다.
+
+        한도는 `spent` 에 센 owner · plan 을 남긴다(답의 한도 표시가 읽는다). 자격(주제 상한)은 owner 가
+        있는 인증에만 싣는다. 커뮤니티 쓰기 · 읽기 콜백은 이 인증에 묶어 넘기고, 앱에 콜백이 없으면
+        None 이다. `profile` 은 `/mcp` 주소의 `?profile=` 값이다."""
+        owner, plan = auth.get("owner"), auth.get("plan")
+        return toolcall.CallContext(
+            forced_owner=owner, plan=plan, quota=self.quota_for(auth, spent), quota_view=self.quota_view,
+            entitlements=self.entitlements_for(plan) if owner else None,
+            community_write=(lambda args: self.community_write(auth, args))
+            if self.community_write is not None else None,
+            community_read=(lambda args: self.community_read(auth, args))
+            if self.community_read is not None else None,
+            events_auth=_events_auth(auth), profile=profile)
 
     def dispatcher(self) -> Dispatcher:
         """공유 Dispatcher. 세션별 인스턴스가 없어졌으므로 인자도 없다(위 __init__ 참조)."""
