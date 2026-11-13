@@ -12,6 +12,7 @@ import math
 
 import pytest
 
+from api import brief as brief_mod
 from api import query as q
 
 
@@ -101,7 +102,7 @@ def test_hidden_row_features():
 def test_named_exact_title_wins_even_below_threshold(run_brief, monkeypatch):
     hits = _lexical_hits()
     hits[2]["title"] = "Release  Train"
-    monkeypatch.setattr(q, "_brief_v3_p", lambda x: 0.0)
+    monkeypatch.setattr(brief_mod, "_brief_v3_p", lambda x: 0.0)
     out = run_brief("  release train ", _res(hits))
     assert _picked(out) == "concept:n3" and out["resolution"]["rule"] == "v3"
     # 같은 제목이 둘이면 이름 갈래가 아니다 — 문턱 아래라 되묻는다.
@@ -111,10 +112,10 @@ def test_named_exact_title_wins_even_below_threshold(run_brief, monkeypatch):
 
 
 def test_learned_pick_splits_at_the_threshold(run_brief, monkeypatch):
-    monkeypatch.setattr(q, "_brief_v3_p", lambda x: q._V3_T)
+    monkeypatch.setattr(brief_mod, "_brief_v3_p", lambda x: q._V3_T)
     out = run_brief("what is it", _res(_lexical_hits()))
     assert _picked(out) == "concept:n1" and out["resolution"] == {"rule": "v3", "p": round(q._V3_T, 4)}
-    monkeypatch.setattr(q, "_brief_v3_p", lambda x: q._V3_T - 1e-9)
+    monkeypatch.setattr(brief_mod, "_brief_v3_p", lambda x: q._V3_T - 1e-9)
     out = run_brief("what is it", _res(_lexical_hits()))
     assert out["status"] == "choose"
     # 되묻기 목록은 ColBERT 순서 그대로다.
@@ -153,7 +154,7 @@ def test_semantic_none_ignores_a_colbert_head_that_is_semantic_only(run_brief, m
     # 반대: ColBERT 앞 다섯은 전부 멀리 있는 의미만이지만, 재채점 전 1위는 토큰으로 맞았다.
     far = [_hit(i, colbert=0.9 - i * 0.01, prod_rank=i + 1, distance=0.6) for i in range(1, 6)]
     lex = _hit(9, colbert=0.1, prod_rank=1, hit_tokens=2, arms=("lexical",), distance=None)
-    monkeypatch.setattr(q, "_brief_v3_p", lambda x: 1.0)
+    monkeypatch.setattr(brief_mod, "_brief_v3_p", lambda x: 1.0)
     out = run_brief("what is it", _res(far + [lex]))
     assert _picked(out) == "concept:n1"
 
@@ -164,7 +165,7 @@ def test_token_tie_guard_does_not_run_on_v3(run_brief, monkeypatch):
                validity_best_dropped_distance=0.34)
     monkeypatch.setattr(q, "_brief_resolve_learned", lambda query, hits: ("resolved", [hits[0]], 0.9))
     assert run_brief("what is it", res, rule="learned")["status"] == "choose"
-    monkeypatch.setattr(q, "_brief_v3_p", lambda x: 0.9)
+    monkeypatch.setattr(brief_mod, "_brief_v3_p", lambda x: 0.9)
     out = run_brief("what is it", res)
     assert _picked(out) == "concept:n1" and "validity_note" not in out
 

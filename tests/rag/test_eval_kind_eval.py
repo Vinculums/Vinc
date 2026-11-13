@@ -34,7 +34,7 @@ LEAK_TARGETS = {
     "identity": ("vinc_rag.retrieval", "_node_fallback_search", True),
     "tiebreak_slug": ("vinc_rag.retrieval", "_node_fallback_search", True),
     "no_graph_arm": ("vinc_rag.retrieval", "_graph_arm_search", False),
-    "brief_rank_without_arms": ("api.query", "_brief_rank", False),
+    "brief_rank_without_arms": ("api.brief", "_brief_rank", False),
     "current_relevance_only": ("store.search_temporal", "current_order", True),
 }
 
