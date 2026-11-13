@@ -2550,7 +2550,7 @@
       "get": {
         "operationId": "vinc_runs_get__v1_runs",
         "summary": "List recorded agent runs, newest first. Pass cited to see only the runs that cited one claim, with whether that claim has been retired.",
-        "description": "List this space's agent run records, newest first. Returns {runs, total, truncated}. flagged:true keeps runs that used capabilities outside their role's policy; cited keeps runs that cite one claim and reports whether it is retired, which means those runs need re-checking. A run whose request for a person expired reads as blocked, with end_reason saying so. Read-only.",
+        "description": "List this space's agent run records, newest first. Returns {runs, total, truncated}. flagged:true keeps runs that used capabilities outside their role's policy; cited keeps runs that cite one claim and reports whether it is retired, which means those runs need re-checking. A run whose request for a person expired reads as blocked, with end_reason saying so. outcome and end_reason say how the protocol ended a run; verdict and verdict_note, when present, say what the run's own output concluded, and the title then leads with the verdict instead of success. Read-only.",
         "security": [
           {
             "MemberKey": []
@@ -2706,7 +2706,7 @@
       "get": {
         "operationId": "vinc_runs_get__v1_runs_run",
         "summary": "List recorded agent runs, newest first. Pass cited to see only the runs that cited one claim, with whether that claim has been retired.",
-        "description": "List this space's agent run records, newest first. Returns {runs, total, truncated}. flagged:true keeps runs that used capabilities outside their role's policy; cited keeps runs that cite one claim and reports whether it is retired, which means those runs need re-checking. A run whose request for a person expired reads as blocked, with end_reason saying so. Read-only.",
+        "description": "List this space's agent run records, newest first. Returns {runs, total, truncated}. flagged:true keeps runs that used capabilities outside their role's policy; cited keeps runs that cite one claim and reports whether it is retired, which means those runs need re-checking. A run whose request for a person expired reads as blocked, with end_reason saying so. outcome and end_reason say how the protocol ended a run; verdict and verdict_note, when present, say what the run's own output concluded, and the title then leads with the verdict instead of success. Read-only.",
         "security": [
           {
             "MemberKey": []
@@ -2754,7 +2754,7 @@
       "post": {
         "operationId": "vinc_run_submit_post__v1_runs_run_steps",
         "summary": "Submit one step of a run. Vinc runs the role's gates on the output, stops at a person-only action with a question, resumes on an answer, and ends the run with its record. A person-only question is answered by a person in the Vinc app, not by you.",
-        "description": "Submit one step of a run: exactly one of output, answer (approve or decline while waiting) or abandon. Output runs the role's gates: block returns failed_checks and the run stays open; a person-only request or an interrupting gate makes the run wait for a person; pass ends it as success. Name person_only_requests and capabilities held for approval before acting, never after. A waiting run's decision.kind says who answers: person_only only a signed-in person in the Vinc app (your answer is refused with person_answer_required), ask_first you as the person chose. A request expires after expires_in_s (default 3600, at most 43200) and the run ends blocked. A claim that something ran is blocked, since no host proof reaches this tool; the result names it as claim. Say what you attempted and where it can be read instead. Only the output's hash and length are stored.",
+        "description": "Submit one step of a run: exactly one of output, answer (approve or decline while waiting) or abandon. Output runs the role's gates: block returns failed_checks and the run stays open; a person-only request or an interrupting gate makes the run wait for a person; pass ends it as success. Name person_only_requests and capabilities held for approval before acting, never after. A waiting run's decision.kind says who answers: person_only only a signed-in person in the Vinc app (your answer is refused with person_answer_required), ask_first you as the person chose. A request expires after expires_in_s (default 3600, at most 43200) and the run ends blocked. A claim that something ran is blocked, since no host proof reaches this tool; the result names it as claim. Say what you attempted and where it can be read instead. Only the output's hash and length are stored. With the final output, verdict says what the work concluded (a verify-tier role pass, fail or blocked; any other role delivered, partial or blocked) and verdict_note names what blocked it. It is kept apart from outcome, which says how the protocol ended the run, and a step over the budget still records it.",
         "security": [
           {
             "MemberKey": []
@@ -2878,6 +2878,21 @@
                     "minimum": 60,
                     "maximum": 43200,
                     "description": "Seconds a person has to answer if this step makes the run wait; default 3600."
+                  },
+                  "verdict": {
+                    "type": "string",
+                    "enum": [
+                      "pass",
+                      "fail",
+                      "delivered",
+                      "partial",
+                      "blocked"
+                    ],
+                    "description": "With the final output, what the work concluded: pass, fail or blocked for a verify-tier role, else delivered, partial or blocked; blocked names its cause in verdict_note."
+                  },
+                  "verdict_note": {
+                    "type": "string",
+                    "maxLength": 300
                   }
                 },
                 "required": [],

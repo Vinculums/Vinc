@@ -138,6 +138,9 @@ def list_runs(store, *, owner: str, cited: str | None = None, role: str | None =
                 if read.get("role") and read.get("run_id"):
                     title = rp._title(read, pkns.strip(row["id"]))
                 props = read
+            elif props.get("verdict") and props.get("role") and props.get("run_id"):
+                # 결론은 보호되지 않아 프로토콜 밖에서도 바뀐다. 목록의 제목은 저장된 결론에서 다시 짓는다.
+                title = rp._title(props, pkns.strip(row["id"]))
         run_role = events.role_id(props.get("role")) or ""
         if want_role and run_role != want_role:
             continue
@@ -156,6 +159,12 @@ def list_runs(store, *, owner: str, cited: str | None = None, role: str | None =
                 "end_reason": str(props.get("end_reason") or ""),
                 "title": title, "date": str(row.get("date") or ""),
                 "host": str(props.get("host") or ""), "cited_ids": ids, "capability_flags": flags}
+        if props.get("verdict"):
+            # 일이 내린 결론(`run_state.readable` 이 아는 낱말만 남긴다). 결론을 보고하지 않은 실행의
+            # 항목은 이 키가 없어 그대로다.
+            item["verdict"] = props["verdict"]
+            if props.get("verdict_note"):
+                item["verdict_note"] = props["verdict_note"]
         if run:
             item["props"] = props
         if cited:

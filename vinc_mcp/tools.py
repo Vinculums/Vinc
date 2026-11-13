@@ -27,6 +27,8 @@ import json
 import os
 from typing import Any, Callable
 
+from store import run_state as _run_state
+
 from .bridge import Bridge
 from . import community, events
 
@@ -2030,7 +2032,9 @@ TOOLS.append({"name": "vinc_runs", "reference":
         "flagged:true keeps runs that used capabilities outside their role's policy; cited keeps runs "
         "that cite one claim and reports whether it is retired, which means those runs need "
         "re-checking. A run whose request for a person expired reads as blocked, with end_reason "
-        "saying so. Read-only."
+        "saying so. outcome and end_reason say how the protocol ended a run; verdict and "
+        "verdict_note, when present, say what the run's own output concluded, and the title then "
+        "leads with the verdict instead of success. Read-only."
     )
     ),
     "inputSchema": {"type": "object", "properties": {
@@ -2082,7 +2086,11 @@ TOOLS.append({"name": "vinc_run_submit", "reference":
         "ask_first you as the person chose. A request expires after expires_in_s (default 3600, at "
         "most 43200) and the run ends blocked. A claim that something ran is blocked, since no host "
         "proof reaches this tool; the result names it as claim. Say what you attempted and where it "
-        "can be read instead. Only the output's hash and length are stored."
+        "can be read instead. Only the output's hash and length are stored. With the final output, "
+        "verdict says what the work concluded (a verify-tier role pass, fail or blocked; any other "
+        "role delivered, partial or blocked) and verdict_note names what blocked it. It is kept "
+        "apart from outcome, which says how the protocol ended the run, and a step over the budget "
+        "still records it."
     )
     ),
     "inputSchema": {"type": "object", "properties": {
@@ -2105,6 +2113,11 @@ TOOLS.append({"name": "vinc_run_submit", "reference":
             "tokens_in": {"type": "integer", "minimum": 0},
             "tokens_out": {"type": "integer", "minimum": 0},
             "cost_usd": {"type": "number", "minimum": 0}}, "additionalProperties": False},
+        "verdict": {"type": "string", "enum": list(_run_state.VERDICTS),
+                    "description": "With the final output, what the work concluded: pass, fail or "
+                                   "blocked for a verify-tier role, else delivered, partial or "
+                                   "blocked; blocked names its cause in verdict_note."},
+        "verdict_note": {"type": "string", "maxLength": _run_state.VERDICT_NOTE_MAX},
         "owner": {"type": "string"}}, "required": ["run"]},
     "run": _t_run_submit})
 TOOLS.append({"name": "vinc_eval_cards", "reference":

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import unicodedata
 import math
 
 RUN_PREFIX = "episode:run-"
@@ -43,13 +44,21 @@ EXPIRES_MAX_S = 43200
 _STAMP = "%Y-%m-%dT%H:%M:%SZ"
 #: 정수로 읽는 횟수 문자열의 최대 자릿수. 더 긴 문자열은 수로 읽지 않는다.
 _COUNT_DIGITS = 18
+#: 일이 내린 결론(`verdict`). 에이전트가 출력과 함께 보고하는 주장이라 프로토콜 상태(`STATE_KEYS`)가
+#: 아니고, 게이트 결과(`gate_results`)·프로토콜이 끝낸 까닭(`outcome`·`end_reason`)과 따로 둔다.
+#: 검사하는 역할(tier verify 또는 output_kind verdict)은 `CHECK_VERDICTS`, 그 밖은 `WORK_VERDICTS` 를 쓴다.
+CHECK_VERDICTS = ("pass", "fail", "blocked")
+WORK_VERDICTS = ("delivered", "partial", "blocked")
+VERDICTS = ("pass", "fail", "delivered", "partial", "blocked")
+#: 결론에 붙는 한 줄(무엇이 막았나, 무엇이 실패했나, 무엇이 남았나)의 최대 길이.
+VERDICT_NOTE_MAX = 300
 #: 실행 프로토콜과 읽는 쪽(승인함·실행 목록·이벤트·알림·Tasks)이 읽는 실행 기록의 props 이름.
 #: 생성 시험(`tests/mcp/test_run_record_property.py`)이 이 이름마다 잘못된 모양의 값을 넣어 본다.
 PROPS = ("run_id", "role", "outcome", "state", "step", "asks", "task", "subject", "host",
          "started_at", "ended_at", "end_reason", "expired_at", "last_asked_at", "used",
          "cited_ids", "citations_missing", "capabilities_used", "capability_flags", "pending",
          "approved", "answer", "answered_at", "answered_actions", "answered_by", "answer_via",
-         "answer_text", "task_cancelled")
+         "answer_text", "task_cancelled", "verdict", "verdict_note")
 #: 그중 대기(`pending`) 안에서 읽는 이름.
 PENDING_PROPS = ("actions", "checks", "question", "asked_at", "expires_at", "kind", "requests")
 
@@ -112,6 +121,13 @@ def _flags(value) -> list[dict]:
             if isinstance(v.get("id"), str) and isinstance(v.get("flag"), str)]
 
 
+def visible_line(text: str) -> str:
+    """보이는 글자만 남긴 한 줄. 제어 문자와 서식 문자(Unicode Cc·Cf: NUL, ESC, 방향 바꿈 등)는 빼고,
+    공백은 하나로 접는다. 결론의 한 줄처럼 사람이 그대로 읽는 짧은 글에 쓴다."""
+    kept = "".join(ch if unicodedata.category(ch) not in ("Cc", "Cf") else " " for ch in text)
+    return " ".join(kept.split())
+
+
 def readable(props) -> dict:
     """실행 기록 props 를 읽는 쪽이 그대로 변환해도 되는 모양의 사본으로 읽는다. 원본은 그대로다.
 
@@ -133,6 +149,14 @@ def readable(props) -> dict:
     if "used" in out:
         used = out["used"] if isinstance(out["used"], dict) else {}
         out["used"] = {k: v for k, v in used.items() if number(v) is not None}
+    # 결론은 보호되지 않아 도구 쓰기로도 바뀐다. 읽는 쪽은 아는 낱말과 글자인 한 줄만 본다.
+    if "verdict" in out and out["verdict"] not in VERDICTS:
+        out.pop("verdict")
+    if "verdict_note" in out:
+        if isinstance(out["verdict_note"], str):
+            out["verdict_note"] = visible_line(out["verdict_note"])[:VERDICT_NOTE_MAX]
+        else:
+            out.pop("verdict_note")
     pending = out.get("pending")
     if out.get("state") == "waiting":
         out["asks"] = max(count(out.get("asks")), 1)

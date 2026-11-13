@@ -1,0 +1,1478 @@
+{
+ "responses": [
+  {
+   "step": "open",
+   "out": {
+    "kind": "run",
+    "executed": true,
+    "run": "episode:run-open-1-74980e42",
+    "run_id": "open-1",
+    "role": "concept:agent-dev-core",
+    "state": "working",
+    "outcome": "waiting",
+    "step": 0,
+    "resumed": false,
+    "next": "Do this step, then call vinc_run_submit with output. Name an action in person_only_requests before taking it when the role lists it as person only or asks first. Report done work as what you attempted and where its result can be read (a PR, commit or graph id), not as success: no host proof reaches this tool.",
+    "task": "Review the change.",
+    "policy": {
+     "reads": [],
+     "gates": [
+      {
+       "check": {
+        "type": "person_only"
+       },
+       "id": "person_only",
+       "on_fail": "interrupt"
+      },
+      {
+       "check": {
+        "type": "side_effect_evidence"
+       },
+       "id": "side_effect_evidence",
+       "on_fail": "block"
+      },
+      {
+       "check": {
+        "type": "handoff_manifest"
+       },
+       "id": "handoff_manifest",
+       "on_fail": "block"
+      },
+      {
+       "check": {
+        "command": "scripts/gate_forbidden.py",
+        "repos": [
+         "Vinc"
+        ],
+        "type": "command_success"
+       },
+       "id": "command_1",
+       "on_fail": "block"
+      },
+      {
+       "check": {
+        "command": "scripts/gate_graph_refs.py",
+        "repos": [
+         "Vinc"
+        ],
+        "type": "command_success"
+       },
+       "id": "command_2",
+       "on_fail": "block"
+      },
+      {
+       "check": {
+        "command": "scripts/gate_escape.py",
+        "repos": [
+         "Vinc"
+        ],
+        "type": "command_success"
+       },
+       "id": "command_3",
+       "on_fail": "block"
+      }
+     ],
+     "act_policy": {
+      "notify": "ask_first"
+     },
+     "person_only": [
+      {
+       "action": "merge",
+       "reason": "merge"
+      },
+      {
+       "action": "migration",
+       "reason": "migration run"
+      },
+      {
+       "action": "accept_risk",
+       "reason": "risk acceptance"
+      }
+     ],
+     "never": []
+    },
+    "budget_left": {}
+   }
+  },
+  {
+   "step": "gate block",
+   "out": {
+    "kind": "run",
+    "executed": true,
+    "run": "episode:run-blocked-step-1-8bbb734b",
+    "run_id": "blocked-step-1",
+    "role": "concept:agent-dev-core",
+    "state": "working",
+    "outcome": "waiting",
+    "step": 1,
+    "status": "blocked",
+    "failed_checks": [
+     "side_effect_evidence"
+    ],
+    "evidence_sentences": [
+     "I merged the pull request and deployed it."
+    ],
+    "advice": [
+     "side_effect_evidence: a sentence claims a side effect with no host proof. Say what was attempted and where the result can be read, for example 'Attempted to run the tests; the result is in the pull request checks'. A person-only action (merge, tag push, publish, send, live migration) is not restated as attempted: say it was not done and is left to the person, for example 'did not merge; merging is left to the owner'."
+    ],
+    "next": "Restate claim as what you attempted and where its result can be read (a PR, commit or graph id), not as success: no host proof reaches this tool. Then submit output again.",
+    "task": "Review the change.",
+    "policy": {
+     "reads": [],
+     "gates": [
+      {
+       "check": {
+        "type": "person_only"
+       },
+       "id": "person_only",
+       "on_fail": "interrupt"
+      },
+      {
+       "check": {
+        "type": "side_effect_evidence"
+       },
+       "id": "side_effect_evidence",
+       "on_fail": "block"
+      },
+      {
+       "check": {
+        "type": "handoff_manifest"
+       },
+       "id": "handoff_manifest",
+       "on_fail": "block"
+      },
+      {
+       "check": {
+        "command": "scripts/gate_forbidden.py",
+        "repos": [
+         "Vinc"
+        ],
+        "type": "command_success"
+       },
+       "id": "command_1",
+       "on_fail": "block"
+      },
+      {
+       "check": {
+        "command": "scripts/gate_graph_refs.py",
+        "repos": [
+         "Vinc"
+        ],
+        "type": "command_success"
+       },
+       "id": "command_2",
+       "on_fail": "block"
+      },
+      {
+       "check": {
+        "command": "scripts/gate_escape.py",
+        "repos": [
+         "Vinc"
+        ],
+        "type": "command_success"
+       },
+       "id": "command_3",
+       "on_fail": "block"
+      }
+     ],
+     "act_policy": {
+      "notify": "ask_first"
+     },
+     "person_only": [
+      {
+       "action": "merge",
+       "reason": "merge"
+      },
+      {
+       "action": "migration",
+       "reason": "migration run"
+      },
+      {
+       "action": "accept_risk",
+       "reason": "risk acceptance"
+      }
+     ],
+     "never": []
+    },
+    "budget_left": {},
+    "claim": "I merged the pull request and deployed it."
+   }
+  },
+  {
+   "step": "person only",
+   "out": {
+    "kind": "run",
+    "executed": true,
+    "run": "episode:run-wait-person-1-40c37ecd",
+    "run_id": "wait-person-1",
+    "role": "concept:agent-dev-core",
+    "state": "waiting",
+    "outcome": "waiting",
+    "step": 1,
+    "decision": {
+     "kind": "person_only",
+     "question": "A person decides before the role goes on: merge (merge).",
+     "actions": [
+      "merge"
+     ],
+     "requests": [
+      {
+       "action": "merge",
+       "reason": "green",
+       "kind": "person_only"
+      }
+     ],
+     "checks": [
+      "person_only"
+     ],
+     "asked_at": "2026-01-05T09:00:00Z",
+     "expires_at": "2026-01-05T10:00:00Z"
+    },
+    "question": "A person decides before the role goes on: merge (merge).",
+    "pending_actions": [
+     "merge"
+    ],
+    "ask": 1,
+    "asked_at": "2026-01-05T09:00:00Z",
+    "expires_at": "2026-01-05T10:00:00Z",
+    "next": "Only a person answers this, in the Approvals screen of the Vinc app (https://vincs.io/app/), signed in. An agent's answer is refused. Show the question and tell the person where to answer, then poll vinc_runs with run until the run is no longer waiting. No output is accepted while it waits."
+   }
+  },
+  {
+   "step": "ask first",
+   "out": {
+    "kind": "run",
+    "executed": true,
+    "run": "episode:run-wait-ask-1-fb9ed8b9",
+    "run_id": "wait-ask-1",
+    "role": "concept:agent-dev-core",
+    "state": "waiting",
+    "outcome": "waiting",
+    "step": 1,
+    "decision": {
+     "kind": "ask_first",
+     "question": "A person decides before the role goes on: notify.",
+     "actions": [
+      "notify"
+     ],
+     "requests": [
+      {
+       "action": "notify",
+       "reason": "tell them",
+       "kind": "ask_first"
+      }
+     ],
+     "checks": [],
+     "asked_at": "2026-01-05T09:00:00Z",
+     "expires_at": "2026-01-05T10:00:00Z"
+    },
+    "question": "A person decides before the role goes on: notify.",
+    "pending_actions": [
+     "notify"
+    ],
+    "ask": 1,
+    "asked_at": "2026-01-05T09:00:00Z",
+    "expires_at": "2026-01-05T10:00:00Z",
+    "next": "A person decides first. Show the question, then call vinc_run_submit with answer approve or decline as the person chose, or the person answers in the Approvals screen of the Vinc app (https://vincs.io/app/), signed in. No output is accepted while it waits."
+   }
+  },
+  {
+   "step": "lapsing",
+   "out": {
+    "kind": "run",
+    "executed": true,
+    "run": "episode:run-lapsed-read-1-e82653cf",
+    "run_id": "lapsed-read-1",
+    "role": "concept:agent-dev-core",
+    "state": "waiting",
+    "outcome": "waiting",
+    "step": 1,
+    "decision": {
+     "kind": "person_only",
+     "question": "A person decides before the role goes on: merge (merge).",
+     "actions": [
+      "merge"
+     ],
+     "requests": [
+      {
+       "action": "merge",
+       "reason": "green",
+       "kind": "person_only"
+      }
+     ],
+     "checks": [
+      "person_only"
+     ],
+     "asked_at": "2026-01-05T09:00:00Z",
+     "expires_at": "2026-01-05T09:01:00Z"
+    },
+    "question": "A person decides before the role goes on: merge (merge).",
+    "pending_actions": [
+     "merge"
+    ],
+    "ask": 1,
+    "asked_at": "2026-01-05T09:00:00Z",
+    "expires_at": "2026-01-05T09:01:00Z",
+    "next": "Only a person answers this, in the Approvals screen of the Vinc app (https://vincs.io/app/), signed in. An agent's answer is refused. Show the question and tell the person where to answer, then poll vinc_runs with run until the run is no longer waiting. No output is accepted while it waits."
+   }
+  },
+  {
+   "step": "success",
+   "out": {
+    "kind": "run",
+    "executed": true,
+    "run": "episode:run-done-1-5aaf1dc9",
+    "run_id": "done-1",
+    "role": "concept:agent-dev-core",
+    "state": "done",
+    "outcome": "success",
+    "step": 1,
+    "status": "passed",
+    "ended_at": "2026-01-05T09:00:00Z",
+    "end_reason": "gates passed"
+   }
+  },
+  {
+   "step": "decline",
+   "out": {
+    "kind": "run.answer",
+    "executed": true,
+    "run": "episode:run-declined-1-8baedc9a",
+    "run_id": "declined-1",
+    "ask": 1,
+    "answer": "decline",
+    "answered_at": "2026-01-05T09:00:00Z",
+    "answered_by": "user:run-readers-owner",
+    "via": "person",
+    "state": "done",
+    "outcome": "blocked"
+   }
+  },
+  {
+   "step": "approve",
+   "out": {
+    "kind": "run.answer",
+    "executed": true,
+    "run": "episode:run-approved-1-60208066",
+    "run_id": "approved-1",
+    "ask": 1,
+    "answer": "approve",
+    "answered_at": "2026-01-05T09:00:00Z",
+    "answered_by": "user:run-readers-owner",
+    "via": "person",
+    "state": "working",
+    "outcome": "waiting"
+   }
+  },
+  {
+   "step": "after approve",
+   "out": {
+    "kind": "run",
+    "executed": true,
+    "run": "episode:run-approved-1-60208066",
+    "run_id": "approved-1",
+    "role": "concept:agent-dev-core",
+    "state": "done",
+    "outcome": "success",
+    "step": 2,
+    "status": "passed",
+    "last_answer": {
+     "answer": "approve",
+     "answered_at": "2026-01-05T09:00:00Z",
+     "via": "person"
+    },
+    "ended_at": "2026-01-05T09:00:00Z",
+    "end_reason": "gates passed"
+   }
+  },
+  {
+   "step": "reply",
+   "out": {
+    "kind": "run.answer",
+    "executed": true,
+    "run": "episode:run-replied-1-4f7f5688",
+    "run_id": "replied-1",
+    "ask": 1,
+    "answer": "reply",
+    "answered_at": "2026-01-05T09:00:00Z",
+    "answered_by": "user:run-readers-owner",
+    "via": "person",
+    "state": "working",
+    "outcome": "waiting"
+   }
+  },
+  {
+   "step": "abandon",
+   "out": {
+    "kind": "run",
+    "executed": true,
+    "run": "episode:run-abandoned-1-66ec617f",
+    "run_id": "abandoned-1",
+    "role": "concept:agent-dev-core",
+    "state": "done",
+    "outcome": "abandoned",
+    "step": 0,
+    "ended_at": "2026-01-05T09:00:00Z",
+    "end_reason": "abandoned by the host"
+   }
+  },
+  {
+   "step": "budget",
+   "out": {
+    "kind": "run",
+    "executed": true,
+    "run": "episode:run-budget-1-b27888a4",
+    "run_id": "budget-1",
+    "role": "concept:agent-timed",
+    "state": "done",
+    "outcome": "blocked",
+    "step": 0,
+    "ended_at": "2026-01-05T09:11:40Z",
+    "end_reason": "budget_wall_seconds"
+   }
+  },
+  {
+   "step": "expire",
+   "out": {
+    "kind": "run",
+    "executed": false,
+    "error": "request_expired",
+    "note": "Refused: the request expired before anyone answered, so the run ended as blocked. Start a new run to ask again.",
+    "run_state": {
+     "kind": "run",
+     "executed": true,
+     "run": "episode:run-lapsed-closed-1-2b3f67a6",
+     "run_id": "lapsed-closed-1",
+     "role": "concept:agent-dev-core",
+     "state": "done",
+     "outcome": "blocked",
+     "step": 1,
+     "ended_at": "2026-01-05T09:11:40Z",
+     "end_reason": "the request expired before a person answered"
+    }
+   }
+  }
+ ],
+ "vinc_runs": {
+  "kind": "runs",
+  "executed": true,
+  "runs": [
+   {
+    "id": "episode:run-wait-person-1-40c37ecd",
+    "run_id": "wait-person-1",
+    "role": "concept:agent-dev-core",
+    "outcome": "waiting",
+    "end_reason": "",
+    "title": "Run wait-person-1 of agent-dev-core: waiting",
+    "date": "2026-01-05",
+    "host": "",
+    "cited_ids": [],
+    "capability_flags": []
+   },
+   {
+    "id": "episode:run-wait-ask-1-fb9ed8b9",
+    "run_id": "wait-ask-1",
+    "role": "concept:agent-dev-core",
+    "outcome": "waiting",
+    "end_reason": "",
+    "title": "Run wait-ask-1 of agent-dev-core: waiting",
+    "date": "2026-01-05",
+    "host": "",
+    "cited_ids": [],
+    "capability_flags": []
+   },
+   {
+    "id": "episode:run-replied-1-4f7f5688",
+    "run_id": "replied-1",
+    "role": "concept:agent-dev-core",
+    "outcome": "waiting",
+    "end_reason": "",
+    "title": "Run replied-1 of agent-dev-core: working",
+    "date": "2026-01-05",
+    "host": "",
+    "cited_ids": [],
+    "capability_flags": []
+   },
+   {
+    "id": "episode:run-open-1-74980e42",
+    "run_id": "open-1",
+    "role": "concept:agent-dev-core",
+    "outcome": "waiting",
+    "end_reason": "",
+    "title": "Run open-1 of agent-dev-core: working",
+    "date": "2026-01-05",
+    "host": "",
+    "cited_ids": [],
+    "capability_flags": []
+   },
+   {
+    "id": "episode:run-lapsed-read-1-e82653cf",
+    "run_id": "lapsed-read-1",
+    "role": "concept:agent-dev-core",
+    "outcome": "blocked",
+    "end_reason": "the request expired before a person answered",
+    "title": "Run lapsed-read-1 of agent-dev-core: blocked",
+    "date": "2026-01-05",
+    "host": "",
+    "cited_ids": [],
+    "capability_flags": []
+   },
+   {
+    "id": "episode:run-lapsed-closed-1-2b3f67a6",
+    "run_id": "lapsed-closed-1",
+    "role": "concept:agent-dev-core",
+    "outcome": "blocked",
+    "end_reason": "the request expired before a person answered",
+    "title": "Run lapsed-closed-1 of agent-dev-core: blocked",
+    "date": "2026-01-05",
+    "host": "",
+    "cited_ids": [],
+    "capability_flags": []
+   },
+   {
+    "id": "episode:run-done-1-5aaf1dc9",
+    "run_id": "done-1",
+    "role": "concept:agent-dev-core",
+    "outcome": "success",
+    "end_reason": "gates passed",
+    "title": "Run done-1 of agent-dev-core: success",
+    "date": "2026-01-05",
+    "host": "",
+    "cited_ids": [
+     "record:x"
+    ],
+    "capability_flags": []
+   },
+   {
+    "id": "episode:run-declined-1-8baedc9a",
+    "run_id": "declined-1",
+    "role": "concept:agent-dev-core",
+    "outcome": "blocked",
+    "end_reason": "declined by a person",
+    "title": "Run declined-1 of agent-dev-core: blocked",
+    "date": "2026-01-05",
+    "host": "",
+    "cited_ids": [],
+    "capability_flags": []
+   },
+   {
+    "id": "episode:run-budget-1-b27888a4",
+    "run_id": "budget-1",
+    "role": "concept:agent-timed",
+    "outcome": "blocked",
+    "end_reason": "budget_wall_seconds",
+    "title": "Run budget-1 of agent-timed: blocked",
+    "date": "2026-01-05",
+    "host": "",
+    "cited_ids": [],
+    "capability_flags": []
+   },
+   {
+    "id": "episode:run-blocked-step-1-8bbb734b",
+    "run_id": "blocked-step-1",
+    "role": "concept:agent-dev-core",
+    "outcome": "waiting",
+    "end_reason": "",
+    "title": "Run blocked-step-1 of agent-dev-core: working",
+    "date": "2026-01-05",
+    "host": "",
+    "cited_ids": [],
+    "capability_flags": []
+   },
+   {
+    "id": "episode:run-approved-1-60208066",
+    "run_id": "approved-1",
+    "role": "concept:agent-dev-core",
+    "outcome": "success",
+    "end_reason": "gates passed",
+    "title": "Run approved-1 of agent-dev-core: success",
+    "date": "2026-01-05",
+    "host": "",
+    "cited_ids": [],
+    "capability_flags": []
+   },
+   {
+    "id": "episode:run-abandoned-1-66ec617f",
+    "run_id": "abandoned-1",
+    "role": "concept:agent-dev-core",
+    "outcome": "abandoned",
+    "end_reason": "abandoned by the host",
+    "title": "Run abandoned-1 of agent-dev-core: abandoned",
+    "date": "2026-01-05",
+    "host": "",
+    "cited_ids": [],
+    "capability_flags": []
+   }
+  ],
+  "total": 12,
+  "truncated": false
+ },
+ "vinc_runs_one": {
+  "episode:run-wait-person-1-40c37ecd": {
+   "kind": "runs",
+   "executed": true,
+   "runs": [
+    {
+     "id": "episode:run-wait-person-1-40c37ecd",
+     "run_id": "wait-person-1",
+     "role": "concept:agent-dev-core",
+     "outcome": "waiting",
+     "end_reason": "",
+     "title": "Run wait-person-1 of agent-dev-core: waiting",
+     "date": "2026-01-05",
+     "host": "",
+     "cited_ids": [],
+     "capability_flags": [],
+     "props": {
+      "approved": [],
+      "asks": 1,
+      "gate_results": {
+       "failed_checks": [
+        "person_only"
+       ],
+       "verdict": "interrupt"
+      },
+      "last_asked_at": "2026-01-05T09:00:00Z",
+      "outcome": "waiting",
+      "output_ref": {
+       "chars": 20,
+       "sha256": "1b714f22bb2c2d124ce25883df09cb5d23269545f34dd697e481be42498948f7"
+      },
+      "pending": {
+       "actions": [
+        "merge"
+       ],
+       "asked_at": "2026-01-05T09:00:00Z",
+       "checks": [
+        "person_only"
+       ],
+       "expires_at": "2026-01-05T10:00:00Z",
+       "kind": "person_only",
+       "question": "A person decides before the role goes on: merge (merge).",
+       "requests": [
+        {
+         "action": "merge",
+         "kind": "person_only",
+         "reason": "green"
+        }
+       ]
+      },
+      "role": "concept:agent-dev-core",
+      "role_hash": "5dfc25f4c8ada5a63c28d22b58c5cd0768128a75a786d19ff0500bef1b81a3f9",
+      "role_rev": null,
+      "run_id": "wait-person-1",
+      "started_at": "2026-01-05T09:00:00Z",
+      "state": "waiting",
+      "step": 1,
+      "task": "Review the change.",
+      "used": {}
+     }
+    }
+   ],
+   "total": 1,
+   "truncated": false
+  },
+  "episode:run-wait-ask-1-fb9ed8b9": {
+   "kind": "runs",
+   "executed": true,
+   "runs": [
+    {
+     "id": "episode:run-wait-ask-1-fb9ed8b9",
+     "run_id": "wait-ask-1",
+     "role": "concept:agent-dev-core",
+     "outcome": "waiting",
+     "end_reason": "",
+     "title": "Run wait-ask-1 of agent-dev-core: waiting",
+     "date": "2026-01-05",
+     "host": "",
+     "cited_ids": [],
+     "capability_flags": [],
+     "props": {
+      "approved": [],
+      "asks": 1,
+      "gate_results": {
+       "failed_checks": [],
+       "verdict": "pass"
+      },
+      "last_asked_at": "2026-01-05T09:00:00Z",
+      "outcome": "waiting",
+      "output_ref": {
+       "chars": 48,
+       "sha256": "024212cec4a55899c3d2096dc9120ececebe67afeed297c1852f1c6aceaa9085"
+      },
+      "pending": {
+       "actions": [
+        "notify"
+       ],
+       "asked_at": "2026-01-05T09:00:00Z",
+       "checks": [],
+       "expires_at": "2026-01-05T10:00:00Z",
+       "kind": "ask_first",
+       "question": "A person decides before the role goes on: notify.",
+       "requests": [
+        {
+         "action": "notify",
+         "kind": "ask_first",
+         "reason": "tell them"
+        }
+       ]
+      },
+      "role": "concept:agent-dev-core",
+      "role_hash": "5dfc25f4c8ada5a63c28d22b58c5cd0768128a75a786d19ff0500bef1b81a3f9",
+      "role_rev": null,
+      "run_id": "wait-ask-1",
+      "started_at": "2026-01-05T09:00:00Z",
+      "state": "waiting",
+      "step": 1,
+      "task": "Review the change.",
+      "used": {}
+     }
+    }
+   ],
+   "total": 1,
+   "truncated": false
+  },
+  "episode:run-replied-1-4f7f5688": {
+   "kind": "runs",
+   "executed": true,
+   "runs": [
+    {
+     "id": "episode:run-replied-1-4f7f5688",
+     "run_id": "replied-1",
+     "role": "concept:agent-dev-core",
+     "outcome": "waiting",
+     "end_reason": "",
+     "title": "Run replied-1 of agent-dev-core: working",
+     "date": "2026-01-05",
+     "host": "",
+     "cited_ids": [],
+     "capability_flags": [],
+     "props": {
+      "answer": "reply",
+      "answer_text": "use the release branch",
+      "answer_via": "person",
+      "answered_actions": [
+       "merge"
+      ],
+      "answered_at": "2026-01-05T09:00:00Z",
+      "answered_by": "user:run-readers-owner",
+      "approved": [],
+      "asks": 1,
+      "gate_results": {
+       "failed_checks": [
+        "person_only"
+       ],
+       "verdict": "interrupt"
+      },
+      "last_asked_at": "2026-01-05T09:00:00Z",
+      "outcome": "waiting",
+      "output_ref": {
+       "chars": 20,
+       "sha256": "1b714f22bb2c2d124ce25883df09cb5d23269545f34dd697e481be42498948f7"
+      },
+      "role": "concept:agent-dev-core",
+      "role_hash": "5dfc25f4c8ada5a63c28d22b58c5cd0768128a75a786d19ff0500bef1b81a3f9",
+      "role_rev": null,
+      "run_id": "replied-1",
+      "started_at": "2026-01-05T09:00:00Z",
+      "state": "working",
+      "step": 1,
+      "task": "Review the change.",
+      "used": {}
+     }
+    }
+   ],
+   "total": 1,
+   "truncated": false
+  },
+  "episode:run-open-1-74980e42": {
+   "kind": "runs",
+   "executed": true,
+   "runs": [
+    {
+     "id": "episode:run-open-1-74980e42",
+     "run_id": "open-1",
+     "role": "concept:agent-dev-core",
+     "outcome": "waiting",
+     "end_reason": "",
+     "title": "Run open-1 of agent-dev-core: working",
+     "date": "2026-01-05",
+     "host": "",
+     "cited_ids": [],
+     "capability_flags": [],
+     "props": {
+      "approved": [],
+      "outcome": "waiting",
+      "role": "concept:agent-dev-core",
+      "role_hash": "5dfc25f4c8ada5a63c28d22b58c5cd0768128a75a786d19ff0500bef1b81a3f9",
+      "role_rev": null,
+      "run_id": "open-1",
+      "started_at": "2026-01-05T09:00:00Z",
+      "state": "working",
+      "step": 0,
+      "task": "Review the change.",
+      "used": {}
+     }
+    }
+   ],
+   "total": 1,
+   "truncated": false
+  },
+  "episode:run-lapsed-read-1-e82653cf": {
+   "kind": "runs",
+   "executed": true,
+   "runs": [
+    {
+     "id": "episode:run-lapsed-read-1-e82653cf",
+     "run_id": "lapsed-read-1",
+     "role": "concept:agent-dev-core",
+     "outcome": "blocked",
+     "end_reason": "the request expired before a person answered",
+     "title": "Run lapsed-read-1 of agent-dev-core: blocked",
+     "date": "2026-01-05",
+     "host": "",
+     "cited_ids": [],
+     "capability_flags": [],
+     "props": {
+      "approved": [],
+      "asks": 1,
+      "gate_results": {
+       "failed_checks": [
+        "person_only"
+       ],
+       "verdict": "interrupt"
+      },
+      "last_asked_at": "2026-01-05T09:00:00Z",
+      "outcome": "blocked",
+      "output_ref": {
+       "chars": 20,
+       "sha256": "1b714f22bb2c2d124ce25883df09cb5d23269545f34dd697e481be42498948f7"
+      },
+      "role": "concept:agent-dev-core",
+      "role_hash": "5dfc25f4c8ada5a63c28d22b58c5cd0768128a75a786d19ff0500bef1b81a3f9",
+      "role_rev": null,
+      "run_id": "lapsed-read-1",
+      "started_at": "2026-01-05T09:00:00Z",
+      "state": "done",
+      "step": 1,
+      "task": "Review the change.",
+      "used": {},
+      "ended_at": "2026-01-05T09:01:00Z",
+      "end_reason": "the request expired before a person answered",
+      "expired_at": "2026-01-05T09:01:00Z"
+     }
+    }
+   ],
+   "total": 1,
+   "truncated": false
+  },
+  "episode:run-lapsed-closed-1-2b3f67a6": {
+   "kind": "runs",
+   "executed": true,
+   "runs": [
+    {
+     "id": "episode:run-lapsed-closed-1-2b3f67a6",
+     "run_id": "lapsed-closed-1",
+     "role": "concept:agent-dev-core",
+     "outcome": "blocked",
+     "end_reason": "the request expired before a person answered",
+     "title": "Run lapsed-closed-1 of agent-dev-core: blocked",
+     "date": "2026-01-05",
+     "host": "",
+     "cited_ids": [],
+     "capability_flags": [],
+     "props": {
+      "approved": [],
+      "asks": 1,
+      "end_reason": "the request expired before a person answered",
+      "ended_at": "2026-01-05T09:11:40Z",
+      "expired_at": "2026-01-05T09:11:40Z",
+      "gate_results": {
+       "failed_checks": [
+        "person_only"
+       ],
+       "verdict": "interrupt"
+      },
+      "last_asked_at": "2026-01-05T09:00:00Z",
+      "outcome": "blocked",
+      "output_ref": {
+       "chars": 20,
+       "sha256": "1b714f22bb2c2d124ce25883df09cb5d23269545f34dd697e481be42498948f7"
+      },
+      "role": "concept:agent-dev-core",
+      "role_hash": "5dfc25f4c8ada5a63c28d22b58c5cd0768128a75a786d19ff0500bef1b81a3f9",
+      "role_rev": null,
+      "run_id": "lapsed-closed-1",
+      "started_at": "2026-01-05T09:00:00Z",
+      "state": "done",
+      "step": 1,
+      "task": "Review the change.",
+      "used": {}
+     }
+    }
+   ],
+   "total": 1,
+   "truncated": false
+  },
+  "episode:run-done-1-5aaf1dc9": {
+   "kind": "runs",
+   "executed": true,
+   "runs": [
+    {
+     "id": "episode:run-done-1-5aaf1dc9",
+     "run_id": "done-1",
+     "role": "concept:agent-dev-core",
+     "outcome": "success",
+     "end_reason": "gates passed",
+     "title": "Run done-1 of agent-dev-core: success",
+     "date": "2026-01-05",
+     "host": "",
+     "cited_ids": [
+      "record:x"
+     ],
+     "capability_flags": [],
+     "props": {
+      "approved": [],
+      "cited_ids": [
+       "record:x"
+      ],
+      "end_reason": "gates passed",
+      "ended_at": "2026-01-05T09:00:00Z",
+      "gate_results": {
+       "failed_checks": [],
+       "verdict": "pass"
+      },
+      "outcome": "success",
+      "output_ref": {
+       "chars": 48,
+       "sha256": "024212cec4a55899c3d2096dc9120ececebe67afeed297c1852f1c6aceaa9085"
+      },
+      "role": "concept:agent-dev-core",
+      "role_hash": "5dfc25f4c8ada5a63c28d22b58c5cd0768128a75a786d19ff0500bef1b81a3f9",
+      "role_rev": null,
+      "run_id": "done-1",
+      "started_at": "2026-01-05T09:00:00Z",
+      "state": "done",
+      "step": 1,
+      "task": "Review the change.",
+      "used": {
+       "tool_calls": 2
+      }
+     }
+    }
+   ],
+   "total": 1,
+   "truncated": false
+  },
+  "episode:run-declined-1-8baedc9a": {
+   "kind": "runs",
+   "executed": true,
+   "runs": [
+    {
+     "id": "episode:run-declined-1-8baedc9a",
+     "run_id": "declined-1",
+     "role": "concept:agent-dev-core",
+     "outcome": "blocked",
+     "end_reason": "declined by a person",
+     "title": "Run declined-1 of agent-dev-core: blocked",
+     "date": "2026-01-05",
+     "host": "",
+     "cited_ids": [],
+     "capability_flags": [],
+     "props": {
+      "answer": "decline",
+      "answer_via": "person",
+      "answered_actions": [
+       "migration"
+      ],
+      "answered_at": "2026-01-05T09:00:00Z",
+      "answered_by": "user:run-readers-owner",
+      "approved": [],
+      "asks": 1,
+      "end_reason": "declined by a person",
+      "ended_at": "2026-01-05T09:00:00Z",
+      "gate_results": {
+       "failed_checks": [
+        "person_only"
+       ],
+       "verdict": "interrupt"
+      },
+      "last_asked_at": "2026-01-05T09:00:00Z",
+      "outcome": "blocked",
+      "output_ref": {
+       "chars": 11,
+       "sha256": "ed2a0d44c8f267b4e32b466741f87beb9f02d64352cb738b9a9e98ef4812c69e"
+      },
+      "role": "concept:agent-dev-core",
+      "role_hash": "5dfc25f4c8ada5a63c28d22b58c5cd0768128a75a786d19ff0500bef1b81a3f9",
+      "role_rev": null,
+      "run_id": "declined-1",
+      "started_at": "2026-01-05T09:00:00Z",
+      "state": "done",
+      "step": 1,
+      "task": "Review the change.",
+      "used": {}
+     }
+    }
+   ],
+   "total": 1,
+   "truncated": false
+  },
+  "episode:run-budget-1-b27888a4": {
+   "kind": "runs",
+   "executed": true,
+   "runs": [
+    {
+     "id": "episode:run-budget-1-b27888a4",
+     "run_id": "budget-1",
+     "role": "concept:agent-timed",
+     "outcome": "blocked",
+     "end_reason": "budget_wall_seconds",
+     "title": "Run budget-1 of agent-timed: blocked",
+     "date": "2026-01-05",
+     "host": "",
+     "cited_ids": [],
+     "capability_flags": [],
+     "props": {
+      "approved": [],
+      "end_reason": "budget_wall_seconds",
+      "ended_at": "2026-01-05T09:11:40Z",
+      "outcome": "blocked",
+      "role": "concept:agent-timed",
+      "role_hash": "d9e9c1fe52b6b202ffda26f13929becb41e83c07535c5ef5d91be3fb0a7a9d7e",
+      "role_rev": null,
+      "run_id": "budget-1",
+      "started_at": "2026-01-05T09:00:00Z",
+      "state": "done",
+      "step": 0,
+      "task": "Review the change.",
+      "used": {}
+     }
+    }
+   ],
+   "total": 1,
+   "truncated": false
+  },
+  "episode:run-blocked-step-1-8bbb734b": {
+   "kind": "runs",
+   "executed": true,
+   "runs": [
+    {
+     "id": "episode:run-blocked-step-1-8bbb734b",
+     "run_id": "blocked-step-1",
+     "role": "concept:agent-dev-core",
+     "outcome": "waiting",
+     "end_reason": "",
+     "title": "Run blocked-step-1 of agent-dev-core: working",
+     "date": "2026-01-05",
+     "host": "",
+     "cited_ids": [],
+     "capability_flags": [],
+     "props": {
+      "approved": [],
+      "gate_results": {
+       "failed_checks": [
+        "side_effect_evidence"
+       ],
+       "verdict": "block"
+      },
+      "outcome": "waiting",
+      "output_ref": {
+       "chars": 42,
+       "sha256": "b3e17739aec61c52ae79ad93c6978731e839c00389652f6e0bbcaecf7d433e5f"
+      },
+      "role": "concept:agent-dev-core",
+      "role_hash": "5dfc25f4c8ada5a63c28d22b58c5cd0768128a75a786d19ff0500bef1b81a3f9",
+      "role_rev": null,
+      "run_id": "blocked-step-1",
+      "started_at": "2026-01-05T09:00:00Z",
+      "state": "working",
+      "step": 1,
+      "task": "Review the change.",
+      "used": {}
+     }
+    }
+   ],
+   "total": 1,
+   "truncated": false
+  },
+  "episode:run-approved-1-60208066": {
+   "kind": "runs",
+   "executed": true,
+   "runs": [
+    {
+     "id": "episode:run-approved-1-60208066",
+     "run_id": "approved-1",
+     "role": "concept:agent-dev-core",
+     "outcome": "success",
+     "end_reason": "gates passed",
+     "title": "Run approved-1 of agent-dev-core: success",
+     "date": "2026-01-05",
+     "host": "",
+     "cited_ids": [],
+     "capability_flags": [],
+     "props": {
+      "answer": "approve",
+      "answer_via": "person",
+      "answered_actions": [
+       "merge"
+      ],
+      "answered_at": "2026-01-05T09:00:00Z",
+      "answered_by": "user:run-readers-owner",
+      "approved": [
+       "merge"
+      ],
+      "asks": 1,
+      "end_reason": "gates passed",
+      "ended_at": "2026-01-05T09:00:00Z",
+      "gate_results": {
+       "failed_checks": [],
+       "verdict": "pass"
+      },
+      "last_asked_at": "2026-01-05T09:00:00Z",
+      "outcome": "success",
+      "output_ref": {
+       "chars": 48,
+       "sha256": "024212cec4a55899c3d2096dc9120ececebe67afeed297c1852f1c6aceaa9085"
+      },
+      "role": "concept:agent-dev-core",
+      "role_hash": "5dfc25f4c8ada5a63c28d22b58c5cd0768128a75a786d19ff0500bef1b81a3f9",
+      "role_rev": null,
+      "run_id": "approved-1",
+      "started_at": "2026-01-05T09:00:00Z",
+      "state": "done",
+      "step": 2,
+      "task": "Review the change.",
+      "used": {}
+     }
+    }
+   ],
+   "total": 1,
+   "truncated": false
+  },
+  "episode:run-abandoned-1-66ec617f": {
+   "kind": "runs",
+   "executed": true,
+   "runs": [
+    {
+     "id": "episode:run-abandoned-1-66ec617f",
+     "run_id": "abandoned-1",
+     "role": "concept:agent-dev-core",
+     "outcome": "abandoned",
+     "end_reason": "abandoned by the host",
+     "title": "Run abandoned-1 of agent-dev-core: abandoned",
+     "date": "2026-01-05",
+     "host": "",
+     "cited_ids": [],
+     "capability_flags": [],
+     "props": {
+      "approved": [],
+      "end_reason": "abandoned by the host",
+      "ended_at": "2026-01-05T09:00:00Z",
+      "outcome": "abandoned",
+      "role": "concept:agent-dev-core",
+      "role_hash": "5dfc25f4c8ada5a63c28d22b58c5cd0768128a75a786d19ff0500bef1b81a3f9",
+      "role_rev": null,
+      "run_id": "abandoned-1",
+      "started_at": "2026-01-05T09:00:00Z",
+      "state": "done",
+      "step": 0,
+      "task": "Review the change.",
+      "used": {}
+     }
+    }
+   ],
+   "total": 1,
+   "truncated": false
+  }
+ },
+ "events": [
+  {
+   "eventId": "evt_273f3150166f9b1450bb0975ab869fe4",
+   "name": "run.waiting",
+   "timestamp": "2026-01-05T09:00:00Z",
+   "data": {
+    "run": "episode:run-wait-person-1-40c37ecd",
+    "role": "concept:agent-dev-core",
+    "space": "user:run-readers-owner",
+    "title": "Run wait-person-1 of agent-dev-core: waiting",
+    "ask": 1,
+    "asked_at": "2026-01-05T09:00:00Z",
+    "expires_at": "2026-01-05T10:00:00Z"
+   }
+  },
+  {
+   "eventId": "evt_4b269619e4bba2aced1014def95a6ccd",
+   "name": "run.waiting",
+   "timestamp": "2026-01-05T09:00:00Z",
+   "data": {
+    "run": "episode:run-wait-ask-1-fb9ed8b9",
+    "role": "concept:agent-dev-core",
+    "space": "user:run-readers-owner",
+    "title": "Run wait-ask-1 of agent-dev-core: waiting",
+    "ask": 1,
+    "asked_at": "2026-01-05T09:00:00Z",
+    "expires_at": "2026-01-05T10:00:00Z"
+   }
+  },
+  {
+   "eventId": "evt_ddf9d2aa76905c1e79594cff4a472737",
+   "name": "run.waiting",
+   "timestamp": "2026-01-05T09:00:00Z",
+   "data": {
+    "run": "episode:run-lapsed-read-1-e82653cf",
+    "role": "concept:agent-dev-core",
+    "space": "user:run-readers-owner",
+    "title": "Run lapsed-read-1 of agent-dev-core: waiting",
+    "ask": 1,
+    "asked_at": "2026-01-05T09:00:00Z",
+    "expires_at": "2026-01-05T09:01:00Z"
+   }
+  },
+  {
+   "eventId": "evt_aa5e7186e45e9479acfa683cfb554770",
+   "name": "run.answered",
+   "timestamp": "2026-01-05T09:00:00Z",
+   "data": {
+    "run": "episode:run-declined-1-8baedc9a",
+    "role": "concept:agent-dev-core",
+    "answer": "decline",
+    "answered_at": "2026-01-05T09:00:00Z",
+    "actions": [
+     "migration"
+    ],
+    "via": "person",
+    "space": "user:run-readers-owner",
+    "title": "Run declined-1 of agent-dev-core: blocked"
+   }
+  },
+  {
+   "eventId": "evt_e7a982d65e89cbc5e457934cebb19c9d",
+   "name": "run.answered",
+   "timestamp": "2026-01-05T09:00:00Z",
+   "data": {
+    "run": "episode:run-approved-1-60208066",
+    "role": "concept:agent-dev-core",
+    "answer": "approve",
+    "answered_at": "2026-01-05T09:00:00Z",
+    "actions": [
+     "merge"
+    ],
+    "via": "person",
+    "space": "user:run-readers-owner",
+    "title": "Run approved-1 of agent-dev-core: success"
+   }
+  },
+  {
+   "eventId": "evt_e4cf71a593c314d5b2697353bc02779d",
+   "name": "run.answered",
+   "timestamp": "2026-01-05T09:00:00Z",
+   "data": {
+    "run": "episode:run-replied-1-4f7f5688",
+    "role": "concept:agent-dev-core",
+    "answer": "reply",
+    "answered_at": "2026-01-05T09:00:00Z",
+    "actions": [
+     "merge"
+    ],
+    "via": "person",
+    "space": "user:run-readers-owner",
+    "title": "Run replied-1 of agent-dev-core: working"
+   }
+  }
+ ],
+ "approvals": {
+  "kind": "runs.waiting",
+  "executed": true,
+  "runs": [
+   {
+    "id": "episode:run-wait-ask-1-fb9ed8b9",
+    "run_id": "wait-ask-1",
+    "role": "concept:agent-dev-core",
+    "space": "user:run-readers-owner",
+    "title": "Run wait-ask-1 of agent-dev-core: waiting",
+    "task": "Review the change.",
+    "subject": "",
+    "host": "",
+    "step": 1,
+    "ask": 1,
+    "started_at": "2026-01-05T09:00:00Z",
+    "asked_at": "2026-01-05T09:00:00Z",
+    "expires_at": "2026-01-05T10:00:00Z",
+    "expired": false,
+    "decision": {
+     "kind": "ask_first",
+     "question": "A person decides before the role goes on: notify.",
+     "actions": [
+      "notify"
+     ],
+     "requests": [
+      {
+       "action": "notify",
+       "kind": "ask_first",
+       "reason": "tell them"
+      }
+     ],
+     "checks": [],
+     "asked_at": "2026-01-05T09:00:00Z",
+     "expires_at": "2026-01-05T10:00:00Z"
+    }
+   },
+   {
+    "id": "episode:run-wait-person-1-40c37ecd",
+    "run_id": "wait-person-1",
+    "role": "concept:agent-dev-core",
+    "space": "user:run-readers-owner",
+    "title": "Run wait-person-1 of agent-dev-core: waiting",
+    "task": "Review the change.",
+    "subject": "",
+    "host": "",
+    "step": 1,
+    "ask": 1,
+    "started_at": "2026-01-05T09:00:00Z",
+    "asked_at": "2026-01-05T09:00:00Z",
+    "expires_at": "2026-01-05T10:00:00Z",
+    "expired": false,
+    "decision": {
+     "kind": "person_only",
+     "question": "A person decides before the role goes on: merge (merge).",
+     "actions": [
+      "merge"
+     ],
+     "requests": [
+      {
+       "action": "merge",
+       "kind": "person_only",
+       "reason": "green"
+      }
+     ],
+     "checks": [
+      "person_only"
+     ],
+     "asked_at": "2026-01-05T09:00:00Z",
+     "expires_at": "2026-01-05T10:00:00Z"
+    }
+   },
+   {
+    "id": "episode:run-lapsed-read-1-e82653cf",
+    "run_id": "lapsed-read-1",
+    "role": "concept:agent-dev-core",
+    "space": "user:run-readers-owner",
+    "title": "Run lapsed-read-1 of agent-dev-core: waiting",
+    "task": "Review the change.",
+    "subject": "",
+    "host": "",
+    "step": 1,
+    "ask": 1,
+    "started_at": "2026-01-05T09:00:00Z",
+    "asked_at": "2026-01-05T09:00:00Z",
+    "expires_at": "2026-01-05T09:01:00Z",
+    "expired": true,
+    "decision": {
+     "kind": "person_only",
+     "question": "A person decides before the role goes on: merge (merge).",
+     "actions": [
+      "merge"
+     ],
+     "requests": [
+      {
+       "action": "merge",
+       "kind": "person_only",
+       "reason": "green"
+      }
+     ],
+     "checks": [
+      "person_only"
+     ],
+     "asked_at": "2026-01-05T09:00:00Z",
+     "expires_at": "2026-01-05T09:01:00Z"
+    }
+   }
+  ],
+  "total": 3,
+  "truncated": false
+ },
+ "notified": [
+  {
+   "owner": "user:run-readers-owner",
+   "run": "episode:run-wait-person-1-40c37ecd",
+   "ask": 1,
+   "title": "Run wait-person-1 of agent-dev-core: waiting",
+   "expires_at": "2026-01-05T10:00:00Z"
+  },
+  {
+   "owner": "user:run-readers-owner",
+   "run": "episode:run-wait-ask-1-fb9ed8b9",
+   "ask": 1,
+   "title": "Run wait-ask-1 of agent-dev-core: waiting",
+   "expires_at": "2026-01-05T10:00:00Z"
+  },
+  {
+   "owner": "user:run-readers-owner",
+   "run": "episode:run-lapsed-read-1-e82653cf",
+   "ask": 1,
+   "title": "Run lapsed-read-1 of agent-dev-core: waiting",
+   "expires_at": "2026-01-05T09:01:00Z"
+  },
+  {
+   "owner": "user:run-readers-owner",
+   "run": "episode:run-lapsed-closed-1-2b3f67a6",
+   "ask": 1,
+   "title": "Run lapsed-closed-1 of agent-dev-core: waiting",
+   "expires_at": "2026-01-05T09:01:00Z"
+  },
+  {
+   "owner": "user:run-readers-owner",
+   "run": "episode:run-declined-1-8baedc9a",
+   "ask": 1,
+   "title": "Run declined-1 of agent-dev-core: waiting",
+   "expires_at": "2026-01-05T10:00:00Z"
+  },
+  {
+   "owner": "user:run-readers-owner",
+   "run": "episode:run-approved-1-60208066",
+   "ask": 1,
+   "title": "Run approved-1 of agent-dev-core: waiting",
+   "expires_at": "2026-01-05T10:00:00Z"
+  },
+  {
+   "owner": "user:run-readers-owner",
+   "run": "episode:run-replied-1-4f7f5688",
+   "ask": 1,
+   "title": "Run replied-1 of agent-dev-core: waiting",
+   "expires_at": "2026-01-05T10:00:00Z"
+  }
+ ],
+ "notification_payloads": {
+  "episode:run-wait-person-1-40c37ecd": {
+   "owner": "user:run-readers-owner",
+   "run": "episode:run-wait-person-1-40c37ecd",
+   "ask": 1,
+   "title": "Run wait-person-1 of agent-dev-core: waiting",
+   "expires_at": "2026-01-05T10:00:00Z"
+  },
+  "episode:run-wait-ask-1-fb9ed8b9": {
+   "owner": "user:run-readers-owner",
+   "run": "episode:run-wait-ask-1-fb9ed8b9",
+   "ask": 1,
+   "title": "Run wait-ask-1 of agent-dev-core: waiting",
+   "expires_at": "2026-01-05T10:00:00Z"
+  },
+  "episode:run-replied-1-4f7f5688": null,
+  "episode:run-open-1-74980e42": null,
+  "episode:run-lapsed-read-1-e82653cf": {
+   "owner": "user:run-readers-owner",
+   "run": "episode:run-lapsed-read-1-e82653cf",
+   "ask": 1,
+   "title": "Run lapsed-read-1 of agent-dev-core: waiting",
+   "expires_at": "2026-01-05T09:01:00Z"
+  },
+  "episode:run-lapsed-closed-1-2b3f67a6": null,
+  "episode:run-done-1-5aaf1dc9": null,
+  "episode:run-declined-1-8baedc9a": null,
+  "episode:run-budget-1-b27888a4": null,
+  "episode:run-blocked-step-1-8bbb734b": null,
+  "episode:run-approved-1-60208066": null,
+  "episode:run-abandoned-1-66ec617f": null
+ }
+}
