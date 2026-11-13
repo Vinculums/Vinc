@@ -1,11 +1,69 @@
-// "Ask an assistant" 메뉴의 배선: 카드 · 레일 · 문서 읽기가 같은 한 벌을 쓴다.
+// "Ask an assistant" 줄과 메뉴: 카드 · 레일 · 문서 읽기가 같은 한 벌(줄의 마크업, 노드 · 문서의 프롬프트 셋, 배선)을 쓴다.
 // 메뉴는 body 에 뜨므로 그 메뉴와 문서 클릭 리스너는 이 모듈의 주인(AbortController)이 거둔다.
+// 줄의 캐럿(`chev`)과 노드 하나를 건네는 반경(`SHARE_DEPTH`)도 여기 둔다. 표면(`view.ts`)은 같은 값을 여기서 가져다 쓴다.
+import { spaceName } from "../api";
 import { COPY } from "../copy";
 import { esc } from "../components";
+import { icon } from "../icons";
 import { pushLayer } from "../keys";
+import { isAgentRoleId } from "../lnb";
+import { absoluteViewUrl } from "../view-url";
+import type { N3 } from "./view-host";
 
 /** 메뉴 한 칸 — 이름·부제·담아 갈 프롬프트·따라갈 주소. */
 export type AskItem = { name: string; sub: string; body: string; url: string };
+
+/** 노드 하나를 팩으로 건넬 때의 기본 반경. 진입점이 셋(우클릭 메뉴 · 상세 레일 ·
+ *  상단 바)이라 값이 흩어져 있으면 어디서 보냈느냐에 따라 받는 쪽 그림이 달라진다. */
+export const SHARE_DEPTH = 2;
+
+/** 캐럿이 **목적지를 말한다**: 오른쪽 = 여기서 나간다(문서 열), 아래 = 여기서
+ *  펼친다. 디자인 정본 `Vinc Node Card.dc.html` 의 규칙이고, 그래서 같은 모양의
+ *  두 줄이 서로 다른 일을 한다는 것이 눌러 보기 전에 읽힌다. */
+export const chev = (dir: "down" | "right") =>
+  `<span class="row-chev row-chev--${dir}" aria-hidden="true">${icon("chevron-left", 12)}</span>`;
+
+/** "Ask an assistant" 한 줄 — **카드와 레일이 같은 것을 쓴다.**
+ *
+ *  디자인 정본은 카드만 규정하지만, 레일에도 같은 일을 하는 자리가 있다. 두 곳이 다른
+ *  모양으로 같은 일을 하면 어느 쪽이 맞는지 매번 다시 정해야 하므로 한 벌로 둔다.
+ *  마크업도 클래스도 같고, 놓이는 자리만 다르다. */
+export function askRowHTML(): string {
+  const V = COPY.ui.viewx;
+  return `<div class="card-row card-row--static ask-row">
+        <span class="row-name">${V.cardAsk}</span>
+        <button type="button" class="card-ctl js-ask" aria-expanded="false"
+                aria-haspopup="menu">${V.cardAskCopy}${chev("down")}</button>
+      </div>`;
+}
+/** 노드에서 여는 셋. **에이전트 역할이면 한 칸이 더 붙는다.**
+ *  그 노드는 개념이 아니라 시킬 일이라, 설명을 청하는 것이 아니라 그 역할을
+ *  맡기는 말이 첫 칸에 온다. 판별은 주제가 아니라 역할 id 로 한다(`isAgentRoleId`,
+ *  레일·상세 패널과 같은 함수). Default Agents 역할은 `vinc/agent` 에 서 있어 주제
+ *  일치로 가리면 메뉴가 붙지 않는다. */
+export function nodeAskItems(nd: N3, deg: number, docs: number): AskItem[] {
+  const V = COPY.ui.viewx;
+  const at = (depth: number) => absoluteViewUrl({ kind: "node", id: nd.id }, { depth }, spaceName());
+  const items: AskItem[] = [
+    { name: V.askExplain, sub: V.askExplainSub, body: V.askExplainBody, url: at(1) },
+    { name: V.askCompare, sub: V.askCompareSub(deg), body: V.askCompareBody, url: at(SHARE_DEPTH) },
+    { name: V.askDocs, sub: V.askDocsSub(docs), body: V.askDocsBody, url: at(1) },
+  ];
+  if (isAgentRoleId(nd.id)) {
+    items.unshift({ name: V.askRole, sub: V.askRoleSub, body: V.askRoleBody, url: at(1) });
+  }
+  return items;
+}
+/** 문서에서 여는 셋. 주소는 `kind: "doc"` 갈래다. */
+export function docAskItems(docId: string): AskItem[] {
+  const V = COPY.ui.viewx;
+  const url = absoluteViewUrl({ kind: "doc", id: docId }, {}, spaceName());
+  return [
+    { name: V.askDocSum, sub: V.askDocSumSub, body: V.askDocSumBody, url },
+    { name: V.askDocConcepts, sub: V.askDocConceptsSub, body: V.askDocConceptsBody, url },
+    { name: V.askDocCheck, sub: V.askDocCheckSub, body: V.askDocCheckBody, url },
+  ];
+}
 
 /** 지금 body 에 떠 있는 메뉴의 주인. 새 줄이 매달리면 앞 주인을 거둔다(메뉴 · 단추 손 · 문서 리스너). */
 let current: AbortController | null = null;

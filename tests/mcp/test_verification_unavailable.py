@@ -28,7 +28,7 @@ class Response:
 def account(monkeypatch):
     E._cache.clear()
     monkeypatch.setattr(E, "_seed", lambda: b"\x01" * 32)
-    monkeypatch.setattr(E, "_sign_assertion", lambda seed, typ: "test assertion")
+    monkeypatch.setattr(E, "_sign_assertion", lambda seed, typ, body: "test assertion")
     yield
     E._cache.clear()
 

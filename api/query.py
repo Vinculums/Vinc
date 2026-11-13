@@ -7331,12 +7331,12 @@ def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[
     `props.reviewed_at` 은 누군가 이 날짜까지의 변경을 살펴보고 주장이 아직 선다고 확인한
     날이다. 어떤 기록이든 `measured_at` 과 이 날짜 중 늦은 쪽 뒤의 변경만 센다. 확인일 당일의
     변경은 살펴본 것으로 친다. 날짜 검사는 `measured_at`·Episode `date` 와 같은
-    `docstore._norm_content_time` 이고, 그 검사를 못 지난 값은 없는 것으로 본다. 확인일이
+    `node_schema.normalize_time` 이고, 그 검사를 못 지난 값은 없는 것으로 본다. 확인일이
     `measured_at` 없는 기록을 대상으로 끌어들이지는 않는다.
     근거: [[vinc.plan.temporal-edges-point-in-time-document-validity-2026-09-28]] 를 잇는
     그래프 문서 vinc.plan.spec-drift-graphiti-0-9-8-2026-10-11 §3."""
-    from .docstore import _norm_content_time
     from .fragment import _norm_subject_path
+    from .node_schema import normalize_time
     where = "WHERE e.owner_id = $owner " if owner else ""
     changes = []
     for e in store.run(f"MATCH (e:Episode) {where}"
@@ -7363,7 +7363,7 @@ def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[
         ref = str(props.get("measured_ref") or "")
         if not sp or not at:
             continue
-        reviewed = _norm_content_time(props.get("reviewed_at"))
+        reviewed = normalize_time(props.get("reviewed_at"))
         # 같은 커밋인지는 접두로 본다 — 측정 기록은 짧은 sha 를, 변경 기록은 긴 sha 를
         # 흔히 싣는다. 날짜가 같으면 하루 안의 순서를 알 수 없으므로 감추지 않고
         # `same_day` 로 표시해 낸다(조용히 빠지면 같은 날 머지가 주장을 영영 못 건드린다).

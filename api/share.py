@@ -22,6 +22,7 @@ import os
 from datetime import datetime, timezone
 
 from . import fragment as frag
+from . import node_schema
 from . import packfile
 from . import query as q
 from store import pkns
@@ -29,9 +30,6 @@ from store.embedded_schema import _NODE_TABLES, _REL_TABLES
 from . import docstore as ds
 
 PACK_VERSION = 1
-
-# rel 라벨 → fragment 엣지 타입(D11 §5) — fragment._CC_EDGES 의 역방향.
-_REL_TO_FRAGMENT = {rel: ft for ft, rel in frag._CC_EDGES.items()}
 
 
 def _concepts_plan(*, owner: str, domain: str | None = None,
@@ -91,7 +89,7 @@ def _episodes_plan(*, owner: str, domain: str | None = None,
 
 def _content_plan(kind: str, *, owner: str, domain: str | None = None,
                   ids: list[str] | None = None) -> q.QueryPlan:
-    label, pk = frag._NODE_MAP[kind]
+    label, pk = node_schema.NODE_MAP[kind]
     where, params = ["n.owner_id = $owner"], {"owner": owner}
     if ids is not None:
         where.append(f"n.{pk} IN $ids")
@@ -116,19 +114,19 @@ def _share_edges_plan(*, owner: str, ids: list[str]) -> q.QueryPlan:
     pairs = []
     for source in ("concept", "decision"):
         for target in ("concept", "decision"):
-            for relation in frag._CC_EDGES.values():
+            for relation in node_schema.CC_EDGES.values():
                 if relation not in ("RELATED_TO", "RETURNS_TO") or source == target == "concept":
                     pairs.append((source, target, relation))
     pairs += [(s, t, "ABOUT") for s in ("episode", "decision")
               for t in ("concept", "decision")]
     pairs += [("record", t, "ATTACHES_TO") for t in ("concept", "decision")]
-    # 대체는 같은 종류끼리만 쓰인다(fragment `_SUPERSEDES_KINDS`). 빠지면 받는 쪽에서
+    # 대체는 같은 종류끼리만 쓰인다(`node_schema.SUPERSEDES_KINDS`). 빠지면 받는 쪽에서
     # 대체된 것과 대체한 것이 둘 다 현재로 남는다.
-    pairs += [(kind, kind, "SUPERSEDES") for kind in frag._SUPERSEDES_KINDS]
+    pairs += [(kind, kind, "SUPERSEDES") for kind in node_schema.SUPERSEDES_KINDS]
     arms = []
     for source, target, relation in pairs:
-        sl, sp = frag._NODE_MAP[source]
-        tl, tp = frag._NODE_MAP[target]
+        sl, sp = node_schema.NODE_MAP[source]
+        tl, tp = node_schema.NODE_MAP[target]
         role = "r.type" if relation == "ATTACHES_TO" else "''"
         arms.append(
             f"MATCH (a:{sl})-[r:{relation}]->(b:{tl}) "
@@ -404,7 +402,7 @@ def build_share_pack(*, owner: str, domain: str | None = None,
             ftype = (r.get("role") if relation == "ATTACHES_TO" else
                      "about" if relation == "ABOUT" else
                      "supersedes" if relation == "SUPERSEDES" else
-                     _REL_TO_FRAGMENT.get(relation))
+                     node_schema.REL_TO_FRAGMENT.get(relation))
             tgt = r.get("target")
             if not tgt or tgt not in id_set or r["id"] not in id_set:
                 continue
@@ -414,7 +412,7 @@ def build_share_pack(*, owner: str, domain: str | None = None,
                 warnings.append(f"{relation} {r['id']} -> {tgt} has no evidence; "
                                 "left out of the pack")
                 continue
-            if (not ftype or (relation == "ATTACHES_TO" and ftype not in frag._CC_EDGES)):
+            if (not ftype or (relation == "ATTACHES_TO" and ftype not in node_schema.CC_EDGES)):
                 # 타입 없는 ATTACHES_TO 는 병합 경로(query.py)가 실제로 쓴다. 그 엣지
                 # 하나 때문에 팩 전체를 거절하지 않고, 빼고 말한다.
                 warnings.append(f"{relation} {r['id']} -> {tgt} has no exportable "
