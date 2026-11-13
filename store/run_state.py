@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import unicodedata
 import math
 
 RUN_PREFIX = "episode:run-"
@@ -120,6 +121,13 @@ def _flags(value) -> list[dict]:
             if isinstance(v.get("id"), str) and isinstance(v.get("flag"), str)]
 
 
+def visible_line(text: str) -> str:
+    """보이는 글자만 남긴 한 줄. 제어 문자와 서식 문자(Unicode Cc·Cf: NUL, ESC, 방향 바꿈 등)는 빼고,
+    공백은 하나로 접는다. 결론의 한 줄처럼 사람이 그대로 읽는 짧은 글에 쓴다."""
+    kept = "".join(ch if unicodedata.category(ch) not in ("Cc", "Cf") else " " for ch in text)
+    return " ".join(kept.split())
+
+
 def readable(props) -> dict:
     """실행 기록 props 를 읽는 쪽이 그대로 변환해도 되는 모양의 사본으로 읽는다. 원본은 그대로다.
 
@@ -146,7 +154,7 @@ def readable(props) -> dict:
         out.pop("verdict")
     if "verdict_note" in out:
         if isinstance(out["verdict_note"], str):
-            out["verdict_note"] = out["verdict_note"][:VERDICT_NOTE_MAX]
+            out["verdict_note"] = visible_line(out["verdict_note"])[:VERDICT_NOTE_MAX]
         else:
             out.pop("verdict_note")
     pending = out.get("pending")

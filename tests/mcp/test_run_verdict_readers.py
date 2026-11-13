@@ -296,3 +296,28 @@ def test_the_verdict_is_searchable_by_the_run_title(rig):
     # 제목이 검색 표면이다: 결론을 보고한 실행만 걸리고, 같은 역할의 보고하지 않은 실행은 걸리지 않는다.
     assert [h["id"] for h in hits.get("node_hits") or []] == [
         run_protocol.episode_id("chk-search-1")], hits
+
+
+def test_a_verdict_note_keeps_only_visible_characters():
+    from store import run_state
+    # NUL, ESC, BEL, 방향 바꿈은 빠지고 공백은 하나로 접힌다.
+    assert run_state.visible_line("a\x00b\x1b[31mc‮d\x07  e") == "a b [31mc d e"
+    assert run_state.readable({"verdict": "fail", "verdict_note": "x​y"})["verdict_note"] == "x y"
+
+
+def test_a_verdict_written_outside_the_protocol_shows_in_the_listed_title(rig):
+    store, bridge, clock, notices = rig
+    run = _start(bridge, CHECKER, "chk-patched-1")["run"]
+    assert _call(bridge, "vinc_run_submit", run=run, output=PLAIN)["outcome"] == "success"
+    # 지금 rev 는 맞지 않는 expected_rev 의 거절(write_conflict)이 알려 준다.
+    def patch(rev):
+        return frag.merge_fragment({"owner": OWNER, "nodes": [{
+            "id": run, "type": "episode", "props_patch": {"verdict": "fail"},
+            "expected_rev": rev}]}, store=store)
+    refused = patch(10_000)
+    out = patch(refused["current_rev"])
+    assert out.get("error") is None, (refused, out)
+    # 결론은 보호되지 않는 키라 도구 쓰기로 바뀐다. 목록의 제목은 저장된 결론에서 다시 지어 맞는다.
+    listed = {r["run_id"]: r for r in _call(bridge, "vinc_runs", limit=200)["runs"]}
+    assert listed["chk-patched-1"]["verdict"] == "fail"
+    assert listed["chk-patched-1"]["title"] == "Run chk-patched-1 of agent-checker: verdict fail"

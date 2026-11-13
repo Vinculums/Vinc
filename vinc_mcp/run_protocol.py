@@ -626,7 +626,7 @@ def _verdict(args: dict, policy: dict, mode: str):
         return None, "", "Invalid: verdict for this role is one of " + ", ".join(allowed) + "."
     if note is not None and not isinstance(note, str):
         return None, "", "Invalid: verdict_note is a string."
-    note = " ".join((note or "").split())
+    note = _run_rule.visible_line(note or "")
     if len(note) > VERDICT_NOTE_MAX:
         return None, "", f"Invalid: verdict_note is at most {VERDICT_NOTE_MAX} characters."
     if raw == "blocked" and not note:
