@@ -177,7 +177,7 @@ test('the fitted camera holds the whole box at the screen aspect', () => {
 
 // ── 마운트: 실제 view-compass.ts 를 mini-dom 위에 세워 머리 단추 · 보던 자리 잇기 · 사이드바 고르기 · Esc 를 본다 ──
 import { installDom, El } from './mini-dom.mjs';
-import { loadCompass } from './helpers/compass-load.mjs';
+import { loadCompass, compassModules } from './helpers/compass-load.mjs';
 installDom({ hash: '' });
 Object.defineProperty(El.prototype, 'isConnected', { get: () => true });
 const winOn = [];
@@ -259,5 +259,164 @@ test('search filters the tree but does not dim the layer view drawing; the whole
   assert.equal(host.querySelectorAll('#cmp-nodes .node.out').length, 0, 'layer view: nothing dims on search');
   btn.click();
   assert.ok(host.querySelectorAll('#cmp-nodes .node.out').length > 0, 'whole view: non-matching nodes dim');
+  h.destroy();
+});
+
+// ── 전체 보기 그리기(view-compass-whole-draw.ts): 실제 모델과 배치로 기억(memo)을 채우고, 마운트 쪽 손잡이(효과 · 색 · 섞기 · 글자 폭)는 대역으로 부른다 ──
+const gm = await compassModules();
+const WD = await import(gm.wholeDraw), MD = await import(gm.model), SH = await import(gm.shapes);
+const DRAW_C = { lens: 'lens', wholeLabel: (n, t) => `whole ${n} ${t}`, wholeHubsOnly: 'hubs only' };
+/** 그리기 하나: 모델(SPEC + 관계), 그 배치를 든 기억, 손잡이 대역이 부른 효과의 기록, 렌즈 · 머리 도구 · 풍선 요소 */
+function drawKit({ spec = SPEC, edges = [['concept:a', 'concept:c', 'RELATED_TO']], size = { w: 800, h: 600 } } = {}) {
+  const nodes = spec.map(([d, t, k = 'concept', x = {}]) => ({ id: `${k}:${t}`, k, t, d, ts: '2026-11-01', g: 1, m: 0, ...x }));
+  const M = MD.compassModel({ nodes, edges }, { rootTopic: 'All topics' });
+  const tree = (tp) => ({ id: tp.id, label: tp.path ? tp.path.split('/').pop() : 'All topics', count: tp.count, r: 14,
+    mean: tp.direct.filter((n) => n.k === 'concept').map((n) => ({ id: n.id, k: n.k, label: n.t, prio: 0 })), bridges: [],
+    lists: tp.direct.some((n) => n.k === 'record') ? [{ k: 'record', name: 'Records', items: tp.direct.filter((n) => n.k === 'record').map((n) => ({ id: n.id, k: n.k, label: n.t, prio: 0 })) }] : [],
+    subs: [...tp.sub].sort().map((p) => tree(M.topics.get(p))) });
+  const L = W.layoutWhole(tree(M.topics.get(M.ROOT)), measure);
+  const memo = WD.renderMemo(); memo.WL = { ...L, ix: W.gridIndex(L.items) };
+  const host = document.createElement('div');
+  host.innerHTML = '<div class="cmp"><div class="cmp-stage"><svg class="g lod1 moving hot" id="cmp-g" aria-label="lens"></svg></div><div id="cmp-tip"></div></div><span class="cmp-tools"><button data-whole aria-pressed="false"></button></span>';
+  const root = host.querySelector('.cmp'), svg = host.querySelector('#cmp-g'), tip = host.querySelector('#cmp-tip'), tools = host.querySelector('.cmp-tools');
+  const fxLog = [], fx = { frame: (k, f) => fxLog.push(['frame', k, f]), cancelFrame: (k) => fxLog.push(['cancelFrame', k]), after: (k, ms, f) => fxLog.push(['after', k, ms, f]),
+    cancelAfter: (k) => fxLog.push(['cancelAfter', k]), cancelIdle: (k) => fxLog.push(['cancelIdle', k]) };
+  const look = { C: DRAW_C, fx, svg, root, tools, tip, $id: (k) => root.querySelector(k === 'g' ? '#cmp-g' : `#cmp-${k.replace(/^cmp-/, '')}`), titleOf: (n) => n.t || n.path || 'All topics',
+    colv: (n) => `c(${n.id})`, mix: (c, p) => `${c}/${p}`, topicColour: (p) => `t(${p})`, ringS: (r, c, w) => `<ring r="${r}" c="${c}" w="${w}"/>`,
+    matchQ: (n, q) => !q || String(n.t || n.path || n.id).toLowerCase().includes(q) || n.id.includes(q), tw: (t, k) => measure(t, k) };
+  let s = LS.wholeLaidOut(LS.toggleWhole(LS.initialState('dark', size)), L.bounds);
+  return { M, L, memo, host, root, svg, tip, tools, fxLog, look, s, ...WD.compassWholeDraw(M, memo, look) };
+}
+const fxNames = (log) => log.map(([t, k]) => `${t}:${k}`);
+const plan = (sc, x = {}) => ({ key: 'k', sFit: sc, far: true, fit: 'dots', sDots: sc, pending: false, ...x });
+
+test('whole draw: the memo starts empty, and what is drawn at a scale follows the tier or the far plan', () => {
+  assert.deepEqual(WD.renderMemo(), { prevPos: new Map(), WL: null, PLANF: null, WPERF: { layout: 0, draw: 0 }, wMode: '', wTier: '', wScale: 0, wRegion: null, wFilt: '', wVC: null, panEl: null, live: null });
+  assert.notEqual(WD.renderMemo().prevPos, WD.renderMemo().prevPos, 'a fresh memo per mount');
+  const k = drawKit();
+  for (const sc of [W.RING_SEP, W.RING_SEP * 2, 50]) assert.equal(k.modeAt(k.s, sc), W.lodTier(sc), `at ${sc} the tier decides`);
+  const far = W.RING_SEP / 2;
+  assert.equal(k.modeAt(k.s, far), 'hubs', 'far without a plan: hubs only');
+  const sp = LS.wholePlanned(k.s, plan(far));
+  assert.equal(k.modeAt(sp, far), 'hubs', 'a plan with dots but no grid yet: hubs');
+  k.memo.PLANF = { key: 'k', F: { pos: new Map(), dotPx: 3 } };
+  assert.equal(k.modeAt(sp, far), 'dots', 'the plan\'s dot scale reached: dots');
+  assert.equal(k.modeAt(sp, far * .9995), 'dots', 'within the rounding margin');
+  assert.equal(k.modeAt(sp, far * .998), 'hubs', 'just past it: hubs');
+  assert.equal(k.modeAt(LS.wholePlanned(k.s, plan(far, { sDots: null })), far), 'hubs');
+});
+
+test('whole draw: where a node is drawn depends on the drawn mode: its ring, its grid dot, or its hub at screen size', () => {
+  const k = drawKit(), a = k.memo.WL.byId.get('concept:a'), hub = k.memo.WL.byId.get('topic:work');
+  assert.equal(k.posOf('concept:nowhere'), null);
+  assert.equal(k.posOf('concept:a'), a, 'no mode yet: the ring position itself');
+  k.memo.wMode = 'mid'; k.memo.wScale = 2;
+  assert.equal(k.posOf('topic:work'), hub, 'mid: hubs as laid out');
+  k.memo.wMode = 'hubs'; assert.deepEqual(k.posOf('topic:work'), { ...hub, r: 2 }, 'hubs: a hub is 4 px on screen');
+  k.memo.PLANF = { key: 'k', F: { pos: new Map([['concept:a', [7, 9]]]), dotPx: 3 } };
+  k.memo.wMode = 'dots';
+  assert.deepEqual(k.posOf('topic:work'), { ...hub, r: 1.4 }, 'dots: a hub is 2.8 px on screen');
+  assert.deepEqual(k.posOf('concept:a'), { x: 7, y: 9, r: .75, topic: a.topic, role: a.role, label: a.label, id: 'concept:a' }, 'dots: the grid place, half the dot on screen');
+  assert.equal(k.posOf('concept:c'), k.memo.WL.byId.get('concept:c'), 'a node without a grid place keeps its ring position');
+});
+
+test('whole draw: drawWhole lays the three layers into the lens, frames the camera and names the view', () => {
+  const k = drawKit();
+  k.svg.before = (el) => { const sib = k.svg.parent.children; sib.splice(sib.indexOf(k.svg), 0, el); el.parent = k.svg.parent; };
+  k.drawWhole(k.s);
+  assert.deepEqual(fxNames(k.fxLog), ['cancelFrame:fly', 'cancelFrame:flip', 'cancelAfter:flip', 'cancelFrame:grow', 'cancelAfter:wcommit'], 'the layer view\'s camera, motion and stems stop first');
+  assert.equal(k.svg.getAttribute('class'), 'g whole');
+  assert.deepEqual(k.svg.children.map((c) => c.getAttribute('id') || c.tagName), ['DEFS', 'cmp-wstat', 'cmp-wstem', 'cmp-wbun', 'cmp-wsp', 'cmp-nodes', 'cmp-wlab', 'cmp-whl']);
+  const V = LS.wholeView(k.s), sc = LS.wholeScale(k.s);
+  assert.equal(k.svg.getAttribute('viewBox'), LS.viewBoxAttr(V)); assert.deepEqual(k.memo.wVC, V);
+  assert.equal(k.svg.getAttribute('tabindex'), '0'); assert.equal(k.svg.getAttribute('aria-label'), 'whole 5 6', 'the label counts nodes and topics');
+  assert.equal(k.tools.querySelector('[data-whole]').getAttribute('aria-pressed'), 'true');
+  assert.equal(k.memo.panEl.getAttribute('class'), 'cmp-pan'); assert.equal(k.svg.parent, k.memo.panEl, 'the gesture layer wraps the drawing');
+  assert.equal(k.memo.live.getAttribute('aria-live'), 'polite'); assert.equal(k.root.querySelector('.cmp-note').getAttribute('role'), 'status');
+  assert.deepEqual([k.memo.wTier, k.memo.wMode, k.memo.wScale, k.memo.wFilt], [W.lodTier(sc), W.lodTier(sc), sc, 'null|']);
+  assert.deepEqual(k.memo.wRegion, [V.x - V.w * .5, V.y - V.h * .5, V.x + V.w * 1.5, V.y + V.h * 1.5], 'the body covers half a screen around the view');
+  const drawn = k.svg.querySelectorAll('#cmp-nodes .node').map((g) => g.getAttribute('data-id'));
+  for (const id of ['concept:a', 'concept:a2', 'concept:b', 'concept:c', 'record:d', 'topic:', 'topic:work', 'topic:work/alpha', 'topic:research/deep']) assert.ok(drawn.includes(id), `${id} is drawn`);
+  assert.match(k.svg.querySelector('#cmp-nodes .node[data-id="concept:a"]').innerHTML, /fill="t\(work\/alpha\)\/55"/, 'a node takes its topic colour, faded when not fresh');
+  k.drawWhole(k.s);
+  assert.equal(k.root.querySelectorAll('.cmp-live').length, 1, 'the whole view\'s own elements are made once');
+});
+
+test('whole draw: the body dims what is outside the period or the search, draws the topic pair lines on request, and says when only hubs are drawn', () => {
+  const k = drawKit({ spec: [['work/alpha', 'a', 'concept', { ct: '2026-10-01' }], ['work/alpha', 'a2'], ['work/zebra', 'b', 'concept', { ct: '2026-11-05' }], ['research', 'c']],
+    edges: [['concept:a', 'concept:c', 'RELATED_TO'], ['concept:b', 'concept:c', 'CONNECTS'], ['concept:a2', 'concept:c', 'ABOUT']] });
+  const out = () => k.svg.querySelectorAll('#cmp-nodes .node.out').map((g) => g.getAttribute('data-id')).sort();
+  k.drawWhole(LS.setRange(k.s, ['2026-11-01', '2026-11-30']));
+  assert.deepEqual(out(), ['concept:a'], 'a dated node outside the period dims; undated ones do not');
+  assert.equal(k.memo.wFilt, '2026-11-01,2026-11-30|');
+  k.wholeBody(LS.setQuery(k.s, 'b'));
+  assert.deepEqual(out(), ['concept:a', 'concept:a2', 'concept:c'], 'the search dims what does not match');
+  assert.equal(k.svg.querySelector('#cmp-wbun').innerHTML, '', 'no pair lines unless asked');
+  k.wholeBody(LS.toggleRels(k.s));
+  assert.match(k.svg.querySelector('#cmp-wbun').innerHTML, new RegExp(`^<path class="wbun" d="M[^"]+" style="stroke:t\\(research\\)/70;stroke-width:${(1 / LS.wholeScale(k.s)).toFixed(2)}"><title>research · work/alpha · 1</title></path>$`),
+    'one line for the one meaning relation across topics (bridges and attachments are not pair lines), one screen px wide for one relation');
+  const kf = drawKit({ size: { w: 90, h: 60 } });   // 아주 작은 칸: 맞춤 배율이 고리를 가를 수 없을 만큼 작다
+  kf.drawWhole(kf.s);
+  assert.equal(kf.memo.wMode, 'hubs'); assert.equal(kf.memo.wTier, 'far');
+  assert.deepEqual(kf.svg.querySelectorAll('#cmp-nodes .node').map((g) => g.getAttribute('data-role')).filter((r) => r !== 'hub'), [], 'hubs only');
+  const note = kf.root.querySelector('.cmp-note'); assert.equal(note.getAttribute('hidden'), null); assert.equal(note.textContent, 'hubs only');
+  assert.ok(kf.svg.classList.contains('far'));
+  kf.wholeBody({ ...kf.s, size: { w: 800, h: 600 } }); assert.ok(!kf.svg.classList.contains('far')); assert.equal(note.textContent, ''); assert.equal(note.getAttribute('hidden'), '');
+  assert.equal(typeof k.memo.WPERF.draw, 'number');
+  k.wholeBody(LS.toggleWhole(k.s)); assert.equal(k.memo.wTier, W.lodTier(LS.wholeScale(k.s)), 'out of the whole view the body is not drawn');
+});
+
+test('whole draw: the overlay draws the picked node\'s relations to wherever their ends are, the hovered one, pins and search hits', () => {
+  const k = drawKit();
+  k.drawWhole(k.s);
+  const whl = () => k.svg.querySelector('#cmp-whl').innerHTML, a = k.posOf('concept:a'), c = k.posOf('concept:c');
+  k.wholeOverlay(LS.wholeSelect(k.s, 'concept:a'));
+  assert.ok(whl().startsWith(`<line class="wl cross" x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${c.x.toFixed(1)}" y2="${c.y.toFixed(1)}"></line><circle class="wpart" cx="${c.x.toFixed(1)}"`), 'a line to the other end, across topics');
+  assert.match(whl(), /<circle class="wsel on" [^>]*><\/circle>$/, 'a ring on the pick');
+  k.wholeOverlay(LS.wholeHover(k.s, 'concept:c'));
+  assert.match(whl(), /<circle class="wsel" /, 'a hovered node gets a ring that is not the pick');
+  k.wholeOverlay({ ...k.s, pins: ['concept:b'] });
+  assert.ok(whl().includes('<g class="pinmark self"') && whl().includes(SH.PIN_PATHS.slice(0, 40)), 'a pin mark at the pinned node');
+  k.wholeOverlay(LS.setQuery(k.s, 'a2'));
+  const a2 = k.posOf('concept:a2');
+  assert.match(whl(), new RegExp(`^<circle class="wpart" cx="${a2.x.toFixed(1)}" cy="${a2.y.toFixed(1)}"`), 'a search hit gets a ring');
+  const before = whl(); k.wholeOverlay(LS.toggleWhole(k.s)); assert.equal(whl(), before, 'not in the whole view: left as it was');
+});
+
+test('whole draw: leaving forgets what the whole view drew and puts the lens back as the layer view; the camera can be placed again', () => {
+  const k = drawKit();
+  k.quitWhole();
+  assert.deepEqual(k.fxLog, [], 'never entered: nothing to undo');
+  k.svg.before = (el) => { const sib = k.svg.parent.children; sib.splice(sib.indexOf(k.svg), 0, el); el.parent = k.svg.parent; };
+  k.drawWhole(k.s); k.memo.prevPos = new Map([['concept:a', { x: 1, y: 2 }]]); k.memo.panEl.style.transform = 'scale(2)'; k.memo.live.textContent = 'Concept a';
+  k.tip.style.display = 'block'; k.svg.classList.add('far'); k.svg.style.cursor = 'grab'; k.fxLog.length = 0;
+  k.quitWhole();
+  assert.deepEqual(fxNames(k.fxLog), ['cancelIdle:wplan', 'cancelAfter:wcommit', 'cancelAfter:wresize', 'cancelFrame:whover', 'cancelFrame:wcross', 'cancelAfter:wcross', 'cancelAfter:peek']);
+  assert.deepEqual([k.memo.wVC, k.memo.wMode, k.memo.wTier, k.memo.wRegion, k.memo.wFilt, k.memo.prevPos.size], [null, '', '', null, '', 0]);
+  assert.equal(k.memo.panEl.style.transform, '');
+  assert.equal(k.svg.getAttribute('class'), 'g'); assert.equal(k.svg.getAttribute('tabindex'), null); assert.equal(k.svg.getAttribute('aria-label'), 'lens'); assert.equal(k.svg.style.cursor, '');
+  assert.equal(k.tip.style.display, 'none'); assert.equal(k.memo.live.textContent, ''); assert.equal(k.root.querySelector('.cmp-note').getAttribute('hidden'), '');
+  assert.equal(k.tools.querySelector('[data-whole]').getAttribute('aria-pressed'), 'false');
+  k.fxLog.length = 0; k.quitWhole(); assert.deepEqual(k.fxLog, [], 'once left, leaving again does nothing');
+  k.memo.panEl.style.transform = 'scale(3)';
+  const moved = LS.wholeFrame(k.s, 10, 20, 2); k.showWholeCamera(moved);
+  assert.deepEqual(fxNames(k.fxLog), ['cancelAfter:wcommit']); assert.deepEqual(k.memo.wVC, LS.wholeView(moved)); assert.equal(k.memo.panEl.style.transform, '');
+  assert.equal(k.svg.getAttribute('viewBox'), LS.viewBoxAttr(LS.wholeView(moved)));
+  k.fxLog.length = 0; k.showWholeCamera(LS.initialState('dark')); assert.deepEqual(k.fxLog, [], 'no whole camera: nothing');
+});
+
+test('a period picked in the whole view dims the nodes outside it at once', () => {
+  winOn.length = 0;
+  const nodes = [['work/alpha', 'a', '2026-10-01'], ['work/zebra', 'b', '2026-11-05'], ['research', 'c', '2026-11-04']].map(([domain, t, ct]) =>
+    ({ id: `concept:${t}`, kind: 'concept', title: t, label: t, domain, ts: '2026-11-01', content_ts: ct, degree: 1 }));
+  const host = document.createElement('div'); document.body.append(host);
+  const h = mountCompass(host, compassDataFrom(nodes, []), {});
+  h.tools.querySelector('[data-whole]').click();
+  const out = () => host.querySelectorAll('#cmp-nodes .node.out').map((g) => g.getAttribute('data-id'));
+  assert.deepEqual(out(), []);
+  h.tools.querySelector('[data-pop="time"]').click();
+  document.querySelector('[data-cmp-r="7"]').click();
+  assert.deepEqual(out(), ['concept:a'], 'the last seven days leave a out');
+  h.tools.querySelector('[data-pop="time"]').click();
   h.destroy();
 });

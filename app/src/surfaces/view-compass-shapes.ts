@@ -6,6 +6,8 @@ import type { Pt } from "./view-compass-gather";
 /** 빛살이 부르는 그 순간에 읽는 것: 테마(라이트면 띠를 굵게)와 섞기(주제 색을 카드색 쪽으로 바랜다) */
 export interface RayLook { theme: () => 'dark' | 'light'; mix: (c: string, p: number) => string }
 
+/** 고정 핀(압정). 45° 기운 머리 · 목 · 깃 · 바늘. 채움은 currentColor 라 놓인 자리의 색을 따른다. */
+export const PIN_PATHS = `<g transform="rotate(45 12 12)"><rect x="7.2" y="1.6" width="9.6" height="4" rx="2" fill="currentColor"/><path d="M9.3 5.4h5.4v3.9l3.4 3.9H5.9l3.4-3.9z" fill="currentColor"/><path d="M12 13.2V21.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></g>`;
 // ── 모양·빛살·표(문법) ─────────────────────────────────────────────────────────────────────
 export const GAP = 4, P = (pts: Pt[]) => pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
 export const P2 = (pts: Pt[]) => pts.map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(' ');   // 줄기 조각: 0.1 단위로 자르면 확대했을 때 호가 각진다
