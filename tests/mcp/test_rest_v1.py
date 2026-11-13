@@ -164,6 +164,24 @@ def test_maintenance_refusal_is_retryable_through_public_rest(method, path, body
         srv.close()
 
 
+@pytest.mark.parametrize("answer", [[{"id": "concept:a"}], "not an object"])
+def test_non_object_sidecar_answer_is_a_clean_bad_gateway(answer):
+    """사이드카가 JSON 객체가 아닌 답을 주면 연결을 끊지 않고 502 upstream_unavailable 로 답하고,
+    도구가 돈 만큼 남은 한도를 싣는다."""
+    srv = Server(quota={"free_limit": 5, "team_limit": 5, "window_s": 86400, "lock_s": 3600})
+    try:
+        srv.bridge.override = answer
+        status, headers, result = srv.request("POST", "/v1/search", body={"query": "hello"})
+        assert status == 502, result
+        assert result["error"]["code"] == "upstream_unavailable"
+        assert result["error"]["message"] == "The graph service returned an unreadable answer."
+        assert headers["Vinc-Quota-Remaining"] == "4"
+        srv.bridge.override = None
+        assert srv.request("POST", "/v1/search", body={"query": "hello"})[0] == 200
+    finally:
+        srv.close()
+
+
 def test_rest_rejects_non_key_auth_and_coercion_before_quota():
     cfg = {"free_limit": 1, "team_limit": 1, "window_s": 86400, "lock_s": 3600}
     srv = Server(quota=cfg)
