@@ -22,7 +22,9 @@ class CardTests(unittest.TestCase):
         src = read("view")
         self.assertNotIn("tintMap([nd.domain]", src)
         # 표는 지도(나침반)가 짓는 그 한 벌이다 — 카드가 따로 지으면 넣는 집합이 갈려 순위가 밀린다.
-        self.assertIn("compass?.colour(nd.domain.trim())", src)
+        # 카드(view-cards.ts)는 표면의 손잡이로 읽고, 그 손잡이는 나침반의 표를 그대로 돌려준다.
+        self.assertIn("host.topicColour(nd.domain.trim())", src)
+        self.assertIn("topicColour: (domain) => compass?.colour(domain)", src)
         self.assertNotIn("tintMap(", src)
 
     def test_범례가_노드_물러남을_가르치지_않는다(self):

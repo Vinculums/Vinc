@@ -1,0 +1,3312 @@
+{
+ "_about": "tests/core/test_fragment_merge_characterization.py 의 기록. plain 은 PK 네임스페이싱을 끈 모드, namespaced 는 켠 모드에서 결과가 다른 케이스만.",
+ "namespaced": {
+  "concept.create_only_other_owner": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.endpoint_other_owner_local": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:bob", "rev": 1, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:bob", "rev": 1, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "tenant:local", "partial": true},
+   "warnings": [
+    "1 edge(s) skipped — <reason:undeclared_endpoint>: concept:a, concept:b"
+   ]
+  },
+  "edge.tombstone_local_any_owner": {
+   "edges": [
+    ["RELATED_TO", "concept:a", "concept:b", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "tenant:local", "rev": 2, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "tenant:local", "rev": 2, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "tenant:local"},
+   "tombstones": [
+    "concept:a|RELATED_TO|concept:b @user:bob"
+   ]
+  },
+  "entity.local_over_other_owner": {
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "tenant:local", "rev": 1, "tags": [], "theme_id": "", "title": "local", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "tenant:local"}
+  },
+  "owner.conflict_every_scoped_kind": {
+   "nodes": {
+    "Bridge": {
+     "bridge:a": {"bridge_id": "bridge:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "b"}
+    },
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "rev": 1, "title": "d"}
+    },
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "", "title": "w", "type": "widget"}
+    },
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "user:alice", "rev": 1, "title": "e"}
+    },
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "r"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 5, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "owner.conflict_takes_its_edges": {
+   "edges": [
+    ["RELATED_TO", "concept:a", "concept:b", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "owner.explicit_legacy_empty_owner": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "mine"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "owner.explicit_other_conflict": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "mine"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "owner.local_over_other_owner": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "tenant:local", "rev": 1, "title": "local"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "tenant:local"}
+  }
+ },
+ "plain": {
+  "bridge.created_date": {
+   "nodes": {
+    "Bridge": {
+     "bridge:a": {"bridge_id": "bridge:a", "created": "2025-01-02", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "bridge.domain_warned_still_merged": {
+   "edges": [
+    ["CONNECTS", "bridge:a", "concept:a", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Bridge": {
+     "bridge:a": {"bridge_id": "bridge:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    },
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node.domain not persisted on Bridge (id=bridge:a); Bridge has source_domain/target_domain instead, not settable via fragment ingest"
+   ]
+  },
+  "bridge.matched_title_absent_kept": {
+   "nodes": {
+    "Bridge": {
+     "bridge:a": {"bridge_id": "bridge:a", "created": "<hlc>", "owner_id": "user:alice", "props": {"k": 2}, "rev": 2, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "bridge.new": {
+   "nodes": {
+    "Bridge": {
+     "bridge:a": {"bridge_id": "bridge:a", "created": "<hlc>", "owner_id": "user:alice", "props": {"k": 1}, "rev": 1, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "bridge.new_without_title": {
+   "nodes": {
+    "Bridge": {
+     "bridge:a": {"bridge_id": "bridge:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "bridge:a"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "bridge.tags_dropped": {
+   "nodes": {
+    "Bridge": {
+     "bridge:a": {"bridge_id": "bridge:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node.tags not persisted on Bridge (id=bridge:a) — no such column; the value was dropped, not stored"
+   ]
+  },
+  "concept.claim_fields_warned": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "props": {"measured_at": "2025", "measured_ref": "x", "subject_path": "vinc:a.py"}, "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "props.subject_path is a claim field carried by Record only (id=concept:a) — stored on Concept, but the claim review will not read it there",
+    "props.measured_at is a claim field carried by Record only (id=concept:a) — stored on Concept, but the claim review will not read it there",
+    "props.measured_ref is a claim field carried by Record only (id=concept:a) — stored on Concept, but the claim review will not read it there"
+   ]
+  },
+  "concept.content_time_empty_clears": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"alpha": 1, "beta": 2}, "rev": 2, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "concept.content_time_from_props": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2025-01-02", "created": "<hlc>", "owner_id": "user:alice", "props": {"content_time": "2025-01-02"}, "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.content_time_int": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2025", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.content_time_invalid_kept": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"alpha": 1, "beta": 2}, "rev": 1, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "content_time '2025/03' is not YYYY[-MM[-DD]] — kept the stored value (id=concept:a)"
+   ]
+  },
+  "concept.content_time_null_blocks_props": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "props": {"content_time": "2025"}, "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.content_time_props_blank": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "props": {"content_time": " "}, "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.content_time_props_conflict_kept": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"content_time": "2025"}, "rev": 2, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "props.content_time not promoted — content_time already holds a value and was kept (id=concept:a); send content_time at the top level to change it"
+   ]
+  },
+  "concept.content_time_props_into_empty": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2025", "created": "<hlc>", "owner_id": "user:alice", "props": {"content_time": "2025"}, "rev": 2, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "concept.content_time_props_invalid": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "props": {"content_time": "Jan 2025"}, "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "content_time 'Jan 2025' is not YYYY[-MM[-DD]] — kept the stored value (id=concept:a)"
+   ]
+  },
+  "concept.content_time_props_not_string": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "props": {"content_time": 2025}, "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.content_time_trimmed": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2025", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.content_time_valid": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2025-03", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.create_only_existing": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"alpha": 1, "beta": 2}, "rev": 1, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"current_rev": 1, "error": "write_conflict", "executed": false, "hint": "<WRITE_CONFLICT_HINT>", "merged": null, "node_id": "concept:a", "partial": true, "status": "conflict"},
+   "warnings": [
+    "write_conflict"
+   ]
+  },
+  "concept.create_only_fragment_existing": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"alpha": 1, "beta": 2}, "rev": 1, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"current_rev": 1, "error": "write_conflict", "executed": false, "hint": "<WRITE_CONFLICT_HINT>", "merged": null, "node_id": "concept:a", "partial": true, "status": "conflict"},
+   "warnings": [
+    "write_conflict"
+   ]
+  },
+  "concept.create_only_fragment_not_bool": {
+   "result": {"error": "invalid_create_only", "executed": false, "merged": null, "partial": true, "status": "invalid_request"},
+   "warnings": [
+    "invalid_create_only"
+   ]
+  },
+  "concept.create_only_new": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.create_only_node_not_bool": {
+   "result": {"error": "invalid_write_precondition", "executed": false, "merged": null, "partial": true, "status": "invalid_request"},
+   "warnings": [
+    "invalid_write_precondition"
+   ]
+  },
+  "concept.create_only_other_owner": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:bob", "rev": 1, "title": "B's"}
+    }
+   },
+   "result": {"error": "write_target_unavailable", "executed": false, "merged": null, "node_id": "concept:a", "partial": true, "status": "unavailable"},
+   "warnings": [
+    "write_target_unavailable"
+   ]
+  },
+  "concept.created_date": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "2025-01-02", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.created_impossible_date": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "created '2025-02-30' is not an ISO date or timestamp — ignored, the write time was stamped instead (id=concept:a)"
+   ]
+  },
+  "concept.created_invalid": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "created 'yesterday' is not an ISO date or timestamp — ignored, the write time was stamped instead (id=concept:a)"
+   ]
+  },
+  "concept.created_matched_ignored": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "2025-01-02", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "concept.created_timestamp": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "2025-01-02T03:04:05+09:00", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.domain_cleared": {
+   "edges": [
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "", "one_liner": "line", "owner_id": "user:alice", "props": {"alpha": 1, "beta": 2}, "rev": 2, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "concept.domain_moved": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/y", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/y", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/y", "one_liner": "line", "owner_id": "user:alice", "props": {"alpha": 1, "beta": 2}, "rev": 2, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"},
+     "vinc/y": {"name": "vinc/y"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "concept.domain_normalised": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/eng", {}],
+    ["PARENT_OF", "vinc", "vinc/eng", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "domain": "vinc/eng", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/eng": {"name": "vinc/eng"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.expected_rev_bool": {
+   "result": {"error": "invalid_write_precondition", "executed": false, "merged": null, "partial": true, "status": "invalid_request"},
+   "warnings": [
+    "invalid_write_precondition"
+   ]
+  },
+  "concept.expected_rev_matches": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"alpha": 1, "beta": 2}, "rev": 2, "tags": ["t"], "title": "A2"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "concept.expected_rev_missing_node": {
+   "result": {"error": "write_target_unavailable", "executed": false, "merged": null, "node_id": "concept:a", "partial": true, "status": "unavailable"},
+   "warnings": [
+    "write_target_unavailable"
+   ]
+  },
+  "concept.expected_rev_negative": {
+   "result": {"error": "invalid_write_precondition", "executed": false, "merged": null, "partial": true, "status": "invalid_request"},
+   "warnings": [
+    "invalid_write_precondition"
+   ]
+  },
+  "concept.expected_rev_not_int": {
+   "result": {"error": "invalid_write_precondition", "executed": false, "merged": null, "partial": true, "status": "invalid_request"},
+   "warnings": [
+    "invalid_write_precondition"
+   ]
+  },
+  "concept.expected_rev_stale": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"alpha": 1, "beta": 2}, "rev": 1, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"current_rev": 1, "error": "write_conflict", "executed": false, "hint": "<WRITE_CONFLICT_HINT>", "merged": null, "node_id": "concept:a", "partial": true, "status": "conflict"},
+   "warnings": [
+    "write_conflict"
+   ]
+  },
+  "concept.matched_empty_title_becomes_id": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"alpha": 1, "beta": 2}, "rev": 2, "tags": ["t"], "title": "concept:a"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "concept.matched_fields_absent_kept": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"alpha": 1, "beta": 2}, "rev": 1, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "concept.matched_identical_resend": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"alpha": 1, "beta": 2}, "rev": 1, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "concept.matched_title_changed": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"alpha": 1, "beta": 2}, "rev": 2, "tags": ["t"], "title": "A2"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "concept.new_empty_title": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "concept:a"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.new_full": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"alpha": 1, "beta": 2}, "rev": 1, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.new_minimal": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.new_without_title": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "concept:a"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.one_liner_explicit_null": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "props": {"one_liner": "x"}, "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.one_liner_from_note": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "one_liner": "a note", "owner_id": "user:alice", "props": {"note": "a note"}, "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.one_liner_from_props": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "one_liner": "from props", "owner_id": "user:alice", "props": {"one_liner": " from props "}, "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.one_liner_promote_conflict": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"one_liner": "other"}, "rev": 2, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "props.one_liner not promoted — one_liner already holds a value and was kept (id=concept:a); send one_liner at the top level to change it"
+   ]
+  },
+  "concept.one_liner_promote_into_empty": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "one_liner": "x", "owner_id": "user:alice", "props": {"one_liner": "x"}, "rev": 2, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "concept.one_liner_promote_same": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"one_liner": "line"}, "rev": 2, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "concept.one_liner_props_blank": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "props": {"note": "n", "one_liner": "  "}, "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.one_liner_props_not_string": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "props": {"one_liner": 5}, "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.one_liner_top_level": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "one_liner": "short", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.one_liner_top_level_empty_clears": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "", "owner_id": "user:alice", "props": {"alpha": 1, "beta": 2}, "rev": 2, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "concept.props_empty_dict": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {}, "rev": 2, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "concept.props_not_a_dict": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "props": ["x", 1], "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.props_patch_merges": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"alpha": 1, "gamma": {"x": 1}}, "rev": 2, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "concept.props_patch_missing_node": {
+   "result": {"error": "props_patch_not_supported", "executed": false, "merged": null, "node_id": "concept:a", "partial": true, "status": "unsupported_kind"},
+   "warnings": [
+    "props_patch_not_supported"
+   ]
+  },
+  "concept.props_patch_not_a_dict": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"alpha": 1, "beta": 2}, "rev": 1, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"error": "invalid_props_patch", "executed": false, "merged": null, "partial": true, "status": "invalid_request"},
+   "warnings": [
+    "invalid_props_patch"
+   ]
+  },
+  "concept.props_patch_with_props": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"alpha": 1, "beta": 2}, "rev": 1, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"error": "invalid_props_patch", "executed": false, "merged": null, "partial": true, "status": "invalid_request"},
+   "warnings": [
+    "invalid_props_patch"
+   ]
+  },
+  "concept.props_patch_without_expected_rev": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"alpha": 1, "beta": 2}, "rev": 1, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"error": "props_patch_requires_expected_rev", "executed": false, "merged": null, "partial": true, "status": "invalid_request"},
+   "warnings": [
+    "props_patch_requires_expected_rev"
+   ]
+  },
+  "concept.props_whole_replacement": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"gamma": 3}, "rev": 2, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "concept.role_matched_title_only": {
+   "nodes": {
+    "Concept": {
+     "concept:agent-x": {"concept_id": "concept:agent-x", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "y"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "concept.role_new_without_contract": {
+   "nodes": {
+    "Concept": {
+     "concept:agent-x": {"concept_id": "concept:agent-x", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.role_roster_id": {
+   "nodes": {
+    "Concept": {
+     "concept:agent-orchestration": {"concept_id": "concept:agent-orchestration", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "roster"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "concept.tags_cleared": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"alpha": 1, "beta": 2}, "rev": 2, "tags": [], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "concept.tags_null_kept": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"alpha": 1, "beta": 2}, "rev": 1, "tags": ["t"], "title": "A"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "concept.unkept_fields": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node.date not persisted on Concept (id=concept:a) — no such column; the value was dropped, not stored",
+    "node.summary not persisted on Concept (id=concept:a) — no such column; the value was dropped, not stored",
+    "node.valid_from not persisted on Concept (id=concept:a) — no such column; the value was dropped, not stored",
+    "node.valid_until not persisted on Concept (id=concept:a) — no such column; the value was dropped, not stored"
+   ]
+  },
+  "decision.authored_matched": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "rev": 2, "title": "D2"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "decision.authored_new_end_only": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "props": {"valid_until": "2025"}, "rev": 1, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "decision.authored_new_fills_start": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "props": {"k": 1, "valid_from": "<today>"}, "rev": 1, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "decision:a has no props.valid_from: filled with today's date <today> (UTC). Send props.valid_from to record when the decision took effect.",
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "decision.authored_new_props_not_dict": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "props": ["x"], "rev": 1, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "decision.authored_new_start_given": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "props": {"valid_from": "2024"}, "rev": 1, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "decision.authored_new_without_props": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "props": {"valid_from": "<today>"}, "rev": 1, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "decision:a has no props.valid_from: filled with today's date <today> (UTC). Send props.valid_from to record when the decision took effect.",
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "decision.authored_wiki_owner": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "community:00000000-0000-4000-8000-000000000001", "rev": 1, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "community:00000000-0000-4000-8000-000000000001"}
+  },
+  "decision.claim_field_warned": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "props": {"measured_at": "2025"}, "rev": 1, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "props.measured_at is a claim field carried by Record only (id=decision:a) — stored on Decision, but the claim review will not read it there",
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "decision.created_date": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "2025-01-02", "decision_id": "decision:a", "owner_id": "user:alice", "rev": 1, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "decision.interval_empty_is_a_clear": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "props": {"valid_from": "2024", "valid_until": ""}, "rev": 2, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "decision.interval_inverted": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "props": {"valid_from": "2025", "valid_until": "2024"}, "rev": 1, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "validity interval inverted — props.valid_until '2024' precedes props.valid_from '2025' (id=decision:a); stored as sent, but no instant falls inside it",
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "decision.interval_malformed_kept_stored": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "props": {"valid_from": "2024"}, "rev": 1, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "props.valid_from 'Jan' is not YYYY[-MM[-DD]] (id=decision:a) — kept the stored value; a malformed date is not stored as a validity interval",
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "decision.interval_malformed_new": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "props": {"k": 1}, "rev": 1, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "props.valid_from 'Jan' is not YYYY[-MM[-DD]] (id=decision:a) — kept the stored value; a malformed date is not stored as a validity interval",
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "decision.interval_trimmed": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "props": {"valid_from": "2025-01"}, "rev": 1, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "decision.new": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "props": {"valid_from": "2025-01"}, "rev": 1, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "decision.new_without_title": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "rev": 1, "title": "decision:a"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "decision.props_not_a_dict": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "props": ["x"], "rev": 1, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "decision.subject_path_bare": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "props": {"subject_path": "api/x.py"}, "rev": 1, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "props.subject_path 'api/x.py' names no repository (id=decision:a) — stored, but a bare path cannot be compared across repositories; write it as repo:path",
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "decision.subject_path_list": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "props": {"subject_path": ["vinc:a.py", "b.py", 3]}, "rev": 1, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "props.subject_path 'b.py' names no repository (id=decision:a) — stored, but a bare path cannot be compared across repositories; write it as repo:path",
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "decision.top_level_interval_dropped": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "rev": 1, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node.content_time not persisted on Decision (id=decision:a) — no such column; the value was dropped, not stored",
+    "node.valid_from not persisted on Decision (id=decision:a) — no such column; the value was dropped, not stored; a Decision keeps it in props.valid_from",
+    "node.valid_until not persisted on Decision (id=decision:a) — no such column; the value was dropped, not stored; a Decision keeps it in props.valid_until",
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "decision.with_about": {
+   "edges": [
+    ["ABOUT", "decision:a", "concept:a", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"}
+    },
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "rev": 2, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "domain.fields_dropped": {
+   "nodes": {
+    "Domain": {
+     "vinc/eng": {"name": "vinc/eng"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node.domain not persisted on Domain (id=vinc/eng) — no such column; the value was dropped, not stored",
+    "node.one_liner not persisted on Domain (id=vinc/eng) — no such column; the value was dropped, not stored",
+    "node.props not persisted on Domain (id=vinc/eng) — no such column; the value was dropped, not stored",
+    "node.tags not persisted on Domain (id=vinc/eng) — no such column; the value was dropped, not stored",
+    "node.title not persisted on Domain (id=vinc/eng) — no such column; the value was dropped, not stored"
+   ]
+  },
+  "domain.matched": {
+   "nodes": {
+    "Domain": {
+     "vinc/eng": {"name": "vinc/eng"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "domain.new": {
+   "nodes": {
+    "Domain": {
+     "vinc/eng": {"name": "vinc/eng"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "domain.prefixed_id": {
+   "nodes": {
+    "Domain": {
+     "domain:vinc/eng": {"name": "domain:vinc/eng"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.about_confidence_not_a_number": {
+   "edges": [
+    ["ABOUT", "episode:a", "concept:a", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"}
+    },
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "user:alice", "rev": 2, "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge confidence not a number — ignored (episode:a→concept:a)"
+   ]
+  },
+  "edge.about_decision_decision": {
+   "edges": [
+    ["ABOUT", "decision:a", "decision:b", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "rev": 2, "title": "D"},
+     "decision:b": {"created": "<hlc>", "decision_id": "decision:b", "owner_id": "user:alice", "rev": 2, "title": "D2"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "decision:b has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:b\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "edge.about_episode_concept": {
+   "edges": [
+    ["ABOUT", "episode:a", "concept:a", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"}
+    },
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "user:alice", "rev": 2, "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.about_evidence_and_confidence": {
+   "edges": [
+    ["ABOUT", "episode:a", "concept:a", {"confidence": 0.75, "created": "<hlc>", "evidence": "e"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"}
+    },
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "user:alice", "rev": 2, "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.about_from_concept_refused": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge_disallowed_pair: about expects episode|decision→concept|decision — skipped (concept→concept); <ALLOWED_PAIRS_HINT>"
+   ]
+  },
+  "edge.about_resend_same": {
+   "edges": [
+    ["ABOUT", "episode:a", "concept:a", {"created": "<hlc>", "evidence": "e"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"}
+    },
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "user:alice", "rev": 2, "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.about_to_record_refused": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "user:alice", "rev": 1, "title": "E"}
+    },
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge_disallowed_pair: about expects episode|decision→concept|decision — skipped (episode→record); <ALLOWED_PAIRS_HINT>"
+   ]
+  },
+  "edge.about_wiki_to_record": {
+   "edges": [
+    ["ABOUT", "episode:a", "record:a", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "community:00000000-0000-4000-8000-000000000001", "rev": 2, "title": "E"}
+    },
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "community:00000000-0000-4000-8000-000000000001", "record_id": "record:a", "rev": 2, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "community:00000000-0000-4000-8000-000000000001"}
+  },
+  "edge.bridge_pair_refused": {
+   "nodes": {
+    "Bridge": {
+     "bridge:a": {"bridge_id": "bridge:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    },
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge_disallowed_pair: edge 'relates_to' between bridge→concept 미지원 — skipped; <ALLOWED_PAIRS_HINT>"
+   ]
+  },
+  "edge.cc_resend_changed_confidence": {
+   "edges": [
+    ["DERIVES_FROM", "concept:a", "concept:b", {"confidence": 0.2, "created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 3, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 3, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.cc_resend_first_confidence": {
+   "edges": [
+    ["DERIVES_FROM", "concept:a", "concept:b", {"confidence": 0.2, "created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 3, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 3, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.cc_resend_same": {
+   "edges": [
+    ["DERIVES_FROM", "concept:a", "concept:b", {"created": "<hlc>", "evidence": "e"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.concept_to_record_refused": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    },
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge_disallowed_pair: edge 'derives_from' between concept→record 미지원 — skipped; <ALLOWED_PAIRS_HINT>"
+   ]
+  },
+  "edge.connects_via": {
+   "edges": [
+    ["CONNECTS", "bridge:a", "concept:a", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Bridge": {
+     "bridge:a": {"bridge_id": "bridge:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    },
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.connects_via_evidence_dropped": {
+   "edges": [
+    ["CONNECTS", "bridge:a", "concept:a", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Bridge": {
+     "bridge:a": {"bridge_id": "bridge:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    },
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge evidence not stored on CONNECTS — that relation has no such column (bridge:a→concept:a); kept only on PREREQUISITE_OF, RETURNS_TO, DERIVES_FROM, RELATED_TO, INHERITS_FROM, ATTACHES_TO, ABOUT, SUPERSEDES"
+   ]
+  },
+  "edge.connects_via_roles": {
+   "edges": [
+    ["CONNECTS", "bridge:a", "concept:a", {"created": "<hlc>", "role": "input"}],
+    ["CONNECTS", "bridge:a", "concept:a", {"created": "<hlc>", "role": "output"}]
+   ],
+   "nodes": {
+    "Bridge": {
+     "bridge:a": {"bridge_id": "bridge:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    },
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 3}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.connects_via_to_decision": {
+   "edges": [
+    ["CONNECTS", "bridge:a", "decision:a", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Bridge": {
+     "bridge:a": {"bridge_id": "bridge:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    },
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "rev": 1, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "edge.connects_via_wrong_pair": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge_disallowed_pair: connects_via expects bridge→concept|decision — skipped (concept→concept); <ALLOWED_PAIRS_HINT>"
+   ]
+  },
+  "edge.created_from_payload": {
+   "edges": [
+    ["RELATED_TO", "concept:a", "concept:b", {"created": "2025-01-01"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.created_not_overwritten": {
+   "edges": [
+    ["RELATED_TO", "concept:a", "concept:b", {"created": "2025-01-01"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.derives_from_decisions": {
+   "edges": [
+    ["DERIVES_FROM", "decision:a", "decision:b", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "rev": 2, "title": "D"},
+     "decision:b": {"created": "<hlc>", "decision_id": "decision:b", "owner_id": "user:alice", "rev": 2, "title": "D2"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}.",
+    "decision:b has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:b\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "edge.duplicate_in_payload": {
+   "edges": [
+    ["RELATED_TO", "concept:a", "concept:b", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 2}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.endpoint_both_undeclared": {
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "1 edge(s) skipped — <reason:undeclared_endpoint>: concept:x, concept:y"
+   ]
+  },
+  "edge.endpoint_domain_from_store": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    },
+    "Domain": {
+     "domain:x": {"name": "domain:x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "1 edge(s) skipped — <reason:undeclared_endpoint>: domain:x"
+   ]
+  },
+  "edge.endpoint_domain_in_payload": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    },
+    "Domain": {
+     "domain:x": {"name": "domain:x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge_disallowed_pair: edge 'relates_to' between concept→domain 미지원 — skipped; <ALLOWED_PAIRS_HINT>"
+   ]
+  },
+  "edge.endpoint_from_store": {
+   "edges": [
+    ["RELATED_TO", "concept:a", "concept:b", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.endpoint_missing_from": {
+   "nodes": {
+    "Concept": {
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge_disallowed_pair: edge 'relates_to' between →concept 미지원 — skipped; <ALLOWED_PAIRS_HINT>"
+   ]
+  },
+  "edge.endpoint_other_owner_explicit": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:bob", "rev": 1, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:bob", "rev": 1, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "1 edge(s) skipped — <reason:undeclared_endpoint>: concept:a, concept:b"
+   ]
+  },
+  "edge.endpoint_other_owner_local": {
+   "edges": [
+    ["RELATED_TO", "concept:a", "concept:b", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:bob", "rev": 2, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:bob", "rev": 2, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 0, "matched": 0}}, "owner": "tenant:local"}
+  },
+  "edge.endpoint_skipped": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "entity node.title required: id=widget:b (type=widget)",
+    "1 edge(s) skipped — <reason:skipped_endpoint>: widget:b"
+   ]
+  },
+  "edge.endpoint_skipped_and_undeclared": {
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "entity node.title required: id=widget:b (type=widget)",
+    "1 edge(s) skipped — <reason:skipped_endpoint>: widget:b, concept:nope"
+   ]
+  },
+  "edge.endpoint_undeclared": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "1 edge(s) skipped — <reason:undeclared_endpoint>: concept:missing"
+   ]
+  },
+  "edge.endpoint_without_prefix": {
+   "edges": [
+    ["PREREQUISITE_OF", "plain", "concept:b", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "B"},
+     "plain": {"concept_id": "plain", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "P"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.episode_concept_relates_refused": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    },
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "user:alice", "rev": 1, "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge_disallowed_pair: edge 'relates_to' between episode→concept 미지원 — skipped; <ALLOWED_PAIRS_HINT>"
+   ]
+  },
+  "edge.inherits_from_confidence": {
+   "edges": [
+    ["INHERITS_FROM", "concept:a", "concept:b", {"confidence": 1.0, "created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.no_type_between_concepts": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "1 edge(s) skipped — <reason:unsupported_type>: concept:a→concept:b ()"
+   ]
+  },
+  "edge.prerequisite_decision_concept": {
+   "edges": [
+    ["PREREQUISITE_OF", "decision:a", "concept:a", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"}
+    },
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "rev": 2, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "edge.record_about_refused": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    },
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge_disallowed_pair: about expects episode|decision→concept|decision — skipped (record→concept); <ALLOWED_PAIRS_HINT>"
+   ]
+  },
+  "edge.record_to_concept": {
+   "edges": [
+    ["ATTACHES_TO", "record:a", "concept:a", {"created": "<hlc>", "evidence": "e", "type": "relates_to"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"}
+    },
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 2, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.record_to_decision": {
+   "edges": [
+    ["ATTACHES_TO", "record:a", "decision:a", {"confidence": 0.5, "created": "<hlc>", "type": "derives_from"}]
+   ],
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "rev": 2, "title": "D"}
+    },
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 2, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "edge.record_to_record_refused": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R"},
+     "record:b": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:b", "rev": 1, "tenant_id": "tenant:local", "title": "R2"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge_disallowed_pair: edge 'relates_to' between record→record 미지원 — skipped; <ALLOWED_PAIRS_HINT>"
+   ]
+  },
+  "edge.record_two_types_same_pair": {
+   "edges": [
+    ["ATTACHES_TO", "record:a", "concept:a", {"created": "<hlc>", "type": "derives_from"}],
+    ["ATTACHES_TO", "record:a", "concept:a", {"created": "<hlc>", "type": "relates_to"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 3, "title": "A"}
+    },
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 3, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 2}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.relates_to": {
+   "edges": [
+    ["RELATED_TO", "concept:a", "concept:b", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.relates_to_decision_refused": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    },
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "rev": 1, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge_disallowed_pair: relates_to is concept→concept only — skipped (concept→decision); for a decision use `about` (decision→concept) or `derives_from`/`prerequisite_of` (decision lineage)",
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "edge.relates_to_evidence": {
+   "edges": [
+    ["RELATED_TO", "concept:a", "concept:b", {"confidence": 0.4, "created": "<hlc>", "evidence": "e"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.relates_to_reverse_carries_evidence": {
+   "edges": [
+    ["RELATED_TO", "concept:a", "concept:b", {"confidence": 0.9, "created": "<hlc>", "evidence": "new"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 3, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 3, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0, "skipped_duplicate": 1}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.relates_to_reverse_duplicate": {
+   "edges": [
+    ["RELATED_TO", "concept:a", "concept:b", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0, "skipped_duplicate": 1}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.relates_to_reverse_same_evidence": {
+   "edges": [
+    ["RELATED_TO", "concept:a", "concept:b", {"created": "<hlc>", "evidence": "old"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0, "skipped_duplicate": 1}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.relates_to_wiki_decision": {
+   "edges": [
+    ["RELATED_TO", "concept:a", "decision:a", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "community:00000000-0000-4000-8000-000000000001", "rev": 2, "title": "A"}
+    },
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "community:00000000-0000-4000-8000-000000000001", "rev": 2, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "community:00000000-0000-4000-8000-000000000001"}
+  },
+  "edge.relates_to_wiki_record_episode": {
+   "edges": [
+    ["RELATED_TO", "record:a", "episode:a", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "community:00000000-0000-4000-8000-000000000001", "rev": 2, "title": "E"}
+    },
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "community:00000000-0000-4000-8000-000000000001", "record_id": "record:a", "rev": 2, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "community:00000000-0000-4000-8000-000000000001"}
+  },
+  "edge.returns_to": {
+   "edges": [
+    ["RETURNS_TO", "concept:agent-maker-x", "concept:agent-checker-x", {"created": "<hlc>", "evidence": "checker rejected"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:agent-checker-x": {"concept_id": "concept:agent-checker-x", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "agent role: checker"},
+     "concept:agent-maker-x": {"concept_id": "concept:agent-maker-x", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "agent role: maker"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.returns_to_blank_evidence": {
+   "nodes": {
+    "Concept": {
+     "concept:agent-checker-x": {"concept_id": "concept:agent-checker-x", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "agent role: checker"},
+     "concept:agent-maker-x": {"concept_id": "concept:agent-maker-x", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "agent role: maker"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "returns_to expects distinct role concepts and nonempty evidence; skipped (concept:agent-maker-x→concept:agent-checker-x)"
+   ]
+  },
+  "edge.returns_to_decision_end": {
+   "nodes": {
+    "Concept": {
+     "concept:agent-checker-x": {"concept_id": "concept:agent-checker-x", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "agent role: checker"},
+     "concept:agent-maker-x": {"concept_id": "concept:agent-maker-x", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "agent role: maker"}
+    },
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "rev": 1, "title": "D"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "returns_to expects distinct role concepts and nonempty evidence; skipped (concept:agent-maker-x→decision:a)",
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "edge.returns_to_not_roles": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "returns_to expects distinct role concepts and nonempty evidence; skipped (concept:a→concept:b)"
+   ]
+  },
+  "edge.returns_to_roster": {
+   "nodes": {
+    "Concept": {
+     "concept:agent-checker-x": {"concept_id": "concept:agent-checker-x", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "agent role: checker"},
+     "concept:agent-maker-x": {"concept_id": "concept:agent-maker-x", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "agent role: maker"},
+     "concept:agent-orchestration": {"concept_id": "concept:agent-orchestration", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "roster"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "returns_to expects distinct role concepts and nonempty evidence; skipped (concept:agent-maker-x→concept:agent-orchestration)"
+   ]
+  },
+  "edge.returns_to_same_role": {
+   "nodes": {
+    "Concept": {
+     "concept:agent-checker-x": {"concept_id": "concept:agent-checker-x", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "agent role: checker"},
+     "concept:agent-maker-x": {"concept_id": "concept:agent-maker-x", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "agent role: maker"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "returns_to expects distinct role concepts and nonempty evidence; skipped (concept:agent-maker-x→concept:agent-maker-x)"
+   ]
+  },
+  "edge.returns_to_without_evidence": {
+   "nodes": {
+    "Concept": {
+     "concept:agent-checker-x": {"concept_id": "concept:agent-checker-x", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "agent role: checker"},
+     "concept:agent-maker-x": {"concept_id": "concept:agent-maker-x", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "agent role: maker"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "returns_to expects distinct role concepts and nonempty evidence; skipped (concept:agent-maker-x→concept:agent-checker-x)"
+   ]
+  },
+  "edge.rollup_mixed_reasons": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "entity node.title required: id=widget:s (type=widget)",
+    "1 edge(s) skipped — <reason:undeclared_endpoint>: concept:gone",
+    "2 edge(s) skipped — <reason:unsupported_type>: concept:a→concept:b (likes), concept:b→concept:a (loves)",
+    "1 edge(s) skipped — <reason:skipped_endpoint>: widget:s"
+   ]
+  },
+  "edge.rollup_samples": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "10 edge(s) skipped — <reason:undeclared_endpoint>: concept:n0, concept:n1, concept:n2, concept:n3, concept:n4, concept:n5, concept:n6, concept:n7 (+2 more)"
+   ]
+  },
+  "edge.sep": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge contains U+001F (reserved for PK namespacing) — skipped (concept:a→concept:b)"
+   ]
+  },
+  "edge.stamp_edges_off_cc": {
+   "edges": [
+    ["RELATED_TO", "concept:a", "concept:b", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.stamp_edges_off_record": {
+   "edges": [
+    ["ATTACHES_TO", "record:a", "concept:a", {"created": "<hlc>", "type": "relates_to"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    },
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.supersedes_decisions_open_old": {
+   "edges": [
+    ["SUPERSEDES", "decision:new", "decision:old", {"created": "<hlc>", "evidence": "e"}]
+   ],
+   "nodes": {
+    "Decision": {
+     "decision:new": {"created": "<hlc>", "decision_id": "decision:new", "owner_id": "user:alice", "props": {"valid_from": "2025"}, "rev": 2, "title": "N"},
+     "decision:old": {"created": "<hlc>", "decision_id": "decision:old", "owner_id": "user:alice", "rev": 2, "title": "O"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "supersedes decision:new→decision:old: the old decision has no props.valid_until; set props.valid_until to the date the new one starts (send props_patch with expected_rev so the other props stay) so it leaves the current read",
+    "decision:new has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:new\", \"to\": \"concept:...\", \"type\": \"about\"}.",
+    "decision:old has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:old\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "edge.supersedes_doc_concepts": {
+   "edges": [
+    ["SUPERSEDES", "concept:doc.new", "concept:doc.old", {"created": "<hlc>", "evidence": "e"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:doc.new": {"concept_id": "concept:doc.new", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "N"},
+     "concept:doc.old": {"concept_id": "concept:doc.old", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "O"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.supersedes_episodes_refused": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "user:alice", "rev": 1, "title": "E"},
+     "episode:b": {"episode_id": "episode:b", "owner_id": "user:alice", "rev": 1, "title": "E2"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge_disallowed_pair: supersedes expects two distinct nodes of the same kind (record, decision, or concept:doc.* document mirrors) and nonempty evidence — skipped (episode→episode)"
+   ]
+  },
+  "edge.supersedes_mixed_kinds_refused": {
+   "nodes": {
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:alice", "rev": 1, "title": "D"}
+    },
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge_disallowed_pair: supersedes expects two distinct nodes of the same kind (record, decision, or concept:doc.* document mirrors) and nonempty evidence — skipped (record→decision)",
+    "decision:a has no 'about' edge — vinc_decide on a concept will never reach it (only naming the decision itself does). Add {\"from\": \"decision:a\", \"to\": \"concept:...\", \"type\": \"about\"}."
+   ]
+  },
+  "edge.supersedes_new_without_start": {
+   "edges": [
+    ["SUPERSEDES", "record:new", "record:old", {"created": "<hlc>", "evidence": "e"}]
+   ],
+   "nodes": {
+    "Record": {
+     "record:new": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:new", "rev": 2, "tenant_id": "tenant:local", "title": "N"},
+     "record:old": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:old", "rev": 2, "tenant_id": "tenant:local", "title": "O", "valid_until": "2025-05"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.supersedes_plain_concepts_refused": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge_disallowed_pair: supersedes expects two distinct nodes of the same kind (record, decision, or concept:doc.* document mirrors) and nonempty evidence — skipped (concept→concept)"
+   ]
+  },
+  "edge.supersedes_records_aligned": {
+   "edges": [
+    ["SUPERSEDES", "record:new", "record:old", {"created": "<hlc>", "evidence": "e"}]
+   ],
+   "nodes": {
+    "Record": {
+     "record:new": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:new", "rev": 2, "tenant_id": "tenant:local", "title": "N", "valid_from": "2025-06"},
+     "record:old": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:old", "rev": 2, "tenant_id": "tenant:local", "title": "O", "valid_until": "2025-06"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.supersedes_records_misaligned": {
+   "edges": [
+    ["SUPERSEDES", "record:new", "record:old", {"created": "<hlc>", "evidence": "e"}]
+   ],
+   "nodes": {
+    "Record": {
+     "record:new": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:new", "rev": 2, "tenant_id": "tenant:local", "title": "N", "valid_from": "2025-06"},
+     "record:old": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:old", "rev": 2, "tenant_id": "tenant:local", "title": "O", "valid_until": "2025-05"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "supersedes record:new→record:old: old valid_until 2025-05 differs from new valid_from 2025-06"
+   ]
+  },
+  "edge.supersedes_records_open_old": {
+   "edges": [
+    ["SUPERSEDES", "record:new", "record:old", {"created": "<hlc>", "evidence": "re-measured"}]
+   ],
+   "nodes": {
+    "Record": {
+     "record:new": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:new", "rev": 2, "tenant_id": "tenant:local", "title": "N", "valid_from": "2025-06"},
+     "record:old": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:old", "rev": 2, "tenant_id": "tenant:local", "title": "O"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "supersedes record:new→record:old: the old record has no valid_until; set valid_until to the date the new one starts so it leaves the current read"
+   ]
+  },
+  "edge.supersedes_resend_new_evidence": {
+   "edges": [
+    ["SUPERSEDES", "record:new", "record:old", {"created": "<hlc>", "evidence": "e2"}]
+   ],
+   "nodes": {
+    "Record": {
+     "record:new": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:new", "rev": 3, "tenant_id": "tenant:local", "title": "N"},
+     "record:old": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:old", "rev": 3, "tenant_id": "tenant:local", "title": "O", "valid_until": "2025"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.supersedes_resend_same": {
+   "edges": [
+    ["SUPERSEDES", "record:new", "record:old", {"created": "<hlc>", "evidence": "e"}]
+   ],
+   "nodes": {
+    "Record": {
+     "record:new": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:new", "rev": 2, "tenant_id": "tenant:local", "title": "N"},
+     "record:old": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:old", "rev": 2, "tenant_id": "tenant:local", "title": "O", "valid_until": "2025"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.supersedes_self_refused": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge_disallowed_pair: supersedes expects two distinct nodes of the same kind (record, decision, or concept:doc.* document mirrors) and nonempty evidence — skipped (record→record)"
+   ]
+  },
+  "edge.supersedes_without_evidence_refused": {
+   "nodes": {
+    "Record": {
+     "record:new": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:new", "rev": 1, "tenant_id": "tenant:local", "title": "N"},
+     "record:old": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:old", "rev": 1, "tenant_id": "tenant:local", "title": "O"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge_disallowed_pair: supersedes expects two distinct nodes of the same kind (record, decision, or concept:doc.* document mirrors) and nonempty evidence — skipped (record→record)"
+   ]
+  },
+  "edge.tombstone_dropped_cc": {
+   "edges": [
+    ["RELATED_TO", "concept:a", "concept:b", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.tombstone_dropped_record": {
+   "edges": [
+    ["ATTACHES_TO", "record:a", "concept:a", {"created": "<hlc>", "type": "relates_to"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"}
+    },
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 2, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.tombstone_kept_when_stamp_off": {
+   "edges": [
+    ["RELATED_TO", "concept:a", "concept:b", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"},
+   "tombstones": [
+    "concept:a|RELATED_TO|concept:b @user:alice"
+   ]
+  },
+  "edge.tombstone_local_any_owner": {
+   "edges": [
+    ["RELATED_TO", "concept:a", "concept:b", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "tenant:local", "rev": 2, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "tenant:local", "rev": 2, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "tenant:local"}
+  },
+  "edge.tombstone_other_owner_kept": {
+   "edges": [
+    ["RELATED_TO", "concept:a", "concept:b", {"created": "<hlc>"}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"},
+   "tombstones": [
+    "concept:a|RELATED_TO|concept:b @user:bob"
+   ]
+  },
+  "edge.typed": {
+   "edges": [
+    ["TYPED", "widget:a", "widget:b", {"created": "<hlc>", "type": "uses"}]
+   ],
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "", "title": "W", "type": "widget"},
+     "widget:b": {"entity_id": "widget:b", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "", "title": "W2", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.typed_entity_to_concept_refused": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    },
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "", "title": "W", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge_disallowed_pair: edge 'relates_to' between widget→concept 미지원 — skipped; <ALLOWED_PAIRS_HINT>"
+   ]
+  },
+  "edge.typed_evidence_dropped": {
+   "edges": [
+    ["TYPED", "widget:a", "widget:b", {"created": "<hlc>", "type": "uses"}]
+   ],
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "", "title": "W", "type": "widget"},
+     "widget:b": {"entity_id": "widget:b", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "", "title": "W2", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge evidence and confidence not stored on TYPED — that relation has no such column (widget:a→widget:b); kept only on PREREQUISITE_OF, RETURNS_TO, DERIVES_FROM, RELATED_TO, INHERITS_FROM, ATTACHES_TO, ABOUT, SUPERSEDES"
+   ]
+  },
+  "edge.typed_from_store": {
+   "edges": [
+    ["TYPED", "widget:a", "widget:b", {"created": "<hlc>", "type": "uses"}]
+   ],
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "", "title": "W", "type": "widget"},
+     "widget:b": {"entity_id": "widget:b", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "", "title": "W2", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.typed_known_name": {
+   "edges": [
+    ["TYPED", "widget:a", "widget:b", {"created": "<hlc>", "type": "relates_to"}]
+   ],
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "", "title": "W", "type": "widget"},
+     "widget:b": {"entity_id": "widget:b", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "", "title": "W2", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.typed_themes_proposed": {
+   "edges": [
+    ["TYPED", "widget:a", "widget:b", {"created": "<hlc>", "type": "uses"}]
+   ],
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "default", "title": "W", "type": "widget"},
+     "widget:b": {"entity_id": "widget:b", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "default", "title": "W2", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 1}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "proposed_types": [{"kind": "node", "name": "widget"}, {"kind": "edge", "name": "uses"}]}
+  },
+  "edge.typed_two_types": {
+   "edges": [
+    ["TYPED", "widget:a", "widget:b", {"created": "<hlc>", "type": "owns"}],
+    ["TYPED", "widget:a", "widget:b", {"created": "<hlc>", "type": "uses"}]
+   ],
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "", "title": "W", "type": "widget"},
+     "widget:b": {"entity_id": "widget:b", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "", "title": "W2", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 2}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "edge.typed_without_type": {
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "", "title": "W", "type": "widget"},
+     "widget:b": {"entity_id": "widget:b", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "", "title": "W2", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "edge without type — skipped (widget:a→widget:b)"
+   ]
+  },
+  "edge.unsupported_type": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "1 edge(s) skipped — <reason:unsupported_type>: concept:a→concept:b (likes)"
+   ]
+  },
+  "entity.domain_and_props_warned": {
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "", "title": "W", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node.domain not persisted on Entity (id=widget:a); fold into tags/theme",
+    "node.props not persisted — no schema-free column on Entity (id=widget:a)"
+   ]
+  },
+  "entity.empty_props_not_warned": {
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "", "title": "W", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "entity.id_without_prefix": {
+   "nodes": {
+    "Entity": {
+     "plain": {"entity_id": "plain", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "", "title": "P", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "entity.local_matched_not_restamped": {
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "tenant:local", "rev": 2, "tags": [], "theme_id": "", "title": "W2", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "tenant:local"}
+  },
+  "entity.local_over_other_owner": {
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:bob", "rev": 2, "tags": [], "theme_id": "", "title": "local", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "tenant:local"}
+  },
+  "entity.new": {
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "", "title": "W", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "entity.new_with_tags": {
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 1, "tags": ["a", "1"], "theme_id": "", "title": "W", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "entity.tags_absent_kept": {
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 2, "tags": ["a"], "theme_id": "", "title": "W2", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "entity.tags_cleared": {
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 2, "tags": [], "theme_id": "", "title": "W", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "entity.themes_active_default": {
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "default", "title": "W", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "proposed_types": [{"kind": "node", "name": "widget"}]}
+  },
+  "entity.themes_active_keeps_matched": {
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "", "title": "W", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice", "proposed_types": [{"kind": "node", "name": "widget"}]}
+  },
+  "entity.themes_explicit_changes_matched": {
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 2, "tags": [], "theme_id": "t2", "title": "W", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice", "proposed_types": [{"kind": "node", "name": "widget"}]}
+  },
+  "entity.themes_explicit_new": {
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "t1", "title": "W", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "proposed_types": [{"kind": "node", "name": "widget"}]}
+  },
+  "entity.type_changes_on_resend": {
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 2, "tags": [], "theme_id": "", "title": "W", "type": "gadget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "entity.unkept_contract_fields": {
+   "nodes": {
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:alice", "rev": 1, "tags": [], "theme_id": "", "title": "W", "type": "widget"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node.content_time not persisted on Entity (id=widget:a) — no such column; the value was dropped, not stored",
+    "node.date not persisted on Entity (id=widget:a) — no such column; the value was dropped, not stored",
+    "node.one_liner not persisted on Entity (id=widget:a) — no such column; the value was dropped, not stored",
+    "node.summary not persisted on Entity (id=widget:a) — no such column; the value was dropped, not stored"
+   ]
+  },
+  "episode.authored_matched": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "user:alice", "rev": 2, "summary": "s", "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "episode.authored_new_date_given": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"date": "2024-05-06", "episode_id": "episode:a", "owner_id": "user:alice", "rev": 1, "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "episode.authored_new_empty_date": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"date": "<today>", "episode_id": "episode:a", "owner_id": "user:alice", "rev": 1, "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "episode:a has no date: filled with today's date <today> (UTC). Send date to record when it happened."
+   ]
+  },
+  "episode.authored_new_fills_date": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"date": "<today>", "episode_id": "episode:a", "owner_id": "user:alice", "rev": 1, "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "episode:a has no date: filled with today's date <today> (UTC). Send date to record when it happened."
+   ]
+  },
+  "episode.authored_new_invalid_date": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"date": "<today>", "episode_id": "episode:a", "owner_id": "user:alice", "rev": 1, "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "date 'soon' is not YYYY[-MM[-DD]] — kept the stored value (id=episode:a)",
+    "episode:a has no date: filled with today's date <today> (UTC). Send date to record when it happened."
+   ]
+  },
+  "episode.authored_wiki_owner": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "community:00000000-0000-4000-8000-000000000001", "rev": 1, "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "community:00000000-0000-4000-8000-000000000001"}
+  },
+  "episode.created_ignored": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "user:alice", "rev": 1, "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "episode.date_empty": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"date": "", "episode_id": "episode:a", "owner_id": "user:alice", "rev": 1, "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "episode.date_invalid": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "user:alice", "rev": 1, "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "date 'Jan 2' is not YYYY[-MM[-DD]] — kept the stored value (id=episode:a)"
+   ]
+  },
+  "episode.date_invalid_kept_stored": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"date": "2025-01-02", "episode_id": "episode:a", "owner_id": "user:alice", "rev": 1, "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "date 'Jan 2' is not YYYY[-MM[-DD]] — kept the stored value (id=episode:a)"
+   ]
+  },
+  "episode.date_trimmed": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"date": "2025-01", "episode_id": "episode:a", "owner_id": "user:alice", "rev": 1, "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "episode.from_props": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"date": "2025-01-02", "episode_id": "episode:a", "owner_id": "user:alice", "props": {"date": "2025-01-02", "summary": " s "}, "rev": 1, "summary": "s", "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "episode.new": {
+   "edges": [
+    ["IN_DOMAIN", "episode:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    },
+    "Episode": {
+     "episode:a": {"date": "2025-01-02", "domain": "vinc/x", "episode_id": "episode:a", "owner_id": "user:alice", "rev": 1, "summary": "s", "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "episode.new_empty_title": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "user:alice", "rev": 1, "title": ""}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "episode node.title empty — left blank, not set to the id (id=episode:a)"
+   ]
+  },
+  "episode.new_without_title": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "user:alice", "rev": 1}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "episode node has no title — left blank, not set to the id (id=episode:a)"
+   ]
+  },
+  "episode.props_blank": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "user:alice", "props": {"date": " ", "summary": ""}, "rev": 1, "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "episode.props_date_invalid": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "user:alice", "props": {"date": "soon"}, "rev": 1, "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "props.date 'soon' is not YYYY[-MM[-DD]] — kept the stored value (id=episode:a)"
+   ]
+  },
+  "episode.props_not_strings": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "user:alice", "props": {"date": 20250102, "summary": {"x": 1}}, "rev": 1, "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "episode.props_promote_conflict": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"date": "2025-01-01", "episode_id": "episode:a", "owner_id": "user:alice", "props": {"date": "2025-02-02", "summary": "new"}, "rev": 2, "summary": "old", "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "props.date not promoted — date already holds a value and was kept (id=episode:a); send date at the top level to change it",
+    "props.summary not promoted — summary already holds a value and was kept (id=episode:a); send summary at the top level to change it"
+   ]
+  },
+  "episode.props_promote_into_empty": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"date": "2025-02-02", "episode_id": "episode:a", "owner_id": "user:alice", "props": {"date": "2025-02-02"}, "rev": 2, "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "episode.summary_explicit_empty": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "user:alice", "rev": 2, "summary": "", "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "episode.top_level_wins": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"date": "2025-01-01", "episode_id": "episode:a", "owner_id": "user:alice", "props": {"date": "2024-01-01", "summary": "props"}, "rev": 1, "summary": "top", "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "episode.unkept": {
+   "nodes": {
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "user:alice", "rev": 1, "title": "E"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node.content_time not persisted on Episode (id=episode:a) — no such column; the value was dropped, not stored",
+    "node.one_liner not persisted on Episode (id=episode:a) — no such column; the value was dropped, not stored",
+    "node.valid_until not persisted on Episode (id=episode:a) — no such column; the value was dropped, not stored"
+   ]
+  },
+  "fault.domain_link_fails": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "domain": "vinc/x", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "domain hierarchy not updated (id=concept:a): injected link failure"
+   ]
+  },
+  "fault.endpoint_probe_fails": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "1 edge(s) skipped — <reason:undeclared_endpoint>: concept:a, concept:b"
+   ]
+  },
+  "fault.node_write_fails": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node write failed — skipped (id=concept:a, label=Concept): injected write failure",
+    "1 edge(s) skipped — <reason:skipped_endpoint>: concept:a"
+   ]
+  },
+  "fault.topic_guard_on": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "guard.domain_kind": {
+   "result": {"error": "write_precondition_not_supported", "executed": false, "merged": null, "partial": true, "status": "unsupported_kind"},
+   "warnings": [
+    "write_precondition_not_supported"
+   ]
+  },
+  "guard.duplicate_target": {
+   "result": {"error": "duplicate_or_invalid_conditional_target", "executed": false, "merged": null, "partial": true, "status": "invalid_request"},
+   "warnings": [
+    "duplicate_or_invalid_conditional_target"
+   ]
+  },
+  "guard.id_not_a_string": {
+   "result": {"error": "duplicate_or_invalid_conditional_target", "executed": false, "merged": null, "partial": true, "status": "invalid_request"},
+   "warnings": [
+    "duplicate_or_invalid_conditional_target"
+   ]
+  },
+  "guard.local_owner_create_only": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "tenant:local", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "tenant:local"}
+  },
+  "guard.no_type": {
+   "result": {"error": "invalid_conditional_node", "executed": false, "merged": null, "partial": true, "status": "invalid_request"},
+   "warnings": [
+    "invalid_conditional_node"
+   ]
+  },
+  "guard.non_dict_node": {
+   "result": {"error": "invalid_conditional_node", "executed": false, "merged": null, "partial": true, "status": "invalid_request"},
+   "warnings": [
+    "invalid_conditional_node"
+   ]
+  },
+  "guard.plain_node_beside_guarded": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    },
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice"}
+  },
+  "guard.prefix_differs": {
+   "result": {"error": "invalid_conditional_identity", "executed": false, "merged": null, "partial": true, "status": "invalid_request"},
+   "warnings": [
+    "invalid_conditional_identity"
+   ]
+  },
+  "guard.sep_in_id": {
+   "result": {"error": "invalid_conditional_identity", "executed": false, "merged": null, "partial": true, "status": "invalid_request"},
+   "warnings": [
+    "invalid_conditional_identity"
+   ]
+  },
+  "guard.too_many_nodes": {
+   "result": {"error": "conditional_write_unavailable", "executed": false, "merged": null, "partial": true, "status": "query_failed"},
+   "warnings": [
+    "conditional_write_unavailable"
+   ]
+  },
+  "node.blank_type_and_id": {
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node without type — skipped (?)"
+   ]
+  },
+  "node.domain_not_a_string": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "5", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "domain": "5", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    },
+    "Domain": {
+     "5": {"name": "5"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "node.duplicate_in_payload": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 2, "title": "A2"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 1}}, "owner": "user:alice"}
+  },
+  "node.entity_blank_title": {
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "entity node.title required: id=widget:a (type=widget)"
+   ]
+  },
+  "node.entity_title_not_a_string": {
+   "result": {"raises": "AttributeError"}
+  },
+  "node.entity_without_title": {
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "entity node.title required: id=widget:a (type=widget)"
+   ]
+  },
+  "node.no_id": {
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node without id — skipped (type=concept)"
+   ]
+  },
+  "node.no_type": {
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node without type — skipped (concept:a)"
+   ]
+  },
+  "node.one_bad_among_good": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "A"}
+    },
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 2, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "entity node.title required: id=widget:x (type=widget)"
+   ]
+  },
+  "node.prefix_mismatch": {
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node type 'episode' disagrees with its id prefix 'concept': skipped (id=concept:a). The prefix names the table, so this would store a second row under the same id. Send type 'concept' or use an id without that prefix."
+   ]
+  },
+  "node.prefix_mismatch_open_type": {
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node type 'widget' disagrees with its id prefix 'record': skipped (id=record:a). The prefix names the table, so this would store a second row under the same id. Send type 'record' or use an id without that prefix."
+   ]
+  },
+  "node.props_not_serialisable": {
+   "result": {"raises": "TypeError"}
+  },
+  "node.props_over_cap": {
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node.props too large — skipped (id=concept:a, >512KB serialized)"
+   ]
+  },
+  "node.sep_in_props": {
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node contains U+001F (reserved for PK namespacing) — skipped (id=record:a)"
+   ]
+  },
+  "node.sep_in_title": {
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node contains U+001F (reserved for PK namespacing) — skipped (id=concept:a)"
+   ]
+  },
+  "node.tag_over_length_cap": {
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node.tags too large — skipped (id=concept:a)"
+   ]
+  },
+  "node.tags_at_cap": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "tags": "<list 256>", "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "node.tags_not_iterable": {
+   "result": {"raises": "TypeError"}
+  },
+  "node.tags_over_count_cap": {
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node.tags too large — skipped (id=concept:a)"
+   ]
+  },
+  "node.tags_string_split": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "tags": ["a", "b"], "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "node.title_at_cap": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "<str 16384>"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "node.title_not_a_string": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "12"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "node.title_over_cap": {
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node.title too large — skipped (id=concept:a, 16385 chars > 16384)"
+   ]
+  },
+  "owner.conflict_every_scoped_kind": {
+   "nodes": {
+    "Bridge": {
+     "bridge:a": {"bridge_id": "bridge:a", "created": "<hlc>", "owner_id": "user:bob", "rev": 1, "title": "B"}
+    },
+    "Decision": {
+     "decision:a": {"created": "<hlc>", "decision_id": "decision:a", "owner_id": "user:bob", "rev": 1, "title": "D"}
+    },
+    "Entity": {
+     "widget:a": {"entity_id": "widget:a", "owner_id": "user:bob", "rev": 1, "tags": [], "theme_id": "", "title": "W", "type": "widget"}
+    },
+    "Episode": {
+     "episode:a": {"episode_id": "episode:a", "owner_id": "user:bob", "rev": 1, "title": "E"}
+    },
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:bob", "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "id_conflicts": ["record:a", "decision:a", "episode:a", "bridge:a", "widget:a"], "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "id record:a owned by another tenant — skipped. Nothing was written for this node, and every retry will be skipped the same way: node ids are one global namespace, so this slug is not available to you. Author it under a different id.",
+    "id decision:a owned by another tenant — skipped. Nothing was written for this node, and every retry will be skipped the same way: node ids are one global namespace, so this slug is not available to you. Author it under a different id.",
+    "id episode:a owned by another tenant — skipped. Nothing was written for this node, and every retry will be skipped the same way: node ids are one global namespace, so this slug is not available to you. Author it under a different id.",
+    "id bridge:a owned by another tenant — skipped. Nothing was written for this node, and every retry will be skipped the same way: node ids are one global namespace, so this slug is not available to you. Author it under a different id.",
+    "id widget:a owned by another tenant — skipped. Nothing was written for this node, and every retry will be skipped the same way: node ids are one global namespace, so this slug is not available to you. Author it under a different id."
+   ]
+  },
+  "owner.conflict_takes_its_edges": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:bob", "rev": 1, "title": "theirs"},
+     "concept:b": {"concept_id": "concept:b", "created": "<hlc>", "owner_id": "user:alice", "rev": 1, "title": "B"}
+    }
+   },
+   "result": {"executed": true, "id_conflicts": ["concept:a"], "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "id concept:a owned by another tenant — skipped. Nothing was written for this node, and every retry will be skipped the same way: node ids are one global namespace, so this slug is not available to you. Author it under a different id.",
+    "1 edge(s) skipped — <reason:skipped_endpoint>: concept:a"
+   ]
+  },
+  "owner.domain_is_shared": {
+   "nodes": {
+    "Domain": {
+     "vinc/eng": {"name": "vinc/eng"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "owner.explicit_legacy_empty_owner": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "owner_id": "", "title": "legacy"}
+    }
+   },
+   "result": {"executed": true, "id_conflicts": ["concept:a"], "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "id concept:a has no owner (a legacy row) — skipped. Nothing was written for this node, and every retry will be skipped the same way: node ids are one global namespace, so this slug is not available to you. Author it under a different id."
+   ]
+  },
+  "owner.explicit_other_conflict": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:bob", "rev": 1, "title": "theirs"}
+    }
+   },
+   "result": {"executed": true, "id_conflicts": ["concept:a"], "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "id concept:a owned by another tenant — skipped. Nothing was written for this node, and every retry will be skipped the same way: node ids are one global namespace, so this slug is not available to you. Author it under a different id."
+   ]
+  },
+  "owner.explicit_same_matched": {
+   "edges": [
+    ["IN_DOMAIN", "concept:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "content_time": "2024", "created": "<hlc>", "domain": "vinc/x", "one_liner": "line", "owner_id": "user:alice", "props": {"alpha": 1, "beta": 2}, "rev": 2, "tags": ["t"], "title": "A2"}
+    },
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "owner.local_matched_not_restamped": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "tenant:local", "rev": 2, "title": "A2"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "tenant:local"}
+  },
+  "owner.local_new": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "tenant:local", "rev": 1, "title": "A"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "tenant:local"}
+  },
+  "owner.local_over_other_owner": {
+   "nodes": {
+    "Concept": {
+     "concept:a": {"concept_id": "concept:a", "created": "<hlc>", "owner_id": "user:bob", "rev": 2, "tags": ["t"], "title": "local"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "tenant:local"}
+  },
+  "record.content_time_valid": {
+   "nodes": {
+    "Record": {
+     "record:a": {"content_time": "2025-02", "created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "record.matched_empty_title_blanks": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 2, "tenant_id": "tenant:local", "title": ""}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "record node.title empty — left blank, not set to the id (id=record:a)"
+   ]
+  },
+  "record.matched_title_absent_kept": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 2, "tags": ["u"], "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "record.measured_at_invalid": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "props": {"measured_at": "last week"}, "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "props.measured_at 'last week' is not YYYY[-MM[-DD]] (id=record:a) — stored as sent, but claims cannot be ordered against it"
+   ]
+  },
+  "record.measured_at_valid": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "props": {"measured_at": "2025-01-02", "measured_ref": "abc"}, "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "record.new": {
+   "edges": [
+    ["IN_DOMAIN", "record:a", "vinc/x", {}],
+    ["PARENT_OF", "vinc", "vinc/x", {}]
+   ],
+   "nodes": {
+    "Domain": {
+     "vinc": {"name": "vinc"},
+     "vinc/x": {"name": "vinc/x"}
+    },
+    "Record": {
+     "record:a": {"created": "<hlc>", "domain": "vinc/x", "owner_id": "user:alice", "props": {"k": 1}, "record_id": "record:a", "rev": 1, "tags": ["t"], "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "record.new_blank_title": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": ""}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "record node.title empty — left blank, not set to the id (id=record:a)"
+   ]
+  },
+  "record.new_empty_title": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": ""}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "record node.title empty — left blank, not set to the id (id=record:a)"
+   ]
+  },
+  "record.new_without_title": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "record node has no title — left blank, not set to the id (id=record:a)"
+   ]
+  },
+  "record.subject_path_bare": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "props": {"subject_path": "api/x.py"}, "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "props.subject_path 'api/x.py' names no repository (id=record:a) — stored, but a bare path cannot be compared across repositories; write it as repo:path"
+   ]
+  },
+  "record.subject_path_first_repo": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "props": {"subject_path": "vinc:a.py"}, "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "record.subject_path_new_repo": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "props": {"subject_path": "vinc:a.py"}, "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R"},
+     "record:b": {"created": "<hlc>", "owner_id": "user:alice", "props": {"subject_path": "vinx:b.py"}, "record_id": "record:b", "rev": 1, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "props.subject_path repository 'vinx' is new to this graph (id=record:b) — stored; if it is a typo it makes a namespace of its own (known: vinc)"
+   ]
+  },
+  "record.subject_path_normalised": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "props": {"subject_path": "vinc:api/x.py"}, "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  },
+  "record.unkept_one_liner": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "node.date not persisted on Record (id=record:a) — no such column; the value was dropped, not stored",
+    "node.one_liner not persisted on Record (id=record:a) — no such column; the value was dropped, not stored",
+    "node.summary not persisted on Record (id=record:a) — no such column; the value was dropped, not stored"
+   ]
+  },
+  "record.validity_empty_clears": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 2, "tenant_id": "tenant:local", "title": "R", "valid_from": "2025-01", "valid_until": ""}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "record.validity_invalid_kept": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R", "valid_from": "2025-01"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "valid_from '01/2025' is not YYYY[-MM[-DD]] — kept the stored value (id=record:a)"
+   ]
+  },
+  "record.validity_inverted": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R", "valid_from": "2025-06", "valid_until": "2025-01"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "validity interval inverted — valid_until '2025-01' precedes valid_from '2025-06' (id=record:a); stored as sent, but no instant falls inside it"
+   ]
+  },
+  "record.validity_inverted_against_stored": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 2, "tenant_id": "tenant:local", "title": "R", "valid_from": "2025-06", "valid_until": "2025-01"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice", "partial": true},
+   "warnings": [
+    "validity interval inverted — valid_until '2025-01' precedes valid_from '2025-06' (id=record:a); stored as sent, but no instant falls inside it"
+   ]
+  },
+  "record.validity_partial_close": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 2, "tenant_id": "tenant:local", "title": "R", "valid_from": "2025-01", "valid_until": "2025-06"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 0, "matched": 1}}, "owner": "user:alice"}
+  },
+  "record.validity_valid": {
+   "nodes": {
+    "Record": {
+     "record:a": {"created": "<hlc>", "owner_id": "user:alice", "record_id": "record:a", "rev": 1, "tenant_id": "tenant:local", "title": "R", "valid_from": "2025-01", "valid_until": "2025-06"}
+    }
+   },
+   "result": {"executed": true, "merged": {"edges": {"created": 0}, "nodes": {"created": 1, "matched": 0}}, "owner": "user:alice"}
+  }
+ }
+}

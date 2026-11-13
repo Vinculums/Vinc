@@ -250,7 +250,9 @@ class AppSourceTests(unittest.TestCase):
         self.assertNotRegex(src, r"(?m)^\s*import\s")
 
     def test_복사하는_자리가_전부_스페이스를_넘긴다(self):
-        src = (APP / "surfaces" / "view.ts").read_text(encoding="utf-8")
+        # 링크 복사는 지도 화면(view.ts)과 그 카드(view-cards.ts)에 있다.
+        src = "".join((APP / "surfaces" / name).read_text(encoding="utf-8")
+                      for name in ("view.ts", "view-cards.ts"))
         calls = src.count("absoluteViewUrl(")
         self.assertGreater(calls, 0)
         self.assertEqual(src.count("spaceName())"), calls,

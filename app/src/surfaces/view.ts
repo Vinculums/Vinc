@@ -1,8 +1,8 @@
-import { api, cfg, WEB, teamsApi, isCommunitySpace, canWriteHere, viewScope, viewAccess, docMidWrite, spaceName, spaceKey, storeDownReason, isWriteConflict, storage, restartSidecar, type GraphEdge, type GraphNode,
+import { api, cfg, WEB, teamsApi, isCommunitySpace, canWriteHere, viewScope, viewAccess, docMidWrite, spaceKey, storeDownReason, isWriteConflict, storage, restartSidecar, type GraphEdge, type GraphNode,
          type NodeLinks, type NodeContext } from "../api";
 import { COPY } from "../copy";
 import { docTitle } from "../doc-title";
-import { absoluteViewUrl, formatViewUrl, parseViewUrl } from "../view-url";
+import { formatViewUrl, parseViewUrl } from "../view-url";
 import { viewSessionCache } from "../view-session-cache";
 import { createGraphLoader } from "../view-graph-loader";
 import { retainedViews, restoreRetained } from "../view-retained";
@@ -23,13 +23,13 @@ import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbScopeClearer, s
          refreshLnb, isAgentRoleId, stripRolePrefix } from "../lnb";
 import { createPropsCard } from "./view-props-card";
 import { createRail } from "./view-rail";
+import { createCards, detailErrorHTML } from "./view-cards";
 import type { N3, ViewHost } from "./view-host";
 import { openFloatPanel, closeFloatPanel, isFloatPanelOpen } from "../float-panel";
-import { icon } from "../icons";
 import { setLiveRefresher } from "../live";
 import { emptyInviteHtml } from "../empty-invite";
 import { takePendingNewDoc } from "../authoring";
-import { detailState, detailFailure, detailMessage, topicDetailHTML, type DetailState } from "../topic-detail";
+import { detailState, detailFailure, topicDetailHTML, type DetailState } from "../topic-detail";
 import { bindTopicDescription, type TopicDraft } from "../topic-description";
 
 /** Surface 3 — View (spec: [[vinc.spec.viewpoints]] · as-built [[vinc.reference.view-controls]]).
@@ -59,47 +59,6 @@ const lvDomains = (lv: Level): string[] => lv.kind === "l1" ? lv.domains : [];
  *  첫 번째를 쓰고, 답이 생기면 여기 한 곳만 고치면 된다. */
 const lvDomain = (lv: Level): string => lvDomains(lv)[0] || "";
 
-
-/** 복사 버튼 한 벌 — 레일·문서 카드·영역이 같은 처리를 쓴다.
- *
- *  복사가 막혀도 **오류로 키우지 않는다**: 주소는 어차피 주소창에 그대로 있고,
- *  클립보드 권한은 사용자 환경의 일이다. settings 의 MCP 주소 복사와 같은 태도다.
- *  버튼 라벨을 잠깐 바꾸는 것으로 끝낸다 — 알림을 띄우면 복사 한 번이 사건이 된다. */
-
-
-/** 복사되는 값 — 한 마디 + 주소, **한 줄**로.
- *
- *  줄을 안 나눈다: 붙여넣는 자리가 대부분 한 줄짜리 입력이라 나누면 거기서 잘린다.
- *  `@` 도 안 붙인다 — Figma 가 붙이는 것은 그쪽 클라이언트에서 그 토큰이 첨부를 뜻해서고,
- *  여기서는 아무 뜻이 없으며 오히려 `vinc_graph(url=…)` 인자에 실려 주소를 깨뜨린다. */
-function promptFor(url: string): string {
-  return `${COPY.ui.viewx.promptLead} ${url}`;
-}
-
-function bindCopyLink(btn: Element | null, make: () => string): void {
-  if (!btn) return;
-  // span 에 role=button 을 달았으므로 Enter·Space 를 직접 받아야 한다 — 진짜 button
-  // 이 공짜로 주던 것이고, 안 달면 키보드만 쓰는 사람에게는 이 기능이 없는 것과 같다.
-  btn.addEventListener("keydown", (e) => {
-    const k = (e as KeyboardEvent).key;
-    if (k === "Enter" || k === " ") { e.preventDefault(); (btn as HTMLElement).click(); }
-  });
-  btn.addEventListener("click", (e) => {
-    e.stopPropagation();          // 행의 다른 일로 새면 안 된다(레일에서는 노드 선택)
-    const tip = COPY.ui.viewx;
-    const el = btn as HTMLElement;
-    const label = el.textContent || "";
-    // **글귀를 그 자리에서 바꾼다.** 여태 되먹임이 툴팁(`data-tip`)뿐이었는데, 툴팁은
-    // 이미 떠 있으면 갱신되지 않고 손을 뗐다 다시 올려야 보였다 — 눌렀는데 아무 일도
-    // 안 일어난 것처럼 읽힌다. 쓰기를 기다리지 않고 **먼저** 바꾸고, 실패하면 되돌린다:
-    // 로컬 클립보드 쓰기는 사실상 즉시라 낙관적으로 보여 주는 편이 정직하다.
-    el.textContent = tip.copyLinkDone;
-    window.setTimeout(() => { el.textContent = label; }, 1400);
-    void navigator.clipboard.writeText(make()).catch(() => {
-      el.textContent = tip.copyLinkFail;
-    });
-  });
-}
 
 /** 리더 머리에 세울 개념 칩 수. 나머지는 "+N" 으로 센다 — 좁은 열에서 칩이 줄을
  *  넘기기 시작하면 그 줄이 본문보다 커진다(관계 카드의 `relsMore` 와 같은 태도). */
@@ -179,7 +138,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   if (docpane) docpane.append(railGrip);
   const msg = el.querySelector<HTMLElement>("#view-msg")!;
   const metricsBar = el.querySelector<HTMLElement>("#view-metrics")!;
-  // 떼어 낸 묶음(레일 · 속성 절)에 내주는 손잡이 한 벌. 화살표가 읽는 닫힌 변수는 아래에서 선언되고, 부를 때 읽는다.
+  // 떼어 낸 묶음(레일 · 속성 절 · 카드)에 내주는 손잡이 한 벌. 화살표가 읽는 닫힌 변수는 아래에서 선언되고, 부를 때 읽는다.
   const host: ViewHost = {
     detail,
     reloadNode: (nd) => { ctxCache = null; return loadNodeSource(nd); },
@@ -189,6 +148,20 @@ export async function renderView(el: HTMLElement, resume = false) {
       lastNode = null;
       if (focusId) { focusId = ""; syncHash(); }   // 주소는 화면이 말하는 것만 말한다
     },
+    closeRail: () => rail.closeRail(),
+    railFor,
+    focusNode,
+    openEdgeDetail,
+    openTopicCard,
+    homeCardPos,
+    topicColour: (domain) => compass?.colour(domain),
+    hasHistory: () => detailHistory.length > 0,
+    wireDetailBack,
+    lastNode: () => lastNode,
+    focusedId: () => focusId,
+    nodeContextOnce: (id) => nodeContextOnce(id),
+    dropNodeContext: () => { ctxCache = null; },
+    showLevel: () => show(trail[trail.length - 1]),
   };
   // 레일(폭 · 그립 · 크기 · 머리 · 열고 닫기)은 `view-rail.ts` 가 맡는다. 만들 때 저장된 폭으로 닫힌 채 시작한다.
   const rail = createRail(host, { el, shell, docpane, railGrip });
@@ -688,10 +661,6 @@ export async function renderView(el: HTMLElement, resume = false) {
     return ctxCache.p;
   };
 
-  function detailErrorHTML(state: DetailState) {
-    return `<p class="card-note" role="status">${esc(detailMessage(state, COPY.ui.viewx))}</p>`
-      + (state === "failed" ? `<button type="button" class="btn" data-detail-retry>${esc(COPY.ui.viewx.detailRetry)}</button>` : "");
-  }
   async function followDetail(from: N3, id: string, domain: string | undefined, pane: boolean) {
     if (from.id === id) return;
     if (detailHistory.at(-1)?.id !== from.id) detailHistory.push(from);
@@ -762,167 +731,8 @@ export async function renderView(el: HTMLElement, resume = false) {
     void loadTopicDetail(card.body.querySelector<HTMLElement>("[data-topic-body]")!, nd, false);
   }
 
-  /** 노드 카드 — 디자인 정본 `Vinc Node Card.dc.html` (2a Final) 그대로.
-   *
-   *      Details and source   3 documents  >     오른쪽 캐럿 = 문서 열로 나간다
-   *      Links                -> 4 · <- 1  v     아래 캐럿 = 카드 안에서 펼친다(기본 펼침)
-   *        -> Reciprocal rank fusion  requires
-   *      Ask an assistant     [Copy prompt v]    이름 붙은 프롬프트 셋
-   *      Zoom                 [ - | + ]
-   *      Copy link  Share            Delete      조용한 유틸리티
-   *
-   *  깊이 선택(1/2/3)이 사라진 자리를 **이름 붙은 프롬프트 셋**이 대신한다. 숫자는
-   *  크기를 말해 주지 않아 늘 경고를 달고 다녀야 했는데, 이름은 무엇을 담아 가는지
-   *  스스로 말한다("내 문서 안에서만" · "연결 N개, 근거 포함").
-   *
-   *  인과 원뿔은 줄에서 뺐다 — 노드를 고르는 순간 `focusOnMap` 이 이미 과거·미래
-   *  폐포를 점등하므로 카드가 다시 부를 일이 아니다. */
-  async function openRelsCard(nd: N3) {
-    if (nd.id.startsWith("domain:")) { openTopicCard(nd); return; }
-    // 카드의 **집은 지도 카드의 좌상단**이다(발주자 지시 2026-09-09,
-    // `수정항목/노드 클릭 플로팅 모달.JPG` 가 그 자리를 가리킨다). 여태는 노드의
-    // 화면좌표 옆이었고, 그것이 낸 문제 둘:
-    //   ① 자리가 매번 다르다 — 카드를 읽으려면 눈이 카드를 먼저 찾아야 했다.
-    //   ② 읽는 면이 오른쪽으로 온 뒤(R1) 오른쪽 노드를 누르면 카드가 본문 위에 겹쳤다.
-    // 고정 자리는 그 둘을 함께 없앤다. 노드와의 연결은 좌표가 아니라 **인과 원뿔의
-    // 점등**이 말한다(focusOnMap 이 이미 그 일을 한다) — 카드가 노드 옆에 있어야
-    // 한다는 요구는 그 점등이 없던 시절의 것이다.
-    // 사용자가 끌어 옮기면 그 자리를 기억한다(float-panel.ts) — 고정은 집일 뿐이고
-    // 손이 옮긴 자리를 되돌리지 않는다.
-    const home = homeCardPos();
-    const V = COPY.ui.viewx;
-    const card = openFloatPanel({
-      title: nd.label, x: home.x, y: home.y, closeLabel: V.railClose,
-    });
-    // 머리의 표식 — 지도가 그리는 마크 그대로(채운 원 = 개념), 색은 그 노드의 주제 색.
-    // 나침반의 **그 표**(`compass.colour`, 사이드바 그래프 트리도 읽는다)에서 읽는다. 표를 여기서 따로 지으면
-    // 넣는 집합(조상 경로 포함 여부)이 갈려 순위가 밀리고, 같은 주제가 카드와 지도에서 두 색이 된다.
-    // `data-domain` 은 테마 전환(retheme)이 이 표식을 다시 칠할 때 읽는다.
-    const tint = nd.domain ? compass?.colour(nd.domain.trim()) || undefined : undefined;
-    card.el.querySelector(".float-title")?.insertAdjacentHTML("beforebegin",
-      `<span class="float-mark" aria-hidden="true"${
-        nd.domain ? ` data-domain="${esc(nd.domain.trim())}"` : ""}${
-        tint ? ` style="color:${tint}"` : ""}>${icon("dot", 11)}</span>`);
-
-    card.body.innerHTML = `
-      <div class="card-rows">
-        ${detailHistory.length ? `<button class="btn" type="button" data-detail-back>${esc(V.readerBack)}</button>` : ""}
-        <button type="button" class="card-row" id="c-open">
-          <span class="row-name">${V.cardOpen}</span>
-          <span class="row-meta" id="c-docs"></span>
-          ${chev("right")}
-        </button>
-        <div class="card-sec">
-          <button type="button" class="card-row" id="c-links" aria-expanded="false">
-            <span class="row-name row-name--strong">${V.cardLinks}</span>
-            <span class="row-meta" id="c-linkmeta"></span>
-            ${chev("down")}
-          </button>
-          <div class="card-links" id="c-rels" hidden><p class="card-note">${loaderInline(V.sourceLoading)}</p></div>
-        </div>
-        ${askRowHTML()}
-        <div class="card-util">
-          <button type="button" id="c-copylink">${V.cardCopyLink}</button>
-          <button type="button" id="c-share">${V.cardShare}</button>
-          <button type="button" id="c-connect" data-tip="${esc(COPY.author.connectTip)}">${
-            esc(COPY.author.connect)}</button>
-          <button type="button" id="c-del" class="card-util-del">${V.cardDelete}</button>
-        </div>
-      </div>`;
-
-    const q = <T extends HTMLElement>(s: string) => card.body.querySelector<T>(s);
-    wireDetailBack(card.body, false);
-    const url = (depth: number) =>
-      absoluteViewUrl({ kind: "node", id: nd.id }, { depth }, spaceName());
-
-    // 행동은 응답과 무관하므로 **지금** 묶는다. 늦게 묶으면 응답이 늦거나 카드가
-    // 교체될 때 통째로 안 묶인다(실측으로 한 번 물렸다 — 관계가 통째로 비었다).
-    // 다시 누르면 닫힌다. 여는 손짓과 닫는 손짓이 다른 자리에 있으면(레일의 ✕)
-    // 방금 연 것을 되돌리려고 눈이 화면을 가로질러야 한다.
-    q("#c-open")!.addEventListener("click", () => {
-      const openHere = !detail.hidden && lastNode?.id === nd.id;
-      if (openHere) closeRail(); else railFor(nd);
-    });
-    bindCopyLink(q("#c-copylink"), () => promptFor(url(1)));
-    q("#c-share")!.addEventListener("click", () =>
-      openShareSheet({ seed: nd.id, depth: SHARE_DEPTH }));
-    q("#c-connect")!.addEventListener("click", () => void import("../connect")
-      .then((m) => m.startConnect({ id: nd.id, title: nd.label })));
-    q("#c-del")!.addEventListener("click", async () => {
-      const guard = api.previewDeleteNode(cfg.owner, nd.id);   // 확인 창과 함께 미리본다
-      if (!await confirmDestructive(V.delNodeAsk(nd.label), V.delConfirm, V.delCancel)) return;
-      try {
-        const res = await api.deleteNode(cfg.owner, nd.id, await guard);
-        if (!res.executed) throw new Error(res.note || res.error || "delete failed");
-        closeFloatPanel();
-        closeRail();
-        void show(trail[trail.length - 1]);
-      } catch {
-        // 지워진 것은 없지만 조용히 넘기지 않는다: 상세 열의 삭제와 같은 문장을 카드 바닥에 남긴다.
-        // 유틸 줄의 단추는 좁아서 문장을 받지 못하므로 그 아래 한 줄이다. 다시 누르면 다시 시도한다.
-        let note = card.body.querySelector<HTMLElement>("[data-del-fail]");
-        if (!note) {
-          note = document.createElement("p");
-          note.className = "card-note";
-          note.dataset.delFail = "";
-          note.setAttribute("role", "alert");
-          card.body.querySelector(".card-rows")?.append(note);
-        }
-        note.textContent = V.delFail;
-      }
-    });
-    // Links 는 기본 접힘. 펼치는 것도 접는 것도 카드 안의 일이라 캐럿이 아래를 본다.
-    const linksBox = q("#c-rels")!;
-    q("#c-links")!.addEventListener("click", (e) => {
-      const b = e.currentTarget as HTMLElement;
-      const open = b.getAttribute("aria-expanded") !== "true";
-      b.setAttribute("aria-expanded", String(open));
-      linksBox.hidden = !open;
-    });
-
-    // 프롬프트 메뉴 — 카드면 위의 카드면이다(유리 아님). 디자인 주석의 이유:
-    // 지도 위 카드 위에 또 유리를 얹으면 글자가 배경을 통과한다.
-    const setCounts = wireAsk(card.body, () => card.el.isConnected,
-      (deg, docs) => nodeAskItems(nd, deg, docs));
-    const scopeKey = viewScope().key;
-
-    try {
-      const res = await nodeContextOnce(nd.id);
-      if (!card.el.isConnected || myGen !== liveGen || focusId !== nd.id || viewScope().key !== scopeKey) return;
-      const state = detailState(res);
-      if (state !== "ready") {
-        linksBox.hidden = false; linksBox.innerHTML = detailErrorHTML(state);
-        linksBox.querySelector("[data-detail-retry]")?.addEventListener("click", () => {
-          ctxCache = null; void openRelsCard(nd);
-        });
-        return;
-      }
-      card.setTitle(res.title || nd.label);
-      const docs = (res.excerpts || []).length;
-      const dq = q("#c-docs");
-      if (dq && docs) dq.textContent = V.cardDocs(docs);
-      const links = res.links;
-      if (!links?.executed) {
-        linksBox.hidden = false; linksBox.innerHTML = detailErrorHTML("failed");
-        linksBox.querySelector("[data-detail-retry]")?.addEventListener("click", () => {
-          ctxCache = null; void openRelsCard(nd);
-        });
-        return;
-      }
-      const mq = q("#c-linkmeta");
-      if (mq) mq.textContent = V.cardLinkMeta(links.out, links.in);
-      linksBox.innerHTML = relsHTML(links);
-      wireRels(linksBox, nd, links);
-      setCounts(links.degree + links.attached, docs);
-    } catch (error) {
-      if (card.el.isConnected && myGen === liveGen && focusId === nd.id && viewScope().key === scopeKey) {
-        linksBox.hidden = false; linksBox.innerHTML = detailErrorHTML(detailFailure(error));
-        linksBox.querySelector("[data-detail-retry]")?.addEventListener("click", () => {
-          ctxCache = null; void openRelsCard(nd);
-        });
-      }
-    }
-  }
+  // 지도 위 노드 카드와 연결 목록은 `view-cards.ts` 가 맡는다. 넓은 열의 연결 절(`drawPaneLinks`)도 같은 목록을 그린다.
+  const { openRelsCard, relsHTML, wireRels } = createCards(host);
 
   /** 지도에서 노드를 고른 것 — **레일은 열지 않는다.**
    *
@@ -1283,63 +1093,6 @@ export async function renderView(el: HTMLElement, resume = false) {
       + (att > 0 ? row(COPY.ui.viewx.statAttached, String(att)) : "")
       + (nd.gateway ? `<p class="hint">${COPY.ui.viewx.gateway.replace(/^ · /, "")}</p>` : "")
       + `<p class="hint stat-note">${COPY.ui.viewx.statsFrom}</p>`;
-  }
-
-  /** 연결 목록 — 방향 화살표 · 상대 이름 · 관계 이름.
-   *
-   *  관계 이름은 `COPY.ui.ask.relTag` 가 이미 사람 말로 갖고 있다("derives from").
-   *  타입 코드를 그대로 내던 것을 바꾼 것이라 Ask 와 카드가 같은 어휘를 쓴다.
-   *  근거가 있는 관계는 **그 이름 자체가** 근거로 들어가는 자리다 — 디자인에 별도
-   *  버튼이 없고, 줄을 누르는 것은 이동이므로 둘이 과녁을 나눠 가진다. */
-  function relsHTML(links: NodeLinks): string {
-    const V = COPY.ui.viewx;
-    if (links.items.length === 0) return `<p class="card-note">${V.relsNone}</p>`;
-    const TAG = COPY.ui.ask.relTag;
-    const arrow = (d: string) => (d === "out" ? "→" : d === "in" ? "←" : "·");
-    const rest = links.degree + links.attached - links.items.length;
-    return links.items.map((it, i) => {
-      const ev = it.evidence && it.dir !== "att";
-      // 관계 이름은 **관계 상세로 가는 문**이다 — 근거가 없어도 연다(거기서 지운다).
-      // 부착(att)은 지우는 길이 없는 관계라 문을 내지 않는다.
-      const open = it.dir !== "att";
-      return `
-        <button type="button" class="link-row" data-i="${i}">
-          <span class="link-dir" aria-hidden="true">${arrow(it.dir)}</span>
-          <span class="link-title">${esc(it.title)}</span>
-          <span class="link-tag${ev ? " link-tag--ev" : ""}${open ? " link-tag--open" : ""}"${
-            open ? ` data-ev="${i}" data-tip="${ev ? V.relEvidence : esc(COPY.author.linkDetailTip)}"` : ""}>${
-            esc(TAG[`${it.type}:${it.dir}`] || it.type.toLowerCase())}</span>
-        </button>`;
-    }).join("")
-      + (links.truncated && rest > 0
-        ? `<button type="button" class="link-more">${V.relsMore(rest)}</button>` : "");
-  }
-
-  function wireRels(box: HTMLElement, nd: N3, links: NodeLinks) {
-    box.querySelectorAll<HTMLElement>(".link-row").forEach((r) =>
-      r.addEventListener("click", (e) => {
-        const it = links.items[Number(r.dataset.i)];
-        if ((e.target as HTMLElement).closest<HTMLElement>(".link-tag--open")) {
-          e.stopPropagation();
-          const here = (detail.contains(box) && detail.querySelector("h2")?.textContent) || nd.label;
-          void openEdgeDetail(it.dir === "out"
-            ? { source: nd.id, target: it.id, type: it.type, srcTitle: here, dstTitle: it.title }
-            : { source: it.id, target: nd.id, type: it.type, srcTitle: it.title, dstTitle: here });
-          return;
-        }
-        // 문서 열 안의 연결 줄이면 **열 안에서** 옮겨 간다(지금 크기 그대로). 카드의
-        // 줄이면 지금처럼 지도에서 그 노드로 간다.
-        if (detail.contains(box)) void openInPane(it.id, it.domain || undefined);
-        else void focusNode(it.id);
-      }));
-    // `+N more` 는 레일을 연다 — 카드는 좁고, 전부 보려면 넓은 자리가 필요하다.
-    box.querySelector(".link-more")?.addEventListener("click", () => railFor(nd));
-  }
-
-  /** 문서 열 안에서 다른 노드로 — 카드는 띄우지 않고 열의 크기는 그대로 둔다. */
-  async function openInPane(id: string, domain?: string) {
-    const nd = await focusNode(id, domain, false);
-    if (nd && myGen === liveGen) railFor(nd);
   }
 
   async function loadNodeSource(nd: N3) {
