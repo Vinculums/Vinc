@@ -2107,10 +2107,12 @@ TOOLS.append({"name": "vinc_run_submit", "reference":
         "ask_first you as the person chose. A request expires after expires_in_s (default 3600, at "
         "most 43200) and the run ends blocked. A claim that something ran is blocked, since no host "
         "proof reaches this tool; the result names it as claim. Say what you attempted and where it "
-        "can be read instead. actions_run lists the calls the step ran (command or tool name); with "
-        "it, a merge, tag push, publish, send or migration is asked from those calls, not from the "
-        "output's words, and text about them comes back as notes. host_record carries the same "
-        "entries signed by a host observer key registered for the graph. Only the output's hash and "
+        "can be read instead. actions_run lists the calls the step ran (command or tool name); a "
+        "merge, tag push, publish, send or migration among them is asked as well, and the output's "
+        "words are still read. Each recorded call is asked in its own step: an earlier approval "
+        "does not cover it. host_record carries the entries a host observer saw, signed for this "
+        "run and step with a key registered for the graph; with it those actions come from the "
+        "record alone and text about them is kept on the run as notes. Only the output's hash and "
         "length are stored. With the final output, "
         "verdict says what the work concluded (a verify-tier role pass, fail or blocked; any other "
         "role delivered, partial or blocked) and verdict_note names what blocked it. It is kept "
@@ -2135,12 +2137,14 @@ TOOLS.append({"name": "vinc_run_submit", "reference":
                               "description": "Capability ids of the tools called in this step."},
         "actions_run": {**_ACTION_RECORD,
                         "description": "The calls this step ran, one per entry: the exact shell "
-                                       "command or the tool name, its target and exit status."},
+                                       "command or the tool name, its target and exit status. "
+                                       "They add questions; they never remove one."},
         "host_record": {"type": "object", "properties": {
             "entries": _ACTION_RECORD,
             "attestation": {"type": "string", "maxLength": 4096}},
             "required": ["entries", "attestation"], "additionalProperties": False,
-            "description": "The calls a host observer saw, signed with its registered key."},
+            "description": "The calls a host observer saw in this step, signed with its "
+                           "registered key for this run and step, with a single-use jti."},
         "usage": {"type": "object", "properties": {
             "tool_calls": {"type": "integer", "minimum": 0},
             "tokens_in": {"type": "integer", "minimum": 0},

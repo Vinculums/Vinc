@@ -32,8 +32,10 @@ import math
 RUN_PREFIX = "episode:run-"
 #: 질문 쪽 상태: 실행이 지금 무엇을 묻는가. 실행 프로토콜의 출력 단계(`_output`)와 작업 닫기
 #: (`run_tasks.cancel`)가 쓴다. 닫힌 작업 표시는 답을 막기만 하고 승인을 만들지 않는다.
-#: 실행이 돌린 호출의 기록(`actions_run`)과 아직 묻지 못한 기록된 사람 전용 행동(`record_pending`)도 질문 쪽이다.
-QUESTION_KEYS = ("state", "pending", "asks", "last_asked_at", "task_cancelled", "actions_run", "record_pending")
+#: 실행이 돌린 호출의 기록(`actions_run`), 아직 묻지 못한 기록된 사람 전용 행동(`record_pending`), 호스트 기록이
+#: 글을 대신한 자리의 참고(`record_notes`), 이미 받은 호스트 기록의 일회용 id(`host_record_ids`)도 질문 쪽이다.
+QUESTION_KEYS = ("state", "pending", "asks", "last_asked_at", "task_cancelled", "actions_run", "record_pending",
+                 "record_notes", "host_record_ids")
 #: 답 쪽 상태: 누가 무엇에 답했고 무엇이 승인됐는가. 실행 프로토콜의 `_answer` 가 채운다.
 ANSWER_KEYS = ("approved", "answer", "answered_at", "answered_actions", "answered_by", "answer_via",
                "answer_text")
@@ -73,13 +75,15 @@ WORK_VERDICTS = ("delivered", "partial", "blocked")
 VERDICTS = ("pass", "fail", "delivered", "partial", "blocked")
 #: 결론에 붙는 한 줄(무엇이 막았나, 무엇이 실패했나, 무엇이 남았나)의 최대 길이.
 VERDICT_NOTE_MAX = 300
+#: 실행에 남는 참고(`record_notes`) 한 줄의 최대 길이.
+NOTE_MAX = 300
 #: 실행 프로토콜과 읽는 쪽(승인함·실행 목록·이벤트·알림·Tasks)이 읽는 실행 기록의 props 이름.
 #: 생성 시험(`tests/mcp/test_run_record_property.py`)이 이 이름마다 잘못된 모양의 값을 넣어 본다.
 PROPS = ("run_id", "role", "role_hash", "outcome", "state", "step", "asks", "task", "subject",
          "host", "started_at", "ended_at", "end_reason", "expired_at", "last_asked_at", "used",
          "cited_ids", "citations_missing", "capabilities_used", "capability_flags", "pending",
          "approved", "answer", "answered_at", "answered_actions", "answered_by", "answer_via",
-         "answer_text", "task_cancelled", "verdict", "verdict_note")
+         "answer_text", "task_cancelled", "verdict", "verdict_note", "record_notes")
 #: 그중 대기(`pending`) 안에서 읽는 이름.
 PENDING_PROPS = ("actions", "checks", "question", "asked_at", "expires_at", "kind", "requests")
 
@@ -142,6 +146,12 @@ def _flags(value) -> list[dict]:
             if isinstance(v.get("id"), str) and isinstance(v.get("flag"), str)]
 
 
+def notes(value) -> list[dict]:
+    """호스트 기록이 글을 대신한 자리의 참고: 단계 수와 보이는 한 줄인 글만 남긴다."""
+    return [{"step": count(v.get("step")), "note": visible_line(v["note"])[:NOTE_MAX]}
+            for v in _dicts(value) if isinstance(v.get("note"), str)]
+
+
 def visible_line(text: str) -> str:
     """보이는 글자만 남긴 한 줄. 제어 문자와 서식 문자(Unicode Cc·Cf: NUL, ESC, 방향 바꿈 등)는 빼고,
     공백은 하나로 접는다. 결론의 한 줄처럼 사람이 그대로 읽는 짧은 글에 쓴다."""
@@ -164,7 +174,7 @@ def readable(props) -> dict:
             out[key] = count(out[key])
     for key, read in (("cited_ids", _strings), ("capabilities_used", _strings),
                       ("approved", _strings), ("answered_actions", _strings),
-                      ("capability_flags", _flags)):
+                      ("capability_flags", _flags), ("record_notes", notes)):
         if key in out:
             out[key] = read(out[key])
     if "used" in out:
