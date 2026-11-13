@@ -1592,6 +1592,10 @@ const EN = {
       spaceActivationHint: "Activate pending teams or review paused access on your account team page at vincs.io.",
       spaceListFailed: "Could not load your teams.",
       spaceCommunities: "Communities",
+      // 하나로 합친 공개 커뮤니티 줄(`space-picker.ts` `unifiedCommunityId`). 가입 없이 로그인한 모두에게 보인다.
+      spaceCommunity: "Community",
+      spaceUnified: "Vinc Community",
+      spaceUnifiedHint: "Read only · open to everyone",
       spaceCommunityReadOnly: "Community spaces are read only here. Edit pages on the community site.",
       // 뷰 머리 맨 앞의 공간 전환(`space-switcher.ts`): 커뮤니티 표시와 메뉴.
       spaceReadOnly: "Read only",
@@ -3098,6 +3102,9 @@ const KO: Deck = {
       spaceActivationHint: "vincs.io의 계정 팀 페이지에서 대기 중인 팀을 활성화하거나 중지된 팀 상태를 확인하세요",
       spaceListFailed: "팀 목록을 불러오지 못했어요",
       spaceCommunities: "커뮤니티",
+      spaceCommunity: "커뮤니티",
+      spaceUnified: "Vinc 커뮤니티",
+      spaceUnifiedHint: "읽기 전용 · 모두에게 열려 있어요",
       spaceCommunityReadOnly: "커뮤니티는 여기서 읽기만 할 수 있어요. 페이지 편집은 커뮤니티 사이트에서 하세요",
       spaceReadOnly: "읽기 전용",
       spaceSwitchTip: "공간 바꾸기",

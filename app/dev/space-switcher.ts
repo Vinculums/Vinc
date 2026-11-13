@@ -10,7 +10,9 @@
  *  state: personal · team · community · menu · many · failed · collapsed · local. `open=1` 이면 메뉴를 연다.
  *  `collapsed` 는 접힌 사이드바 띠 옆에서도 머리가 공간 이름을 말하는지 본다(띠에는 공간 표시가 없다).
  *  `skin=web` 은 웹 토큰 세트, `view=graph` 는 그래프 면의 머리(앞자리 · 시간 · 범례)로 본다.
- *  `space=t-m5` 와 `state=many` 를 함께 주면 긴 이름이다. */
+ *  `space=t-m5` 와 `state=many` 를 함께 주면 긴 이름이다.
+ *  `world=unified` 는 커뮤니티를 하나로 합친 뒤의 목록이다: 가입 행이 없는 계정에도 합친 공간 한 줄이
+ *  `reader` 로 온다(`role=operator` 면 운영자의 목록). 없으면 지금처럼 가입한 커뮤니티 목록이다. */
 import "../src/app.css";
 import { api, cfg, isCommunitySpace, remote } from "../src/api";
 import type { NavTreeRes } from "../src/api";
@@ -36,21 +38,22 @@ const MANY_NAMES = ["Acme Research", "Field Notes", "서울 도시 연구회", "
   "Partnerships", "Pricing Lab", "Quality", "Release Train", "Search Quality", "Support Escalations", "Writers Room"];
 const MANY: Team[] = MANY_NAMES.map((name, i) => ({ id: i === 0 ? "t-acme" : `t-m${i}`, name, role: "viewer",
   status: name === "Design Guild" ? "pending" : name === "Old Lab" ? "suspended" : "active" }));
-const COMMUNITIES = [
-  { id: "community:c-physics", name: "Open Physics", role: "member" },
-  { id: "community:c-lit", name: "한국 문학 읽기", role: "member" },
-];
+const params = new URLSearchParams(location.search);
+const UNIFIED = params.get("world") === "unified";
+const COMMUNITIES = UNIFIED
+  ? [{ id: "community:c-commons", name: "Vinc Community", role: params.get("role") === "operator" ? "operator" : "reader" }]
+  : [{ id: "community:c-physics", name: "Open Physics", role: "member" },
+     { id: "community:c-lit", name: "한국 문학 읽기", role: "member" }];
 
 const STATES = ["personal", "team", "community", "menu", "many", "failed", "collapsed", "local"] as const;
 type State = typeof STATES[number];
-const params = new URLSearchParams(location.search);
 const state: State = (STATES as readonly string[]).includes(params.get("state") || "") ? params.get("state") as State : "team";
 // 메뉴를 처음부터 연다. `open=0` 이면 열지 않는다(스크린숏 스크립트가 포인터로 누를 때).
 const openAtStart = params.get("open") === "1" || (params.get("open") !== "0" && ["menu", "many", "failed"].includes(state));
 
 // 처음 공간. 전환한 뒤에는 주소의 `space` 가 이긴다.
 let team = params.has("space") ? (params.get("space") === "personal" ? "" : params.get("space") || "")
-  : state === "personal" || state === "local" ? "" : state === "community" ? "community:c-physics" : "t-acme";
+  : state === "personal" || state === "local" ? "" : state === "community" ? COMMUNITIES[0].id : "t-acme";
 // 목록을 못 받는 상태에서도 머리가 이름을 말하는지 보려고, 실패 상태는 고를 때 남긴 이름을 미리 둔다.
 // 전환 뒤의 다시 열기를 건너 이름이 남는지 보려고, 남긴 이름은 이 탭의 sessionStorage 에 둔다(앱은 localStorage).
 const NAME_KEY = "dev.space-switcher.name";
@@ -120,7 +123,7 @@ async function main(): Promise<void> {
   if (state === "local") { if (remote()) mountSpaceSwitcher(); document.body.dataset.ready = "1"; return; }
   let attempts = 0;
   mountSpaceSwitcher({
-    cfg, isCommunitySpace,
+    cfg, isCommunitySpace, unifiedName: COPY.ui.settingsUi.spaceUnified,
     teamsApi: { list: async () => {
       // 실패 상태: 첫 요청만 실패한다(다시 시도하면 받아진다).
       if (state === "failed" && attempts++ === 0) throw new Error("offline");

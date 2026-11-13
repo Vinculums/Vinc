@@ -11,15 +11,19 @@
 
 export type SpaceKind = "personal" | "team" | "community";
 export type RowState = "active" | "pending" | "suspended";
-export type SpaceRow = { id: string; name: string; state: RowState; current: boolean };
+/** `unified` 는 하나로 합친 공개 커뮤니티 줄에만 붙는다(`unifiedCommunityId`). */
+export type SpaceRow = { id: string; name: string; state: RowState; current: boolean; unified?: true };
 type TeamRow = { id: string; name: string; status: string };
-type CommunityRow = { id: string; name: string };
+/** 계정 목록(`/api/graph/spaces` 의 `communities`)의 한 줄. `role` 이 합친 공간을 가른다. */
+type CommunityRow = { id: string; name: string; role?: string };
 
 export type SpaceDeps = {
   /** `teamName` 은 지금 스페이스의 표시 이름이다(`api.ts` `cfg.teamName`). 고를 때 함께 남긴다. */
   cfg: { team: string | null; teamName?: string };
   teamsApi: { list: (opts: { throwOnError: true }) => Promise<TeamRow[]> };
   communitiesApi: { list: () => Promise<CommunityRow[]> };
+  /** 합친 커뮤니티를 부르는 이름(화면 언어의 카피). 비면 계정이 보낸 이름을 쓴다. */
+  unifiedName?: string;
   isCommunitySpace: (team: string | null | undefined) => boolean;
   retainBeforeSwitch: () => Promise<unknown>;
   reload: () => void;
@@ -46,8 +50,33 @@ export function teamRows(rows: TeamRow[], current: string): SpaceRow[] {
     current: t.status === "active" && t.id === current }));
 }
 
-export function communityRows(rows: CommunityRow[], current: string): SpaceRow[] {
-  return rows.map((c) => ({ id: c.id, name: c.name, state: "active" as const, current: c.id === current }));
+/** 하나로 합친 공개 커뮤니티의 id. 목록에 없으면 ""이고, 커뮤니티 묶음은 가입한 곳을 그대로 보인다.
+ *  계정은 합친 공간을 로그인한 모두의 목록 맨 앞에 가입 행이 없어도 `reader` 나 `operator` 로 싣고,
+ *  가입한 커뮤니티는 가입 역할(`member` · `operator`)로 싣는다. 그래서 `reader` 는 합친 공간에만 온다.
+ *  운영자에게는 `operator` 로 오는데, 합친 뒤에는 다섯 커뮤니티가 보관되어 목록에서 빠지므로 그 한 줄만 남는다.
+ *  id 를 박아 두지 않는다: 합친 공간의 id 는 옮기는 순간에 생긴다. */
+export function unifiedCommunityId(rows: CommunityRow[]): string {
+  const reader = rows.find((r) => r.role === "reader");
+  if (reader) return reader.id;
+  return rows.length === 1 && rows[0].role === "operator" ? rows[0].id : "";
+}
+
+/** 커뮤니티 줄. 합친 공간 줄은 `unifiedName` 으로 부른다(비면 계정이 보낸 이름이다). */
+export function communityRows(rows: CommunityRow[], current: string, unifiedName = ""): SpaceRow[] {
+  const unified = unifiedCommunityId(rows);
+  return rows.map((c) => unified && c.id === unified
+    ? { id: c.id, name: unifiedName || c.name, state: "active" as const, current: c.id === current, unified: true as const }
+    : { id: c.id, name: c.name, state: "active" as const, current: c.id === current });
+}
+
+/** 주소가 들고 온 커뮤니티(`?space=community:<id>`)를 받은 목록에서 찾는다. 대소문자는 가리지 않는다.
+ *  목록에 없는 id 는 열지 않는다(null). 합친 공간은 로그인한 모두의 목록에 있어 가입 없이 열리고,
+ *  보관된 커뮤니티의 id 는 목록에서 빠지므로 거절된다. 모르는 공간을 열면 모든 조회가 거절되고
+ *  그 값이 다음 실행까지 남는다. */
+export function communityFromAddress(raw: string, rows: CommunityRow[]): { id: string; name: string } | null {
+  const want = raw.trim().toLowerCase();
+  const hit = want ? rows.find((r) => r.id.toLowerCase() === want) : undefined;
+  return hit ? { id: hit.id, name: hit.name } : null;
 }
 
 export function createSpacePicker(d: SpaceDeps) {
@@ -70,7 +99,7 @@ export function createSpacePicker(d: SpaceDeps) {
         d.teamsApi.list({ throwOnError: true }), d.communitiesApi.list()]);
       model.teams = teams.status === "fulfilled"
         ? { load: "ok", rows: teamRows(teams.value, now()) } : { load: "failed" };
-      model.communities = communities.status === "fulfilled" ? communityRows(communities.value, now()) : [];
+      model.communities = communities.status === "fulfilled" ? communityRows(communities.value, now(), d.unifiedName) : [];
       // 받은 목록이 지금 스페이스의 이름을 말하면 남긴 이름을 맞춘다(그 사이 이름이 바뀌었을 수 있다).
       const kind = kindOf(d.cfg.team, d.isCommunitySpace);
       const here = kind === "personal" ? undefined : rows(kind).find((r) => r.current);
@@ -124,6 +153,8 @@ export type MenuView = {
   personal: boolean;
   teams: { state: "loading" | "failed" | "none" | "ok"; rows: SpaceRow[] };
   communities: SpaceRow[];
+  /** 커뮤니티 묶음이 합친 공간 한 줄뿐이다: 묶음 이름을 하나로 부른다. */
+  unified: boolean;
   /** 찾기에 맞는 것이 하나도 없다. */
   empty: boolean;
   /** 메뉴 바닥의 한 줄: 커뮤니티에 있으면 읽기 전용 안내, 고를 수 없는 팀이 있으면 활성화 안내. */
@@ -131,7 +162,8 @@ export type MenuView = {
 };
 
 /** 묶음(개인 · 팀 · 커뮤니티)과 찾기. 이름에 `query` 가 들어 있는 줄만 남긴다(대소문자 무관).
- *  `here` 는 지금 공간의 종류다(바닥 줄이 읽는다). 커뮤니티 묶음은 가입한 곳이 있을 때만 생긴다. 팀 목록 실패와 불러오는 중은 찾기와 무관하게 보인다. */
+ *  `here` 는 지금 공간의 종류다(바닥 줄이 읽는다). 커뮤니티 묶음은 목록에 커뮤니티가 있을 때만 생긴다
+ *  (합친 공간은 로그인한 모두의 목록에 있고, 합친 공간이 없으면 가입한 곳만 있다). 팀 목록 실패와 불러오는 중은 찾기와 무관하게 보인다. */
 export function menuView(model: SpaceModel, query: string, personalName: string, here: SpaceKind): MenuView {
   const q = query.trim().toLowerCase();
   const hit = (name: string) => !q || name.toLowerCase().includes(q);
@@ -142,8 +174,9 @@ export function menuView(model: SpaceModel, query: string, personalName: string,
   const state = model.teams.load === "ok" ? (listed.length || q ? "ok" : "none") : model.teams.load;
   const teams = { state, rows: listed.filter((r) => hit(r.name)) } as MenuView["teams"];
   const communities = all.filter((r) => hit(r.name));
+  const unified = all.length === 1 && Boolean(all[0].unified);
   const empty = !personal && state !== "failed" && state !== "loading" && !teams.rows.length && !communities.length;
   const foot = here === "community" ? "readOnly"
     : !q && listed.some((t) => t.state !== "active") ? "activation" : "";
-  return { find, personal, teams, communities, empty, foot };
+  return { find, personal, teams, communities, unified, empty, foot };
 }

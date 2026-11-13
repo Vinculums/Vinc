@@ -6,14 +6,16 @@ import ts from 'typescript';
 // space-picker has no imports: everything it needs is passed in, so it loads as is.
 const src = await readFile(new URL('../src/space-picker.ts', import.meta.url), 'utf8');
 const js = ts.transpileModule(src, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { kindOf, teamRows, communityRows, createSpacePicker, currentSpace, menuView, FIND_AT } = await import(
+const { kindOf, teamRows, communityRows, createSpacePicker, currentSpace, menuView, FIND_AT,
+  unifiedCommunityId, communityFromAddress } = await import(
   `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 
 const isCommunitySpace = (t) => Boolean(t && t.startsWith('community:'));
 
-function fixture({ team = '', teamName, teams = [], communities = [], failTeams = false, failCommunities = false, ensureTeam } = {}) {
+function fixture({ team = '', teamName, teams = [], communities = [], failTeams = false, failCommunities = false, ensureTeam, unifiedName } = {}) {
   const calls = [], cfg = { team, ...(teamName === undefined ? {} : { teamName }) };
-  const d = { cfg, isCommunitySpace, ...(ensureTeam ? { ensureTeam: async (id, name) => { calls.push(`team:${id}:${name}`); return ensureTeam(id); } } : {}),
+  const d = { cfg, isCommunitySpace, ...(unifiedName === undefined ? {} : { unifiedName }),
+    ...(ensureTeam ? { ensureTeam: async (id, name) => { calls.push(`team:${id}:${name}`); return ensureTeam(id); } } : {}),
     retainBeforeSwitch: async () => { calls.push('retain'); return true; },
     reload: () => calls.push('reload'),
     teamsApi: { list: async (o) => { assert.equal(o.throwOnError, true); if (failTeams) throw new Error('offline'); return teams; } },
@@ -181,4 +183,100 @@ test('a failing credential check counts as refused, and personal never asks for 
   await t.picker.load(); t.picker.setKind('team');
   assert.equal(await t.picker.choose('next'), false);
   assert.equal(t.cfg.team, '');
+});
+
+// 커뮤니티를 하나로 합치기 전과 뒤. 계정 목록(`/api/graph/spaces` 의 `communities`)의 모양이 두 세계를 가른다.
+// 합치기 전: 가입한 커뮤니티가 가입 역할(member · operator)로 온다. 분야마다 하나씩 다섯이다.
+const FIVE = ['Physics', 'Math', 'Economics', 'Art', 'AI'].map((name, i) => ({ id: `community:c-${i}`, name, role: 'member' }));
+// 합친 뒤: 합친 공간이 로그인한 모두의 목록 맨 앞에 가입 행 없이 reader(운영자는 operator)로 오고, 다섯은 보관되어 빠진다.
+const COMMONS = { id: 'community:019f-commons', name: 'Vinc Community', role: 'reader' };
+
+test('before the move the joined communities are listed as today, each under its own name', async () => {
+  for (const role of ['member', 'operator']) {
+    const rows = FIVE.map((c) => ({ ...c, role }));
+    assert.equal(unifiedCommunityId(rows), '', `five ${role} rows are not the unified space`);
+    const s = fixture({ team: 'active', teams: TEAMS, communities: rows, unifiedName: 'Vinc 커뮤니티' });
+    await s.picker.load();
+    const v = view(s, 'team');
+    assert.deepEqual(v.communities, FIVE.map((c) => ({ id: c.id, name: c.name, state: 'active', current: false })),
+      'five rows, names from the account, none marked unified');
+    assert.equal(v.unified, false, 'the group keeps its plural name');
+  }
+  assert.equal(unifiedCommunityId([FIVE[0]]), '', 'a member of one community is not in the unified space');
+  assert.equal(unifiedCommunityId([]), '');
+  const inside = fixture({ team: FIVE[0].id, communities: FIVE, unifiedName: 'Vinc 커뮤니티' });
+  await inside.picker.load();
+  assert.equal(currentSpace(inside.picker.model, inside.cfg.team, '', isCommunitySpace).name, 'Physics');
+  assert.equal(view(inside, 'community').foot, 'readOnly');
+});
+
+test('after the move every signed-in account sees one unified row, named in the screen language', async () => {
+  // 팀도 가입 행도 없는 계정이다. 계정이 합친 공간을 그래도 싣는다.
+  const s = fixture({ communities: [COMMONS], unifiedName: 'Vinc 커뮤니티' });
+  await s.picker.load();
+  const v = view(s, 'personal');
+  assert.deepEqual(v.communities, [{ id: COMMONS.id, name: 'Vinc 커뮤니티', state: 'active', current: false, unified: true }]);
+  assert.equal(v.unified, true, 'one unified row: the group is named in the singular');
+  assert.equal(v.teams.state, 'none');
+  assert.equal(v.foot, '', 'outside a community there is no read-only foot');
+  // 운영자에게는 같은 한 줄이 operator 로 온다.
+  assert.equal(unifiedCommunityId([{ ...COMMONS, role: 'operator' }]), COMMONS.id);
+  // 이름 카피가 없으면 계정이 보낸 이름이다.
+  const plain = fixture({ communities: [COMMONS] });
+  await plain.picker.load();
+  assert.equal(plain.picker.rows('community')[0].name, 'Vinc Community');
+});
+
+test('a reader row is the unified space even beside a joined community', async () => {
+  const other = { id: 'community:c-other', name: 'Other', role: 'member' };
+  assert.equal(unifiedCommunityId([COMMONS, other]), COMMONS.id);
+  assert.equal(unifiedCommunityId([{ ...COMMONS, role: 'operator' }, other]), '', 'an operator row is unified only when it is the only one');
+  const s = fixture({ communities: [COMMONS, other], unifiedName: 'Vinc Community' });
+  await s.picker.load();
+  const v = view(s, 'personal');
+  assert.deepEqual(v.communities.map((r) => [r.id, Boolean(r.unified)]), [[COMMONS.id, true], [other.id, false]]);
+  assert.equal(v.unified, false, 'two rows keep the plural group name');
+});
+
+test('a user with no membership row opens the unified space without a join step', async () => {
+  const s = fixture({ team: 'active', teams: TEAMS, communities: [COMMONS], unifiedName: 'Vinc Community' });
+  await s.picker.load(); s.picker.setKind('community');
+  assert.equal(await s.picker.choose(COMMONS.id), true);
+  assert.equal(s.cfg.team, COMMONS.id);
+  assert.equal(s.cfg.teamName, 'Vinc Community', 'the shown name is kept next to the id');
+  assert.deepEqual(s.calls, ['retain', 'reload'], 'only the usual switch: nothing else is asked or written');
+});
+
+test('inside the unified space the header names it, read only, and the foot is the same read-only line', async () => {
+  const inside = fixture({ team: COMMONS.id, teamName: 'Vinc Community', communities: [COMMONS], unifiedName: 'Vinc 커뮤니티' });
+  await inside.picker.load();
+  assert.deepEqual(currentSpace(inside.picker.model, inside.cfg.team, inside.cfg.teamName, isCommunitySpace),
+    { kind: 'community', id: COMMONS.id, name: 'Vinc 커뮤니티', readOnly: true });
+  assert.equal(inside.cfg.teamName, 'Vinc 커뮤니티', 'the remembered name follows the shown name');
+  assert.equal(view(inside, 'community').foot, 'readOnly');
+  assert.equal(view(inside, 'community', 'zzz').foot, 'readOnly', 'searching does not hide it');
+  const offline = fixture({ team: COMMONS.id, teamName: 'Vinc 커뮤니티', failCommunities: true, unifiedName: 'Vinc 커뮤니티' });
+  await offline.picker.load();
+  assert.equal(currentSpace(offline.picker.model, offline.cfg.team, offline.cfg.teamName, isCommunitySpace).name, 'Vinc 커뮤니티',
+    'a failed list falls back to the remembered name');
+});
+
+test('a ?space=community: link opens a listed community only: the unified id after the move, not a closed one', () => {
+  // 합친 뒤: 합친 공간의 id 는 가입 행이 없어도 목록에 있어 열린다. 대소문자는 가리지 않는다.
+  assert.deepEqual(communityFromAddress(COMMONS.id, [COMMONS]), { id: COMMONS.id, name: 'Vinc Community' });
+  assert.deepEqual(communityFromAddress(COMMONS.id.toUpperCase(), [COMMONS]), { id: COMMONS.id, name: 'Vinc Community' });
+  // 보관된 다섯의 id 는 목록에서 빠져서 지금과 같이 거절된다(지금 공간을 그대로 연다).
+  for (const old of FIVE) assert.equal(communityFromAddress(old.id, [COMMONS]), null);
+  // 합치기 전: 가입한 커뮤니티의 링크는 지금처럼 열리고, 가입하지 않은 곳은 거절된다.
+  assert.deepEqual(communityFromAddress(FIVE[2].id, FIVE), { id: FIVE[2].id, name: 'Economics' });
+  assert.equal(communityFromAddress(COMMONS.id, FIVE), null);
+  assert.equal(communityFromAddress('', [COMMONS]), null);
+  assert.equal(communityFromAddress(COMMONS.id, []), null, 'a failed lookup reads as no list and refuses');
+});
+
+test('the unified row has its words in English and Korean', async () => {
+  const copy = await readFile(new URL('../src/copy.ts', import.meta.url), 'utf8');
+  for (const key of ['spaceCommunity', 'spaceUnified', 'spaceUnifiedHint', 'spaceCommunityReadOnly'])
+    assert.equal(copy.split(`\n      ${key}: "`).length - 1, 2, `${key} is in both decks`);
+  assert.match(copy, /\n      spaceUnified: "Vinc 커뮤니티",/);
 });

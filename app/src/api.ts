@@ -5,6 +5,7 @@ import type { LayoutAnswer } from "./view-layout-wire";
  *  Graph/query logic never lives here. */
 import { chunkPack, type StageCounts } from "./packchunks";
 import { noteMe, SELF_HOSTED_BUILD } from "./self-hosted";
+import { communityFromAddress } from "./space-picker";
 
 const BASE_KEY = "vinc.sidecar.base";
 const TOKEN_KEY = "vinc.sidecar.token";
@@ -1421,7 +1422,7 @@ export async function adoptSpaceFromAddress(): Promise<"" | "member" | "local"> 
     if (raw === "personal") cfg.team = "";
     else if (raw === "local") refused = "local";
     else if (isCommunitySpace(raw)) {
-      const hit = (await communitiesApi.list()).find((x) => x.id.toLowerCase() === raw);
+      const hit = communityFromAddress(raw, await communitiesApi.list());
       if (hit) { cfg.team = hit.id; cfg.teamName = hit.name; }
       else refused = "member";
     } else {
