@@ -21,7 +21,7 @@ SRC = APP / "src"
 #: 이름 → app/ 아래 파일들(이은 순서). 한 파일이 둘로 갈리면 그 이름에 둘을 다 적는다.
 UNITS: dict[str, tuple[str, ...]] = {
     # 표면
-    "view": ("src/surfaces/view.ts",),
+    "view": ("src/surfaces/view.ts", "src/surfaces/view-host.ts", "src/surfaces/view-props-card.ts"),
     "view-compass": ("src/surfaces/view-compass.ts",),
     "home": ("src/surfaces/home.ts",),
     "settings": ("src/surfaces/settings.ts",),

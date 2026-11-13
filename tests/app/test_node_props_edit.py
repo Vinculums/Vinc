@@ -74,7 +74,10 @@ class Save(unittest.TestCase):
         self.assertIn("res?.warnings", EDITOR)
 
     def test_redraws_from_a_fresh_read_and_refreshes_the_agent_list(self):
-        self.assertIn("ctxCache = null;", EDITOR)
+        # 다시 읽기는 표면이 내준 손잡이 하나로 간다: 저장 뒤와 충돌 뒤 다시 불러오기, 두 곳이다.
+        self.assertEqual(EDITOR.count("host.reloadNode(nd)"), 2)
+        # 그 손잡이는 노드 맥락 메모를 비우고 상세 열을 새로 읽는다(메모를 거치면 옛 판을 다시 그린다).
+        self.assertIn("reloadNode: (nd) => { ctxCache = null; return loadNodeSource(nd); }", VIEW)
         self.assertIn("refreshLnb({ quiet: true })", EDITOR)
 
 
