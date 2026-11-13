@@ -15,7 +15,7 @@
   가진 실행(`held`)의 저장된 역할을 남긴다.
 - 프로토콜이 가진 실행 기록에 props 를 통째로 쓰는 쓰기는 거절한다(`api/mutation_contract.py`,
   `whole_props_refusal`). 끝나지 않은 실행(`unfinished`: 일하는 중이거나 사람을 기다린다)은 도구 삭제
-  (`api/query.py` `delete_node`)와 믿지 않는 쪽의 삭제 표식(`api/sync.py` `apply_delta`)이 지우지 않는다.
+  (`api/graph_edit.py` `delete_node`)와 믿지 않는 쪽의 삭제 표식(`api/sync.py` `apply_delta`)이 지우지 않는다.
 - 사람을 기다리는 실행(`waiting`)의 카드(노드 제목과 `CARD_KEYS`)는 도구 쓰기가 바꾸지 못하고
   (`card_refusal`), 동기화는 받는 스토어의 값을 남긴다(props 는 `keep_own`, 제목은 `api/sync.py` `apply_delta`).
 

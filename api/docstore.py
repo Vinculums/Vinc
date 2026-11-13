@@ -1006,7 +1006,7 @@ def delete_doc(store, doc_id: str, *, owner: str | None = None,
 
     ⚠ **미러 개념(`concept:doc.<doc_id>`)은 일부러 안 지운다.** 그래서 지운 문서의
     미러가 그래프에 남고 그 주제의 공유 팩마다 실린다(`documents: 0` 인 껍데기).
-    아는 천장이다 — 여기서 지우려면 `query.delete_node` 급의 파괴적 삭제여야 하고
+    아는 천장이다 — 여기서 지우려면 `graph_edit.delete_node` 급의 파괴적 삭제여야 하고
     (사용자가 그 노드에 그린 엣지와 다듬은 제목이 함께 사라지며, `_Tombstone` 으로
     다른 기기에도 전파된다) 그것은 P11c(공유 시트 제외) 범위 밖의 제품 판정이다.
     당장의 피해는 팩 쪽에서 막혀 있다: `share._docs_for_concepts` 가 부재 doc_id 를
