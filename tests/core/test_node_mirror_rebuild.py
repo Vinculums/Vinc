@@ -18,6 +18,8 @@ import unittest
 
 from api import node_mirror
 from api import server as sv
+# 재구축(`node_mirror.rebuild`)은 인코더 이름을 `encoder_client` 에서 부를 때 읽는다.
+from api import encoder_client as ec
 from api.server import VincApp
 from store.embedded_schema import SCHEMA_VERSION
 
@@ -331,19 +333,19 @@ class RebuildRoute(unittest.TestCase):
         self.app = VincApp(store=self.store)
         self._prev = os.environ.get("VINC_EMBED_ENCODE")
         os.environ["VINC_EMBED_ENCODE"] = "http://encoder.invalid"
-        self._real_post = sv._encode_post
+        self._real_post = ec._encode_post
         self.calls: list[tuple] = []
 
         def fake_post(url, texts, kind, timeout):
             # 인코딩이 도는 동안 리더가 열려 있으면 안 된다 — 아래 시험이 이 값을 본다.
             self.calls.append((url, tuple(texts), kind, self.store.reader_open))
-            sv._ENCODER_RESPONSE_RUNTIME.set("test-runtime")
-            sv._ENCODER_RESPONSE_INSTANCE.set("test-instance")
+            ec._ENCODER_RESPONSE_RUNTIME.set("test-runtime")
+            ec._ENCODER_RESPONSE_INSTANCE.set("test-instance")
             return [_vec(1, 0)] * len(texts)
-        sv._encode_post = fake_post
+        ec._encode_post = fake_post
 
     def tearDown(self):
-        sv._encode_post = self._real_post
+        ec._encode_post = self._real_post
         os.environ.pop("VINC_EMBED_ENCODE", None)
         if self._prev is not None:
             os.environ["VINC_EMBED_ENCODE"] = self._prev
@@ -356,22 +358,22 @@ class RebuildRoute(unittest.TestCase):
         self.assertEqual((self.store.dropped, self.store.created), (1, 1))
 
     def test_local_encoder_restart_aborts_before_mirror_swap(self):
-        saved_batch = sv._MIRROR_BATCH
-        sv._MIRROR_BATCH = 1
+        saved_batch = node_mirror._MIRROR_BATCH
+        node_mirror._MIRROR_BATCH = 1
         calls = 0
 
         def restarting_post(url, texts, kind, timeout):
             nonlocal calls
             calls += 1
-            sv._ENCODER_RESPONSE_RUNTIME.set("same-runtime")
-            sv._ENCODER_RESPONSE_INSTANCE.set("before" if calls == 1 else "after")
+            ec._ENCODER_RESPONSE_RUNTIME.set("same-runtime")
+            ec._ENCODER_RESPONSE_INSTANCE.set("before" if calls == 1 else "after")
             return [_vec(1, 0)] * len(texts)
 
-        sv._encode_post = restarting_post
+        ec._encode_post = restarting_post
         try:
             code, res = self.app.write_node_mirror_rebuild({})
         finally:
-            sv._MIRROR_BATCH = saved_batch
+            node_mirror._MIRROR_BATCH = saved_batch
         self.assertEqual(code, 502)
         self.assertIn("instance changed", res["error"])
         self.assertEqual(self.store.mirror, [])
@@ -435,7 +437,7 @@ class RebuildRoute(unittest.TestCase):
 
     def test_a_short_encoder_reply_aborts_before_touching_the_mirror(self):
         """반만 받은 벡터로 갈아 끼우면 나머지 노드가 조용히 사라진다."""
-        sv._encode_post = lambda url, texts, kind, timeout: [_vec(1, 0)]
+        ec._encode_post = lambda url, texts, kind, timeout: [_vec(1, 0)]
         code, res = self.app.write_node_mirror_rebuild({})
         self.assertEqual(code, 502)
         self.assertEqual(self.store.mirror, [])
@@ -457,7 +459,7 @@ class RebuildRoute(unittest.TestCase):
 
     def test_the_lock_is_released_when_it_fails(self):
         """실패가 다음 배포의 재구축까지 막으면 미러가 영원히 안 낫는다."""
-        sv._encode_post = lambda url, texts, kind, timeout: []
+        ec._encode_post = lambda url, texts, kind, timeout: []
         self.app.write_node_mirror_rebuild({})
         self.assertTrue(self.app._mirror_lock.acquire(blocking=False))
         self.app._mirror_lock.release()
@@ -481,23 +483,23 @@ class RebuildReuse(unittest.TestCase):
         self.nodes = _nodes()
         self.store = _FakeStore(self.nodes)
         self.app = VincApp(store=self.store)
-        self._saved = (sv._encode_post, sv._ENCODER_RUNTIME, sv._ENCODER_BUILD,
+        self._saved = (ec._encode_post, ec._ENCODER_RUNTIME, ec._ENCODER_BUILD,
                        sv.docstore.embed_model_state, os.environ.get("VINC_EMBED_ENCODE"))
         self._saved_model = os.environ.pop("VINC_EMBED_MODEL", None)
         os.environ["VINC_EMBED_ENCODE"] = "http://encoder.invalid"
-        sv._ENCODER_RUNTIME, sv._ENCODER_BUILD = "rt", "b1"
+        ec._ENCODER_RUNTIME, ec._ENCODER_BUILD = "rt", "b1"
         sv.docstore.embed_model_state = lambda _s: {"stored": "bge"}
         self.encoded: list[str] = []
 
         def fake_post(url, texts, kind, timeout):
             self.encoded.extend(texts)
-            sv._ENCODER_RESPONSE_RUNTIME.set(sv._ENCODER_RUNTIME)
-            sv._ENCODER_RESPONSE_INSTANCE.set("i")
+            ec._ENCODER_RESPONSE_RUNTIME.set(ec._ENCODER_RUNTIME)
+            ec._ENCODER_RESPONSE_INSTANCE.set("i")
             return [_vec(1, 0)] * len(texts)
-        sv._encode_post = fake_post
+        ec._encode_post = fake_post
 
     def tearDown(self):
-        (sv._encode_post, sv._ENCODER_RUNTIME, sv._ENCODER_BUILD,
+        (ec._encode_post, ec._ENCODER_RUNTIME, ec._ENCODER_BUILD,
          sv.docstore.embed_model_state, prev) = self._saved
         os.environ.pop("VINC_EMBED_ENCODE", None)
         if prev is not None:
@@ -541,7 +543,7 @@ class RebuildReuse(unittest.TestCase):
 
     def test_a_new_runtime_encodes_everything_again(self):
         self.rebuild()
-        sv._ENCODER_RUNTIME = "rt2"
+        ec._ENCODER_RUNTIME = "rt2"
         self.assertEqual(self.rebuild()["encoded"], 3)
         self.assertEqual({m["runtime"] for m in self.store.mirror}, {"rt2"})
 
@@ -557,7 +559,7 @@ class RebuildReuse(unittest.TestCase):
 
     def test_without_a_build_id_it_rebuilds_whole_as_before(self):
         self.rebuild()
-        sv._ENCODER_BUILD = ""
+        ec._ENCODER_BUILD = ""
         self.assertEqual(self.rebuild()["encoded"], 3)
 
 
