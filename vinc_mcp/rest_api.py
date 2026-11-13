@@ -392,7 +392,14 @@ def _handle(handler, method: str) -> bool:
         else:
             fail(500, "internal", message)
         return True
-    result = _partial_search(route.tool, outcome.result or {})
+    result = outcome.result or {}
+    if not isinstance(result, dict):
+        # 사이드카가 JSON 객체가 아닌 답(목록 · 문자열)을 줬다. 요청의 잘못이 아니라 뒤쪽이 읽을 수
+        # 없는 답을 낸 것이다(502). 아래 봉투와 실패 표는 객체를 전제한다.
+        fail(502, "upstream_unavailable", "The graph service returned an unreadable answer.",
+             extra=quota_headers)
+        return True
+    result = _partial_search(route.tool, result)
     failure = _failure(route.tool, result, by_id=bool(route.path_args))
     if failure:
         status, code, message, *rest = failure
