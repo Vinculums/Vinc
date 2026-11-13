@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """노드 발췌의 창 — 청크의 **어디를** 240자로 보여 줄 것인가, 그리고 폴백 후보의 순서.
 
-`api.node_read._node_context` 와 `api.query.edge_context` 가 부른다.
+`api.node_read._node_context` 와 `api.nav.edge_context` 가 부른다.
 
 - 창: 기본은 노드의 제목·한 줄 요약 토큰이 가장 여러 가지 모인 자리다(검색 스니펫과 같은 창,
   `_snippet_start`). ``VINC_EXCERPT_WINDOW=head`` 가 비상구로, 청크 맨 앞 240자를 낸다

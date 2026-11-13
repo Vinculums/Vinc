@@ -1060,7 +1060,7 @@ def delete_doc(store, doc_id: str, *, owner: str | None = None,
 
 
 class MentionTally:
-    """문서 → 언급 개념 집계. `list_docs` 와 `query.nav_tree` 의 **공유 원천**.
+    """문서 → 언급 개념 집계. `list_docs` 와 `nav.nav_tree` 의 **공유 원천**.
 
     두 표면(모든 문서 목록·좌측 문서 트리)이 같은 문서를 다른 주제/다른 노드에
     걸면 사용자에게는 그냥 버그다. 그래서 집계를 한 군데서만 만든다.
