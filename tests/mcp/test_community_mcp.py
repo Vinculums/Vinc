@@ -267,6 +267,11 @@ def test_complete_phase1_action_enum_is_routed_without_generic_graph_writes(serv
     args = write_args(A, action=action)
     if action == "community_create":
         args.pop("space")
+    # 합친 공간의 동작은 허브가 payload 형식을 본다. 그 동작에는 계정이 받는 모양을 준다.
+    shaped = {"post_reply": {"targetId": "0191f0aa-5555-7abc-8def-0123456789ab", "body": "Text"},
+              "topic_save": {"path": "physics", "nameEn": "Physics"}}
+    if action in shaped:
+        args["payload"] = shaped[action]
     _, result = rpc(service, WRITE, args)
     assert result.get("saved") or result.get("created")
     assert service["requests"][-1][1]["action"] == action

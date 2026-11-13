@@ -281,7 +281,9 @@ class Dispatcher:
                 raise outcome.error
             if outcome.kind != "ok":
                 return outcome.result
-            if name == community.WRITE_TOOL and outcome.result.get("isError"):
+            # 계정이 거절한 커뮤니티 쓰기와 읽기는 봉투의 isError 로 올린다. 읽기를 빼면 지난 피드 커서의 거절이
+            # 봉투만 보는 클라이언트에게 빈 결과(다음 쪽 없음)로 읽힌다.
+            if name in (community.WRITE_TOOL, community.READ_TOOL) and outcome.result.get("isError"):
                 return _tool_result(roles.serialize_result(outcome.result), name, is_error=True)
             if modern_version is not None and name == run_tasks.SUBMIT_TOOL:
                 carried = run_tasks.carry(outcome.result, params, args)
@@ -406,7 +408,7 @@ _MARKER_RESERVE = 1_000
 
 # 응답이 큰 도구별로 '어떻게 줄일지'를 알려준다 — 그냥 "너무 큼"은 행동 불가.
 _NARROW_HINT = {
-    "vinc_community_read": "use authenticated POST /v1/community/read or the selected version's website export for the complete immutable artifact",
+    "vinc_community_read": "for a post with long replies use authenticated POST /v1/community/read; for an Agent use the selected version's website export",
     # 허브의 depth 1 은 이제 축소기가 고리를 줄여 싣는다 — 여기 오는 것은 시드 노드
     # 자신이 상한을 넘을 때뿐이라 depth 를 낮추라는 말은 소용이 없다.
     # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S4

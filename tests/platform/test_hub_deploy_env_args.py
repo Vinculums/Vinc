@@ -87,7 +87,10 @@ class HubDeployEnvironmentArgs(unittest.TestCase):
                  ("VINC_BRIEF_RULE VINC_QUOTA", []),
                  ("VINC_LAYOUT_REMOTE VINC_LAYOUT_TOKEN VINC_BRIEF_RULE", ["VINC_LAYOUT_REMOTE", "VINC_LAYOUT_TOKEN"]),
                  ("VINC_LAYOUT_TOKEN", ["VINC_LAYOUT_TOKEN"]),
-                 (" ".join(RETIRED_ENV), list(RETIRED_ENV))]
+                 (" ".join(RETIRED_ENV), list(RETIRED_ENV)),
+                 # 이름이 많아 grep 이 첫 줄에서 끝나도 지울 이름을 놓치지 않는다(pipefail 과 SIGPIPE).
+                 (" ".join(("VINC_EMBED_REMOTE",) + tuple(f"VINC_OTHER_{i}" for i in range(5000))),
+                  ["VINC_EMBED_REMOTE"])]
         for have, removed in cases:
             with self.subTest(have=have):
                 args = self.run_deploy(have=have)
