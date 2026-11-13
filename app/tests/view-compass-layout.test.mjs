@@ -324,3 +324,83 @@ test('packPath: nothing to pack without arms or without a topic under a topic; o
   assert.deepEqual([...place.keys()], ['topic:lab', 'topic:lab/x', 'topic:lab/x/one']);
   assert.equal(place.get('topic:lab/x').th12, P.out.get('topic:lab/x').th12, 'a packed layer faces the way its arm does');
 });
+
+// ── 모양 · 빛살 · 표(view-compass-shapes.ts): DOM 없이 부른다. 빛살의 테마 · 섞기는 손잡이 대역이다 ──
+const SH = await import(gm.shapes);
+const half = (svg) => { const p = pts(/points="([^"]+)"/.exec(svg)[1]); return [p.slice(0, 7), p.slice(7)].map((q) => Math.max(...q.map(([, y]) => Math.abs(y)))); };
+
+test('shape: each kind has its own mark at the given centre and size, filled or as an outline', () => {
+  assert.equal(SH.shape('decision', 10, 20, 10, '#f00'), '<path class="shape" d="M10 7.5L22.5 20L10 32.5L-2.5 20Z" fill="#f00"/>', 'a decision is a diamond 1.25 r out');
+  assert.equal(SH.shape('record', 10, 20, 10, '#f00'), '<rect class="shape" x="1" y="11" width="18" height="18" rx="2.5" fill="#f00"/>', 'a record is a rounded square 0.9 r out');
+  assert.equal(SH.shape('doc', 10, 20, 10, '#f00'), '<g class="shape"><circle cx="10" cy="20" r="10" fill="#f00"/><rect x="5.8" y="18.8" width="8.4" height="2.4" rx="1" fill="var(--c-card)"/></g>', 'a document is a disc with a card-coloured bar');
+  assert.equal(SH.shape('concept', 10, 20, 10, '#f00'), '<circle class="shape" cx="10" cy="20" r="10" fill="#f00"/>', 'anything else is a disc');
+  assert.equal(SH.shape('bridge', 10, 20, 10, '#f00'), '<g class="shape"><path d="M3 13A10 10 0 0 1 17 13M17 27A10 10 0 0 1 3 27" fill="none" stroke="#f00" stroke-width="3.60" stroke-linecap="round"/><circle cx="10" cy="20" r="3.30" fill="#f00"/></g>',
+    'a bridge is the junction mark: two arcs and a dot');
+  assert.match(SH.shape('bridge', 0, 0, 2, 'x'), /stroke-width="1\.60"/, 'a small bridge keeps its arcs 1.6 wide');
+  const ep = /d="M([-\d.e]+) ([-\d.e]+)L([-\d.e]+) ([-\d.e]+)L([-\d.e]+) ([-\d.e]+)Z" fill="#f00" stroke-linejoin="round"/.exec(SH.shape('episode', 10, 20, 10, '#f00'));
+  assert.ok(ep, 'an event is a triangle with round corners');
+  [[10, 8], [22.6, 29], [-2.6, 29]].forEach(([x, y], i) => { close(+ep[1 + 2 * i], x, `corner ${i} x`); close(+ep[2 + 2 * i], y, `corner ${i} y`); });
+  for (const k of ['decision', 'record', 'episode', 'doc', 'concept']) {
+    const h = SH.shape(k, 10, 20, 10, '#f00', true);
+    assert.ok(h.includes('fill="none" stroke="#f00" stroke-width="1.6"') && !h.includes('fill="#f00"'), `${k} as an outline`);
+  }
+  assert.equal(SH.shape('bridge', 10, 20, 10, '#f00', true), SH.shape('bridge', 10, 20, 10, '#f00'), 'a bridge has no outline form');
+});
+
+test('ray: a band cut at both ends on rings a gap out from the two nodes, its gradient mixed from both colours', () => {
+  let theme = 'dark';
+  const mixed = [], { ray } = SH.compassRay({ theme: () => theme, mix: (c, p) => { mixed.push([c, p]); return `${c}/${p}`; } });
+  const a = { id: 'a', x: 0, y: 0, r: 10, c: 'A' }, b = { id: 'b', x: 100, y: 0, r: 6, c: 'B' };
+  const r = ray(a, b, 3);
+  assert.equal(SH.GAP, 4);
+  assert.deepEqual([r.x0, r.y0, r.x1, r.y1], [14, 0, 90, 0], 'the band starts and ends a gap out from each node');
+  assert.equal(r.def, '<linearGradient id="r3" gradientUnits="userSpaceOnUse" x1="14" y1="0" x2="90" y2="0"><stop offset="0" style="stop-color:A/85"/><stop offset="1" style="stop-color:B/30"/></linearGradient>');
+  assert.deepEqual(mixed, [['A', 85], ['B', 30]]);
+  assert.equal(r.svg, '<polygon class="ray" data-a="a" data-b="b" points="13.7,-3.0 13.9,-2.0 14.0,-1.0 14.0,0.0 14.0,1.0 13.9,2.0 13.7,3.0 90.0,-0.5 90.0,-0.3 90.0,-0.2 90.0,0.0 90.0,0.2 90.0,0.3 90.0,0.5" style="fill:url(#r3)"/>',
+    'the points in the order they are drawn');
+  const p = pts(/points="([^"]+)"/.exec(r.svg)[1]);
+  assert.equal(p.length, 14, 'seven points on each end');
+  for (const [x, y] of p.slice(0, 7)) assert.ok(Math.abs(Math.hypot(x - a.x, y - a.y) - 14) < .1, `inner end on the ring around a: ${x},${y}`);
+  for (const [x, y] of p.slice(7)) assert.ok(Math.abs(Math.hypot(x - b.x, y - b.y) - 10) < .1, `outer end on the ring around b: ${x},${y}`);
+  assert.deepEqual(half(r.svg), [3, .5], 'thick at the middle end, thin outside');
+  assert.deepEqual(half(ray(a, b, 0, 2.4, .8).svg), [2.4, .8]);
+  theme = 'light';
+  assert.deepEqual(half(ray(a, b, 3).svg), [4.3, 1], 'on light the band is 1.45 times thicker and its thin end never under 1');
+  assert.deepEqual(half(ray(a, b, 0, 3, 1).svg), [4.3, 1.6], 'a thin end over 1 grows 1.6 times on light');
+  assert.equal(half(ray({ ...a, r: 0 }, b, 0).svg)[0], 3.8, 'the cut never wraps past 0.95 of the ring');
+});
+
+test('bead: the mark in the middle of a directed relation points from source to target, with a bar or a ring by kind', () => {
+  const chevron = 'M48.5 -4.0L52.5 0.0L48.5 4.0', tail = '" fill="none" stroke="C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>';
+  assert.equal(SH.bead(50, 0, 0, 'C', 'PREREQUISITE_OF'), `<path class="ray" d="${chevron}${tail}`, 'order: a chevron');
+  assert.equal(SH.bead(50, 0, 0, 'C', 'INHERITS_FROM'), `<path class="ray" d="${chevron}M44.0 -4.0L44.0 4.0${tail}`, 'inheritance: a bar behind it');
+  assert.equal(SH.bead(50, 0, 0, 'C', 'DERIVES_FROM'), `<path class="ray" d="${chevron}${tail}<circle cx="43.5" cy="0.0" r="2.2" fill="var(--c-card)" stroke="C" stroke-width="1.4"/>`, 'derivation: a ring behind it');
+  assert.equal(SH.bead(0, 0, Math.PI / 2, 'C', 'PREREQUISITE_OF'), `<path class="ray" d="M4.0 -1.5L0.0 2.5L-4.0 -1.5${tail}`, 'it turns with the relation');
+});
+
+test('arcPts and the point lists: n + 1 points across the arc, one or two decimals', () => {
+  const q = SH.arcPts(5, 5, 10, 0, Math.PI / 2, 2);
+  assert.equal(q.length, 3);
+  [[5, -5], [15, 5], [5, 15]].forEach(([x, y], i) => { close(q[i][0], x); close(q[i][1], y); });
+  assert.equal(SH.arcPts(0, 0, 1, 0, 1).length, 7, 'six steps by default');
+  assert.equal(SH.P([[1.234, 5.678], [0, -1]]), '1.2,5.7 0.0,-1.0');
+  assert.equal(SH.P2([[1.234, 5.678], [0, -1]]), '1.23,5.68 0.00,-1.00');
+});
+
+test('the rays read the theme when they are drawn: a theme switch redraws them thicker on light', () => {
+  const before = document.documentElement.dataset.theme;
+  document.documentElement.dataset.theme = 'dark';
+  const R = { source: 'concept:a', target: 'concept:b', type: 'RELATED_TO' };
+  const { h, host } = mount([node('concept:a', 'concept', 'root/x'), node('concept:b', 'concept', 'root/x')], [R]);
+  h.open('concept:a');
+  const chord = () => { const g = host.querySelectorAll('#cmp-rays .ray').find((e) => e.getAttribute('data-a') === 'concept:a' && e.getAttribute('data-b') === 'concept:b');
+    assert.ok(g, 'a ray from the middle to its neighbour'); const p = pts(g.getAttribute('points')); return Math.hypot(p[6][0] - p[0][0], p[6][1] - p[0][1]); };
+  const dark = chord();
+  document.documentElement.dataset.theme = 'light'; h.retheme();
+  const light = chord();
+  assert.ok(Math.abs(light / dark - 1.45) < .05, `light ${light} / dark ${dark}`);
+  document.documentElement.dataset.theme = 'dark'; h.retheme();
+  assert.ok(Math.abs(chord() - dark) < 1e-9, 'and back');
+  if (before === undefined) delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = before;
+  h.destroy();
+});
