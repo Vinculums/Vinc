@@ -99,6 +99,43 @@ from vinc_rag.retrieval import (  # noqa: E402,F401  (재수출)
     score_preference,
 )
 
+# 나뉜 모듈들이 같이 읽는 바닥(스키마에서 온 관계·seed 표, 정확한 노드 읽기, 주제 수,
+# 작은 보조 함수)은 query_base 에 있다. 같은 이름을 여기서 다시 내보내므로 호출부와 `q.X` 는
+# 그대로다.
+from .query_base import (  # noqa: E402,F401  (재수출)
+    BASIS_CONTENT,
+    BASIS_RECORDED,
+    SYNC_EDGE_RELS,
+    WIKI_EDGE_RELS,
+    _CC_RELS,
+    _CONCEPT_READ_PATTERN,
+    _DIRECTED_RELS,
+    _DOC_CONCEPT_PREFIX,
+    _FRAGMENT_EDGE_TO_REL,
+    _GRAPH_READ_PAIRS,
+    _OWNER_SCOPED_LABELS,
+    _REVERSED_RELS,
+    _SEED_TABLES,
+    _SEMANTIC_LABELS,
+    _SEMANTIC_PK,
+    _SYNCED_EDGE_RELS,
+    _WIKI_READ_PAIRS,
+    _bridge_owner_pred,
+    _derive_sync_edge_rels,
+    _edge_cost,
+    _graph_read_pairs,
+    _seed_table,
+    _stamp_validity,
+    _topic_description_mirrors_by_domain,
+    _track_cols,
+    _wiki_read_pairs,
+    domains,
+    near_nodes,
+    node,
+    node_plan,
+    normalize_domains,
+)
+
 
 def _drop_unstarted_episodes(result: dict, query: str, *, as_of, mode, historical) -> None:
     """as_of 기간 뒤에 일어난 사건을 node_hits 에서 뺀다(감사 F14).
@@ -338,49 +375,6 @@ def learner_model_plan(*, owner: str) -> QueryPlan:
 
 def learner_model(*, owner: str, cfg=None, store=None) -> dict:
     return execute(learner_model_plan(owner=owner), cfg, store=store)
-
-
-#: `domain`(단수, 하위호환)과 `domains`(복수)를 하나의 목록으로 접는다. 빈 문자열과
-#: 중복은 떨어뜨리되 **순서는 유지**한다 — 응답이 스코프를 에코할 때 흔들리지 않게.
-def normalize_domains(domain: str | None = None,
-                      domains: list[str] | None = None) -> list[str]:
-    raw = list(domains or ([] if domain is None else [domain]))
-    out: list[str] = []
-    for d in raw:
-        d = (d or "").strip()
-        if d and d not in out:
-            out.append(d)
-    return out
-
-
-#: 추적열 투영 한 자리(W3): 읽기 표면이 `rev`·`updated_at` 을 함께 낸다. 쓰기가 버전을
-#: 손에 쥐려면 읽기가 먼저 그것을 줘야 한다. 쓰기 쪽 대조는 **선택**이다: `expected_rev` 를
-#: 실은 쓰기만 이 값과 맞춰 보고 어긋나면 바꾸지 않고 거절한다(`api/mutation_contract.py`).
-#: 근거: [[vinc.plan.mcp-agent-surface §6]] · 쓰기 쪽 조건은
-#: [[vinc.design.mutation-lifecycle-mcp-api-cli-2026-10-13]] · 세 열의 의미는 [[vinc.spec.dataplane §6.1]].
-#:
-#: ⚠ 이 두 열은 `store/embedded_schema.py` 의 `_TRACK_COLS` 가 붙는 라벨에만 있다
-#: (Concept·Episode·Record·Bridge·Entity·Decision). **Domain 에는 없다** — 도메인
-#: 좌표 투영에 옮겨 붙이면 Binder 가 죽고 그 조회 전체가 함께 죽는다(이 파일이
-#: pinned·content_time·one_liner 에서 이미 세 번 겪은 자리).
-#:
-#: 열 목록을 여기 한 벌만 두는 이유: 두 벌이 되는 순간 "저장이 안 됐다"와 "투영이
-#: 빠뜨렸다"가 구분되지 않는다(`_KEPT_FIELDS` 전례).
-def _track_cols(alias: str, prefix: str = "") -> str:
-    return (f"coalesce({alias}.rev, 0) AS {prefix}rev, "
-            f"coalesce({alias}.updated_at, '') AS {prefix}updated_at")
-
-
-def _stamp_validity(base: dict, valid_from, valid_until) -> None:
-    """노드 **자신**의 유효구간과 파생 상태를 상세에 싣는다. 부착 목록(links.items)만
-    구간을 갖고 노드가 안 가지면, id 로 직접 연 historical 기록이 현재형 사실로
-    읽힌다(라이브 재현: `record:fact-engines-orphans`). `superseded_by` 는 props 의
-    임시 인코딩(§8 항목 4)이라 같은 자리에서 꺼내 준다 — 후속으로 건너갈 유일한 길."""
-    base["valid_from"] = str(valid_from or "")
-    base["valid_until"] = str(valid_until or "")
-    base["validity"] = validity_state(base["valid_from"], base["valid_until"])
-    props = base.get("props") if isinstance(base.get("props"), dict) else {}
-    base["superseded_by"] = str(props.get("superseded_by") or "")
 
 
 def graph_plan(*, owner: str, domain: str | None = None,
@@ -1326,11 +1320,6 @@ def entity_rows_for_ids_plan(ids: list[str], *, owner: str | None = None) -> Que
     return QueryPlan("entity_graph", cypher, params, note="entity rows for id set (TYPED)")
 
 
-#: 의미층 라벨 → PK. 관측·부착 플랜이 "상대편으로 올 수 있는 것"을 여기서 편다.
-#: (store.embedded_schema._SEMANTIC_LABELS 와 같은 집합 — 그쪽은 스키마, 여기는 조회.)
-_SEMANTIC_PK: dict[str, str] = {"Concept": "concept_id", "Decision": "decision_id"}
-_SEMANTIC_LABELS = frozenset(_SEMANTIC_PK)
-
 #: 주제 아래 설 수 있는 종 **전부**. `_SEMANTIC_PK` 보다 넓다 — 좌측 트리의 종 레일이
 #: 기록·사건까지 세우기 때문이다. Bridge 와 개방 타입(Entity)이 빠진 것은 취향이 아니라
 #: 스키마다: `IN_DOMAIN` 이 이 넷에만 걸리고(store/embedded_schema.py), Bridge 는
@@ -1343,29 +1332,6 @@ _TREE_PK: dict[str, str] = {
 }
 #: 화면이 보내는 종 이름 → 라벨. 소문자 단수형이 `NavNode.kind` 와 같은 값이다.
 _TREE_KIND_LABEL: dict[str, str] = {lbl.lower(): lbl for lbl in _TREE_PK}
-
-_SEED_TABLES = {   # seed id 접두사 → (라벨, PK 열) — C4 선조회용 (+ entity, F1)
-    "concept": ("Concept", "concept_id"),
-    "episode": ("Episode", "episode_id"),
-    "record": ("Record", "record_id"),
-    "bridge": ("Bridge", "bridge_id"),
-    "entity": ("Entity", "entity_id"),
-    "decision": ("Decision", "decision_id"),   # v12 — 없으면 아래 폴백이 Entity 로
-    # 보내 시드·삭제·이웃 조회가 **조용히 빈 결과**를 낸다(미지 접두사 = 개방층).
-}
-
-
-def _seed_table(seed: str) -> tuple[str, str]:
-    """seed id → (라벨, PK 열). 접두사 없음(콜론 부재) = Concept(하위호환).
-    **미지 접두사 = Entity**(F1) — 개방층 노드 id 는 사용자 저작 타입이 접두사라
-    (`theory:duality` 등) 열거 불가능하다; 레거시 접두사는 전부 위 표에 있으므로
-    표 밖 접두사는 개방층으로 라우팅하는 것이 정확하다(실측: 구 Concept 폴백은
-    theory:* 시드를 '없음'으로 오판)."""
-    prefix = seed.split(":", 1)[0] if ":" in seed else ""
-    if not prefix:
-        return ("Concept", "concept_id")
-    return _SEED_TABLES.get(prefix, ("Entity", "entity_id"))
-
 
 # 고립 시드가 실어 오는 열 — 라벨마다 **있는 것만** 고른다. 없는 열을 RETURN 하면
 # Binder 예외로 조회가 통째로 죽는다(Bridge 에 `domain` 이 없는 것과 같은 자리).
@@ -1417,77 +1383,6 @@ def seed_lookup_plan(seed: str, *, owner: str | None = None) -> QueryPlan:
     return QueryPlan("seed_lookup", cypher, params, note=f"seed existence probe ({label})")
 
 
-def node_plan(node_id: str, *, owner: str) -> QueryPlan:
-    """정확한 id의 저장 필드만 읽는다. 이웃·발췌·배치는 조회하지 않는다."""
-    from store.embedded_schema import node_table_specs
-
-    if node_id.startswith("domain:"):
-        name = node_id[len("domain:"):]
-        # Domain은 무소유 구조다. 소유자가 쓰는 주제와 그 조상만 정확히 읽는다.
-        # 근거: [[vinc.spec.dataplane §2.1]]
-        branches = [
-            f"MATCH (n:{label}) WHERE n.owner_id = $owner "
-            "AND (n.domain = $name OR n.domain STARTS WITH $prefix) "
-            "RETURN $name AS name"
-            for label in ("Concept", "Record", "Episode", "Decision")
-        ]
-        return QueryPlan("node", " UNION ALL ".join(branches),
-                         {"owner": owner, "name": name, "prefix": name + "/"})
-    label, pk = _seed_table(node_id)
-    # 열 목록은 스키마를 따른다. 종류에 없는 props나 유효구간을 만들어 내지 않는다.
-    # 근거: [[vinc.spec.dataplane §2.2]]
-    columns = node_table_specs()[label]["cols"]
-    fields = ", ".join(f"n.{col} AS {'id' if col == pk else col}" for col in columns)
-    if node_id.startswith("concept:doc."):
-        from store.search_temporal import FIELDS
-        dates = ", ".join(f"d.{key} AS _doc_{key}" for key in FIELDS)
-        return QueryPlan("node", f"MATCH (n:{label}) WHERE n.{pk} = $node "
-                         "AND n.owner_id = $owner OPTIONAL MATCH (d:_DocMeta) "
-                         "WHERE d.doc_id = $doc AND d.owner_id = $owner "
-                         f"RETURN {fields}, d.doc_id AS _doc_id, {dates}",
-                         {"node": pkns.key(owner, node_id), "owner": owner,
-                          "doc": node_id[len("concept:doc."):]})
-    return QueryPlan("node", f"MATCH (n:{label}) WHERE n.{pk} = $node "
-                     f"AND n.owner_id = $owner RETURN {fields}",
-                     {"node": pkns.key(owner, node_id), "owner": owner})
-
-
-def node(node_id: str, *, owner: str, cfg=None, store=None) -> dict:
-    """한 노드를 저장된 모양으로 돌려준다. 없는 노드와 다른 소유자의 노드는 같다."""
-    result = execute(node_plan(node_id, owner=owner), cfg, store=store)
-    rows = result.pop("rows", [])
-    if not result.get("executed"):
-        return result
-    result["found"] = bool(rows)
-    result["node"] = None
-    if rows:
-        stored = dict(rows[0])
-        doc_meta = None
-        if "_doc_id" in stored:
-            from store.search_temporal import FIELDS
-            present = stored.pop("_doc_id") is not None
-            values = {key: stored.pop("_doc_" + key, None) for key in FIELDS}
-            if present:
-                doc_meta = values
-        if node_id.startswith("domain:"):
-            stored = {"id": node_id, "kind": "domain", "name": stored["name"]}
-        else:
-            stored["kind"] = stored.get("type") or _seed_table(node_id)[0].lower()
-        if "props" in stored:
-            stored["props"] = _props_to_obj(stored["props"])
-        from store.search_temporal import metadata
-        # A domain is a namespace container, not dated evidence. Keep its exact read shape.
-        # Other kinds retain their stored top-level columns; normalized dates are nested.
-        if stored.get("kind") != "domain":
-            stored["temporal"] = metadata(doc_meta if doc_meta is not None else stored)
-            # Exact reads retain their single-query, neighbor-independent contract.
-            # Context/brief/search assess lineage; this endpoint exposes stored dates only.
-            stored["temporal"]["claim_status"] = "unassessed"
-            stored["temporal"]["claim_assessment_scope"] = "stored_fields"
-        result["node"] = stored
-    return result
-
-
 # 사용자 선택 프리셋 정본 — **2종**(발주자 지시 2026-08-02, D34 개정).
 #   hub  : 연결이 많을수록 중심, 적을수록 바깥(동심 배치). "무엇이 중심인가".
 #   rank : 전역 위상 순서를 x 에 인코딩. "무엇이 무엇보다 먼저인가".
@@ -1496,27 +1391,6 @@ def node(node_id: str, *, owner: str, cfg=None, store=None) -> dict:
 LAYOUTS = ("hub", "rank")
 _LAYOUT_ALIAS = {"radial": "hub", "circle": "hub", "tree": "hub",
                  "organic": "hub", "dendro": "hub", "shell": "hub"}
-#: 방향이 곧 의미인 엣지. 배치(:func:`layout_positions`)와 상충 판정(:func:`_flow_conflicts`)이
-#: 이 한 벌을 같이 읽는다. RELATED_TO 는 무방향이라(역방향이 같은 간선으로 접힌다)
-#: 여기 없다 — 넣으면 정상 관계가 전부 모순으로 보고된다.
-_DIRECTED_RELS = frozenset({"PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM"})
-# ⚠ 방향 정합(2026-08-02 수정). `DERIVES_FROM(a→b)` 은 "a 가 b 에서 나왔다"이므로
-# **b 가 상류**다. 좌측 문서 트리(D69)는 이미 뒤집어 적재하는데(`_nav_depth` 주석:
-# "뒤집기를 빠뜨리면 트리 전체가 조용히 뒤집힌다") 레이아웃은 안 뒤집어, 같은
-# 데이터를 트리는 "원본이 위", rank 는 "파생물이 왼쪽"으로 **반대로** 읽고 있었다.
-# 여기서 트리 쪽에 맞춘다 — 그쪽에만 명시 주석과 테스트가 있었다.
-#
-# ⚠ 2026-08-24 — `INHERITS_FROM` 이 빠져 있었다. 위 문장이 `DERIVES_FROM` 만 논해서
-# 그때 함께 안 옮긴 것으로 보인다. 관례가 둘을 같은 모양으로 규정한다: "A inherits
-# from B" 도 "A derives from B" 와 같이 **B 가 위**다. 빠져 있는 동안 rank 배치는
-# 상속 사슬만 거꾸로 세우고 있었고, 같은 데이터를 좌측 트리와 반대로 읽는 그
-# 2026-08-02 의 병이 한 관계에만 남아 있던 셈이다.
-#
-# ⚠ 이 표를 고치면 **기존 지도의 뜻이 바뀐다**(상속을 가진 그래프의 x 축 순서).
-# 그래서 앱의 인과 원뿔(`app/src/spotlight.ts` `UPSTREAM_REVERSED`)과 **같은 값**을
-# 유지해야 한다 — 한쪽만 옮기면 하이라이트가 배치를 반박한다.
-# 근거: [[record:inherits-from-now-reverses-with-derives-from]]
-_REVERSED_RELS = ("DERIVES_FROM", "INHERITS_FROM")
 
 
 def _global_rank(nodes: list[dict], directed: dict[str, set], math) -> None:
@@ -2174,11 +2048,6 @@ def _dedupe_planar(nodes: list[dict]) -> None:
             n["y2"] = round(y + math.sin(ang) * eps, 6)
 
 
-# 시간축(D72). `recorded` = 기록 시각(현행 ts), `content` = 문서 내용이 가리키는 시점.
-BASIS_RECORDED = "recorded"
-BASIS_CONTENT = "content"
-
-
 def _apply_basis(shaped: dict, basis: str) -> str:
     """`content` 축이면 노드의 `ts` 를 `content_ts` 로 갈아 끼운다.
 
@@ -2450,17 +2319,6 @@ def domain_ties_plan(*, owner: str) -> QueryPlan:
         "ORDER BY ties DESC"
     )
     return QueryPlan("domain_ties", cypher, {"owner": owner}, note="cross-domain tie matrix (L0)")
-
-
-def _bridge_owner_pred(alias: str) -> str:
-    """Bridge 소유 술어(F5, **과도기**) — ``(owner OR '')``. '' = v2 마이그레이션이
-    백필한 레거시 미소유 행: 신뢰할 소유 원천이 없어(호스티드 다중 테넌트 혼재)
-    실소유 백필이 불가하고, 엄격 ``= $owner`` 는 기존 로컬 사용자의 L0 결합을 즉시
-    소거하는 회귀다. 이 술어는 오늘의 완전 무스코프(전 테넌트 전량 노출)를 "내 것 +
-    마이그레이션 이전분"으로 좁히는 단조 개선이며, 신규 쓰기는 전부 스탬프되므로
-    (fragment·bridges_ingest) 새 데이터는 누출 불가. 로컬 백필(bridges_ingest
-    재실행)이 보편화되면 OR 절만 삭제해 엄격 전환한다 — 이 함수가 유일 정의 지점."""
-    return f"({alias}.owner_id = $owner OR {alias}.owner_id = '')"
 
 
 def bridge_ties_plan(*, owner: str | None = None) -> QueryPlan:
@@ -6230,16 +6088,6 @@ PATH_TIE_EPS = 1e-9      #: 부동소수 동률 판정 폭(비용 비교 전용)
 PATH_LIMIT = 25          #: 반환 경로 상한 — `shortest_path_plan` 의 LIMIT 25 와 동수
 
 
-def _edge_cost(edge: dict) -> float:
-    """엣지 통행 비용 = 1 - confidence(범위 밖·비수치·미기입은 0.0 신뢰도로 강등).
-    순수 함수 — :func:`weighted_paths` 의 유일한 비용 정의 지점."""
-    try:
-        c = float(edge.get("confidence") or 0.0)
-    except (TypeError, ValueError):
-        c = 0.0
-    return 1.0 - min(1.0, max(0.0, c))
-
-
 def weighted_paths(edges: list[dict], a_id: str, b_id: str, *, max_hops: int = 6,
                    limit: int = PATH_LIMIT) -> list[dict]:
     """confidence 가중 최단 경로(들) — 순수·결정론(난수·시간 무의존).
@@ -6573,45 +6421,6 @@ def _norm_title(title: str) -> tuple[str, frozenset]:
     return ("".join(toks), frozenset(toks))
 
 
-# ── 구조적 비중복 쌍 (F10-a) ──────────────────────────────────────────────────
-# **한쪽이라도 doc 미러면 후보에서 뺀다.** doc 미러와 그것이 비추는 주제 개념은 사본
-# 둘이 아니라 **층 둘**이고, 제목이 같은 것은 미러가 문서 제목을 물려받기 때문이다.
-# 이건 id 명명 관례지 엔진 구조가 아니라, 관례가 없는 그래프에서는 자동 무동작이고
-# 끄는 스위치(`include_structural`)를 둔다. **무음 억제 금지** — 몇 쌍을 뺐는지 숫자로
-# 남긴다. 근거·실측: [[record:fact-doc-concept-is-a-layer]] ·
-# [[record:fact-merge-excludes-any-doc-pair]].
-# ⚠ 결정용 `dec-*` 접두 규칙을 되살리지 말 것 — 결정은 이제 별도 라벨이고 이 조회는
-# `MATCH (c:Concept)` 이라 애초에 안 긁어온다(타입이 생기면 관례는 물러난다).
-_DOC_CONCEPT_PREFIX = "concept:doc."
-
-
-def _topic_description_mirrors_by_domain(owner: str | None, cfg=None, store=None) -> dict[str, str] | None:
-    """주제 설명 문서 미러의 논리 id → 그 미러가 선 주제. 설명은 주제(Domain)가 글을 못 담아 문서로 두고
-    그 미러의 domain 으로 주제에 속한다(`api/topic_description.py`). 그래서 미러가 그 주제의 노드처럼
-    읽힌다. 지도 표시·주제 수·주제 상세가 이 한 벌로 그것을 가른다. 읽기에 실패하면 None 이고, 부르는
-    쪽은 수를 고치지 않고 그대로 둔다(빼다 만 수보다 낫다)."""
-    if not owner:
-        return {}
-    from api import topic_description
-    res = execute(QueryPlan("topic_description_mirrors",
-        "MATCH (d:_DocMeta) WHERE d.origin = $origin AND d.owner_id = $owner "
-        "RETURN d.doc_id AS doc_id", {"origin": topic_description.ORIGIN, "owner": owner},
-        note="topic description mirrors"), cfg, store=store)
-    if not res.get("executed"):
-        return None
-    ids = [_DOC_CONCEPT_PREFIX + str(r["doc_id"]) for r in res.get("rows", []) if r.get("doc_id")]
-    if not ids:
-        return {}
-    got = execute(QueryPlan("topic_description_mirror_domains",
-        "MATCH (c:Concept) WHERE c.owner_id = $owner AND c.concept_id IN $ids "
-        "RETURN c.concept_id AS id, c.domain AS domain",
-        {"owner": owner, "ids": pkns.keys(owner, ids)}, note="topic description mirror topics"),
-        cfg, store=store)
-    if not got.get("executed"):
-        return None
-    return {pkns.strip(str(r["id"])): str(r.get("domain") or "") for r in got.get("rows", []) if r.get("id")}
-
-
 def _mark_topic_descriptions(shaped: dict, owner: str, cfg=None, store=None) -> None:
     """주제 설명 미러에 ``topic_description: true`` 를 단다. 화면은 이 표시로 그것을 지도·트리·수에서
     뺀다(설명 자체는 주제 상세가 보여 준다). 표시만 달고 노드를 빼지 않는다: 문서 읽기와 다른
@@ -6626,28 +6435,15 @@ def _mark_topic_descriptions(shaped: dict, owner: str, cfg=None, store=None) -> 
             n["topic_description"] = True
 
 
-def domains(*, owner: str | None = None, cfg=None, store=None, debug: bool = False) -> dict:
-    """주제별 노드 수(:func:`store.querybase.domains`)에서 주제 설명 미러를 뺀다. 설명은 그 주제의
-    노드가 아니라 주제에 대한 글이다. 뺀 수는 숨기지 않고 행의 ``topic_descriptions`` 로 밝힌다.
-    설명만 남은 주제도 행은 남긴다(total 0): 주제는 있고, 그 설명에 닿는 길이 여기다."""
-    res = _domain_rows(owner=owner, cfg=cfg, store=store, debug=debug)
-    if not res.get("executed") or not owner:
-        return res
-    mirrors = _topic_description_mirrors_by_domain(owner, cfg, store)
-    if not mirrors:
-        return res
-    per: dict[str, int] = {}
-    for d in mirrors.values():
-        per[d or "(none)"] = per.get(d or "(none)", 0) + 1
-    rows = []
-    for r in res.get("rows", []):
-        n = min(per.get(r["domain"], 0), r["concepts"])
-        rows.append({**r, "concepts": r["concepts"] - n, "total": r["total"] - n,
-                     "topic_descriptions": n} if n else r)
-    rows.sort(key=lambda r: (-r["total"], r["domain"]))
-    return {**res, "rows": rows}
-
-
+# ── 구조적 비중복 쌍 (F10-a) ──────────────────────────────────────────────────
+# **한쪽이라도 doc 미러면 후보에서 뺀다.** doc 미러와 그것이 비추는 주제 개념은 사본
+# 둘이 아니라 **층 둘**이고, 제목이 같은 것은 미러가 문서 제목을 물려받기 때문이다.
+# 이건 id 명명 관례지 엔진 구조가 아니라, 관례가 없는 그래프에서는 자동 무동작이고
+# 끄는 스위치(`include_structural`)를 둔다. **무음 억제 금지** — 몇 쌍을 뺐는지 숫자로
+# 남긴다. 근거·실측: [[record:fact-doc-concept-is-a-layer]] ·
+# [[record:fact-merge-excludes-any-doc-pair]].
+# ⚠ 결정용 `dec-*` 접두 규칙을 되살리지 말 것 — 결정은 이제 별도 라벨이고 이 조회는
+# `MATCH (c:Concept)` 이라 애초에 안 긁어온다(타입이 생기면 관례는 물러난다).
 def _structural_role(cid: str) -> str:
     """개념 id 의 구조 역할 — ``"doc"`` | ``""``(보통)."""
     return "doc" if cid.startswith(_DOC_CONCEPT_PREFIX) else ""
@@ -7820,32 +7616,6 @@ def community_context(*, owner: str | None = None, node: str, cfg=None, store=No
     return base
 
 
-
-# ── 실패 응답의 다음 행동 (F7) ───────────────────────────────────────────────
-# 실패는 **무엇**만이 아니라 **다음**을 말해야 한다: `error`(무엇) + `hint`(다음) +
-# `candidates`(어디로). 그 전에는 없는 노드 조회가 `{"executed": true}` 만 답해
-# 성공과 구분되지 않았다([[vinc.plan.mcp-hardening]]).
-
-def near_nodes(store, needle: str, *, owner: str | None = None,
-               limit: int = 3) -> list[dict]:
-    """놓친 id/제목에 가까운 노드 후보 — 이미 있는 폴백 검색을 그대로 쓴다.
-
-    새 색인을 만들지 않는다. `_node_fallback_search` 가 제목·요약·props 를 토큰 OR 로
-    훑고 점수로 좁히는 일을 이미 한다. 접두사(`concept:`)는 떼고 넣는다 — 사용자가
-    `concept:없는것` 을 줬을 때 접두사까지 검색어에 남으면 전부 똑같이 걸린다.
-    은퇴한 문서의 미러는 검색과 같은 규칙(`doc_intervals`)으로 힌트에서도 뺀다."""
-    probe = needle.split(":", 1)[1] if ":" in needle else needle
-    if not probe.strip():
-        return []
-    try:
-        rows = _node_fallback_search(store, probe, limit=max(1, limit), owner=owner,
-                                     doc_intervals=True)
-    except Exception:                                             # noqa: BLE001
-        return []                      # 힌트를 만들다 본 응답을 죽이지 않는다
-    return [{"id": r.get("id"), "title": r.get("title") or "",
-             "domain": r.get("domain") or ""} for r in rows[:limit]]
-
-
 def decide_topic_resolve_plan(topic: str, *, owner: str | None = None,
                               label: str = "Concept") -> QueryPlan:
     """decide 토픽 → seed id 해석(A1.9 A5). id 정확일치 또는 title 대소문자 무시
@@ -8210,12 +7980,8 @@ def _shortest_cycle(start: str, succ: dict[str, list[str]], within: set[str]) ->
 # 생겨도 되돌릴 수단이 없어 오염이 영구화됐다. delete/merge 는 그 정리 수단이다 —
 # 둘 다 **비가역**. 사이드카에서는 잡 큐(run_sync)로 직렬화된다(단일 writer, R4).
 
-# owner_id 열 보유 = 스코프 가드로 안전하게 삭제할 수 있는 라벨. _SEED_TABLES 의
-# 5종과 정확히 같다(전부 owner_id + _TRACKED_LABELS = 동기화 전파 대상).
-# ⚠ 여기 없으면 delete 가 "refused"로 거부된다 — Bridge(v2)·Entity(F1)가 소유
-# 스탬프를 얻은 뒤에도 이 집합이 3종에 머물러 있어 앱에서 브릿지를 못 지웠다(S1
-# 실측). 확장 시 _NODE_PK(툼스톤)도 같이 넓혀야 KeyError 가 안 난다.
-_OWNER_SCOPED_LABELS = {"Concept", "Episode", "Record", "Bridge", "Entity", "Decision"}
+# 툼스톤이 읽는 라벨 → PK. `_OWNER_SCOPED_LABELS` 의 라벨마다 있어야 한다: 그 집합을
+# 넓히고 여기를 안 넓히면 삭제가 KeyError 로 죽는다.
 _NODE_PK = {"Concept": "concept_id", "Episode": "episode_id", "Record": "record_id",
             "Bridge": "bridge_id", "Entity": "entity_id", "Decision": "decision_id"}
 
@@ -8314,78 +8080,6 @@ def _write_tombstone(store, node_id: str, label: str, owner: str | None) -> None
               {"id": pkns.key(own, node_id), "l": label, "o": own,
                "da": revstamp.hlc_now(store), "rev": int(rows[0].get("rev") or 0),
                "seq": revstamp.next_seq(store, own)})
-_CC_RELS = ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM", "RETURNS_TO")
-
-# 동기화 대상 엣지 rel → **끝점 (src 라벨, src PK, dst 라벨, dst PK) 후보들**. 엣지
-# 삭제 표면(delete_edge)과 sync 의 엣지 툼스톤 적용이 공유하는 단일 정의. fragment
-# 타입명(relates_to·about…)도 여기로 정규화된다.
-#
-# ⚠ **손으로 적은 표를 두지 말 것.** 의미층이 늘면 rel 하나가 끝점 조합 여럿을 갖게
-# 되고, 표가 낡으면 엣지 삭제가 **오류 없이 0건 매치**로 끝난다(툼스톤은 남고 엣지는
-# 그대로 = 기기마다 다른 그래프). 스키마에서 파생한다
-# ([[record:rel-tables-take-multiple-endpoint-pairs]]).
-def _derive_sync_edge_rels(*, wiki: bool = False) -> dict[str, tuple[tuple[str, str, str, str], ...]]:
-    from store import embedded_schema as _es
-    pks = {lbl: spec["pk"] for lbl, spec in _es.node_table_specs().items()}
-    out: dict[str, list[tuple[str, str, str, str]]] = {}
-    for spec in _es.rel_table_specs():
-        rel, src, dst = spec["label"], spec["from"], spec["to"]
-        if rel not in _SYNCED_EDGE_RELS or src not in pks or dst not in pks:
-            continue
-        # v23 의 위키 쌍은 커뮤니티 그래프에만 선다. 동기화와 개인·팀 조회는 그 쌍을 훑지 않는다.
-        if not wiki and _es.wiki_only_pair(rel, src, dst):
-            continue
-        out.setdefault(rel, []).append((src, pks[src], dst, pks[dst]))
-    return {k: tuple(v) for k, v in out.items()}
-
-
-_SYNCED_EDGE_RELS = _CC_RELS + ("ABOUT", "ATTACHES_TO", "SUPERSEDES")
-SYNC_EDGE_RELS: dict[str, tuple[tuple[str, str, str, str], ...]] = _derive_sync_edge_rels()
-#: 커뮤니티 그래프가 읽고 지우는 쌍 — 위 표에 v23 위키 쌍을 더한 것.
-WIKI_EDGE_RELS: dict[str, tuple[tuple[str, str, str, str], ...]] = _derive_sync_edge_rels(wiki=True)
-
-
-def _graph_read_pairs() -> dict[tuple[str, str, str, str], tuple[str, ...]]:
-    """graph/node/edge context의 끝점 계약. 표면별 분류와 whitelist는 별도로 유지한다.
-
-    sync 계약의 스키마 파생 쌍 중 의미 관계·SUPERSEDES와 ABOUT만 읽는다. RETURNS_TO는 기존
-    Concept 관계이고, ATTACHES_TO/CONNECTS는 계속 부착 카드 경로가 담당한다.
-    """
-    groups: dict[tuple[str, str, str, str], list[str]] = {}
-    for rel in _CC_RELS + ("ABOUT", "SUPERSEDES"):
-        for pair in SYNC_EDGE_RELS[rel]:
-            # 기록끼리의 SUPERSEDES 도 읽는다. 쓰기는 같은 종끼리만 받으므로(fragment)
-            # 의미층 밖에서는 이 한 쌍만 실재한다. 빠지면 vinc_graph·vinc_brief 가
-            # vinc_neighbors 보다 관계를 적게 센다(감사 F2).
-            if ((pair[0] in _SEMANTIC_LABELS and pair[2] in _SEMANTIC_LABELS)
-                    or rel == "ABOUT"
-                    or (rel == "SUPERSEDES" and pair[0] == pair[2] == "Record")):
-                groups.setdefault(pair, []).append(rel)
-    return {pair: tuple(rels) for pair, rels in groups.items()}
-
-
-_GRAPH_READ_PAIRS = _graph_read_pairs()
-
-
-def _wiki_read_pairs() -> dict[tuple[str, str, str, str], tuple[str, ...]]:
-    """커뮤니티 그래프만 더 읽는 v23 쌍 — 위키 관계 네 종과 ABOUT 중 위 계약 밖의 것."""
-    groups: dict[tuple[str, str, str, str], list[str]] = {}
-    for rel in ("RELATED_TO", "PREREQUISITE_OF", "DERIVES_FROM", "INHERITS_FROM", "ABOUT"):
-        for pair in WIKI_EDGE_RELS[rel]:
-            if pair not in SYNC_EDGE_RELS[rel]:
-                groups.setdefault(pair, []).append(rel)
-    return {pair: tuple(rels) for pair, rels in groups.items()}
-
-
-_WIKI_READ_PAIRS = _wiki_read_pairs()
-_CONCEPT_READ_PATTERN = "|".join(_GRAPH_READ_PAIRS[("Concept", "concept_id", "Concept", "concept_id")])
-_FRAGMENT_EDGE_TO_REL = {   # fragment 엣지 타입명 → rel (api/fragment 와 동형)
-    "relates_to": "RELATED_TO", "prerequisite_of": "PREREQUISITE_OF",
-    "derives_from": "DERIVES_FROM", "inherits_from": "INHERITS_FROM",
-    "about": "ABOUT",
-    "returns_to": "RETURNS_TO",
-    "supersedes": "SUPERSEDES",
-}
 
 
 def sync_edge_spec(rel: str):
