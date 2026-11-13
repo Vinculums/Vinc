@@ -1,6 +1,6 @@
 // 그래프 표면(`view.ts`)과 거기서 떼어 낸 묶음들이 주고받는 형식: 노드 한 개와, 표면이 묶음에 내주는 손잡이.
 // 형식만 둔다(실행되는 코드가 없다). 묶음을 더 떼어 낼 때는 그 묶음이 쓰는 손잡이만 `ViewHost` 에 더한다.
-import type { NodeContext } from "../api";
+import type { GraphEdge, GraphNode, NodeContext } from "../api";
 
 /** 카드 · 상세 레일 · 지도 초점이 주고받는 노드 한 개. `toN3` 가 그래프 응답에서 만든다. */
 export type N3 = {
@@ -51,6 +51,18 @@ export interface ViewHost {
   nodeContextOnce(id: string): Promise<NodeContext>;
   /** 노드 맥락 메모를 비운다. 다음 `nodeContextOnce` 는 새로 받는다. */
   dropNodeContext(): void;
-  /** 지금 층(trail 의 끝)을 다시 그린다. */
-  showLevel(): Promise<void>;
+  /** 지금 층(trail 의 끝)을 다시 그린다. `keepPanel` · `keepCamera` 면 열과 나침반의 자리를 둔 채 다시 그린다. */
+  showLevel(opts?: { keepPanel?: boolean; keepCamera?: boolean }): Promise<void>;
+  /** 열을 연다(레일의 `openRail`). 안의 편집기를 먼저 확정하고, 새 판을 돌려준다. */
+  openRail(): number;
+  /** 열 머리 한 벌의 마크업(레일의 `railHeadHTML`): 캡션 · 크기 전환 · 닫기. */
+  railHeadHTML(caption: string): string;
+  /** 지금 열에 그린 머리의 크기 전환 · 닫기 단추를 배선한다(레일의 `wireRailHead`). */
+  wireRailHead(): void;
+  /** 지금 층에 그린 노드. */
+  curNodes(): GraphNode[];
+  /** 지금 층에 그린 관계. 층을 다시 그리면 새 배열이 된다: 늦게 온 응답은 같은 배열인지로 가린다. */
+  curEdges(): GraphEdge[];
+  /** 지도 밖 진입점의 열기: 그 노드를 고르고(카드 · 주소) 레일까지 연다. */
+  openDetail(nd: N3): void;
 }
