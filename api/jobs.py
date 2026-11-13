@@ -15,6 +15,9 @@ Connection 으로 직접 처리하므로(§store.embedded_backend `reader_view`)
 
 stdlib 전용(``queue``·``threading``). 잡 id 는 결정론적 단조 카운터(테스트 친화 —
 벽시계·난수 미사용, 설계의 순수·재현 원칙과 정합).
+
+id 는 세어 맞힐 수 있으므로 비밀이 아니다. 잡마다 만든 요청의 소유자(``Job.owner``)를
+달아 두고, 소유자를 실은 조회는 그 소유자의 잡만 본다(``api.server.VincApp.get_job``).
 """
 from __future__ import annotations
 
@@ -45,10 +48,13 @@ class Job:
     result: dict | None = None
     error: str | None = None
     write_may_have_applied: bool = False
+    #: 이 잡을 만든 요청의 소유자. 요청 밖(기동·유지보수)에서 만든 잡은 None 이다.
+    #: 응답 바디에는 싣지 않는다.
+    owner: str | None = None
     _done: threading.Event = field(default_factory=threading.Event, repr=False)
 
     def to_dict(self) -> dict:
-        """직렬화 표면(HTTP 바디) — 내부 Event 는 제외."""
+        """직렬화 표면(HTTP 바디) — 내부 Event·소유자는 제외."""
         result = {"job_id": self.id, "kind": self.kind, "status": self.status,
                   "result": self.result, "error": self.error}
         if self.status == ERROR and self.write_may_have_applied:
@@ -69,6 +75,9 @@ class JobError(RuntimeError):
 # 이보다 오래 걸릴 수 있는 일(백업·인박스 적재·동기화)은 애초에 `submit`(202)을 쓴다.
 # 두 거짓말의 대칭: [[record:a-bounded-wait-must-not-manufacture-false-failure]].
 DEFAULT_SYNC_TIMEOUT = 600.0
+
+#: ``owner`` 를 주지 않았다는 표식. 이때 소유자는 ``owner_of`` 훅이 정한다(None 과 다르다).
+_FROM_REQUEST = object()
 
 
 class JobQueue:
@@ -94,8 +103,10 @@ class JobQueue:
     둘 뿐이고 ``Queue.get`` 은 항목이 들어오면 즉시 깬다."""
 
     def __init__(self, *, on_idle=None, on_before_done=None, on_before_run=None,
-                 tick_s: float | None = None, waits=None) -> None:
+                 tick_s: float | None = None, waits=None, owner_of=None) -> None:
         self._on_idle = on_idle
+        # 제출하는 스레드에서 지금 요청의 소유자를 돌려준다. 없으면 잡은 소유자 없이 남는다.
+        self._owner_of = owner_of
         # 누가 누구 뒤에서 얼마나 기다렸나(`store.write_waits`). 수만 센다.
         self._waits = waits if waits is not None else WRITE_WAITS
         # A required durability hook runs on the sole writer before a successful
@@ -146,9 +157,18 @@ class JobQueue:
             return f"job-{self._counter}"
 
     # ── 제출 ──────────────────────────────────────────────────────────────
-    def submit(self, kind: str, fn: Callable[[], dict], *, _sync: bool = False) -> Job:
-        """잡을 큐에 넣고 즉시 Job(status=queued) 반환(비동기, 202 매핑)."""
-        job = Job(self._next_id(), kind)
+    def _owner(self, owner) -> str | None:
+        if owner is _FROM_REQUEST:
+            owner = self._owner_of() if self._owner_of is not None else None
+        return owner if isinstance(owner, str) and owner else None
+
+    def submit(self, kind: str, fn: Callable[[], dict], *, _sync: bool = False,
+               owner=_FROM_REQUEST) -> Job:
+        """잡을 큐에 넣고 즉시 Job(status=queued) 반환(비동기, 202 매핑).
+
+        ``owner`` 를 생략하면 지금 요청의 소유자가 붙는다. 어느 소유자의 것도 아닌 유지보수
+        잡은 ``owner=None`` 을 명시한다(그 결과는 소유자를 실은 조회에 보이지 않는다)."""
+        job = Job(self._next_id(), kind, owner=self._owner(owner))
         with self._lock:
             self._jobs[job.id] = job
         context = copy_context()
@@ -164,14 +184,14 @@ class JobQueue:
         return job
 
     def run_sync(self, kind: str, fn: Callable[[], dict],
-                 *, timeout: float | None = DEFAULT_SYNC_TIMEOUT) -> dict:
+                 *, timeout: float | None = DEFAULT_SYNC_TIMEOUT, owner=_FROM_REQUEST) -> dict:
         """잡을 넣고 완료까지 대기해 결과 dict 반환(동기, 짧은 뮤테이션). 잡이
         error 로 끝나면 :class:`JobError` 를 올린다(HTTP 500). 워커는 하나뿐이라
         이 대기가 곧 쓰기 직렬화다.
 
         ``timeout=None`` 이면 무한 대기다 — **기본값이 아니다**(DEFAULT_SYNC_TIMEOUT).
         무한 대기는 한 번 막히면 화면이 영원히 "처리 중"에 굳는 실패 양식이었다."""
-        job = self.submit(kind, fn, _sync=True)
+        job = self.submit(kind, fn, _sync=True, owner=owner)
         if not job._done.wait(timeout=timeout):
             self._waits.timed_out(kind)
             # 잡은 여전히 큐/실행 중일 수 있다 — 그 사실을 숨기지 않는다.

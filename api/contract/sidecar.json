@@ -1049,7 +1049,7 @@
       ],
       "get": {
         "operationId": "get_job",
-        "summary": "Status of a queued job (queued, running, done, error).",
+        "summary": "Status of a queued job (queued, running, done, error). With owner, only a job that owner made; any other id answers 404 like an unknown one.",
         "x-internal": false,
         "x-served-by": "sidecar",
         "responses": {

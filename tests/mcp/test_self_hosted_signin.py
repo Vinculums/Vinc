@@ -320,8 +320,8 @@ class GraphTests(_Hub):
 
     def test_잡_폴링(self):
         cookie, _ = self.signed_in()
-        self.req("GET", "/api/graph/jobs/abc_123", headers={"Cookie": cookie})
-        self.assertEqual(self.bridge.calls[-1][1], "/jobs/abc_123")
+        self.req("GET", "/api/graph/jobs/abc_123?owner=user:victim", headers={"Cookie": cookie})
+        self.assertEqual(self.bridge.calls[-1][1:3], ("/jobs/abc_123", {"owner": PINNED}))
         code, _, _ = self.req("GET", "/api/graph/jobs/..%2Fx", headers={"Cookie": cookie})
         self.assertEqual(code, 400)
 
