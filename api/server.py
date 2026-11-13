@@ -188,6 +188,7 @@ from . import changes
 from .graph_cache import GraphResultCache, cache_key as _graph_cache_key
 from . import localmode
 from . import sync
+from . import revstamp
 from . import docstore
 from . import node_mirror
 from store.encoder_runtime import fingerprint as encoder_fingerprint
@@ -2519,24 +2520,26 @@ class VincApp:
             # 모드 전환의 전량 받기(VIN-130). 아래 도메인 목록은 **주제가 빈 노드를 못
             # 잡는다**(`IN` 은 빈 값과 맞지 않는다) — 그대로 두면 계정에서 기기로 옮길 때
             # 주제 없는 노드가 조용히 남는다. 그래서 주제를 아예 안 가린다.
-            return self._read(lambda r: sync.export_delta(
+            return self._read(lambda r: revstamp.with_clock(sync.export_delta(
                 owner=owner, since=_int(p.get("since"), 0), everything=True,
-                cfg=self.cfg, store=r))
-        return self._read(lambda r: sync.export_delta(
+                cfg=self.cfg, store=r)))
+        # 답에 이 허브의 벽시계(`clock`)를 싣는다. 받는 기기는 그 근처까지 따라간 자기 시계를 되돌리지 않는다.
+        return self._read(lambda r: revstamp.with_clock(sync.export_delta(
             owner=owner, since=_int(p.get("since"), 0),
             domains=[row["domain"] for row in q.domains(owner=owner, store=r).get("rows", [])
                      if row.get("domain")],
-            cfg=self.cfg, store=r))
+            cfg=self.cfg, store=r)))
 
     def write_sync_apply_delta(self, body):
         """delta 번들 적용(쓰기 → 잡 큐 직렬화, R4).
 
         허브가 기기의 push 를 받는 길이다. 처음 보는 실행 기록의 상태를 믿을지는 본문의 어떤
         필드로도 정하지 않는다: `trusted_sender` 를 넘기지 않아 늘 믿지 않는다. 시계 규칙도 같은 값을
-        읽는다: 스탬프가 이 허브의 벽시계 + `revstamp.MAX_SKEW_MS` 뒤인 항목은 받지 않는다(`clock_skew`)."""
+        읽는다: 스탬프가 이 허브의 벽시계 + `revstamp.MAX_SKEW_MS` 뒤인 항목은 받지 않는다(`clock_skew`).
+        `clock_skew` 를 알아듣는다고 밝히지 않은 묶음은 그런 항목이 있으면 통째로 적용하지 않는다(`sync.apply_upload`)."""
         owner = _req(body, "owner")
         bundle = body.get("bundle") or {}
-        res = self.jobs.run_sync("sync:apply", lambda: sync.apply_delta(
+        res = self.jobs.run_sync("sync:apply", lambda: sync.apply_upload(
             owner=owner, bundle=bundle, cfg=self.cfg, store=self.store))
         return 200, res
 
@@ -2545,16 +2548,16 @@ class VincApp:
         노드 sync 와 별개 채널: 텍스트만 전송하고 embedding·청크는 수신측 재생성."""
         owner = _req(p, "owner")
         # `all` = 순번과 무관하게 전부(모드 전환의 전량 받기, VIN-130 · docsync 주석).
-        return self._read(lambda r: docsync.export_docs(
-            r, owner=owner, since=_int(p.get("since"), 0), everything=truthy(p.get("all"))))
+        return self._read(lambda r: revstamp.with_clock(docsync.export_docs(
+            r, owner=owner, since=_int(p.get("since"), 0), everything=truthy(p.get("all")))))
 
     def write_sync_docs_apply(self, body):
         """문서 정본 delta 적용(D45 P3 — doc 단위 LWW, 로컬 재청킹). 쓰기 → 잡 직렬화.
         embedding 은 수신측에서 재생성하지 않는다(P3 시작본은 텍스트+FTS; 벡터는 후속
-        재임베딩 잡이 채운다) — 정본 텍스트 정합이 우선."""
+        재임베딩 잡이 채운다) — 정본 텍스트 정합이 우선. 시계 규칙은 노드 묶음과 같다(`docsync.import_upload`)."""
         owner = _req(body, "owner")
         payload = body.get("payload") or {}
-        res = self.jobs.run_sync("sync:docs-apply", lambda: docsync.import_docs(
+        res = self.jobs.run_sync("sync:docs-apply", lambda: docsync.import_upload(
             self.store, owner=owner, payload=payload))
         return 200, res
 

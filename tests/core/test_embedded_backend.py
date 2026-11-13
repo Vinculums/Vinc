@@ -1324,6 +1324,8 @@ class EmbeddedE2E(unittest.TestCase):
         ids = {n["id"] for n in (out.get("nodes") or [])}
         self.assertIn("concept:pulltest", ids,
                        "허브 pull 이 로컬전용 도메인선택 폴백에 걸려 빈 번들을 반환함 — 회귀")
+        # 답은 허브의 벽시계를 싣는다(기기가 믿는 출처의 시계로 적는다).
+        self.assertRegex(out.get("clock") or "", r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$")
         store.close()
 
 

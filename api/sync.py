@@ -900,7 +900,10 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
       - 실행 기록: 처음 보는 실행의 대기·승인·답을 보낸 쪽 그대로 받는가(`store/run_state.py` `keep_own`).
       - 시계: 믿지 않으면 스탬프가 `revstamp.ceiling_ms()` 뒤인 노드·노드 삭제·엣지 삭제는 저장하지 않고
         결과 `clock_skew` 에 이름을 남긴다(자르지 않는다: 자르면 보낸 쪽과 다른 스탬프의 사본이 생긴다).
-        나머지는 적용한다. 믿으면 스탬프를 그대로 받고 시계도 거기까지 따라간다.
+        나머지는 적용한다. 믿으면 스탬프를 그대로 받는다. 믿으면 묶음의 `clock`(보낸 허브의 벽시계)을 적용 전에
+        적는다(기기 벽시계 + `revstamp.TRUSTED_AHEAD_MS` 까지). 시계는 max(기기 벽시계, 그 허브 시계) +
+        `revstamp.MAX_SKEW_MS` 까지의 스탬프를 따라가고(`revstamp.observe_hlc`), 그 근처에 있는 동안은 되돌리지
+        않는다(`revstamp._last`).
     """
     out = {"executed": False, "applied": 0, "skipped_stale": 0, "merged": 0,
            "edges": 0, "deleted": 0, "resurrected": 0, "kept_deleted": 0, "warnings": []}
@@ -915,6 +918,9 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
                    warnings=["Moved content cannot be uploaded to its former space."])
         return out
 
+    if trusted_sender:
+        # 병합 쓰기가 시계를 읽기 전에 적는다. 믿지 않는 묶음의 `clock` 은 읽지 않는다.
+        revstamp.note_trusted_clock(store, bundle.get("clock"))
     writes: list[dict] = []          # merge_fragment 로 쓸 노드(스탬프 포함)
     base_updates: list[tuple] = []   # (nid, label, base_fields, base_rev, base_ua)
     births: list[tuple] = []         # (label, pk, nid, remote_created) — 병합과 무관
@@ -1140,6 +1146,47 @@ def apply_delta(*, owner: str, bundle: dict, cfg=None, store=None,
     return out
 
 
+def skewed_upload_items(bundle: dict) -> list[str]:
+    """믿지 않는 길(`apply_delta` 기본값)이 `clock_skew` 로 받지 않을 항목의 이름. 같은 순서·같은 조건이다."""
+    out: list[str] = []
+    for n in bundle.get("nodes") or []:
+        nid, ntype = n.get("id"), n.get("type")
+        rid = run_state.run_id(nid)
+        if rid is not None:
+            nid = rid
+        if not nid or not _SYNC_TYPES.get(ntype or "") or frag.prefix_mismatch(ntype, nid):
+            continue
+        if revstamp.beyond_ceiling(n.get("_updated_at") or ""):
+            out.append(nid)
+    for t in bundle.get("tombstones") or []:
+        if t.get("node_id") and revstamp.beyond_ceiling(t.get("deleted_at") or ""):
+            out.append(t["node_id"])
+    for t in bundle.get("edge_tombstones") or []:
+        src, rel, dst = t.get("src"), t.get("rel"), t.get("dst")
+        if not q.sync_edge_spec(rel or "") or not src or not dst:
+            continue
+        if revstamp.beyond_ceiling(t.get("deleted_at") or ""):
+            out.append(edge_ref(src, rel, dst))
+    return out
+
+
+def apply_upload(*, owner: str, bundle: dict, cfg=None, store=None) -> dict:
+    """허브가 기기의 노드 업로드 한 청크를 받는다(사이드카 `/sync/apply-delta`). 늘 믿지 않는다.
+
+    업로드가 `clock_skew` 를 알아듣는다고 밝히지 않았고 상한을 넘은 항목이 하나라도 있으면 청크 전체를
+    적용하지 않고 `executed: False` 로 답한다. 그런 클라이언트(데스크톱 0.9.x)는 그 답에서 동기화 오류를
+    보이고 base 도 커서도 옮기지 않으므로 다음 동기화에 같은 것을 다시 보낸다. 밝힌 클라이언트는
+    `apply_delta` 그대로 항목별로 거절받는다."""
+    if not revstamp.declares_clock_skew(bundle):
+        skewed = skewed_upload_items(bundle)
+        if skewed:
+            warning = revstamp.clock_skew_warning(len(skewed))
+            return {"executed": False, "applied": 0, "skipped_stale": 0, "merged": 0, "edges": 0,
+                    "deleted": 0, "resurrected": 0, "kept_deleted": 0, "note": warning,
+                    revstamp.CLOCK_SKEW: skewed, "warnings": [warning]}
+    return apply_delta(owner=owner, bundle=bundle, cfg=cfg, store=store)
+
+
 # ── 오케스트레이터 (S2) ───────────────────────────────────────────────────────
 # 로컬 사이드카가 원격(mcp.vincs.io)에 대해 pull/push 를 조율한다. 원격 호출은
 # 주입(remote 객체)이라 인프로세스 스텁과 실 HTTP 양쪽으로 검증된다.
@@ -1192,8 +1239,10 @@ def push_local(store, cfg, *, owner: str, remote) -> dict:
         return {"phase": "push", "executed": False, "note": bundle.get("note")}
     nodes = bundle.get("nodes") or []
     tombs = bundle.get("tombstones") or []
-    if not nodes and not (bundle.get("edges") or []) and not tombs:
-        return {"phase": "push", "executed": True, "sent": 0, "deletes": 0, "cursor": since}
+    etombs = bundle.get("edge_tombstones") or []
+    if not nodes and not (bundle.get("edges") or []) and not tombs and not etombs:
+        return {"phase": "push", "executed": True, "sent": 0, "deletes": 0, "edge_deletes": 0,
+                "cursor": since}
     res = remote.push(chunk_bundle(bundle))
     refused = _refused_ids(res)
     for n in nodes:                       # base := 방금 보낸(=원격과 합의된) 값
@@ -1203,8 +1252,9 @@ def push_local(store, cfg, *, owner: str, remote) -> dict:
             set_base(store, n["id"], label, _snapshot(label, n),
                      int(n.get("_rev") or 0), n.get("_updated_at") or "")
     set_cursor(store, "push", bundle["next_cursor"])
-    out = {"phase": "push", "executed": True, "sent": len(nodes), "deletes": len(tombs),
-           "remote": res, "cursor": bundle["next_cursor"]}
+    out = {"phase": "push", "executed": True, "sent": len(nodes),
+           "deletes": len(tombs), "edge_deletes": len(etombs), "remote": res,
+           "cursor": bundle["next_cursor"]}
     if refused:
         _send_again(store, owner, bundle, refused)
         out[revstamp.CLOCK_SKEW] = sorted(refused)

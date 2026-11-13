@@ -115,6 +115,9 @@ def import_docs(store, *, owner: str, payload: dict, trusted_sender: bool = Fals
         return {"kind": "docsync.import", "owner": owner, "executed": False,
                 "applied": 0, "updated": 0, "skipped": 0, "deleted": 0,
                 "error": "ownership_moved", "moved_ids": moved}
+    if trusted_sender:
+        # 보낸 허브의 벽시계를 적는다(`sync.apply_delta` 와 같다). 믿지 않는 payload 의 값은 읽지 않는다.
+        revstamp.note_trusted_clock(store, payload.get("clock"))
     applied = updated = skipped = deleted = 0
     refused: list[str] = []      # 스탬프가 상한 뒤라 받지 않은 문서·문서 삭제 id(응답 `clock_skew`)
     for d in payload.get("docs", []) or []:
@@ -204,6 +207,38 @@ def import_docs(store, *, owner: str, payload: dict, trusted_sender: bool = Fals
         out[revstamp.CLOCK_SKEW] = refused
         out["warnings"] = [revstamp.clock_skew_warning(len(refused))]
     return out
+
+
+def skewed_upload_docs(payload: dict) -> list[str]:
+    """믿지 않는 `import_docs` 가 `clock_skew` 로 받지 않을 문서·문서 삭제 id. 같은 순서·같은 조건이다."""
+    out: list[str] = []
+    for d in payload.get("docs", []) or []:
+        doc_id = d.get("doc_id")
+        if doc_id and not graphmd.is_conventions_doc_id(doc_id) and \
+                revstamp.beyond_ceiling(d.get("updated_at") or ""):
+            out.append(doc_id)
+    for t in payload.get("tombstones", []) or []:
+        doc_id = t.get("doc_id")
+        if doc_id and not graphmd.is_conventions_doc_id(doc_id) and \
+                revstamp.beyond_ceiling(t.get("deleted_at") or ""):
+            out.append(doc_id)
+    return out
+
+
+def import_upload(store, *, owner: str, payload: dict) -> dict:
+    """허브가 기기의 문서 업로드 한 조각을 받는다(사이드카 `/sync/docs-apply`). 늘 믿지 않는다.
+
+    `clock_skew` 를 알아듣는다고 밝히지 않은 업로드에 상한을 넘은 항목이 있으면 조각 전체를 적용하지 않고
+    `error` 로 답한다(`clock_skew` 를 모르는 클라이언트도 `error` 를 보고 실패로 다루며 문서 커서를 옮기지
+    않는다). 밝힌 업로드는 `import_docs` 그대로 항목별로 거절받는다."""
+    if not revstamp.declares_clock_skew(payload):
+        skewed = skewed_upload_docs(payload)
+        if skewed:
+            warning = revstamp.clock_skew_warning(len(skewed))
+            return {"kind": "docsync.import", "owner": owner, "executed": False, "applied": 0,
+                    "updated": 0, "skipped": 0, "deleted": 0, "error": warning,
+                    revstamp.CLOCK_SKEW: skewed, "warnings": [warning]}
+    return import_docs(store, owner=owner, payload=payload)
 
 
 def _newer(a: str, b: str) -> bool:

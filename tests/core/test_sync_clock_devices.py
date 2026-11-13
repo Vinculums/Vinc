@@ -1,8 +1,9 @@
 """시계가 틀린 기기와 허브가 오케스트레이터(`sync.run`)로 여러 번 동기화해도 같은 사본에 닿는다.
 
 기기는 실제 동기화 클라이언트(`vinc_mcp/syncclient`)로 보내고, 허브의 네 끝점은 두 번째 스토어 위에서
-`vinc_mcp/http_server._sync` 가 사이드카로 넘기는 것과 같은 함수로 답한다(본문은 JSON 으로 오간다). 허브는
-기기를 믿지 않고(`apply_delta` 기본값), 기기는 자기 허브를 믿는다(`pull_apply`). 두 스토어의 벽시계는 따로
+`vinc_mcp/http_server._sync` 가 사이드카로 넘기는 것과 같은 함수로 답한다(본문은 JSON 으로 오가고, pull 답에는
+사이드카 라우트처럼 허브 벽시계 `clock` 이 실린다). 허브는
+기기를 믿지 않고(`apply_upload`), 기기는 자기 허브를 믿는다(`pull_apply`). 두 스토어의 벽시계는 따로
 고정한다: 허브 시각과 기기의 어긋남.
 
 - 느린 기기(2시간): 허브 편집을 본 뒤의 편집이 허브에서 이긴다.
@@ -39,12 +40,16 @@ SKEW = "clock_skew"
 
 
 class _Clocks:
-    """허브의 벽시계와 기기의 어긋남. 허브 끝점 안에서는 허브 시각, 밖에서는 기기 시각이다."""
+    """허브의 벽시계와 기기의 어긋남. 허브 끝점 안에서는 허브 시각, 밖에서는 기기 시각이다.
+    `declares` 가 False 면 업로드에서 `clock_skew` 를 안다는 표시를 뺀다(데스크톱 0.9.x 가 보내는 모양).
+    `reply_clock` 이 있으면 pull 답의 `clock` 을 그 값으로 바꾼다(틀린 시계를 보내는 허브)."""
 
     def __init__(self):
         self.hub = T0
         self.offset = 0
         self.side = "device"
+        self.declares = True
+        self.reply_clock = None
 
     def __call__(self) -> int:
         return self.hub + (0 if self.side == "hub" else self.offset)
@@ -77,18 +82,24 @@ def world(tmp_path, monkeypatch):
 
     def post(base, path, token, payload, *, timeout):
         body = json.loads(json.dumps(payload))
+        if not clocks.declares:
+            for part in ("bundle", "payload"):
+                if part in body:
+                    body[part].pop(revstamp.HANDLES, None)
         with clocks.at_hub():
             if path == "/sync/push":
-                out = sync.apply_delta(owner=A, bundle=body["bundle"], store=hub)
+                out = sync.apply_upload(owner=A, bundle=body["bundle"], store=hub)
             elif path == "/sync/pull":
-                out = sync.export_delta(owner=A, since=int(body["since"]), domains=["clock"],
-                                        store=hub)
+                out = revstamp.with_clock(sync.export_delta(
+                    owner=A, since=int(body["since"]), domains=["clock"], store=hub))
             elif path == "/sync/docs-push":
-                out = docsync.import_docs(hub, owner=A, payload=body["payload"])
+                out = docsync.import_upload(hub, owner=A, payload=body["payload"])
             elif path == "/sync/docs-pull":
-                out = docsync.export_docs(hub, owner=A, since=int(body["since"]))
+                out = revstamp.with_clock(docsync.export_docs(hub, owner=A, since=int(body["since"])))
             else:
                 raise AssertionError(path)
+        if clocks.reply_clock is not None and path in ("/sync/pull", "/sync/docs-pull"):
+            out = {**out, "clock": clocks.reply_clock}
         return json.loads(json.dumps(out, default=str))
 
     monkeypatch.setattr(syncclient, "_post", post)
@@ -290,3 +301,253 @@ def test_a_fast_device_deletion_is_refused_then_applied_once_the_hub_clock_catch
     second = _run(dev, remote)
     assert SKEW not in second["push"], second
     assert _row(hub) is None and _edges(hub) == 0, second
+
+
+# ── 하루 넘게 느린 기기: 허브를 따라간 시계는 되돌리지 않는다 ─────────────────────
+DAY = 24 * HOUR
+KINDS = ["edit", "delete", "edge_add", "edge_delete_with_node_edit", "doc_edit", "doc_delete"]
+
+
+def _doc_hash(store, did):
+    rows = store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id RETURN d.content_hash AS h", {"id": did})
+    return rows[0]["h"] if rows else None
+
+
+def _put_doc(store, did, text):
+    assert ds.put_doc(store, owner=A, text=text, doc_id=did, title="Note",
+                      origin="slow-note").get("executed")
+
+
+def _both(hub, dev, did):
+    """두 쪽이 같은 사본을 가졌는지 보는 값: 노드 제목·엣지 수·문서 내용."""
+    return [(_row(st)["title"] if _row(st) else None, _edges(st), _doc_hash(st, did))
+            for st in (hub, dev)]
+
+
+@pytest.mark.parametrize("kind", KINDS)
+@pytest.mark.parametrize("behind", [26 * HOUR, 3 * DAY, 400 * DAY], ids=["26h", "3d", "400d"])
+def test_a_device_more_than_a_day_slow_keeps_every_change_it_makes_after_following_its_hub(
+        world, behind, kind):
+    from api import query as q
+    hub, dev, clocks, remote = world
+    clocks.offset = -behind
+    did = ds.doc_id_for_origin(A, "slow-note")
+    with clocks.at_hub():
+        res = frag.merge_fragment({"owner": A, "nodes": [
+            {"id": nid, "type": "concept", "title": "v0" if nid == "concept:n" else nid,
+             "domain": "clock"} for nid in ("concept:n", "concept:s", "concept:d")],
+            "edges": ([{"from": "concept:s", "to": "concept:d", "type": "relates_to"}]
+                      if kind == "edge_delete_with_node_edit" else [])}, store=hub)
+        assert res["executed"], res
+        _put_doc(hub, did, "doc v0")
+    _run(dev, remote)
+    clocks.hub += SECOND
+    with clocks.at_hub():
+        _write(hub, "v1-hub")
+        _put_doc(hub, did, "doc v1-hub")
+    clocks.hub += SECOND
+    _run(dev, remote)
+    assert _row(dev)["title"] == "v1-hub" and _doc_hash(dev, did) == _doc_hash(hub, did)
+    clocks.hub += SECOND
+    if kind == "edit":
+        _write(dev, "v2-device")
+    elif kind == "delete":
+        assert q.delete_node("concept:n", owner=A, store=dev).get("executed")
+    elif kind == "edge_add":
+        assert frag.merge_fragment({"owner": A, "nodes": [], "edges": [
+            {"from": "concept:s", "to": "concept:d", "type": "relates_to"}]}, store=dev)["executed"]
+    elif kind == "edge_delete_with_node_edit":
+        assert q.delete_edge("concept:s", "relates_to", "concept:d", owner=A, store=dev).get("executed")
+        _write(dev, "v2-device")
+    elif kind == "doc_edit":
+        _put_doc(dev, did, "doc v2-device")
+    elif kind == "doc_delete":
+        assert ds.delete_doc(dev, did, owner=A).get("executed")
+    want = _both(hub, dev, did)[1]
+    clocks.hub += SECOND
+    out = _run(dev, remote)
+    # 첫 동기화에 허브가 기기의 변경을 그대로 가진다. 거절도 경고도 없다.
+    assert _both(hub, dev, did)[0] == want, out
+    assert SKEW not in out["push"] and SKEW not in out["docs_push"], out
+    # 그 뒤의 허브 편집도 기기에 온다. 두 쪽이 같은 사본에 닿는다.
+    clocks.hub += 30 * SECOND
+    with clocks.at_hub():
+        if kind in ("edit", "edge_delete_with_node_edit"):
+            _write(hub, "v3-hub")
+        if kind == "doc_edit":
+            _put_doc(hub, did, "doc v3-hub")
+    for _ in range(2):
+        clocks.hub += SECOND
+        _run(dev, remote)
+    hub_side, dev_side = _both(hub, dev, did)
+    assert hub_side == dev_side
+    if kind in ("edit", "edge_delete_with_node_edit"):
+        assert hub_side[0] == "v3-hub"
+
+
+@pytest.mark.parametrize("back", [25 * HOUR, 3 * DAY], ids=["25h", "3d"])
+def test_local_stamp_order_holds_when_the_wall_clock_of_a_device_that_followed_its_hub_steps_back(
+        world, back):
+    hub, dev, clocks, remote = world
+    _hub_write(hub, clocks, "v0")
+    clocks.hub += SECOND
+    _run(dev, remote)
+    _write(dev, "before the step", nid="concept:a")
+    before = _row(dev, "concept:a")["ua"]
+    clocks.offset = -back
+    _write(dev, "after the step", nid="concept:b")
+    assert _row(dev, "concept:b")["ua"] > before
+    _write(dev, "edited after the step", nid="concept:a")
+    assert _row(dev, "concept:a")["ua"] > before
+
+
+# ── 엣지 삭제만 한 동기화도 올라간다 ────────────────────────────────────────────
+def _hub_with_an_edge(hub, clocks):
+    with clocks.at_hub():
+        res = frag.merge_fragment({"owner": A, "nodes": [
+            {"id": nid, "type": "concept", "title": nid, "domain": "clock"}
+            for nid in ("concept:s", "concept:d")],
+            "edges": [{"from": "concept:s", "to": "concept:d", "type": "relates_to"}]}, store=hub)
+        assert res["executed"], res
+
+
+def test_an_edge_deletion_made_on_its_own_reaches_the_hub(world):
+    from api import query as q
+    hub, dev, clocks, remote = world
+    _hub_with_an_edge(hub, clocks)
+    _run(dev, remote)
+    assert _edges(dev) == 1
+    clocks.hub += SECOND
+    assert q.delete_edge("concept:s", "relates_to", "concept:d", owner=A, store=dev).get("executed")
+    clocks.hub += SECOND
+    out = _run(dev, remote)
+    assert _edges(hub) == 0, out
+    assert out["push"]["edge_deletes"] == 1 and SKEW not in out["push"], out
+    clocks.hub += SECOND
+    again = _run(dev, remote)
+    assert _edges(hub) == 0 == _edges(dev), again
+
+
+def test_a_refused_edge_deletion_made_on_its_own_is_sent_again(world):
+    from api import query as q
+    hub, dev, clocks, remote = world
+    clocks.offset = 6 * MINUTE
+    _hub_with_an_edge(hub, clocks)
+    _run(dev, remote)
+    clocks.hub += SECOND
+    assert q.delete_edge("concept:s", "relates_to", "concept:d", owner=A, store=dev).get("executed")
+    clocks.hub += SECOND
+    first = _run(dev, remote)
+    assert _edges(hub) == 1, first
+    assert first["push"].get(SKEW) == [sync.edge_ref("concept:s", "RELATED_TO", "concept:d")], first
+    clocks.hub += MINUTE + SECOND
+    second = _run(dev, remote)
+    assert SKEW not in second["push"], second
+    assert _edges(hub) == 0, second
+
+
+# ── `clock_skew` 를 모르는 클라이언트: 청크째 실패해 다시 보낸다 ─────────────────
+def test_a_client_that_does_not_declare_clock_skew_gets_a_sync_error_and_sends_again(world):
+    """`clock_skew` 를 모르는 클라이언트는 그 답을 읽지 않는다. 허브가 청크를 실패시키면 동기화 오류를 보이고 base·커서를 그대로 둔다."""
+    hub, dev, clocks, remote = world
+    clocks.offset = 6 * MINUTE
+    clocks.declares = False
+    _hub_write(hub, clocks, "v0")
+    _hub_write(hub, clocks, "other", nid="concept:o")
+    _run(dev, remote)
+    hub_v0 = _row(hub)
+    clocks.hub += SECOND
+    _write(dev, "dev-edit")
+    _write(dev, "other-dev", nid="concept:o")
+    cursor = sync.get_cursor(dev, "push")
+    clocks.hub += SECOND
+    with pytest.raises(syncclient.SyncError, match="minutes ahead"):
+        sync.run(dev, None, owner=A, remote=remote)
+    # 청크의 어느 것도 적용되지 않았고, 기기는 합의된 것으로 적지 않았다.
+    assert _row(hub) == hub_v0 and _row(hub, "concept:o")["title"] == "other"
+    assert sync.get_base(dev, "concept:n", A)["fields"]["title"] == "v0"
+    assert sync.get_cursor(dev, "push") == cursor
+    # 허브 시계가 따라잡은 뒤의 동기화에서 둘 다 들어간다.
+    clocks.hub += MINUTE + SECOND
+    out = _run(dev, remote)
+    assert _row(hub)["title"] == "dev-edit" and _row(hub, "concept:o")["title"] == "other-dev", out
+    # 그 뒤의 허브 편집은 기기에 온다. 기기가 받은 편집을 병합해 쓴 행은 기기 시계로 찍혀, 허브 시계가 따라잡을
+    # 때까지 그 동기화는 오류로 끝난다(아무것도 잃지 않는다). 그 뒤에는 두 쪽이 같다.
+    clocks.hub += 30 * SECOND
+    _hub_write(hub, clocks, "hub-edit")
+    clocks.hub += SECOND
+    with pytest.raises(syncclient.SyncError, match="minutes ahead"):
+        sync.run(dev, None, owner=A, remote=remote)
+    assert _row(dev)["title"] == "hub-edit"
+    clocks.hub += MINUTE + SECOND
+    _run(dev, remote)
+    assert _row(dev)["title"] == "hub-edit" == _row(hub)["title"]
+
+
+def test_a_client_that_does_not_declare_clock_skew_keeps_its_document_cursor(world):
+    hub, dev, clocks, remote = world
+    clocks.offset = 6 * MINUTE
+    clocks.declares = False
+    _run(dev, remote)
+    did = ds.doc_id_for_origin(A, "old-app-note")
+    assert ds.put_doc(dev, owner=A, text="written on an old app", doc_id=did, title="Note",
+                      origin="old-app-note").get("executed")
+    cursor = sync.get_cursor(dev, "docs-push")
+    first = _run(dev, remote)
+    assert first["docs_push"]["executed"] is False and "minutes ahead" in first["docs_push"]["error"]
+    assert _doc_ua(hub, did) is None and sync.get_cursor(dev, "docs-push") == cursor
+    clocks.hub += MINUTE + SECOND
+    second = _run(dev, remote)
+    assert second["docs_push"]["executed"] is True, second
+    assert _doc_ua(hub, did) == _doc_ua(dev, did)
+
+
+
+# ── 먼 시계나 먼 항목을 보내는 허브: 기기는 붙잡히지 않는다 ─────────────────────────
+Y2999 = "2999-01-01T00:00:00.000Z"
+
+
+@pytest.mark.parametrize("reply_clock, item", [
+    (Y2999, Y2999),
+    ("9999-12-31T23:59:59.999Z", "9999-12-31T23:59:59.900Z"),
+    (None, Y2999),
+], ids=["clock-and-item-2999", "clock-and-item-9999", "honest-clock-and-a-2999-item"])
+def test_a_far_hub_reply_does_not_hold_the_device(world, reply_clock, item):
+    """허브가 기기가 가진 노드를 먼 시각에 고치고, pull 답의 `clock` 도 그 시각이다(`None` 이면 맞는 시계).
+    기기의 다음 쓰기 150 번은 모두 되고 기기 벽시계 + `MAX_SKEW_MS` 안에 찍힌다. 허브가 계속 같은 답을 보내도
+    다음 동기화에서 모두 허브에 닿는다."""
+    hub, dev, clocks, remote = world
+    _hub_write(hub, clocks, "v0")
+    clocks.hub += SECOND
+    _run(dev, remote)
+    honest = int(revstamp._meta_get(dev, revstamp.TRUSTED_CLOCK, "0"))
+    assert honest == clocks.hub
+    now = clocks.hub
+    clocks.hub = _ms(item)
+    _hub_write(hub, clocks, "far")
+    clocks.hub = now + SECOND
+    assert _row(hub)["ua"] >= item
+    clocks.reply_clock = reply_clock
+    _run(dev, remote)
+    assert _row(dev)["title"] == "far"
+    clocks.hub += SECOND
+    top = revstamp._fmt(clocks() + revstamp.MAX_SKEW_MS)
+    late = []
+    for i in range(150):
+        _write(dev, f"w{i}", nid=f"concept:w{i}")
+        if _row(dev, f"concept:w{i}")["ua"] > top:
+            late.append(i)
+    assert late == []
+    clocks.hub += SECOND
+    out = _run(dev, remote)
+    assert SKEW not in out["push"], out
+    assert [i for i in range(150) if (_row(hub, f"concept:w{i}") or {}).get("title") != f"w{i}"] == []
+    assert int(revstamp._meta_get(dev, revstamp.TRUSTED_CLOCK, "0")) <= clocks.hub
+
+
+@pytest.mark.parametrize("kind", KINDS)
+@pytest.mark.parametrize("behind", [DAY, 365 * DAY, (3 * 365 + 1) * DAY], ids=["1d", "1y", "3y"])
+def test_a_device_a_day_a_year_or_three_years_slow_still_follows_its_hub(world, behind, kind):
+    """허브 시계를 적는 폭(`revstamp.TRUSTED_AHEAD_MS`) 안이면 위의 느린 기기 시나리오가 그대로 선다."""
+    test_a_device_more_than_a_day_slow_keeps_every_change_it_makes_after_following_its_hub(
+        world, behind, kind)

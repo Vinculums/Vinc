@@ -1899,6 +1899,8 @@ class DocRouteE2E(unittest.TestCase):
             self.assertEqual(code, 200, exp)
             self.assertEqual([d["doc_id"] for d in exp["docs"]], [did])
             self.assertGreaterEqual(exp["cursor"], 1)
+            # 답은 이 스토어의 벽시계를 싣는다(받는 기기가 믿는 출처의 시계로 적는다).
+            self.assertRegex(exp["clock"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$")
             # 남의 델타는 SEC-1 로 튕긴다(로컬 문서 소유자가 다르면 적용 안 함).
             code, other = _req(base, "/sync/docs-apply", method="POST",
                                body={"owner": "user:b", "payload": exp})
