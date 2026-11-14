@@ -272,7 +272,7 @@ def gc_tombstones(store, *, keep_days: int = 90, now_ms: int | None = None) -> i
     import datetime
     ms = int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000) \
         if now_ms is None else now_ms
-    cutoff = revstamp._fmt(ms - keep_days * 86400 * 1000)
+    cutoff = revstamp.fmt(ms - keep_days * 86400 * 1000)
     n = 0
     for label in ("_Tombstone", "_EdgeTombstone", "_DocTombstone"):
         cur = store.run(f"MATCH (t:{label}) WHERE t.deleted_at < $c AND t.deleted_at <> '' "
@@ -287,7 +287,7 @@ def gc_tombstones(store, *, keep_days: int = 90, now_ms: int | None = None) -> i
 
 # ── 선택 도메인 (오프라인 우선 옵트인) ────────────────────────────────────────
 def get_selected_domains(store) -> list[str]:
-    raw = revstamp._meta_get(store, _SEL_KEY, "")
+    raw = revstamp.meta_get(store, _SEL_KEY, "")
     if not raw:
         return []
     try:
@@ -299,20 +299,20 @@ def get_selected_domains(store) -> list[str]:
 
 def set_selected_domains(store, domains: list[str]) -> list[str]:
     clean = sorted({str(d) for d in (domains or []) if str(d).strip()})
-    revstamp._meta_set(store, _SEL_KEY, json.dumps(clean, ensure_ascii=False))
+    revstamp.meta_set(store, _SEL_KEY, json.dumps(clean, ensure_ascii=False))
     return clean
 
 
 # ── 커서 ──────────────────────────────────────────────────────────────────────
 def get_cursor(store, key: str) -> int:
     try:
-        return int(revstamp._meta_get(store, f"cursor:{key}", "0"))
+        return int(revstamp.meta_get(store, f"cursor:{key}", "0"))
     except (TypeError, ValueError):
         return 0
 
 
 def set_cursor(store, key: str, value: int) -> None:
-    revstamp._meta_set(store, f"cursor:{key}", int(value))
+    revstamp.meta_set(store, f"cursor:{key}", int(value))
 
 
 #: 이 스토어의 커서가 **어느 계정 것인가**(키 지문 — 원문 아님).
@@ -345,13 +345,13 @@ def reset_cursors_on_account_change(store, remote) -> bool:
     now = _account_fingerprint(remote)
     if not now:
         return False                      # 키 없는 원격(테스트 스텁) — 판정 보류
-    was = revstamp._meta_get(store, _ACCOUNT_KEY, "")
+    was = revstamp.meta_get(store, _ACCOUNT_KEY, "")
     if was == now:
         return False
     if was:                               # 최초 연결은 초기화할 것이 없다
         for k in _CURSOR_KEYS:
             set_cursor(store, k, 0)
-    revstamp._meta_set(store, _ACCOUNT_KEY, now)
+    revstamp.meta_set(store, _ACCOUNT_KEY, now)
     return bool(was)
 
 
@@ -1795,7 +1795,7 @@ def ensure_birth_resync(store) -> bool:
 
     표식은 **세션이 끝난 뒤** 찍는다(`run`). 중간에 죽으면 커서가 0 인 채 남아 다음
     세션이 그대로 다시 한다 — 멱등이라 재실행이 해롭지 않다."""
-    if revstamp._meta_get(store, _ONESHOT_KEY, "") == "done":
+    if revstamp.meta_get(store, _ONESHOT_KEY, "") == "done":
         return False
     set_cursor(store, "push", 0)
     set_cursor(store, "pull", 0)
@@ -1831,7 +1831,7 @@ def run(store, cfg, *, owner: str, remote) -> dict:
         dph = {"phase": "docs-push", "executed": False, "note": "remote lacks doc sync"}
     if resynced:
         # 여기까지 왔으면 전량이 양방향으로 한 번 오갔다 — 다시 할 이유가 없다.
-        revstamp._meta_set(store, _ONESHOT_KEY, "done")
+        revstamp.meta_set(store, _ONESHOT_KEY, "done")
     return {"executed": True, "pull": pu, "push": ph,
             "docs_pull": dpu, "docs_push": dph, "birth_resync": resynced,
             "account_switched": switched}
