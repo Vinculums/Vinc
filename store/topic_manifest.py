@@ -11,7 +11,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from .embedded_schema import SCHEMA_VERSION, meta_table_specs, node_table_specs
-from .topic_transfer import TransferRefused, _canonical
+from .canon import canonical_json_ascii_v1 as canonical
+from .topic_transfer import TransferRefused
 
 
 class ManifestLimit(TransferRefused):
@@ -151,7 +152,7 @@ class TopicManifest:
 
     def add(self, label, row):
         specs = {**node_table_specs(), **meta_table_specs()}
-        body = _canonical(row)
+        body = canonical(row)
         size = len(body.encode())
         self._check(size)
         try:
@@ -164,7 +165,7 @@ class TopicManifest:
         self.payload_bytes += size
 
     def add_edge(self, row):
-        body = _canonical(row)
+        body = canonical(row)
         size = len(body.encode())
         self._check(size)
         self.db.execute("INSERT INTO edges(body,digest) VALUES(?,?)",
@@ -186,7 +187,7 @@ class TopicManifest:
             for index, label in enumerate(sorted(self.snapshot[group])):
                 if index:
                     yield ","
-                yield _canonical(label) + ":["
+                yield canonical(label) + ":["
                 for n, (body,) in enumerate(self.db.execute(
                         "SELECT body FROM payload WHERE label=? ORDER BY body", (label,))):
                     self.check_time()
@@ -213,7 +214,7 @@ class TopicManifest:
         fd = os.open(destination, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         with os.fdopen(fd, "wb") as output:
             def emit(row):
-                data = (_canonical(row) + "\n").encode()
+                data = (canonical(row) + "\n").encode()
                 output.write(data)
                 digest.update(data)
             emit({"protocol": 3, "schema_version": SCHEMA_VERSION, "binding": binding,

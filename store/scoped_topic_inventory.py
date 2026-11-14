@@ -11,11 +11,12 @@ import time
 from dataclasses import dataclass
 
 from . import pkns
+from .canon import canonical_json_ascii_v1 as canonical
 from .embedded_schema import SCHEMA_VERSION, meta_table_specs, node_table_specs, rel_table_specs
 from .topic_transfer import (
-    MAX_INVENTORY_BYTES, MAX_INVENTORY_ROWS, TransferRefused, _KINDS,
-    _canonical, check_inventory_budget, referenced_ids, verify_store_shape, mapped_rejection_key,
-    _HISTORY, rejection_disposition, endpoint_ambiguity, tombstone_blocker, concept_endpoint,
+    MAX_INVENTORY_BYTES, MAX_INVENTORY_ROWS, TransferRefused, KINDS,
+    check_inventory_budget, referenced_ids, verify_store_shape, mapped_rejection_key,
+    HISTORY, rejection_disposition, endpoint_ambiguity, tombstone_blocker, concept_endpoint,
 )
 from .topic_manifest import ManifestLimit
 
@@ -35,7 +36,7 @@ class ScopedInventory:
     retained_bytes: int
 
 
-class _Reader:
+class InventoryReader:
     def __init__(self, store, *, scan_rows=SCAN_ROWS, scan_seconds=SCAN_SECONDS):
         self.store = store
         self.scan_rows, self.scan_seconds = scan_rows, scan_seconds
@@ -47,7 +48,7 @@ class _Reader:
         self.inspected += len(rows)
         for reason, observed, limit in (
                 ("page_rows", len(rows), PAGE_ROWS),
-                ("page_bytes", len(_canonical(rows).encode()), PAGE_BYTES),
+                ("page_bytes", len(canonical(rows).encode()), PAGE_BYTES),
                 ("scan_rows", self.inspected, self.scan_rows),
                 ("scan_seconds", time.monotonic() - self.started, self.scan_seconds)):
             if observed > limit:
@@ -95,10 +96,17 @@ class _Reader:
         return bool(self.page(query + " LIMIT 1", params))
 
 
-def _node_projection(label, *, omit_embedding=False):
+# 밑줄 이름은 같은 객체다. 이 모듈 안의 호출과 테스트가 그 이름으로 부른다.
+_Reader = InventoryReader
+
+
+def node_projection(label, *, omit_embedding=False):
     specs = {**node_table_specs(), **meta_table_specs()}
     return ", ".join(f"n.{c} AS {c}" for c in specs[label]["cols"]
                      if not (omit_embedding and c == "embedding"))
+
+
+_node_projection = node_projection
 
 
 def _batches(values):
@@ -141,7 +149,7 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
             return
         retained.add(identity)
         result["meta" if label.startswith("_") else "nodes"][label].append(row)
-        retained_bytes += len(_canonical(row).encode())
+        retained_bytes += len(canonical(row).encode())
         if len(retained) + len(result["edges"]) > max_rows or retained_bytes > max_bytes:
             raise ManifestLimit("retained_payload", rows=len(retained) + len(result["edges"]),
                                 bytes=retained_bytes, row_limit=max_rows, byte_limit=max_bytes)
@@ -182,7 +190,7 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
         return seen and complete
 
     # Topic selection uses only coordinates, then fetches complete selected rows.
-    for label in _KINDS + ("Bridge",):
+    for label in KINDS + ("Bridge",):
         pk = specs[label]["pk"]
         candidates = []
         coordinate = (f"n.{pk} AS id, n.source_domain AS source_domain, "
@@ -299,9 +307,9 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
         if ref in rejection_endpoints:
             return rejection_endpoints[ref]
         # 합성 키 행이 있으면 그것만, 없으면 이 소유자의 레거시 행만 끝점 후보다. 근거: [[decision:topic-transfer-moves-unmanaged-attachments-as-text-2026-10-16]]
-        matches = ([(label, row) for label in _KINDS + ("Bridge",)
+        matches = ([(label, row) for label in KINDS + ("Bridge",)
                     if (row := exact(label, source + pkns.SEP + ref)) is not None]
-                   or [(label, row) for label in _KINDS + ("Bridge",)
+                   or [(label, row) for label in KINDS + ("Bridge",)
                        if (row := exact(label, ref)) is not None and row["owner_id"] == source])
         matches = concept_endpoint(matches, source)
         if not matches:
@@ -332,7 +340,7 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
                 blockers.add("incoming_reference:merge_rejection")
 
     # 과거 삭제 행은 개인 소유로 유지하며 전후 전체 값도 비교한다.
-    for label in _HISTORY:
+    for label in HISTORY:
         for row in reader.scan(f"MATCH (n:{label}) WHERE n.owner_id=$source",
                                _node_projection(label), f"n.{specs[label]['pk']}", {"source": source}):
             keep(label, row)
@@ -345,7 +353,7 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
             keep("_SyncMeta", row)
     marker_keys = set()
     for label, key in tuple(retained):
-        if label in ("Domain", "_SyncMeta") + _HISTORY:
+        if label in ("Domain", "_SyncMeta") + HISTORY:
             continue
         if label == "_MergeRejection" and key in retained_rejections:
             continue
@@ -366,7 +374,7 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
 
     if after:
         tombstone_keys = (source + pkns.SEP + pkns.strip(row[specs[label]["pk"]])
-                          for label in _KINDS + ("Bridge",) for row in result["nodes"][label])
+                          for label in KINDS + ("Bridge",) for row in result["nodes"][label])
         for row in matching("_Tombstone", tombstone_keys):
             keep("_Tombstone", row)
 
@@ -391,7 +399,7 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
                 edge={"label": label, "from_label": src, "to_label": dst,
                       "from": a[1], "to": b[1], "props": row}
                 result['edges'].append(edge)
-                retained_bytes += len(_canonical(edge).encode())
+                retained_bytes += len(canonical(edge).encode())
                 if len(retained) + len(result["edges"]) > max_rows or retained_bytes > max_bytes:
                     raise ManifestLimit("retained_payload", rows=len(retained) + len(result["edges"]),
                                         bytes=retained_bytes, row_limit=max_rows, byte_limit=max_bytes)
@@ -426,7 +434,7 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
                 new = old
             if new != old:
                 destinations.setdefault(label, set()).add(new)
-            if label in _KINDS + ("Bridge",):
+            if label in KINDS + ("Bridge",):
                 tombstone_keys.add(old)
         for label, keys in destinations.items():
             if any(matching(label, keys, ids_only=True)):
@@ -436,7 +444,7 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
 
         # Scan the source's other topics without retaining them. Opaque props
         # remain blockers because a hidden reference cannot be classified.
-        for label in _KINDS + ("Bridge", "Chunk", "_DocMeta"):
+        for label in KINDS + ("Bridge", "Chunk", "_DocMeta"):
             pk = specs[label]["pk"]
             for row in reader.scan(f"MATCH (n:{label}) WHERE n.owner_id=$source",
                                    _node_projection(label, omit_embedding=True), f"n.{pk}",
@@ -490,4 +498,4 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
     count = len(result["edges"]) + sum(len(rows) for group in ("nodes", "meta")
                                        for rows in result[group].values())
     return ScopedInventory(result, tuple(sorted(blockers)), reader.inspected,
-                           count, manifest.serialized_bytes() if manifest else len(_canonical(result).encode()))
+                           count, manifest.serialized_bytes() if manifest else len(canonical(result).encode()))

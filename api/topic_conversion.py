@@ -17,13 +17,14 @@ from dataclasses import replace
 from uuid import UUID
 
 from store.backend import flag
+from store.canon import canonical_json_ascii_v1 as canonical
 from store.embedded_backend import DDL_GUARD
 from store.scoped_topic_inventory import read_scoped_inventory
 from store.topic_batch_manifest import PROTOCOL as PROTOCOL_V3
 from store.topic_manifest import TopicManifest, ManifestLimit
 from store.topic_transfer import (TransferRefused, fingerprint, read_snapshot,
-                                 plan_transfer, transformed_snapshot, _write_difference, check_inventory_budget,
-                                 _canonical, _REFERENCE, retained_history_counts, preserved_reference_counts)
+                                 plan_transfer, transformed_snapshot, write_difference, check_inventory_budget,
+                                 REFERENCE, retained_history_counts, preserved_reference_counts)
 
 request_owner = ContextVar("conversion_request_owner", default=None)
 request_payload = ContextVar("conversion_request_payload", default=None)
@@ -42,17 +43,24 @@ def journal_protocol(journal: dict) -> int:
     return journal.get("inventory_version", PROTOCOL_V1)
 
 
-def _inventory(store, source, target, topic, *, after=False, verify_shape=True):
+def read_inventory(store, source, target, topic, *, after=False, verify_shape=True):
     return read_scoped_inventory(store, source=source, target=target, topic=topic,
                                  after=after, verify_shape=verify_shape)
 
 
-def _plan(inventory, source, target, topic, conventions_policy="retain"):
+# 밑줄 이름은 같은 객체다. 이 모듈 안의 호출과 테스트가 그 이름으로 부른다.
+_inventory = read_inventory
+
+
+def plan_conversion(inventory, source, target, topic, conventions_policy="retain"):
     plan = plan_transfer(inventory.snapshot, source=source, target=target, topic=topic,
                          conventions_policy=conventions_policy)
     if inventory.blockers:
         plan = replace(plan, blockers=tuple(sorted(set(plan.blockers) | set(inventory.blockers))))
     return plan
+
+
+_plan = plan_conversion
 
 
 def _scope_response_safe(snapshot, source):
@@ -114,7 +122,7 @@ def _terminal_visible(store, journal):
         return True
     # 새 프로토콜은 영속 게시 증명이 확인된 이 프로세스에서만 울타리를 해제한다.
     # 재시작 뒤에는 봉인 파일과 같은 실행의 영수증을 다시 확인해야 한다.
-    return _canonical(journal) in getattr(store, "_topic_conversion_terminals", set())
+    return canonical(journal) in getattr(store, "_topic_conversion_terminals", set())
 
 
 def check_read(store, owner):
@@ -147,7 +155,7 @@ def check_write(store, owner, payload=None):
         return
     from store.ownership_moves import blocked_sync_references
     ids = list(_strings(payload))
-    ids.extend(ref for value in tuple(ids) for ref in _REFERENCE.findall(value))
+    ids.extend(ref for value in tuple(ids) for ref in REFERENCE.findall(value))
     moved = blocked_sync_references(store, owner=owner,
                                    payload={"nodes": [{"id": s} for s in ids]})
     if moved:
@@ -191,7 +199,7 @@ def _policy_hash(snapshot, source, target, policy):
     if policy != "move_original":
         raise TransferRefused("invalid_conventions_policy")
     import hashlib
-    return hashlib.sha256(_canonical({"scope": value, "conventions_policy": policy}).encode()).hexdigest()
+    return hashlib.sha256(canonical({"scope": value, "conventions_policy": policy}).encode()).hexdigest()
 
 
 def _conventions_effect(snapshot, plan):
@@ -231,7 +239,7 @@ def preflight(store, source, topic, *, conventions_policy="retain"):
             audit = _audit(snap, plan)
             projected_rows = (len(preview["edges"]) + sum(len(rows) for group in ("nodes", "meta")
                                                         for rows in preview[group].values()) + 1)
-            projected_bytes = len(_canonical(preview).encode()) + 4096 + 3 * len(json.dumps(audit).encode())
+            projected_bytes = len(canonical(preview).encode()) + 4096 + 3 * len(json.dumps(audit).encode())
             _conversion_budget(preview, audit)
     except TransferRefused as exc:
         blockers.add(str(exc).split(":", 1)[0])
@@ -301,7 +309,7 @@ def inventory_diagnostics(store, source, topic, *, conventions_policy="retain"):
 
 
 @contextmanager
-def _inventory_read_transaction(store):
+def inventory_read_transaction(store):
     # 여러 페이지가 같은 DB 스냅샷을 읽게 하며 그래프에는 쓰지 않는다.
     store.run("BEGIN TRANSACTION READ ONLY", raw=True)
     try:
@@ -315,28 +323,43 @@ def _inventory_read_transaction(store):
                 raise
 
 
-def _get(store, run):
+_inventory_read_transaction = inventory_read_transaction
+
+
+def get_journal(store, run):
     UUID(run)
     rows = store.run("MATCH (m:_SyncMeta) WHERE m.key=$key RETURN m.value AS value",
                      {"key": PREFIX + run}, raw=True)
     return json.loads(rows[0]["value"]) if rows else None
 
 
-def _save(store, run, journal):
+_get = get_journal
+
+
+def save_journal(store, run, journal):
     store.run("MERGE (m:_SyncMeta {key:$key}) SET m.value=$value",
               {"key": PREFIX + run, "value": json.dumps(journal, sort_keys=True)}, raw=True)
     store._topic_conversion_guard = True
 
 
-def _identity(journal, source, target, topic):
+_save = save_journal
+
+
+def check_identity(journal, source, target, topic):
     if (journal["source"], journal["target"], journal["topic"]) != (source, target, topic):
         raise TransferRefused("run_id_reused")
 
 
-def _indexes(store, inventory):
+_identity = check_identity
+
+
+def restore_indexes(store, inventory):
     """Restore exactly the canonical indexes present before the operation."""
     for table in inventory:
         store._ensure_index(table)
+
+
+_indexes = restore_indexes
 
 
 def _audit(snapshot, plan):
@@ -358,7 +381,7 @@ def _conversion_budget(after, audit):
                            extra_bytes=4096 + 3 * len(json.dumps(audit).encode()))
 
 
-def _index_inventory(store):
+def present_indexes(store):
     if any(flag(store, attr) for attr in
            ("vector_index_remnant", "fts_index_remnant", "node_vector_index_remnant")):
         raise TransferRefused("search_index_repair_required")
@@ -371,6 +394,9 @@ def _index_inventory(store):
         if pair[0] not in inventory:
             inventory.append(pair[0])
     return inventory
+
+
+_index_inventory = present_indexes
 
 
 def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None,
@@ -452,7 +478,7 @@ def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None,
             store.drop_fts_index("conversion FTS")
         store.run("BEGIN TRANSACTION", raw=True)
         try:
-            _write_difference(store, before, after, fail_at=fail_at, vocabulary_owner=source,
+            write_difference(store, before, after, fail_at=fail_at, vocabulary_owner=source,
                               verify_snapshot=(None if legacy else
                                   # The shape was checked again after intent was saved,
                                   # before DDL and this transaction began.
