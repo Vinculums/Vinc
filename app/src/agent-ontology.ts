@@ -127,4 +127,3 @@ const round = (v: number) => Math.round(v * 10) / 10;
 
 /** 정책 id 를 화면용 짧은 이름으로(`decision:policy-read-only-procedures` → `read-only-procedures`). */
 export function policySlug(id: string): string { return id.replace(/^decision:policy-/, ""); }
-export function procedureSlug(id: string): string { return id.replace(/^concept:procedure-/, ""); }

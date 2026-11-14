@@ -19,7 +19,7 @@ export function splitCells(line: string): string[] {
 }
 
 /** 칸에 넣을 글자를 원문으로. 줄바꿈은 표 한 줄을 깨므로 공백이 되고, `|` 는 이스케이프한다. */
-export const cellSource = (text: string): string =>
+const cellSource = (text: string): string =>
   text.replace(/\r?\n/g, " ").replace(/\|/g, "\\|").trim();
 
 /** 원문의 행들. 빈 줄과 구분 줄은 건너뛴다(첫 행이 머리 행이다). */
