@@ -40,14 +40,16 @@ resource "azurerm_mysql_flexible_server" "vinc_mysql01" {
   name                              = "vinc-mysql01"
   point_in_time_restore_time_in_utc = null
   private_dns_zone_id               = null
-  public_network_access             = "Enabled"
-  replication_role                  = "None"
-  resource_group_name               = "vincsRG"
-  sku_name                          = "B_Standard_B1ms"
-  source_server_id                  = null
-  tags                              = {}
-  version                           = "8.0.21"
-  zone                              = jsonencode(3)
+  # 공개 접근은 끈다. 계정 앱과 DB job 은 VNet(vinc-vnet)의 프라이빗 엔드포인트 vinc-mysql01-pe 로 붙는다.
+  # 다시 켜면 방화벽 규칙이 없어도 공개 주소가 열린다. 긴급 경로는 런북 vinc.ops.vnet-cutover-2026-11 의 14절.
+  public_network_access = "Disabled"
+  replication_role      = "None"
+  resource_group_name   = "vincsRG"
+  sku_name              = "B_Standard_B1ms"
+  source_server_id      = null
+  tags                  = {}
+  version               = "8.0.21"
+  zone                  = jsonencode(3)
   storage {
     auto_grow_enabled   = true
     io_scaling_enabled  = false # 쓰는 IOPS 가 기본 360 의 4% 미만인데 Paid IO 가 매일 약 730원이었다(2026-10-17)

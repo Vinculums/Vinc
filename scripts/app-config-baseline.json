@@ -1,5 +1,5 @@
 {
-  "vinc-account": {
+  "vinc-account-vnet": {
     "auth": {
       "excludedPaths": [
         "/internal/bo/stats",

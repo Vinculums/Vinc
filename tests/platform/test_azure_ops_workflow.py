@@ -103,17 +103,22 @@ def test_every_input_is_checked_by_the_guard():
     body = guard["run"]
     assert '"$CONFIRM" != "$target"' in body
     assert 'hub) target="$HUB_APP" ;;' in body and "restart)" in body
+    assert 'account) target="$ACCOUNT_APP" ;;' in body
     assert 'echo "TARGET_APP=$target" >> "$GITHUB_ENV"' in body
 
 
-def test_the_hub_is_the_app_the_target_setting_names():
-    """허브는 대상 설정을 hub-deploy 의 표로 푼 앱이다. 앱 이름이나 주소를 여기 적으면 대상 설정이 바뀌어도 그 앱이 재시작된다."""
+def test_the_hub_and_the_account_are_the_apps_the_target_setting_names():
+    """허브와 계정은 대상 설정을 hub-deploy 의 표로 푼 앱이다. 앱 이름이나 주소를 여기 적으면 대상 설정이 바뀌어도
+    그 이름의 앱이 재시작된다."""
     steps = _steps()
-    resolve = next(i for i, s in enumerate(steps) if s.get("run") == 'python3 scripts/hub_target.py >> "$GITHUB_ENV"')
+    resolve = next(i for i, s in enumerate(steps)
+                   if s.get("run", "").splitlines()[1:] == ['python3 scripts/hub_target.py >> "$GITHUB_ENV"',
+                                                            'python3 scripts/hub_target.py account >> "$GITHUB_ENV"'])
     guard = next(i for i, s in enumerate(steps) if s.get("name") == "Guard")
     assert resolve < guard
     text = "\n".join(_runs())
-    assert not re.search(r"(-n|--name)\s+\"?vinc-hub\b", text)
+    assert not re.search(r"(-n|--name)\s+\"?vinc-(hub|account)\b", text)
+    assert not re.search(r"=\s*\"?vinc-(hub|account)\b", text), "앱 이름을 변수에 적지 않는다"
     assert "azurecontainerapps.io" not in text, "허브 주소는 재시작한 앱의 인그레스에서 읽는다"
     restart = next(s for s in steps if s.get("name") == "Restart the latest revision")
     assert '--name "$TARGET_APP"' in restart["run"] and "env" not in restart
