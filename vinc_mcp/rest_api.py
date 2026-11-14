@@ -5,6 +5,8 @@ import json
 import math
 import re
 import secrets
+from dataclasses import dataclass
+from typing import Callable
 from urllib.parse import parse_qs, urlparse
 
 from . import community, entitlement, hub_http, rest_routes, spaces, toolcall, tools
@@ -138,88 +140,158 @@ def _account_details(error) -> dict:
     return {}
 
 
+@dataclass(frozen=True)
+class _Facts:
+    """`_failure` 의 술어가 읽는 값. `error`·`note` 는 문자열로 맞춘 것이고 `reason` 은 둘을 이은 소문자다."""
+    name: str
+    result: dict
+    by_id: bool
+    error: str
+    note: str
+    reason: str
+
+
+#: 코드 칸의 이 값은 "도구가 낸 `error` 문자열을 그대로 v1 코드로 쓴다"는 뜻이다.
+_ERROR_CODE = object()
+
+
+@dataclass(frozen=True)
+class _FailureRow:
+    """`_FAILURES` 의 한 줄. `when` 이 참인 첫 줄이 답한다.
+
+    status 가 None 이면 실패가 아니다(성공 봉투로 낸다). message 는 문장을 만드는 함수이고,
+    details 가 있으면 (status, code, message, details) 네 칸을, 없으면 세 칸을 낸다."""
+    when: Callable[[_Facts], bool]
+    status: int | None
+    code: str | object | None = None
+    message: Callable[[_Facts], str] | None = None
+    details: Callable[[_Facts], dict] | None = None
+
+
+def _note_or_error(f: _Facts) -> str:
+    return f.note or f.error
+
+
+def _error_or_note(f: _Facts) -> str:
+    return f.error or f.note
+
+
+def _error(f: _Facts) -> str:
+    return f.error
+
+
+def _fixed(text: str) -> Callable[[_Facts], str]:
+    return lambda _f: text
+
+
+def _pick(*keys: str) -> Callable[[_Facts], dict]:
+    return lambda f: {k: f.result[k] for k in keys if k in f.result}
+
+
+def _executed_false_with(*terms: str) -> Callable[[_Facts], bool]:
+    return lambda f: f.result.get("executed") is False and any(term in f.reason for term in terms)
+
+
+_COMMUNITY_TOOLS = (community.WRITE_TOOL, community.READ_TOOL)
+#: 계정이 거절한 커뮤니티 호출의 상태 → v1 코드. 문장과 details 는 계정의 것을 옮긴다.
+_ACCOUNT_STATUS_CODES = ((400, "invalid_argument"), (401, "not_authenticated"), (403, "role_forbidden"),
+                         (404, "not_found"), (409, "conflict"), (410, "gone"), (429, "quota_exceeded"))
+
+#: 도구 결과 모양 → v1 실패. **순서가 계약이다**: 위의 줄이 먼저 답한다. 줄마다의 결과 모양은
+#: tests/fixtures/tool_failure_shapes.json 이 사람이 읽게 적고, tests/mcp/test_rest_v1_review_fixes.py 의
+#: FAILURE_CASES 가 실제 결과로 고정한다.
+_FAILURES: tuple[_FailureRow, ...] = (
+    # 계정이 거절한 커뮤니티 쓰기·읽기. message 는 계정의 문장이다(오류 객체를 str() 하면 파이썬 repr 이 나간다).
+    *(_FailureRow(lambda f, s=status: f.name in _COMMUNITY_TOOLS and f.result.get("status") == s,
+                  status, code, lambda f: _message(f.result),
+                  lambda f: _account_details(f.result.get("error")))
+      for status, code in _ACCOUNT_STATUS_CODES),
+    # 영수증을 읽었으면 found:false(모르는 영수증)도 답이다. 적용되지 않았다는 증거가 아니다.
+    _FailureRow(lambda f: f.name == "vinc_operation_status" and f.result.get("executed") is True, None),
+    _FailureRow(lambda f: f.result.get("status") == "conflict"
+                or f.error in ("write_conflict", "preview_conflict", "operation_id_conflict"),
+                409, _ERROR_CODE, _fixed("The saved state no longer matches this request."),
+                _pick("node_id", "current_rev", "current_content_hash", "operation_id")),
+    # 고정한 역할이 바뀌었다. 계약은 싣지 않고 지금의 rev·hash 만 준다.
+    _FailureRow(lambda f: f.error == "role_changed", 409, "role_changed",
+                _fixed("The role changed since it was pinned."), _pick("id", "rev", "hash")),
+    # 에이전트 자격으로는 사람만 답하는 대기를 풀 수 없다. 사람의 길은 메시지에 있다.
+    _FailureRow(lambda f: f.error == "person_answer_required", 403, "person_answer_required", _note_or_error),
+    _FailureRow(lambda f: f.error == "run_state_protected", 403, "run_state_protected", _note_or_error),
+    _FailureRow(lambda f: f.error == "request_expired", 410, "request_expired", _note_or_error),
+    _FailureRow(lambda f: f.error == "invalid_expires_in", 400, "invalid_argument", _note_or_error),
+    _FailureRow(lambda f: f.error == "invalid_export_format", 400, "invalid_argument", _note_or_error),
+    # 계약이 읽기 예산을 넘었다. 서버 고장이 아니라 요청을 바꾸면(compact) 읽히는 일이다.
+    _FailureRow(lambda f: f.error == "role_contract_too_large", 400, "role_contract_too_large",
+                lambda f: f.note or "The role contract exceeds the read limit.",
+                _pick("id", "bytes", "limit", "compact")),
+    _FailureRow(lambda f: f.error in ("write_target_unavailable", "document_unavailable",
+                                      "preview_target_unavailable"),
+                404, "not_found", _fixed("The requested graph item was not found.")),
+    _FailureRow(lambda f: f.error.startswith("preview_")
+                and f.error not in ("preview_read_unavailable", "preview_boundary_unavailable"),
+                400, _ERROR_CODE, _fixed("A complete supported preview is required before applying.")),
+    _FailureRow(lambda f: f.result.get("status") in ("invalid_request", "unsupported_kind"),
+                400, _ERROR_CODE, _error),
+    # 유지보수 거절은 서버 내부 오류가 아니다. SDK가 재시도 가능한 503을 받아야 한다.
+    _FailureRow(lambda f: f.error == "store_busy", 503, "upstream_unavailable",
+                lambda f: f.note or "Store maintenance is in progress.",
+                lambda _f: {"retryable": True, "retry_after_s": 1}),
+    # 브리지가 사이드카와 못 이야기했다. 쓰기라면 **이미 적용됐을 수 있다** — 재시도 금지를 싣는다.
+    _FailureRow(lambda f: f.error.startswith("sidecar write unconfirmed")
+                or (bool(f.error) and f.result.get("write_may_have_applied") is True),
+                503, "upstream_unavailable", _error,
+                lambda _f: {"retryable": False, "write_may_have_applied": True}),
+    _FailureRow(lambda f: f.error.startswith("sidecar HTTP 5") or f.error.startswith("sidecar unreachable"),
+                503, "upstream_unavailable", _error),
+    _FailureRow(lambda f: f.error == "domain_limit_reached", 409, "domain_limit_reached",
+                _fixed("The space has reached its topic limit."), _pick("limit", "current", "attempted")),
+    _FailureRow(lambda f: f.error.startswith(("invalid_cursor", "stale_cursor")),
+                400, "invalid_argument", _error),
+    _FailureRow(lambda f: f.name == "vinc_delete_edge" and "unsupported edge type" in f.reason,
+                400, "invalid_argument", _note_or_error),
+    _FailureRow(lambda f: f.name == "vinc_merge_nodes"
+                and any(term in f.reason for term in ("supports concept", "same node")),
+                400, "invalid_argument", _error_or_note),
+    _FailureRow(lambda f: f.name == "vinc_doc_get" and f.result.get("verified") is False,
+                503, "upstream_unavailable", _fixed("document chunks could not be verified")),
+    # 주소로 물은 노드(`/v1/nodes/{id}`)나 못 읽은 노드는 없는 것이다. 자유 질의가 아무것도 못 찾은 것은
+    # 오류가 아니라 빈 답이다(다음 줄).
+    _FailureRow(lambda f: f.name == "vinc_brief" and f.result.get("status") == "none"
+                and (f.by_id or bool(f.result.get("unreadable"))),
+                404, "not_found", lambda f: f.error or "The requested graph item was not found."),
+    _FailureRow(lambda f: f.name == "vinc_brief" and f.result.get("status") == "none", None),
+    _FailureRow(lambda f: f.result.get("found") is False, 404, "not_found",
+                lambda f: f.error or "The requested graph item was not found."),
+    _FailureRow(_executed_false_with("unknown", "not found", "no such", "missing doc"),
+                404, "not_found", _error_or_note),
+    _FailureRow(_executed_false_with("invalid", "required", "malformed", "stale"),
+                400, "invalid_argument", _error_or_note),
+    _FailureRow(_executed_false_with("unavailable", "unreachable", "no store", "no reachable store"),
+                503, "upstream_unavailable", _error_or_note),
+    _FailureRow(lambda f: f.result.get("executed") is False, 500, "internal",
+                lambda f: f.error or "The tool did not execute."),
+    _FailureRow(lambda f: bool(f.result.get("isError")) or bool(f.error), 500, "internal",
+                lambda f: _message(f.result)),
+)
+
+
 def _failure(name: str, result: dict, *, by_id: bool = False) -> tuple | None:
-    """도구 결과 모양을 v1 상태로 옮긴다. 표는 tests/mcp/test_rest_v1.py 의 FAILURE_CASES 가 고정한다.
-    반환은 (status, code, message) 또는 (status, code, message, details)."""
-    if name in (community.WRITE_TOOL, community.READ_TOOL) and result.get("status") in (400, 401, 403, 404, 409, 410, 429):
-        status = result["status"]
-        code = {400: "invalid_argument", 401: "not_authenticated", 403: "role_forbidden",
-                404: "not_found", 409: "conflict", 410: "gone", 429: "quota_exceeded"}[status]
-        # message 는 계정의 문장이다. 오류 객체를 str() 하면 파이썬 repr 이 나간다.
-        return status, code, _message(result), _account_details(result.get("error"))
+    """도구 결과 모양을 v1 상태로 옮긴다. 줄은 `_FAILURES` 에 순서대로 있다.
+    반환은 (status, code, message) 또는 (status, code, message, details)이고, 실패가 아니면 None 이다."""
     error = str(result.get("error") or "")
     note = str(result.get("note") or "")
-    reason = (error + " " + note).lower()
-    if name == "vinc_operation_status" and result.get("executed") is True:
-        return None
-    if result.get("status") == "conflict" or error in ("write_conflict", "preview_conflict", "operation_id_conflict"):
-        return (409, error, "The saved state no longer matches this request.",
-                {k: result[k] for k in ("node_id", "current_rev", "current_content_hash", "operation_id") if k in result})
-    if error == "role_changed":
-        # 고정한 역할이 바뀌었다. 계약은 싣지 않고 지금의 rev·hash 만 준다.
-        return (409, "role_changed", "The role changed since it was pinned.",
-                {k: result[k] for k in ("id", "rev", "hash") if k in result})
-    if error in ("person_answer_required", "run_state_protected"):
-        # 에이전트 자격으로는 사람만 답하는 대기를 풀 수 없다. 사람의 길은 메시지에 있다.
-        return 403, error, note or error
-    if error == "request_expired":
-        return 410, error, note or error
-    if error == "invalid_expires_in":
-        return 400, "invalid_argument", note or error
-    if error == "invalid_export_format":
-        return 400, "invalid_argument", note or error
-    if error == "role_contract_too_large":
-        # 계약이 읽기 예산을 넘었다. 서버 고장이 아니라 요청을 바꾸면(compact) 읽히는 일이다.
-        return (400, "role_contract_too_large", note or "The role contract exceeds the read limit.",
-                {k: result[k] for k in ("id", "bytes", "limit", "compact") if k in result})
-    if error in ("write_target_unavailable", "document_unavailable", "preview_target_unavailable"):
-        return 404, "not_found", "The requested graph item was not found."
-    if error.startswith("preview_") and error not in ("preview_read_unavailable", "preview_boundary_unavailable"):
-        return 400, error, "A complete supported preview is required before applying."
-    if result.get("status") in ("invalid_request", "unsupported_kind"):
-        return 400, error, error
-    if error == "store_busy":
-        # 유지보수 거절은 서버 내부 오류가 아니다. SDK가 재시도 가능한 503을 받아야 한다.
-        return (503, "upstream_unavailable", note or "Store maintenance is in progress.",
-                {"retryable": True, "retry_after_s": 1})
-    # 브리지가 사이드카와 못 이야기했다. 쓰기라면 **이미 적용됐을 수 있다** — 재시도 금지를 싣는다.
-    if error.startswith("sidecar write unconfirmed") or (
-            error and result.get("write_may_have_applied") is True):
-        return (503, "upstream_unavailable", error,
-                {"retryable": False, "write_may_have_applied": True})
-    if error.startswith("sidecar HTTP 5") or error.startswith("sidecar unreachable"):
-        return 503, "upstream_unavailable", error
-    if error == "domain_limit_reached":
-        return (409, "domain_limit_reached", "The space has reached its topic limit.",
-                {k: result[k] for k in ("limit", "current", "attempted") if k in result})
-    if error.startswith(("invalid_cursor", "stale_cursor")):
-        return 400, "invalid_argument", error
-    if name == "vinc_delete_edge" and "unsupported edge type" in reason:
-        return 400, "invalid_argument", note or error
-    if name == "vinc_merge_nodes" and any(
-            term in reason for term in ("supports concept", "same node")):
-        return 400, "invalid_argument", error or note
-    if name == "vinc_doc_get" and result.get("verified") is False:
-        return 503, "upstream_unavailable", "document chunks could not be verified"
-    if name == "vinc_brief" and result.get("status") == "none":
-        # 주소로 물은 노드(`/v1/nodes/{id}`)나 못 읽은 노드는 없는 것이다. 자유 질의가
-        # 아무것도 못 찾은 것은 오류가 아니라 빈 답이다.
-        if by_id or result.get("unreadable"):
-            return 404, "not_found", error or "The requested graph item was not found."
-        return None
-    if result.get("found") is False:
-        return 404, "not_found", error or "The requested graph item was not found."
-    if result.get("executed") is False:
-        if any(term in reason for term in ("unknown", "not found", "no such", "missing doc")):
-            return 404, "not_found", error or note
-        if any(term in reason for term in ("invalid", "required", "malformed", "stale")):
-            return 400, "invalid_argument", error or note
-        if any(term in reason for term in (
-                "unavailable", "unreachable", "no store", "no reachable store")):
-            return 503, "upstream_unavailable", error or note
-        return 500, "internal", error or "The tool did not execute."
-    if result.get("isError") or error:
-        return 500, "internal", _message(result)
+    facts = _Facts(name, result, by_id, error, note, (error + " " + note).lower())
+    for row in _FAILURES:
+        if not row.when(facts):
+            continue
+        if row.status is None:
+            return None
+        code = error if row.code is _ERROR_CODE else row.code
+        message = row.message(facts)
+        if row.details is None:
+            return row.status, code, message
+        return row.status, code, message, row.details(facts)
     return None
 
 
