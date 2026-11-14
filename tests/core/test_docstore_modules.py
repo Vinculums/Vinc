@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"""`api.docreader`·`api.docextract` 가 리더 도우미와 개념 추출의 정본이고, `api.docstore` 의
-이름은 같은 객체를 가리키는가.
+"""`api.docreader`·`api.docextract`·`api.docevidence` 가 리더 도우미·개념 추출·관계 근거 백필의
+정본이고, `api.docstore` 의 이름은 같은 객체를 가리키는가.
 
 잠그는 것:
 - `docstore.X` 로 부르는 이름(서버·평가 스크립트·테스트가 그렇게 부른다)이 새 모듈의 이름과
   **같은 객체**다. 사본이 생기면 한쪽만 고친 규칙이 조용히 갈라진다.
-- 두 모듈은 `api.docstore` 를 최상위에서 import 하지 않는다. docstore 가 두 모듈을 최상위에서
+- 세 모듈은 `api.docstore` 를 최상위에서 import 하지 않는다. docstore 가 세 모듈을 최상위에서
   다시 내보내므로, 거꾸로도 최상위에서 읽으면 어느 쪽을 먼저 import 하느냐에 따라 깨진다.
 - docstore 쪽 이름은 호출 때 읽힌다: `docstore.get_doc` 을 바꿔 끼우면 옮긴 함수에도 닿는다.
 """
@@ -19,6 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from api import docevidence  # noqa: E402
 from api import docextract  # noqa: E402
 from api import docreader  # noqa: E402
 from api import docstore  # noqa: E402
@@ -34,6 +35,7 @@ MOVED = {
                  "_clean_heading", "_STRUCT_SLUGS", "_CLAUSE_OPENERS", "_MAX_TITLE_WORDS",
                  "_concept_shaped", "_one_liner", "extract_concepts", "_FM_DOMAIN_RE",
                  "_front_domain", "_doc_topic", "extract_doc", "_extract_body_doc"),
+    docevidence: ("_EVIDENCE_MAX", "_sentences", "backfill_evidence"),
 }
 
 
@@ -110,6 +112,13 @@ class CallTimeLookupTest(unittest.TestCase):
         finally:
             docstore._meta = original
         self.assertEqual((got["executed"], got["error"]), (False, "unknown doc_id"))
+
+    def test_patched_backfill_reaches_extraction(self):
+        # 추출은 근거 백필을 호출 때 docstore 에서 읽는다(`test_pk_compose_write` 가 그렇게 바꿔 끼운다).
+        import inspect
+        src = inspect.getsource(docextract.extract_doc)
+        self.assertIn("backfill_evidence", src)
+        self.assertNotIn("backfill_evidence", {n for n in vars(docextract)})
 
 
 if __name__ == "__main__":
