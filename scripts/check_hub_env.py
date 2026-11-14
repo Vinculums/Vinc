@@ -10,8 +10,11 @@ create/update` 로 손으로 넣은 값이고 IaC 도 워크플로도 검증하�
 200 이 나온다. 사람이 기억해서 4줄을 쳐야 알 수 있었다. 이 스크립트가 그 기억을 대신한다.
 
 사용(CI):
-    az containerapp show --name vinc-hub -g vincsRG \
+    az containerapp show --name "$HUB_APP" -g vincsRG \
       --query "properties.template.containers[0].env" -o json | python scripts/check_hub_env.py
+
+`$HUB_APP` 은 허브 앱 이름이다. `.github/container-apps-target.env` 의 CAE 를 hub-deploy 의 표로 풀어
+얻고, `python3 scripts/hub_target.py` 가 같은 값을 `HUB_APP=<이름>` 한 줄로 찍는다.
 
 stdin 으로 env 배열 JSON 을 받는다 — Azure 없이도 테스트할 수 있게 한 설계다.
 정본 설명: Vinc-docs/vinc/DEPLOYMENT.md §4.4
@@ -43,7 +46,7 @@ REQUIRED: dict[str, str] = {
     "VINC_CONNECT_URL": "동의 화면 URL. 죽은 도메인을 가리키면 승인이 막힌다",
     # 2026-08-04 사고. 코드 기본값이 `http://127.0.0.1:8080` 인데 그건 **가비아 VM
     # 시절 계정과 허브가 같은 호스트에 있던 때의 값**이다. Azure 에서 둘은 서로
-    # 다른 Container App(vinc-hub:8790 / vinc-account:8080)이라 루프백에 아무것도
+    # 다른 Container App(허브 :8790 / 계정 :8080)이라 루프백에 아무것도
     # 없다 → verify_key 가 연결 실패 → fail-closed → **모든 `vinc_sk_*` 키가 401**.
     # /health 에도, 로그에도 원인이 안 남는다. VINC_MCP_ISSUER(§4.4.1)와 같은
     # 균열의 두 번째 사례이고, 그때 만든 이 게이트가 이 키를 안 보고 있었다.
