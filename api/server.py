@@ -781,6 +781,16 @@ class VincApp:
             if job.kind == 'search.index':
                 conversion.check_index_write(self.store)
 
+    def invalidate_owner(self, owner) -> None:
+        """한 소유자의 소유가 바뀌었다: 그 소유자의 캐시 셋을 비우고 변경 표식을 올린다.
+
+        순서는 전체 그래프 결과 캐시 → 이어 받는 그래프 읽기 → 저장 벡터 도장 → 변경 표식이다.
+        토픽 이동이 원본과 대상 두 소유자에 대해 부른다."""
+        self._graph_results.clear_owner(owner)
+        self._graph_reads.invalidate_owner(owner)
+        getattr(self.store, "runtime_stamps", {}).pop(owner, None)
+        self.changes.bump(owner)
+
     def write_topic_conversion(self, body):
         from . import topic_conversion as conversion
         from . import revstamp
@@ -862,10 +872,7 @@ class VincApp:
                     out = conversion.status(self.store, **args)
                 if action in ("stage", "release", "cancel"):
                     for owner in (source, body["target"]):
-                        self._graph_results.clear_owner(owner)
-                        self._graph_reads.invalidate_owner(owner)
-                        getattr(self.store, "runtime_stamps", {}).pop(owner, None)
-                        self.changes.bump(owner)
+                        self.invalidate_owner(owner)
                 return out
             except (TransferRefused, ValueError, KeyError) as exc:
                 return {"status": "blocked", "error": str(exc).split(":", 1)[0]}
@@ -904,10 +911,7 @@ class VincApp:
 
         def invalidate():
             for owner in (args["source"], args["target"]):
-                self._graph_results.clear_owner(owner)
-                self._graph_reads.invalidate_owner(owner)
-                getattr(self.store, "runtime_stamps", {}).pop(owner, None)
-                self.changes.bump(owner)
+                self.invalidate_owner(owner)
 
         if action == "stage":
             invalidate()
