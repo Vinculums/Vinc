@@ -35,6 +35,7 @@
 /infra/                                          @Vinculums/platform
 /packaging/                                      @Vinculums/platform
 /api/brief.py                                    @Vinculums/rag
+/api/decide_read.py                              @Vinculums/rag
 /api/diagnose.py                                 @Vinculums/rag
 /api/graph_edit.py                               @Vinculums/rag
 /api/graph_layout.py                             @Vinculums/rag
