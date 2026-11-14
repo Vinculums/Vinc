@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import re
+from collections import ChainMap
 from store.config import load_config
 from store.backend import flag, open_store, operation
 from store import pkns
@@ -1492,6 +1493,77 @@ def _chunk_stage(store, query, query_embedding, *, filters, owner, kinds, top_k,
     return pool, _withheld, _chunk_known_hidden, patch
 
 
+def _paginate(store, query, pool, *, cursor, off, want_eid, want_arms, qh, top_k, detail,
+              owner, mode, historical, _scope, _withheld, base) -> tuple[bool, dict]:
+    """페이지 자르기(GM-14): ``(stale, patch)`` 를 돌려준다. 커서가 낡았으면 ``stale`` 이 참이고
+    ``patch`` 에 ``note``·``error``·``executed=False`` 가 실려 있다 — 부르는 쪽이 얹고 끝낸다.
+    ``_search`` 에서 그대로 떼어 낸 본문이라 인자 이름도 거기서 쓰던 것과 같다.
+
+    ``base`` 는 **읽기 전용**이다. 앞 단계(청크 팔)가 적은 ``error`` 와 ``arms`` 만 읽는다.
+    응답에 얹을 키(``note``, ``error``, ``executed``, ``has_more``, ``next_cursor``, ``rows``,
+    ``partial``, ``temporal_error``, ``page``, 그리고 :func:`_drop_retired_doc_rows` 가 쓰는
+    ``validity_filtered``·``doc_validity_filtered``·``validity_note``)는 ``patch`` 로만 내보낸다.
+    그 도우미는 응답 dict 를 직접 고치므로 ``view``(``patch`` 를 먼저, 없으면 ``base`` 를 읽고
+    쓰기는 ``patch`` 로 가는 ChainMap)를 넘긴다 — 도우미는 한 글자도 바뀌지 않는다.
+    ``validity_filtered`` 에 더하는 값은 앞 단계 patch 가 얹힌 ``base`` 에서 읽는다."""
+    patch: dict = {}
+    # 청크 팔이 실패했으면 풀이 비어 모든 커서가 낡아 보인다 — 원래 오류를 그대로 둔다.
+    # 1페이지와 다른 팔이 돌았으면(벡터 색인이 사이에 드롭) 순서가 다른 풀이다 — eid 가
+    # 우연히 맞아도 중복·누락이 난다.
+    if cursor and not base.get("error") and not _withheld and (
+            off >= len(pool)
+            or (want_arms is not None and want_arms != base["arms"])
+            or (want_eid is not None
+                and str(pool[off].get("id") or "") != str(want_eid))):
+        # 결과가 커서 발급 시점과 달라졌다 — 조용히 어긋난 페이지를 주지 않는다.
+        patch["note"] = patch["error"] = (
+            "stale_cursor: results changed since this cursor was issued; "
+            "restart from the first page")
+        patch["executed"] = False
+        return True, patch
+    page = pool[off:off + max(1, int(top_k))]
+    next_off = off + len(page)
+    patch["has_more"] = next_off < len(pool)
+    if patch["has_more"]:
+        patch["next_cursor"] = cursor_encode(
+            {"v": 1, "off": next_off, "qh": qh,
+             "eid": str(pool[next_off].get("id") or ""), "tc": len(pool),
+             "arms": base["arms"]})
+    if detail == "full":
+        # 전문도 문서 유효구간으로 거른다. 원본 풀의 순위·커서 좌표는 보존한다.
+        patch["rows"] = [dict(r) for r in page]
+        for r in patch["rows"]:
+            rid = str(r.get("id") or "")
+            r["doc_id"] = rid.rsplit("#", 1)[0] if "#" in rid else ""
+    else:
+        from store.lexical import lex_tokens
+        qtok = lex_tokens(query)              # 페이지에 한 번 — 행마다 다시 자르지 않는다
+        patch["rows"] = [_summary_row(r, qtok) for r in page]
+    view = ChainMap(patch, base)
+    try:
+        _drop_retired_doc_rows(view, _attach_doc_titles(
+            store, patch["rows"], owner=owner, include_titles=detail != "full"),
+            historical=True if mode == "current" else historical,
+            scope=None if mode == "current" else _scope)
+    except Exception as exc:
+        patch["partial"] = True
+        patch["temporal_error"] = f"{type(exc).__name__}: {exc}"
+        if (mode != "current" and (_scope is not None or not historical)
+                and not _predates_column(exc)):
+            # 문서 구간을 못 읽었으면 어느 행이 은퇴한 문서인지 모른다. 행을 내지 않는다.
+            patch["rows"] = []
+    # MCP 봉투의 크기 안전망(shrinker)이 이어받을 좌표 — 꼬리 행을 덜어낸 뒤
+    # 같은 지문으로 next_cursor 를 다시 쓸 수 있게 한다.
+    patch["page"] = {"offset": off, "limit": max(1, int(top_k)), "fingerprint": qh}
+    if patch["rows"] and (view.get("doc_validity_filtered") or len(patch["rows"]) < len(page)):
+        # 축소기는 필터 뒤 행 수가 아니라 덜어낸 행의 원본 풀 위치로 이어 읽는다.
+        visible_ids = {str(r.get("id") or "") for r in patch["rows"]}
+        patch["page"]["row_offsets"] = {
+            str(r.get("id") or ""): off + i for i, r in enumerate(page)
+            if str(r.get("id") or "") in visible_ids}
+    return False, patch
+
+
 def _node_semantic_arm(store, query_embedding, *, continuation, owner, query_model,
                        _wide, _nk, _kw, _scope, historical, mode, known_at, _until,
                        _vstats, base) -> tuple[list[dict], tuple | None, str | None, dict]:
@@ -1779,59 +1851,14 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
             top_k=top_k, cfg=cfg, _vstats=_vstats, known_at=known_at, mode=mode,
             _until=_until, _scope=_scope, base=base)
         base.update(_chunk_patch)
-        # 청크 팔이 실패했으면 풀이 비어 모든 커서가 낡아 보인다 — 원래 오류를 그대로 둔다.
-        # 1페이지와 다른 팔이 돌았으면(벡터 색인이 사이에 드롭) 순서가 다른 풀이다 — eid 가
-        # 우연히 맞아도 중복·누락이 난다.
-        if cursor and not base.get("error") and not _withheld and (
-                off >= len(pool)
-                or (want_arms is not None and want_arms != base["arms"])
-                or (want_eid is not None
-                    and str(pool[off].get("id") or "") != str(want_eid))):
-            # 결과가 커서 발급 시점과 달라졌다 — 조용히 어긋난 페이지를 주지 않는다.
-            base["note"] = base["error"] = (
-                "stale_cursor: results changed since this cursor was issued; "
-                "restart from the first page")
-            base["executed"] = False
+        # GM-14 페이지네이션. 커서가 낡았으면 patch 에 답이 실려 오고 여기서 끝낸다.
+        _stale, _page_patch = _paginate(
+            store, query, pool, cursor=cursor, off=off, want_eid=want_eid,
+            want_arms=want_arms, qh=qh, top_k=top_k, detail=detail, owner=owner, mode=mode,
+            historical=historical, _scope=_scope, _withheld=_withheld, base=base)
+        base.update(_page_patch)
+        if _stale:
             return base
-        page = pool[off:off + max(1, int(top_k))]
-        next_off = off + len(page)
-        base["has_more"] = next_off < len(pool)
-        if base["has_more"]:
-            base["next_cursor"] = cursor_encode(
-                {"v": 1, "off": next_off, "qh": qh,
-                 "eid": str(pool[next_off].get("id") or ""), "tc": len(pool),
-                 "arms": base["arms"]})
-        if detail == "full":
-            # 전문도 문서 유효구간으로 거른다. 원본 풀의 순위·커서 좌표는 보존한다.
-            base["rows"] = [dict(r) for r in page]
-            for r in base["rows"]:
-                rid = str(r.get("id") or "")
-                r["doc_id"] = rid.rsplit("#", 1)[0] if "#" in rid else ""
-        else:
-            from store.lexical import lex_tokens
-            qtok = lex_tokens(query)              # 페이지에 한 번 — 행마다 다시 자르지 않는다
-            base["rows"] = [_summary_row(r, qtok) for r in page]
-        try:
-            _drop_retired_doc_rows(base, _attach_doc_titles(
-                store, base["rows"], owner=owner, include_titles=detail != "full"),
-                historical=True if mode == "current" else historical,
-                scope=None if mode == "current" else _scope)
-        except Exception as exc:
-            base["partial"] = True
-            base["temporal_error"] = f"{type(exc).__name__}: {exc}"
-            if (mode != "current" and (_scope is not None or not historical)
-                    and not _predates_column(exc)):
-                # 문서 구간을 못 읽었으면 어느 행이 은퇴한 문서인지 모른다. 행을 내지 않는다.
-                base["rows"] = []
-        # MCP 봉투의 크기 안전망(shrinker)이 이어받을 좌표 — 꼬리 행을 덜어낸 뒤
-        # 같은 지문으로 next_cursor 를 다시 쓸 수 있게 한다.
-        base["page"] = {"offset": off, "limit": max(1, int(top_k)), "fingerprint": qh}
-        if base["rows"] and (base.get("doc_validity_filtered") or len(base["rows"]) < len(page)):
-            # 축소기는 필터 뒤 행 수가 아니라 덜어낸 행의 원본 풀 위치로 이어 읽는다.
-            visible_ids = {str(r.get("id") or "") for r in base["rows"]}
-            base["page"]["row_offsets"] = {
-                str(r.get("id") or ""): off + i for i, r in enumerate(page)
-                if str(r.get("id") or "") in visible_ids}
 
         # (4-a) 노드 의미 팔. 응답에 얹을 키는 patch 로 받아 부른 바로 뒤에 얹는다.
         vec_hits, _sem_lead, _sem_decisive, _sem_patch = _node_semantic_arm(
