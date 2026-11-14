@@ -34,7 +34,7 @@ from store import run_state
 from store import embedded_schema as _es
 
 # 청크 상한 — 원격 `MAX_BODY`(4MB, vinc_mcp/http_server.py)보다 넉넉히 아래.
-# 초과 시 서버가 빈 바디로 400 을 내므로 조용히 실패한다 → 여유를 크게 둔다.
+# 초과하면 허브가 413 으로 거절하고 그 묶음은 올라가지 않는다 → 여유를 크게 둔다.
 CHUNK_BYTES = 3 * 1024 * 1024
 
 _SEL_KEY = "selected_domains"
@@ -1505,8 +1505,8 @@ def pull_apply(store, cfg, *, owner: str, remote) -> dict:
 
 
 def _chunk_docs(payload: dict, max_bytes: int = 1_500_000) -> list[dict]:
-    """docs 를 크기 기준으로 쪼갠다(허브 MAX_BODY 4MB 보호 — 초과는 빈 바디 400 으로
-    **조용히** 실패한다). 각 조각은 자기완결 LWW 라 재전송·순서 뒤바뀜에 안전하고,
+    """docs 를 크기 기준으로 쪼갠다(허브 MAX_BODY 4MB 보호 — 초과는 허브가 413 으로
+    거절한다). 각 조각은 자기완결 LWW 라 재전송·순서 뒤바뀜에 안전하고,
     tombstones 는 마지막 조각에 싣는다."""
     docs = payload.get("docs") or []
     groups: list[list[dict]] = [[]]
