@@ -35,7 +35,8 @@ const apiStub = `export const cfg = { get owner() { return 'me'; }, get team() {
       domains: globalThis.__hub.docTopics.map((d) => ({ domain: d, concepts: 0, docs: [{ doc_id: 'doc:' + d, title: d, updated_at: '2026-11-01' }] })) }) };`;
 // 트리 파일 다섯(상태 · 문서 · 그래프 · Agent · 입구)은 상태 하나와 로스터 하나를 함께 읽으므로 각각 한 번만 올린다.
 const treeUrl = await tsUrl('lnb-tree.ts');
-const rosterUrl = await tsUrl('agent-roster.ts');
+const idsUrl = await tsUrl('agent-ids.ts');
+const rosterUrl = await tsUrl('agent-roster.ts', { './agent-ids': idsUrl });
 const stateUrl = await tsUrl('lnb-state.ts', { './topic-tint-table': tableUrl });
 const docsUrl = await tsUrl('lnb-docs.ts', {
   './api': apiStub, './components': COMPONENTS_STUB, './copy': COPY_STUB, './doc-title': `export const docTitle = (t) => t || '';`,

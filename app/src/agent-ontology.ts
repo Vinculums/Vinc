@@ -7,6 +7,8 @@
  *
  *  화면에서 읽는 것은 이 파일의 결과뿐이다. DOM·네트워크를 모르므로 테스트가 그대로 부른다. */
 
+import { POLICY_ID_PREFIX, withoutPrefix } from "./agent-ids";
+
 export type Props = Record<string, unknown>;
 export type Kind = "tool" | "capability" | "person_only" | "never" | "gate";
 /** 항목이 온 곳: Agent 자신, 절차, 또는 정책 id. */
@@ -126,4 +128,4 @@ export function layoutMap(agents: MapAgent[], procedures: MapProcedure[], polici
 const round = (v: number) => Math.round(v * 10) / 10;
 
 /** 정책 id 를 화면용 짧은 이름으로(`decision:policy-read-only-procedures` → `read-only-procedures`). */
-export function policySlug(id: string): string { return id.replace(/^decision:policy-/, ""); }
+export function policySlug(id: string): string { return withoutPrefix(id, POLICY_ID_PREFIX); }
