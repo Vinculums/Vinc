@@ -56,6 +56,8 @@ from store.topic_conversion_guard import guard_active
 from store.chunking import (DEFAULT_MAX_CHARS, _HEADING_RE, _section_title,  # noqa: F401
                             chunk_doc, estimate_tokens, normalize_boundaries,
                             plan_boundaries)
+# 목록 커서는 검색 커서와 같은 코덱·같은 질의 지문을 쓴다(한 벌만 둔다). `api.query` 를 거치지 않는다.
+from vinc_rag.retrieval import _query_fingerprint, cursor_decode, cursor_encode
 
 from . import graphmd
 from . import node_schema
@@ -1335,9 +1337,6 @@ def list_docs(store, *, owner: str | None = None, limit: int | None = None,
 
     total = len(docs)
     off = 0
-    # 순환 임포트 회피 — query 가 이 모듈을 이미 쓴다(nav_tree). 지연 임포트로
-    # 커서 규약을 **한 벌만** 유지한다(검색과 같은 코덱·같은 지문).
-    from .query import _query_fingerprint, cursor_decode, cursor_encode
     # 커서에 **어느 목록의 것인가**를 싣는다(검색 커서의 qh 와 같은 방식). 여태 오프셋
     # 하나뿐이라 남의 owner·다른 detail 로 발급된 커서, 음수 오프셋(`off:-5` 를 0 으로
     # 조용히 당겼다)이 전부 통과했다. 이제 셋 다 ValueError("invalid_cursor: …").

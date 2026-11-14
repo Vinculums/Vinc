@@ -9,6 +9,8 @@ from __future__ import annotations
 from typing import Any
 
 from store import pkns
+# 커서 코덱은 검색과 한 벌이다. `api.query` 를 거치지 않고 검색 코어에서 바로 읽는다.
+from vinc_rag.retrieval import _query_fingerprint, cursor_decode, cursor_encode
 
 
 # 근거 문장 상한 — 툴팁·패널 한 문단 분량. 더 길면 읽히지 않고 저장만 부푼다.
@@ -58,8 +60,6 @@ def backfill_evidence(store, *, owner: str, doc_id: str | None = None,
     owner·문서의 커서나 깨진 커서는 ``invalid_cursor`` 로 거절한다(검색 커서와 같은 규약)."""
     out: dict[str, Any] = {"kind": "evidence.backfill", "executed": False,
                            "filled": 0, "scanned": 0, "has_more": False, "next_cursor": None}
-    # 순환 임포트 회피 — query 가 이 모듈을 쓴다. 커서 코덱은 검색과 한 벌이다.
-    from .query import _query_fingerprint, cursor_decode, cursor_encode
     qh = _query_fingerprint("evidence.backfill", owner, {"doc": doc_id or ""}, "")
     lim = max(1, int(limit))
     try:

@@ -5,9 +5,9 @@
   extract_doc      : 문서의 후보를 제안하고(apply=False) 승인되면 Concept 로 반영한다.
   _headings        : ATX·밑줄식 헤딩 파서. 리더 목차(`api.docreader.doc_sections`)도 쓴다.
 
-최상위에서는 표준 라이브러리와 `engines`·`store` 만 import 한다. `api.docstore` 의 이름
-(`get_doc`·`_meta`·`_node_stamp`·`backfill_evidence` …)은 함수 안에서 호출 때 읽는다:
-docstore 가 이 모듈의 이름을 최상위에서 다시 내보내기 때문이다. `docstore.extract_doc` 과
+최상위에서는 표준 라이브러리와 `engines`·`store`, 잎인 `api.node_schema` 만 import 한다.
+`api.docstore` 의 이름(`get_doc`·`_meta`·`_node_stamp`·`backfill_evidence` …)은 함수 안에서
+호출 때 읽는다: docstore 가 이 모듈의 이름을 최상위에서 다시 내보내기 때문이다. `docstore.extract_doc` 과
 이 모듈의 `extract_doc` 은 같은 함수 객체다.
 """
 from __future__ import annotations
@@ -17,6 +17,8 @@ from typing import Any
 
 from engines import domain_hierarchy
 from store import pkns
+
+from .node_schema import normalize_time
 
 
 # ── 정본→노드 파생 (D45-V — 옵션1 결정론 + 옵션2 확인 흐름의 공용 백엔드) ────────
@@ -304,8 +306,8 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
       matched}, mentions}."""
     # docstore 가 이 모듈을 다시 내보내므로 docstore 쪽 이름은 호출 때 읽는다. 그래서
     # docstore 의 이름을 바꿔 끼우면(테스트의 monkeypatch) 여기에도 그대로 닿는다.
-    from .docstore import (_link_domain, _meta, _node_stamp, _norm_content_time,
-                           _relink_mentions, backfill_evidence, get_doc)
+    from .docstore import (_link_domain, _meta, _node_stamp, _relink_mentions,
+                           backfill_evidence, get_doc)
     base: dict[str, Any] = {"kind": "doc.extract", "executed": False, "doc_id": doc_id}
     meta = _meta(store, doc_id)
     # 남의 문서는 없는 문서와 같게 답한다(SEC-1).
@@ -359,7 +361,7 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
     # v7(D72) — 문서의 내용 시점을 파생 개념에 물려준다. 개념은 그 문서에서 나왔으므로
     # 문서가 가리키는 시점이 곧 그 개념이 말하는 시점이다. **비파괴**다: 이미 값이
     # 있는 개념은 건드리지 않는다(사용자 손질 보호 — 아래 matched 규칙과 같은 태도).
-    ctime = _norm_content_time(meta.get("content_time"))
+    ctime = normalize_time(meta.get("content_time"))
     for c in cands:
         cid = f"concept:{c['slug']}"
         # PK 네임스페이싱(design A) — 스토어 바인딩용 물리 키. 사용자 대면 id 는
@@ -429,7 +431,7 @@ def _extract_body_doc(store, doc_id: str, *, owner: str, apply: bool,
     from store.embedded_schema import body_mentions_ready
     # docstore 가 이 모듈을 다시 내보내므로 docstore 쪽 이름은 호출 때 읽는다. 그래서
     # docstore 의 이름을 바꿔 끼우면(테스트의 monkeypatch) 여기에도 그대로 닿는다.
-    from .docstore import _node_stamp, _norm_content_time, get_doc
+    from .docstore import _node_stamp, get_doc
 
     base = {"kind": "doc.extract", "executed": False, "doc_id": doc_id,
             "source": "body", "model_quality": "not_run"}
@@ -490,7 +492,7 @@ def _extract_body_doc(store, doc_id: str, *, owner: str, apply: bool,
                          "domain": ndom, "slug": c["slug"], "origin": got["origin"],
                          "created": stamp["updated_at"], "updated": stamp["updated_at"],
                          "rev": stamp["rev"], "seq": stamp["sync_seq"],
-                         "ct": _norm_content_time(got.get("content_time"))})
+                         "ct": normalize_time(got.get("content_time"))})
                     # 이 승인 경로는 주제 엣지 실패도 전체 rollback한다.
                     domain_hierarchy.link_node(store, "Concept", key, ndom)
                     created += 1

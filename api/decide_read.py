@@ -37,6 +37,7 @@ from .graph_read import (
     shape_graph,
     subgraph_ids_plan,
 )
+from .node_schema import normalize_subject_path, split_subject
 from .query_base import (
     _DIRECTED_RELS,
     _GRAPH_READ_PAIRS,
@@ -59,10 +60,9 @@ def _gate_subjects(props: dict) -> list[str]:
     """노드가 가리키는 경로들(정규화). Record 는 쓰기 시점에 이미 접혀 있지만, Decision 은
     쓰기 경로가 접지 않으므로(`fragment._claim_props`) 여기서 같은 함수로 접는다. 결정은
     여러 경로를 다스릴 수 있어 목록도 받는다."""
-    from .fragment import _norm_subject_path
     raw = props.get("subject_path")
     values = raw if isinstance(raw, list) else [raw]
-    return [s for s in dict.fromkeys(_norm_subject_path(v) for v in values
+    return [s for s in dict.fromkeys(normalize_subject_path(v) for v in values
                                      if isinstance(v, str)) if s]
 
 
@@ -79,7 +79,7 @@ def decide_paths(paths, *, owner: str | None = None, cfg=None, store=None,
     근거: [[vinc.plan.agent-harness-work-order-2026-10-25 §2]] · [[vinc.ops.graph-claim-decay]] §7.3.
 
     맞춤은 `claim_diagnosis`·`_stale_claims` 와 같은 부품을 쓴다. 두 번째 맞춤기를 두지 않는다:
-    - 경로는 `fragment._norm_subject_path` 로 접고(`repo:path`), 덮음은 `_path_covers` 다.
+    - 경로는 `node_schema.normalize_subject_path` 로 접고(`repo:path`), 덮음은 `_path_covers` 다.
       같은 경로면 ``exact``, 노드의 경로가 바뀐 경로의 상위 디렉터리면 ``directory``.
     - 은퇴는 `_retired_claim` 이다. Record 는 열, Decision 은 `props.valid_until` 로 본다.
     - `props.claim_kind == "result"` 인 기록은 한 시점의 실행 결과라 다스리지 않는다(센다).
@@ -94,7 +94,6 @@ def decide_paths(paths, *, owner: str | None = None, cfg=None, store=None,
     반환 {executed, verdict: flag|pass, paths:[{path, governed_by:[...], count, truncated}],
     path_count, flagged_paths, governing_count, retired_excluded, results_excluded,
     unqualified_paths, scanned:{records, decisions}}."""
-    from .fragment import _norm_subject_path, _split_subject
     base = {"kind": "decide_paths", "executed": False, "verdict": "pass", "paths": [],
             "path_count": 0, "flagged_paths": 0, "governing_count": 0,
             "retired_excluded": 0, "results_excluded": 0, "unqualified_paths": []}
@@ -102,7 +101,7 @@ def decide_paths(paths, *, owner: str | None = None, cfg=None, store=None,
             or any(not isinstance(p, str) or not p.strip() for p in paths)):
         base["error"] = "invalid paths: send a nonempty list of repo:path strings"
         return base
-    touched = list(dict.fromkeys(_norm_subject_path(p) for p in paths))
+    touched = list(dict.fromkeys(normalize_subject_path(p) for p in paths))
     if len(touched) > DECIDE_PATHS_MAX:
         base["error"] = (f"invalid paths: at most {DECIDE_PATHS_MAX} paths per call; "
                          "split the list")
@@ -197,7 +196,7 @@ def decide_paths(paths, *, owner: str | None = None, cfg=None, store=None,
                     path_count=len(touched), flagged_paths=flagged,
                     governing_count=len(governing), retired_excluded=retired,
                     results_excluded=results,
-                    unqualified_paths=[p for p in touched if not _split_subject(p)[0]],
+                    unqualified_paths=[p for p in touched if not split_subject(p)[0]],
                     scanned={"records": len(record_rows), "decisions": len(decision_rows)})
         if related_note:
             base["related_note"] = related_note

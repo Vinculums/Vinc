@@ -29,6 +29,7 @@ from store.querybase import _classify_chunk_error, _props_to_obj
 
 from .graph_layout import _domain_path
 from .node_read import node_context
+from .node_schema import normalize_subject_path, normalize_time
 from .query_base import _DOC_CONCEPT_PREFIX, _store_scope, domains
 
 
@@ -469,8 +470,6 @@ def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[
     `measured_at` 없는 기록을 대상으로 끌어들이지는 않는다.
     근거: [[vinc.plan.temporal-edges-point-in-time-document-validity-2026-09-28]] 를 잇는
     그래프 문서 vinc.plan.spec-drift-graphiti-0-9-8-2026-10-11 §3."""
-    from .fragment import _norm_subject_path
-    from .node_schema import normalize_time
     where = "WHERE e.owner_id = $owner " if owner else ""
     changes = []
     for e in store.run(f"MATCH (e:Episode) {where}"
@@ -483,7 +482,7 @@ def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[
             continue
         changes.append({"id": pkns.strip(e.get("id") or ""), "title": e.get("title") or "",
                         "date": date, "head_sha": str(props.get("head_sha") or ""),
-                        "files": [_norm_subject_path(f) for f in files if isinstance(f, str)]})
+                        "files": [normalize_subject_path(f) for f in files if isinstance(f, str)]})
     if not changes:
         return []
     today = _dt.date.today().isoformat()

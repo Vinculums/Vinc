@@ -37,6 +37,7 @@ from . import revstamp
 from . import role_contract
 from store import pkns, write_batch
 from store import querybase as _qb
+from store.querybase import _props_to_obj, domain_names
 from store.topic_conversion_guard import guard_active
 # 근거 열을 가진 rel 의 정본 — 스키마가 표를 갖고 여기서는 읽기만 한다.
 from store.embedded_schema import EDGE_EVIDENCE_RELS, wiki_pairs_open
@@ -52,6 +53,10 @@ _OWNER_SCOPED_LABELS = node_schema.OWNER_SCOPED_LABELS
 _KEPT_FIELDS = node_schema.KEPT_FIELDS
 _CONTRACT_FIELDS = node_schema.CONTRACT_FIELDS
 _INTERVAL_FIELDS = node_schema.INTERVAL_FIELDS
+# 주제 경로를 접는 두 함수의 정본도 `api/node_schema.py` 다. 읽는 쪽(`decide_read`·`diagnose`·`cli_gate`)은
+# 이 모듈을 거치지 않고 거기서 바로 부른다.
+_split_subject = node_schema.split_subject
+_norm_subject_path = node_schema.normalize_subject_path
 
 # 끝점 (라벨, PK) 두 쌍 — 엣지 경로가 해석한 결과를 들고 다니는 형태.
 _Ends = tuple[tuple[str, str], tuple[str, str]]
@@ -184,7 +189,6 @@ def _decision_interval(props: dict, stored_raw, nid: str, warnings: list[str]) -
                 out = {**out, key: norm}
             continue
         if stored is None:
-            from store.querybase import _props_to_obj
             stored = _props_to_obj(stored_raw)
         out = dict(out)
         if stored.get(key) is not None:
@@ -289,38 +293,6 @@ def _known_repos(store, owner: str) -> set[str]:
     return repos
 
 
-def _split_subject(v: str) -> tuple[str, str]:
-    """`repo:path` → (repo, path). 한정자가 없으면 repo 는 빈 문자열.
-
-    윈도 드라이브 문자(`D:/x`)를 한정자로 오인하지 않는다 — 한 글자짜리는 리포가 아니다."""
-    head, sep, tail = v.partition(":")
-    if not sep or len(head) < 2 or "/" in head:
-        return "", v
-    return head.lower(), tail
-
-
-def _norm_subject_path(v) -> str:
-    r"""`subject_path` 정규화 — 이 값은 **조인 키**다.
-
-    `api\sync.py` · `./api/sync.py` · `/api/sync.py` 가 서로 다른 주제로 남으면
-    "같은 파일을 두고 어긋난 두 주장"을 찾는 질의가 조용히 0건을 낸다. 필드를 두는
-    것만으로 R4 는 성립하지 않는다 — **값이 비교 가능해야** 성립한다. 그래서 여기서
-    한 번 접는다(쓰기 시점 정규화는 `domain` 이 이미 쓰는 처방이다).
-
-    형식은 `repo:path` 다. **경로만으로는 부족하다** — 이 그래프는 리포 셋에 대한
-    기록을 갖는데 `subject_path` 가 리포를 안 담으면 동명 파일 둘이 한 키에 묶여
-    **짝이 아닌 것이 짝으로** 제시된다. 닻이 빠진 것보다 비싼 고장이다
-    ([[record:subject-path-carries-no-repository-so-two-repos-can-collide]]).
-
-    한정자가 없으면 **지어내지 않는다.** 어느 리포인지는 값이 말해야 하고, 서버는
-    모른다. 없는 채로 두고 경고한다."""
-    repo, path = _split_subject(str(v or "").strip().replace("\\", "/"))
-    while path.startswith("./"):
-        path = path[2:]
-    path = path.strip().lstrip("/")
-    return f"{repo}:{path}" if repo and path else path
-
-
 def _subject_repo_warnings(norm: str, nid: str, warnings: list[str], known_repos=None) -> None:
     """접은 `subject_path` 가 리포를 안 담았으면, 또는 그래프가 처음 보는 리포면 경고한다(지우지 않는다).
 
@@ -399,7 +371,6 @@ def _stored_nodes(store, types: dict[str, str], owner: str,
 
     엣지는 아직 안 싣는다: 관계 테이블 9종에 걸쳐 열이 다르고, 노드에서와 달리
     엣지 필드가 조용히 사라진 실측이 아직 없다. 재는 것이 먼저다."""
-    from .query import _props_to_obj      # 국소 사용 — 쓰기 경로를 읽기 모듈에 매달지 않는다
     groups: dict[tuple[str, str], list[str]] = {}
     for nid, ntype in types.items():
         label, pk = (_ENTITY_LABEL, _ENTITY_ID) if _is_open(ntype) else _NODE_MAP[ntype]
@@ -1755,8 +1726,7 @@ def _domain_gate(fragment_nodes: list[dict], *, store, owner: str,
     incoming = {d for d in incoming if not domain_hierarchy.is_reserved(d)}
     if not incoming:
         return None                       # 주제 없는 적재는 상한과 무관
-    from . import query                    # 국소 import — 상한이 꺼져 있으면 비용 0
-    existing = query.domain_names(owner=owner, store=store)
+    existing = domain_names(owner=owner, store=store)
     if existing is None:
         return None                       # 스토어 미도달 = 판정 불가 → 막지 않는다
     existing = {d for d in existing if not domain_hierarchy.is_reserved(d)}

@@ -147,6 +147,52 @@ def domains(*, owner: str | None = None, cfg=None, store=None,
     return res
 
 
+def domain_names_plan(*, owner: str | None = None) -> QueryPlan:
+    """소유자의 **주제 이름 집합**(개수·집계 없음).
+
+    :func:`domain_counts_plan` 과 같은 3개 라벨을 보되 카운트를 세지 않는다 —
+    무료 등급 주제 상한이 **매 적재마다** 도는 경로라 집계·정렬이 순수 낭비다.
+
+    라벨 집합을 `domains()` 와 **일부러 일치**시켰다(Episode·Concept·Record·Decision).
+    상한이 다른 집합을 세면 사용자가 `vinc_domains` 로 4개를 보면서 "5개 상한에
+    걸렸다"는 말을 듣게 된다 — 그 불일치가 곧 지원 문의가 된다."""
+    if owner:
+        where_e = "WHERE e.owner_id = $owner AND e.domain IS NOT NULL"
+        where_c = "WHERE c.owner_id = $owner AND c.domain IS NOT NULL"
+        where_r = "WHERE r.owner_id = $owner AND r.domain IS NOT NULL"
+        where_d = "WHERE d.owner_id = $owner AND d.domain IS NOT NULL"
+        params: dict = {"owner": owner}
+    else:
+        where_e = "WHERE e.domain IS NOT NULL"
+        where_c = "WHERE c.domain IS NOT NULL"
+        where_r = "WHERE r.domain IS NOT NULL"
+        where_d = "WHERE d.domain IS NOT NULL"
+        params = {}
+    cypher = (
+        f"MATCH (e:Episode) {where_e} RETURN DISTINCT e.domain AS domain "
+        "UNION ALL "
+        f"MATCH (c:Concept) {where_c} RETURN DISTINCT c.domain AS domain "
+        "UNION ALL "
+        f"MATCH (r:Record) {where_r} RETURN DISTINCT r.domain AS domain "
+        "UNION ALL "
+        f"MATCH (d:Decision) {where_d} RETURN DISTINCT d.domain AS domain"
+    )
+    return QueryPlan("domain_names", cypher, params,
+                     note="주제 이름 집합 (상한 검사용 — 집계 없음)")
+
+
+def domain_names(*, owner: str | None = None, cfg=None, store=None) -> set[str] | None:
+    """소유자가 지금 쓰는 주제 이름 집합. 스토어에 못 닿으면 **None**.
+
+    None 과 빈 집합은 다르다 — 빈 집합은 "주제가 없다"(상한 검사 통과)이고 None 은
+    "모른다"다. 모르는 채로 상한을 따지면 스토어 장애가 곧 전면 쓰기 거부가 된다.
+    호출부가 이 구분을 보고 결정해야 한다."""
+    res = execute(domain_names_plan(owner=owner), cfg, store=store)
+    if not res.get("executed"):
+        return None
+    return {d for d in (row.get("domain") for row in res.get("rows", [])) if d}
+
+
 #: 주제 스코프 = **하위 트리**다(정확일치 OR `d + "/"` 접두 — 슬래시가 요점이다:
 #: `STARTS WITH 'vinc'` 는 `vincent` 도 잡는다). 다섯 플랜이 각자 도메인을 걸러서
 #: 판정은 여기 **한 벌**만 둔다 — 한 곳만 고치면 축끼리 모집단이 어긋난다.
