@@ -9,6 +9,7 @@ Unlike that prototype, policy comes from typed checks and action IDs, never reas
 from __future__ import annotations
 
 import copy
+import functools
 import re
 import shlex
 from dataclasses import dataclass
@@ -1022,6 +1023,234 @@ def _branch_push_only(sentence: str, before: str = "", after: str = "") -> bool:
     return symbols is not None and bool(_PUSH_GRAMMAR.fullmatch(" ".join(symbols)))
 
 
+# 키워드 걸림을 거두는 읽기. 문장에서 키워드(_ACTIONS 의 정규식, _DECISION_WORDS 의 낱말)가 걸린 자리마다 아래 넷 중
+# 하나에 묶이면 그 자리를 걸림에서 뺀다. 걸림을 거두기만 하고 새로 걸지 않는다. 모르면 묶지 않는다(걸린 채 둔다).
+#  1. 부정: 키워드 바로 앞이 no·without·not a·never·did not 같은 말이고 사이에는 닫힌 군말뿐이다. 쉼표·and·or 로 이은
+#     목록과 그 목적어("not push a tag")는 같은 부정에 묶인다. "no need to", "did not hesitate to" 처럼 사이에 다른
+#     낱말이 끼면 부정이 키워드에 닿지 않은 것이다. 부정된 과거형("not pushed")을 지운 자리도 키워드 곁이면 묶는다.
+#  2. 인계: "merging is left to the owner", "left the tag push to the owner", "left for the owner to merge".
+#  3. git 용어: merge-tree·merge-base·merge order·merge queue·merge conflict, "merging main into <작업 브랜치>".
+#  4. 작업 브랜치 이름의 한 조각: "fix/sync-push-over-limit" 안의 push 는 동사가 아니다.
+_WORD_START = r"(?<![a-z0-9])(?:re|un|auto)?"
+# 부정된 과거형을 지운 자리의 표지(own 이 지우는 구절과 같은 구절). 걸림을 읽는 글에만 남기고 검사 글에는 쓰지 않는다.
+# _CUT 은 "not pushed" 꼴(앞 낱말이 주어일 수 있다), _CUT_NONE 은 "no tag was pushed"·"nothing merged" 처럼 제 주어를 가진 구절이다.
+_CUT = "\x01"
+_CUT_NONE = "\x02"
+_CUT_ANY = f"[{_CUT}{_CUT_NONE}]"
+_NOT_AUX = r"(?:did|do|does|has|have|had|will|would|should|could|can|must|may|might|am|are|is|was|were)"
+_NEG_FILL = (r"(?:an?|the|any|new|further|extra|more|other|git|release|version|annotated|lightweight|actual|real"
+             r"|data|schema|database|db|live|production|prod|store|state|hub|table|file|module|import|source|code)")
+# 앞쪽 부정은 둘이다. 명사 부정(no·zero·without·not a + 군말 둘까지)과 동사 부정(did not·never·nothing to 처럼 키워드가 바로 따르는 꼴).
+_NOUN_NEG_BEFORE = re.compile(rf"\b(?:(?:no|zero|without)|not\s+(?:an?|any))\s+(?:{_NEG_FILL}\s+){{0,2}}$", re.I)
+_VERB_NEG_BEFORE = re.compile(
+    rf"(?:\b{_NOT_AUX}\s+not\s+|\b{_NOT_AUX}n['’]t\s+|\bwon['’]t\s+|\bcannot\s+|\bnever\s+|['’](?:re|m|s|ve|ll|d)\s+not\s+)"
+    r"(?:(?:yet|actually|even|ever|simply|also|just|really|be|been|being)\s+)*$"
+    r"|\bno\s+(?:need|reason|point|way)\s+to\s+$|\b(?:nothing|none)\s+(?:(?:left|more|else|new|further)\s+)?to\s+$"
+    rf"|{_CUT_ANY}\s+(?:(?:to|into|onto|for|from|of)\s+(?:(?:an?|any|the|this|that|one|v?\d[\w.]*)\s+){{0,2}}"
+    rf"|(?:(?:an?|any|the|this|that|one|v?\d[\w.]*)\s+){{1,2}})$", re.I)
+# 키워드 바로 뒤의 부정: "migration is not needed", "merge not required", "Tag: none", "tag was <not pushed>".
+_NEG_AFTER = re.compile(r"^\s*[:=]\s*(?:none|no|n/a|nothing|not\s+done|not\s+applicable)\b"
+                        rf"|^(?:\s+[\w#./`-]+)?(?:\s+(?:was|were|is|are|has|have|had|been))+\s*{_CUT}|^\s*{_CUT}"
+                        r"|^(?:\s+\w+)?(?:\s+of\s+(?:the\s+)?\w+)?\s+(?:(?:is|are|was|were)\s+)?(?:not|never)\s+"
+                        r"(?:needed|necessary|required|involved|applicable|relevant|affected|performed)\b"
+                        r"|^(?:\s+\w+)?(?:\s+of\s+(?:the\s+)?\w+)?\s+(?:isn|aren|wasn|weren)['’]t\s+"
+                        r"(?:needed|necessary|required|involved|applicable|relevant|affected|performed)\b", re.I)
+# 부정된 키워드 뒤에 같은 부정으로 묶이는 말: 쉼표(옥스퍼드 쉼표 ", and" 는 제외)·/·and·or·nor, 관사, 버전.
+# 명사 부정("no tag to push")은 to 도 잇는다. 쉼표 목록의 다음 키워드는 목록이 이어지거나 끝날 때만 묶인다
+# ("did not merge, tag or publish"). 사이 글은 짧은 것만 읽는다(정규식 되짚기를 피하려고 낱말 단위로 걷는다).
+_CHAIN_MAX = 40
+_CHAIN_WORDS = frozenset({"and", "or", "nor", "a", "an", "the", "any", "this", "that", "one", "of"})
+_VERSION_WORD = re.compile(r"v?\d[\w.]*", re.I)
+_CHAIN_TOKENS = re.compile(r"[^\s,/]+|[,/]")
+_LIST_END = re.compile(r"^\s*(?:[,/]|(?:or|and|nor)\b|(?:anything|everything)\b)", re.I)
+
+
+def _negation_chain(gap: str, after: str, noun: bool) -> bool:
+    """부정된 키워드와 다음 키워드 사이 글(gap)이 같은 부정으로 잇는 말뿐인가. after 는 다음 키워드 뒤의 글(짧게)."""
+    if not gap or len(gap) > _CHAIN_MAX:
+        return False
+    tokens = _CHAIN_TOKENS.findall(gap)
+    for i, token in enumerate(tokens):
+        low = token.lower()
+        if token == ",":
+            if i + 1 < len(tokens) and tokens[i + 1].lower() in ("and", "or", "nor"):
+                return False
+        elif token != "/" and low not in _CHAIN_WORDS and not _VERSION_WORD.fullmatch(token) and not (noun and low == "to"):
+            return False
+    return "," not in tokens or bool(_LIST_END.match(after))
+
+
+_OWNER = r"(?:(?:the|an?|our|your)\s+)?(?:owner|person|human|maintainer|reviewer)(?:['’]s)?"
+# 키워드와 인계 구절 사이에 올 수 있는 목적어 한 칸("merging #12 is", "the tag push is", "merge `x` is").
+_OBJ = r"(?:\s+[\w#/.`-]+)?"
+_LEFT_AFTER = re.compile(
+    rf"^{_OBJ}\s*:?\s*(?:(?:is|are|was|were|stays?|remains?|will be|has been|have been)\s+)?"
+    rf"(?:(?:left|deferred|reserved|held|handed\s+(?:over|off)|up)\s+(?:to|for|with)|(?:stays?|remains?)\s+with)\s+{_OWNER}\b",
+    re.I)
+_OWNER_STEP = re.compile(rf"^{_OBJ}\s+(?:is|are)\s+{_OWNER}\s+(?:steps?|calls?|jobs?|tasks?|decisions?|actions?|responsibilit(?:y|ies))\b", re.I)
+_LEFT_BEFORE = re.compile(r"\b(?:left|leaves|leaving|deferred|deferring|reserved|handed\s+over|handing\s+over)\s+"
+                          r"(?:(?:the|a|an|that|this|any)\s+)?(?:\w+\s+)?$", re.I)
+_LEFT_TO = re.compile(rf"^{_OBJ}\s+(?:to|for|with)\s+{_OWNER}\b", re.I)
+_LEFT_FOR_BEFORE = re.compile(rf"\b(?:left|leaves|leaving|reserved|deferred)\s+(?:for|to|with)\s+{_OWNER}\s+(?:to\s+)?$", re.I)
+# "Merging and tagging are left to the owner": 문장 머리에서 and·or·쉼표로 이은 키워드는 뒤쪽의 인계에 같이 묶인다.
+_SENTENCE_HEAD = re.compile(r"^[\s\-*+•]*(?:(?:the|a|an|both|all|also)\s+)?$", re.I)
+_MERGE_TERM = re.compile(r"^(?:-(?:tree|base)|[- ](?:order|conflicts?))(?![\w-])", re.I)
+_MERGE_QUEUE = re.compile(r"^[- ]queue(?=\s+(?:is|are|was|were|will|would|runs?|ran|running|lands?|landed"
+                          r"|builds?|built|checks?|tests?|passes|passed|fails|failed|only|also|then|first|validates?"
+                          r"|holds?|waits?|rejected|refused|accepted|blocked|requires?|required|needs?|expects?|rebuilds?"
+                          r"|reruns?|skipped|starts?|started|picks?)\b)", re.I)
+# 문장 끝의 "the merge queue." 는 명사구일 때만 용어다("Merge queue, please." 는 넣어 달라는 말이다).
+_MERGE_QUEUE_END = re.compile(r"^[- ]queue\s*(?:[,.;:)]|$)", re.I)
+_QUEUE_NOUN = re.compile(r"\b(?:the|a|an|our|this|that|its|their)\s+$", re.I)
+# "merge queue" 에 넣으라는 부탁("add it to the merge queue", "ready for the merge queue")은 용어 설명이 아니다.
+_QUEUE_PLACING = re.compile(r"\b(?:to|in|into|via|through|onto|on|at|with|within|for|using|enter|entering|join|joining|add|adding"
+                            r"|put|putting|enqueue|enqueued|enqueuing|queue|queued|ready|after|before|from|by)\s+"
+                            r"(?:(?:the|a|an|our|this|that|its)\s+)?$", re.I)
+_MERGE_INTO = re.compile(r"^\s+(?:(?:origin|upstream)/)?(?:main|master)\s+into\s+(?:"
+                         r"(?:the|my|this|that|our|a|each|every|its)\s+(?:([\w-]+)\s+)?(?:branch|branches|stack|worktree)\b"
+                         r"|`?([A-Za-z0-9][\w./-]*)`?(?=[\s,.;:)]|$))", re.I)
+_NAME_MAX = 200
+_FILE_NAME = re.compile(r"\.[A-Za-z0-9]{1,6}$")
+_TOKEN_STOP = "`\"'“”‘’()<>,;|"
+
+
+def _cut(match: "re.Match[str]") -> str:
+    """own 이 지우는 부정 구절을 걸림을 읽는 글에서는 표지로 바꾼다."""
+    return _CUT_NONE if re.match(r"(?:no|nothing)\b", match.group(0), re.I) else _CUT
+
+
+def _marked(sentence: str) -> str:
+    """검사 글(own 과 _PAST_FORMS 를 거친 글)과 같되 부정 구절 자리에 표지를 남긴 글. 글이 스스로 적은 표지 글자는 지운다."""
+    return _PAST_FORMS.sub("", _NEGATED.sub(_cut, _QUOTED.sub("", sentence.replace(_CUT, " ").replace(_CUT_NONE, " "))))
+
+
+def _and_chain(gap: str) -> bool:
+    """두 키워드 사이가 쉼표·/·and·or 뿐인가."""
+    tokens = _CHAIN_TOKENS.findall(gap)
+    return bool(gap) and len(gap) <= _CHAIN_MAX and all(t in ",/" or t.lower() in ("and", "or") for t in tokens)
+
+
+def _merge_into_branch(after: str) -> bool:
+    """"merging main into the branch" 꼴인가: main 에서 작업 브랜치로 가는 방향이고 대상이 보호·버전 이름이 아니다."""
+    match = _MERGE_INTO.match(after)
+    if not match:
+        return False
+    adjective, name = match.group(1), match.group(2)
+    if name is not None:
+        return _push_name(name) in ("NP", "NB")
+    return adjective is None or (adjective.lower() not in _GUARDED_SET and not _VERSIONISH.search(adjective))
+
+
+def _in_branch_name(text: str, start: int, end: int) -> bool:
+    """키워드 자리가 작업 브랜치 이름(fix/sync-push-over-limit)의 한 조각인가. 그 낱말은 동사가 아니다."""
+    # 이름은 길지 않다: 양쪽으로 _NAME_MAX 자까지만 읽고, 그보다 길게 이어지면 이름이 아니다.
+    left, right = start, end
+    while left > 0 and start - left < _NAME_MAX and not text[left - 1].isspace() and text[left - 1] not in _TOKEN_STOP:
+        left -= 1
+    while right < len(text) and right - end < _NAME_MAX and not text[right].isspace() and text[right] not in _TOKEN_STOP:
+        right += 1
+    if start - left >= _NAME_MAX or right - end >= _NAME_MAX:
+        return False
+    token = text[left:right].rstrip(".:!?")
+    # 끝 칸에 확장자가 붙은 이름(scripts 아래 push-release.sh)은 파일이라 브랜치로 읽지 않는다.
+    return ((left < start or right > end) and "/" in token and not _FILE_NAME.search(token)
+            and _push_name(token) == "NP")
+
+
+_NEG_VERB, _NEG_NOUN, _GOVERNED, _GOVERNED_LEFT = 1, 3, 2, 4
+
+
+def _governed(text: str, start: int, end: int) -> int:
+    """키워드 한 자리가 위 넷에 묶이는가. 0 이면 묶이지 않음, 1·3 이면 동사·명사 부정, 2·4 이면 그 밖의 묶임(4 는 인계)."""
+    before, after = text[max(0, start - 60):start], text[end:end + 90]
+    word = text[start:end].lower()
+    if _VERB_NEG_BEFORE.search(before):
+        return _NEG_VERB
+    if _NOUN_NEG_BEFORE.search(before):
+        return _NEG_NOUN
+    if _NEG_AFTER.match(after):
+        return _GOVERNED
+    if _LEFT_AFTER.match(after) or _OWNER_STEP.match(after):
+        return _GOVERNED_LEFT
+    if _LEFT_FOR_BEFORE.search(before) or (_LEFT_BEFORE.search(before) and _LEFT_TO.match(after)):
+        return _GOVERNED
+    if word.startswith("merg"):
+        if _MERGE_TERM.match(after):
+            return _GOVERNED
+        if (_MERGE_QUEUE.match(after) or (_MERGE_QUEUE_END.match(after) and _QUEUE_NOUN.search(before))) \
+                and not _QUEUE_PLACING.search(before):
+            return _GOVERNED
+        if word == "merging" and _merge_into_branch(after):
+            return _GOVERNED
+    return _GOVERNED if _in_branch_name(text, start, end) else 0
+
+
+@functools.lru_cache(maxsize=64)
+def _keyword_patterns(actions: frozenset[str]) -> tuple[tuple[str, str, "re.Pattern[str]"], ...]:
+    """사람 전용 행동마다 (행동, 종류, 정규식). 직접은 _ACTIONS 정규식, 결정은 _DECISION_WORDS 낱말의 낱말 머리 일치.
+
+    낱말은 낱말 머리에서만 맞는다("stage" 안의 "tag", "descend" 안의 "send" 는 걸리지 않는다). 머리에 re·un 이 붙은
+    꼴("retag", "unpublish")과 뒤에 붙는 어미("tagged", "sends")는 그대로 맞는다.
+    """
+    out = []
+    for action in sorted(actions):
+        if action in _ACTIONS:
+            out.append((action, "direct", re.compile(_ACTIONS[action], re.I)))
+        words = _DECISION_WORDS.get(action, ())
+        if words:
+            out.append((action, "decision", re.compile(
+                "|".join((_WORD_START if word[:1].isalnum() else "") + re.escape(word) for word in words), re.I)))
+    return tuple(out)
+
+
+def _found(text: str, patterns: tuple[tuple[str, str, "re.Pattern[str]"], ...]) -> list[tuple[int, int, str, str]]:
+    """걸린 자리(시작, 끝, 행동, 종류). 끝은 걸린 낱말의 끝까지 늘린다("Publish" 가 아니라 "Publishing" 까지)."""
+    out = []
+    for action, kind, rx in patterns:
+        for m in rx.finditer(text):
+            end = m.end()
+            limit = min(len(text), end + _NAME_MAX)
+            while end < limit and (text[end].isalnum() or text[end] == "_") and text[end].isascii():
+                end += 1
+            out.append((m.start(), end, action, kind))
+    return out
+
+
+def _open_hits(plain: str, marked: str, patterns: tuple[tuple[str, str, "re.Pattern[str]"], ...]
+               ) -> frozenset[tuple[str, str]]:
+    """plain(검사 글)에서 걸린 (행동, 종류) 가운데 marked(부정 자리를 표지로 남긴 같은 글)에서 부정·인계·git 용어에
+    묶이지 않은 자리가 있는 것. 검사 글에서 걸리지 않은 것은 새로 걸지 않는다."""
+    hit = {(action, kind) for _, _, action, kind in _found(plain, patterns)}
+    if not hit:
+        return frozenset()
+    found = _found(marked, patterns)
+    # 행동이 달라도 한 문장의 키워드 자리를 왼쪽부터 한 줄로 읽는다("did not merge, tag, publish or send").
+    spans = sorted({(s, e) for s, e, _, _ in found})
+    state: dict[tuple[int, int], int] = {}
+    previous: tuple[int, int] | None = None
+    for span in spans:
+        kind = _governed(marked, *span)
+        if not kind and previous is not None and state[previous] in (_NEG_VERB, _NEG_NOUN):
+            if _negation_chain(marked[previous[1]:span[0]], marked[span[1]:span[1] + 40], state[previous] == _NEG_NOUN):
+                kind = state[previous]
+        state[span] = kind
+        previous = span
+    # 오른쪽 키워드가 "are left to the owner" 에 묶이면 문장 머리에서 and·or 로 이은 왼쪽 키워드도 같이 묶인다.
+    i = len(spans) - 1
+    while i >= 0:
+        if state[spans[i]] != _GOVERNED_LEFT:
+            i -= 1
+            continue
+        first = i
+        while first > 0 and not state[spans[first - 1]] and _and_chain(marked[spans[first - 1][1]:spans[first][0]]):
+            first -= 1
+        if first < i and spans[first][0] <= _CHAIN_MAX and _SENTENCE_HEAD.match(marked[:spans[first][0]]):
+            for j in range(first, i):
+                state[spans[j]] = _GOVERNED_LEFT
+        i = first - 1 if first < i else i - 1
+    return frozenset((action, kind) for start, end, action, kind in found if not state[(start, end)] and (action, kind) in hit)
+
+
 def _rendered(answer: str) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     lines = answer.splitlines()
@@ -1223,18 +1452,20 @@ class OutputGate:
                 spans: list[tuple[int, int]] | None = None
                 bounds: tuple[int, int] | None = None
                 scanned = False
+                patterns = _keyword_patterns(frozenset(actions))
                 for index, sentence in enumerate(sentences):
                     said = own(sentence)
                     if _REFUSAL.search(sentence) or _CLAIM.search(said):
                         continue
                     present = _PAST_FORMS.sub("", said)
                     agency = bool(_INTENT.search(present) or _IMPERATIVE.search(present))
-                    handoff = bool(_HANDOFF.search(present) or _MARKER.search(present))
+                    marker = bool(_MARKER.search(present))
+                    handoff = bool(_HANDOFF.search(present) or marker)
+                    # 키워드는 부정·인계·git 용어에 묶이지 않은 자리만 센다. 묶는 말이 없으면 이 줄은 걸림 위치를 바꾸지 않는다.
+                    opened = (_open_hits(present, _marked(sentence), patterns) if agency or handoff else frozenset())
                     for action in actions:
-                        direct = (action in _ACTIONS and (agency or handoff)
-                                  and re.search(_ACTIONS[action], present, re.I))
-                        decision = ((agency or _MARKER.search(present)) and any(
-                            word in present.lower() for word in _DECISION_WORDS.get(action, ())))
+                        direct = action in _ACTIONS and (agency or handoff) and (action, "direct") in opened
+                        decision = (agency or marker) and (action, "decision") in opened
                         # push_tag 걸림만, 그것도 문장의 push 가 모두 이름 붙은 작업 브랜치일 때만 거둔다.
                         if decision and action == "push_tag":
                             spans = spans if spans is not None else _spans(body, sentences)
