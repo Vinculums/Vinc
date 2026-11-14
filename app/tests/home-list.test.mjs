@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { installDom, settle, El } from './mini-dom.mjs';
 import { loadTs, tsUrl, srcText, COPY_STUB, COMPONENTS_STUB } from './ts-load.mjs';
+import { loadReader, loadDocEditor, loadDocMidWrite, watchTimers, MID_WRITE, FAILED, GOOD } from './helpers/doc-reader-load.mjs';
 
 const { body } = installDom({ hash: '#home' });
 
@@ -24,6 +25,8 @@ globalThis.__home = {
 
 // 표면이 셸에 거는 문(surface-binding.ts)은 실제 것을 쓰고, 그 문이 부르는 셸 쪽 setter 아홉은 받은 것을 적는다.
 globalThis.__bound = [];
+// 문서 홈이 뷰 머리 앞자리에 넘긴 마크업, 넘긴 차례대로.
+globalThis.__lead = [];
 const recorder = (names) => names.map((n) =>
   `export const ${n} = (v) => { globalThis.__bound.push(['${n}', v === null ? null : typeof v]); };`).join('\n');
 const BIND_URL = await tsUrl('surface-binding.ts', {
@@ -44,7 +47,7 @@ const stubs = {
   '../components': COMPONENTS_STUB + `\nexport const confirmDestructive = async () => false;`,
   '../icons': `export const icon = () => '';`,
   '../view-prefs': `export const dayOf = (ts) => ts.slice(0, 10);`,
-  '../topbar': `export const setTopbarLead = () => null; export const setViewHooks = () => {};`,
+  '../topbar': `export const setTopbarLead = (html) => { globalThis.__lead.push(html); return null; }; export const setViewHooks = () => {};`,
   '../lnb': `export const lnbTopicTint = () => ''; export const setLnbActive = () => {};
     export const setLnbDocOpener = () => {}; export const setLnbTopicPicker = () => {};
     export const setLnbScopeClearer = () => {}; export const refreshLnb = async () => {};`,
@@ -145,6 +148,19 @@ test('topic chips and the title filter narrow the list and stay out of the addre
   assert.match(el.querySelector('.home-count').textContent, /count\(10\)/);
 });
 
+test('the documents home puts its place name in the header lead, and the reading page puts a back link there', async () => {
+  globalThis.__lead.length = 0;
+  const { el } = await mountHome();
+  assert.match(globalThis.__lead.at(-1), /class="tb-lead-name">COPY\.ui\.home\.back</, 'the list names the place');
+  globalThis.__lead.length = 0;
+  location.hash = '#home/doc/doc-001';
+  const home = await loadTs('surfaces/home.ts', stubs);
+  await home.renderHome(el);
+  await settle();
+  assert.match(globalThis.__lead.join(''), /class="home-back" href="#home">‹ COPY\.ui\.home\.back</, 'the reading page names the way back');
+  location.hash = '#home';
+});
+
 test('the home shows no unverified badge and never reads verified (AC-APP-14, home side)', async () => {
   const { el } = await mountHome();
   location.hash = '#home/doc/doc-001';
@@ -224,4 +240,172 @@ test('a part unbinds only what it bound and leaves a newer binding of the same h
   offB(); offB();
   assert.deepEqual(globalThis.__bound, [['setSearchFilter', null]]);
   assert.deepEqual(bind.boundSurfaceKeys(), []);
+});
+
+// ── 쓰기 창에 걸린 문서 ─────────────────────────────────────────────────────────────────────────────────────────────
+// 서버는 청크가 덜 쓰인 문서를 `executed:false` 에 청크 수를 달아 거절한다. 문서는 멀쩡히 있고 지금 이 순간만 반쪽이다.
+// 그 상태를 두 리더(그래프의 열 view-reader.ts, 문서 편집기 doc-editor.ts)가 "못 열었다"와 다른 말로 하고,
+// 사람이 누를 때만 다시 읽고, 편집기는 세우지 않는다. 편집기를 세우면 상시 편집이라 키 하나에 그 반쪽이 정본이 된다.
+// 실제 코드: 판별기(api.ts) · 그래프 리더 · 열의 머리와 닫기(view-rail.ts) · 편집기 마운트(doc-editor.ts).
+// 가짜: 서버 호출(`__doc.docGet`)과 CM6 편집기(`__doc.mountCm`).
+globalThis.ResizeObserver ??= class { observe() {} disconnect() {} };
+globalThis.__doc = {};
+
+/** `docGet` 이 부른 차례대로 답을 준다(함수면 부른 때의 Promise). 마지막 답은 되풀이한다. */
+function fakeDocs(...replies) {
+  const calls = [];
+  globalThis.__doc.docGet = (...a) => {
+    calls.push(a);
+    const r = replies[Math.min(calls.length - 1, replies.length - 1)];
+    return typeof r === 'function' ? r() : Promise.resolve(r);
+  };
+  return calls;
+}
+/** 그래프 리더가 편집기를 세운 횟수. */
+function fakeReaderMount() {
+  const seen = { mounted: 0 };
+  globalThis.__doc.mountEditor = async () => {
+    seen.mounted++;
+    return { dispose: async () => {}, getText: () => '', scrollToOffset() {}, pauseSaving: async () => {} };
+  };
+  return seen;
+}
+/** CM6 편집기 대역: 세운 수 · 부순 수 · 스크롤을 센다. */
+function fakeCm() {
+  const seen = { mounted: 0, destroyed: 0, scrolled: [] };
+  globalThis.__doc.mountCm = (_host, o) => {
+    seen.mounted++;
+    return { getValue: () => o.initial, setValue() {}, focus() {}, destroy: () => { seen.destroyed++; },
+      setHighlights() {}, scrollToHighlight() {}, scrollToOffset: (p) => seen.scrolled.push(p), lineTop: () => 0, openInsert() {} };
+  };
+  return seen;
+}
+const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
+const hintOf = (root) => root.querySelector('p.hint')?.textContent;
+const openReaderOn = async () => {
+  body.innerHTML = '';
+  const r = await loadReader(body);
+  return { ...r, open: (id = 'd1') => r.reader.openReader(id) };
+};
+
+test('docMidWrite splits a half-written document from a failed read by the chunk count, never by the message', async () => {
+  const mid = await loadDocMidWrite();
+  assert.equal(mid(MID_WRITE), true);
+  assert.equal(mid({ executed: false, chunk_count: 0 }), true, 'a count of zero is still a count');
+  assert.equal(mid(FAILED), false, 'an unknown id carries an error and no count');
+  assert.equal(mid({ executed: false, error: 'document is incomplete: 1 of 3 chunks are present' }), false,
+    'the message alone must not read as a write in progress');
+  assert.equal(mid({ executed: true, chunk_count: 27 }), false, 'a read that worked is never "being written"');
+});
+
+test('the graph reader says "being written" for a half-written document, offers a retry and a way out, and builds no editor', async () => {
+  const calls = fakeDocs(MID_WRITE);
+  const seen = fakeReaderMount();
+  const { open, detail } = await openReaderOn();
+  const timers = watchTimers();
+  await open();
+  const armed = timers.stop();
+  await settle(30);
+  assert.equal(hintOf(detail), 'COPY.ui.viewx.readerMidWrite', 'the half-written wording, not the failed one');
+  assert.equal(detail.querySelector('#rdr-retry').textContent, 'COPY.ui.viewx.readerRetry');
+  assert.ok(detail.querySelector('#rail-close'), 'the rail head stays, so the mouse has a way out besides Esc');
+  assert.equal(seen.mounted, 0, 'no editor over a half-written document');
+  assert.deepEqual(armed, [], 'no timer is armed by this state');
+  assert.equal(calls.length, 1, 'nothing reads again on its own');
+});
+
+test('the graph reader says "could not open" for a failed read, with no retry button', async () => {
+  fakeDocs(FAILED);
+  const seen = fakeReaderMount();
+  const { open, detail } = await openReaderOn();
+  await open();
+  assert.equal(hintOf(detail), 'COPY.ui.viewx.readerFail');
+  assert.equal(detail.querySelector('#rdr-retry'), null);
+  assert.ok(detail.querySelector('#rail-close'));
+  assert.equal(seen.mounted, 0);
+});
+
+test('the graph reader reads again only when the person presses retry, and then opens the document', async () => {
+  const calls = fakeDocs(MID_WRITE, GOOD);
+  const seen = fakeReaderMount();
+  const { open, detail } = await openReaderOn();
+  await open();
+  assert.equal(calls.length, 1);
+  detail.querySelector('#rdr-retry').click();
+  await settle(30);
+  assert.equal(calls.length, 2);
+  assert.equal(seen.mounted, 1, 'the second read worked, so the editor is built now');
+  assert.equal(detail.querySelector('#rdr-retry'), null);
+  assert.ok(detail.querySelector('#rdr-host'));
+});
+
+test('the rail close button works while the reader shows a half-written document', async () => {
+  fakeDocs(MID_WRITE);
+  fakeReaderMount();
+  const { open, detail } = await openReaderOn();
+  await open();
+  detail.querySelector('#rail-close').click();
+  assert.equal(detail.hidden, true);
+  assert.equal(detail.innerHTML, '');
+});
+
+test('the document editor says "being written", offers a retry, and builds no editor over a half-written document', async () => {
+  const calls = fakeDocs(MID_WRITE);
+  const cm = fakeCm();
+  const ed = await loadDocEditor();
+  const host = new El('div'); body.append(host);
+  const timers = watchTimers();
+  await ed.mountDocEditor(host, { owner: 'u', docId: 'd1' });
+  const armed = timers.stop();
+  await settle(30);
+  assert.equal(hintOf(host), 'COPY.ui.viewx.readerMidWrite');
+  assert.equal(host.querySelector('#ed-retry').textContent, 'COPY.ui.viewx.readerRetry');
+  assert.equal(host.querySelector('#ed-src'), null, 'no textarea to type into');
+  assert.equal(cm.mounted, 0);
+  assert.deepEqual(armed, [], 'no timer is armed by this state');
+  assert.equal(calls.length, 1);
+});
+
+test('the document editor says "could not open" for a failed read, with no retry button', async () => {
+  fakeDocs(FAILED);
+  const cm = fakeCm();
+  const ed = await loadDocEditor();
+  const host = new El('div'); body.append(host);
+  await ed.mountDocEditor(host, { owner: 'u', docId: 'd1' });
+  assert.equal(hintOf(host), 'COPY.ui.viewx.readerFail');
+  assert.equal(host.querySelector('#ed-retry'), null);
+  assert.equal(cm.mounted, 0);
+});
+
+test('after a retry the stub the caller holds drives the editor the retry built', async () => {
+  const calls = fakeDocs(MID_WRITE, GOOD);
+  const cm = fakeCm();
+  const ed = await loadDocEditor();
+  const host = new El('div'); body.append(host);
+  const stub = await ed.mountDocEditor(host, { owner: 'u', docId: 'd1' });
+  assert.equal(stub.getText(), '', 'nothing to copy while the document is unread');
+  host.querySelector('#ed-retry').click();
+  await settle(30);
+  assert.equal(calls.length, 2);
+  assert.equal(cm.mounted, 1);
+  assert.equal(stub.getText(), GOOD.text);
+  stub.scrollToOffset(7, 'start');
+  assert.deepEqual(cm.scrolled, [7]);
+  await stub.dispose();
+  assert.equal(cm.destroyed, 1, 'closing the stub closes the editor behind it');
+});
+
+test('closing during the retry round trip throws away the editor that arrives', async () => {
+  const late = deferred();
+  fakeDocs(MID_WRITE, () => late.promise);
+  const cm = fakeCm();
+  const ed = await loadDocEditor();
+  const host = new El('div'); body.append(host);
+  const stub = await ed.mountDocEditor(host, { owner: 'u', docId: 'd1' });
+  host.querySelector('#ed-retry').click();
+  await stub.dispose();
+  late.resolve(GOOD);
+  await settle(30);
+  assert.equal(cm.mounted, 1, 'the read finished and built an editor');
+  assert.equal(cm.destroyed, 1, 'it is dropped at once: nobody holds it any more');
 });
