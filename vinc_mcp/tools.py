@@ -29,7 +29,7 @@ from typing import Any, Callable
 from store import run_state as _run_state
 
 from .bridge import Bridge
-from . import community, events
+from . import community, events, guards
 
 # vinc_mcp 는 api 를 임포트하지 않으므로(독립 브리지 계약) 허용 쌍 문장을 여기
 # 미러한다. 정본은 `api/fragment.py` 의 `_ALLOWED_PAIRS_HINT` 이고, 서버가 거부할 때
@@ -364,7 +364,7 @@ _DELETE_EDGE_TYPES = ("relates_to", "prerequisite_of", "derives_from", "inherits
 from .tool_handlers import (  # noqa: E402,F401
     _CITE_ORIGIN, _cite_origin, _cite_url, DECIDE_PATHS_MAX, _DEGRADED_ANSWER_NOTE, _fetch_doc_or_fail,
     GRAPH_NODE_BUDGET, _kinds_param, _mutation_options, _NODE_PREFIXES, NotFound, _owner, owner_scope,
-    _run_state_writes, _t_brief, _t_conventions, _t_decide, _t_decide_paths, _t_delete, _t_delete_edge,
+    _t_brief, _t_conventions, _t_decide, _t_decide_paths, _t_delete, _t_delete_edge,
     _t_diagnose, _t_doc_delete, _t_doc_extract, _t_doc_get, _t_doc_list, _t_doc_put, _t_domains, _t_edges,
     _t_eval_cards, _t_events, _t_graph, _t_host_fetch, _t_host_search, _t_ingest, _t_merge,
     _t_merge_candidates, _t_merge_reject, _t_merge_rejections, _t_neighbors, _t_node, _t_operation_status,
@@ -2084,26 +2084,24 @@ def call(name: str, args: dict | None, bridge: Bridge,
     if forced_owner:
         args["owner"] = forced_owner
         # 어휘 테마도 **서버가 정한다.** 테마 파일에는 소유 열이 없어서, 클라이언트가
-        # theme_id 를 고를 수 있으면 남의 어휘에 자기 타입이 proposed 로 꽂히고(감사
-        # 2026-08-18 M1 · [[record:risk-themes-global]]), 아무도 안 고르면 전원이 활성
-        # 테마 하나에 고인다. 소유자에서 파생하면 열을 안 늘리고 둘 다 닫힌다.
-        # 웹 평면은 이미 이 값을 벗기고 있었는데, 인증된 MCP 경로가 그 자리를 안 지나서
-        # 그대로 통과했다. 여기가 두 평면이 만나는 자리다 — owner 를 강제하는 그 줄 옆.
+        # theme_id 를 고를 수 있으면 남의 어휘에 자기 타입이 proposed 로 꽂히고, 아무도 안 고르면
+        # 전원이 활성 테마 하나에 고인다. 소유자에서 파생하면 열을 안 늘리고 둘 다 닫힌다.
+        # 근거: [[record:risk-themes-global]]
         # ⚠ 이 도구가 theme_id 를 받을 때만 넣는다. 안 받는 도구의 args 를 늘리면
         #   스키마와 어긋난 값이 실려 다닌다.
         if "theme_id" in (tool["inputSchema"].get("properties") or {}):
             from store.theme_store import owner_theme_id
             args["theme_id"] = owner_theme_id(forced_owner)
-    # 자격(주제 상한)도 owner 와 같은 취급 — 클라이언트가 보낸 값을 신뢰하지 않고
-    # 서버가 해석한 값으로 **덮어쓴다**. 자격이 없으면 키 자체를 지운다(위조 차단).
-    args.pop("_entitlements", None)
+    # 클라이언트가 실어 보낸 권한 인자는 `guards.strip_client_authority` 가 벗긴다. 위에서 서버의
+    # 값으로 덮어쓴 owner·theme_id 는 남기고, 인증된(forced_owner) 경로에서는 `debug` 도 벗는다 —
+    # 실행 계획에는 Cypher 와 다른 소유자 스코프를 가늠할 파라미터가 실린다. 로컬 사이드카
+    # 진단(forced_owner 없음)의 owner·theme_id·debug 는 그대로다. 자격(`_entitlements`)은 늘
+    # 벗기고, 서버가 해석한 값만 아래에서 싣는다(자격이 없으면 키 자체가 없다 — 위조 차단).
+    # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] S13.
+    args = guards.strip_client_authority(
+        args, decided=("owner", "theme_id") if forced_owner else ("owner", "theme_id", "debug"))
     if entitlements and name in CAPPED_TOOLS:
         args["_entitlements"] = dict(entitlements)
-    # 인증된(forced_owner) 경로에서는 `debug` 를 벗긴다 — 실행 계획에는 Cypher 와
-    # 다른 소유자 스코프를 가늠할 파라미터가 실린다. 로컬 사이드카 진단은 그대로다.
-    # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] S13.
-    if forced_owner:
-        args.pop("debug", None)
     if name == community.READ_TOOL and hub:
         # 이 도구는 계정 콜백만 부른다. 명시 주소를 검증할 때까지 보존하고 원문 질의에 흘리지 않는다.
         args["space"] = space

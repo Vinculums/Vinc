@@ -15,7 +15,7 @@ from store import run_state as _run_state
 from store.querybase import DOC_MIRROR_PREFIX, doc_id_of
 
 from .bridge import Bridge
-from . import events
+from . import events, guards
 
 
 def _owner(args: dict, bridge: Bridge) -> str:
@@ -324,14 +324,8 @@ def _t_decide_paths(args, bridge):
     return bridge.request("GET", "/decide-paths", params=params)
 
 
-def _run_state_writes(nodes) -> list[str]:
-    """실행 기록의 프로토콜 상태 필드를 고치려는 노드 id 들. 규칙은 `run_state.writes` 한 벌이다."""
-    from . import run_state
-    return run_state.writes(nodes)
-
-
 def _t_ingest(args, bridge):
-    blocked = _run_state_writes(args.get("nodes"))
+    blocked = guards.run_state_writes(args.get("nodes"))
     if blocked:
         from . import run_protocol
         return {"kind": "ingest", "executed": False, "error": "run_state_protected",
