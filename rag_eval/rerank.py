@@ -58,7 +58,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from api import query as q                                   # noqa: E402
 from store.backend import open_store                         # noqa: E402
 from store.config import load_config                         # noqa: E402
-from store.querybase import is_conventions_chunk_id           # noqa: E402
+from store.querybase import QUERY_SPLIT_RE, is_conventions_chunk_id  # noqa: E402
 
 from rag_eval import search as es                                     # noqa: E402
 from vinc_rag.rerank import (Reranker, gate, parse_model_spec, peak_rss_mb,  # noqa: E402
@@ -98,11 +98,6 @@ def weighted_rrf(ranked_lists: list[list[dict]], weights: list[float], *, k: int
     return out
 
 
-#: 한국어 조사를 벗길 때 쓰는 낱말 경계. `api.query.normalize_query_tokens` 가 쓰는 것과
-#: 같은 집합이다 — 색인 쪽과 질의 쪽이 다르게 자르면 그 자체가 결과를 바꾼다.
-_KO_SPLIT = re.compile(r"[\s,./?!;:()\[\]{}\"'`~]+")
-
-
 def ko_stripped_text(text: str) -> str:
     """낱말마다 조사를 한 번 벗겨 다시 잇는다. 색인 쪽 백필과 질의 쪽이 **같은 함수**를
     써야 한다 — 그래서 여기 한 벌만 둔다(`scripts/r1c_ko_column.py` 가 이것을 부른다).
@@ -114,7 +109,7 @@ def ko_stripped_text(text: str) -> str:
     여기서는 성립하지 않는다 — 과잉 절단의 손해는 재보는 수밖에 없고, 그것이 이
     실험이 재는 것의 절반이다. 근거: [[vinc.plan.retrieval-research-2026-09-08]]"""
     from api.query import _strip_ko_suffix
-    return " ".join(_strip_ko_suffix(t) for t in _KO_SPLIT.split(text or "") if t)
+    return " ".join(_strip_ko_suffix(t) for t in QUERY_SPLIT_RE.split(text or "") if t)
 
 
 #: 가중 RRF 대조군의 기본값. `api.query.rrf_fuse` 의 k 와 같은 수이고, 프로덕션에서는

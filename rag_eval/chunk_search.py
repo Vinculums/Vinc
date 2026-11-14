@@ -25,7 +25,6 @@ import json
 import pathlib
 import random
 import shutil
-import subprocess
 import sys
 import time
 
@@ -35,7 +34,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from rag_eval import search as es            # noqa: E402
-from rag_eval.evalkit import runtime         # noqa: E402
+from rag_eval.evalkit import runtime, stats   # noqa: E402
 
 PAGE = 10
 
@@ -45,9 +44,8 @@ def paired(base: list[float], new: list[float], *, n: int = 2000, seed: int = 7)
     if len(base) != len(new) or not base:
         raise ValueError("paired: 길이가 다르거나 비었다")
     d = [b - a for a, b in zip(base, new)]
-    rng = random.Random(seed)
     m = len(d)
-    boot = sorted(sum(d[rng.randrange(m)] for _ in range(m)) / m for _ in range(n))
+    boot = stats.boot_means(d, n, random.Random(seed))
     return {"delta": round(sum(d) / m, 4), "lo": round(boot[int(0.025 * n)], 4),
             "hi": round(boot[int(0.975 * n)], 4)}
 
@@ -62,14 +60,6 @@ def compare(base: dict, new: dict, metric: str = "ndcg") -> dict:
             continue
         out[name] = paired([r[metric] for r in b], [r[metric] for r in rows])
     return out
-
-
-def _commit() -> str:
-    try:
-        return subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"],
-                              capture_output=True, text=True, timeout=10).stdout.strip()
-    except Exception:
-        return ""
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -119,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
     if store is None:
         print("사본을 열 수 없다", file=sys.stderr)
         return 1
-    header = {"store": a.store, "sha256": sha, "encoder_sha256": onnx_sha, "commit": _commit(),
+    header = {"store": a.store, "sha256": sha, "encoder_sha256": onnx_sha, "commit": runtime.git_head(ROOT),
               "runtime": fp, "runtime_mismatch": mism, "migrate_lex": None}
     try:
         t = time.perf_counter()
