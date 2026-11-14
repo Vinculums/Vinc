@@ -11,7 +11,7 @@
  *  답은 웹(쿠키 세션)에서만 보낸다. 셸의 계정 모드는 키 통과로라 계정이 거절하므로 목록만 보이고
  *  웹으로 여는 길을 준다. 로컬 모드에는 계정의 실행이 없다.
  *  계획: `vinc.plan.agent-approvals-in-the-vinc-app-2026-11-07`, 실행 프로토콜: [[vinc.canon.mcp-contract]] */
-import { api, cfg, WEB, accountMode, canWriteHere, remote, teamsApi } from "../api";
+import { api, cfg, WEB, accountMode, canWriteHere, remote, teamsApi, type ApiError } from "../api";
 import { COPY } from "../copy";
 import { esc } from "../components";
 import { setTopbarLead } from "../topbar";
@@ -193,11 +193,12 @@ export async function renderApprovals(el: HTMLElement): Promise<void> {
         answered.set(run.id, { run, answer, at: Date.parse(r.answered_at) || Date.now() });
         drafts.delete(run.id);
       } else error = String(r?.error || "");
-    } catch (err: any) {
-      // 계정의 오류 봉투(`{error:{code, reason}}`)는 사유가 코드보다 자세하다.
-      error = String(err?.code || "");
-      try { const m = /\{.*\}/s.exec(String(err?.message || "")); const b = m ? JSON.parse(m[0]) : null;
-        error = String(b?.error?.reason || b?.error?.code || error); } catch { /* 코드만 쓴다 */ }
+    } catch (err) {
+      // 계정의 오류 봉투(`{error:{code, reason}}`)는 사유가 코드보다 자세하다. 실패한 응답의 본문은 `ApiError.body` 다.
+      const failure = err as Partial<ApiError> | null | undefined;
+      const b = failure?.body as { error?: { reason?: unknown; code?: unknown } } | null | undefined;
+      error = String(failure?.code || "");
+      error = String(b?.error?.reason || b?.error?.code || error);
     }
     if (!live()) return;
     if (!error) {
