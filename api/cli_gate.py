@@ -3,7 +3,7 @@
 바뀐 경로는 `git diff --name-only --no-renames <ref>...HEAD` 에서 읽고(이름이 바뀐 파일은 이전 경로와
 새 경로가 둘 다 나온다), 리포가 없는 경로는 `repo:path` 로 한정해 `vinc_decide_paths` 에
 `DECIDE_PATHS_MAX` 개씩 나눠 보낸 뒤 한 결과로 합친다. 같은 도구를 MCP·REST 와 함께 쓰므로
-맞춤 규칙은 하나다(`api.query.decide_paths`).
+맞춤 규칙은 하나다(`api.decide_read.decide_paths`).
 
 `--run-id` 를 주면 verdict 하나를 실행 기록 하나(`vinc_client.run.build_run_fragment`)로 남긴다.
 계정 그래프에 쓰기 키가 있을 때만 쓴다. 읽기 전용 키(`vinc_ro_`)면 쓰지 않고 그렇다고 말한다.
