@@ -36,9 +36,9 @@ from store import embedded_schema as _es
 # 청크 상한 — 원격 `MAX_BODY`(4MB, vinc_mcp/http_server.py)보다 넉넉히 아래.
 # 초과하면 허브가 413 으로 거절하고 그 묶음은 올라가지 않는다 → 여유를 크게 둔다.
 CHUNK_BYTES = 3 * 1024 * 1024
-#: 표식 청크와 넘침 엣지 청크(문서 삭제 표식 청크도)가 싣는 항목 개수 상한. 바이트만 보면 3MB 표식 청크 하나가 2만 개를
-#: 넘는데, 허브는 항목 하나를 쓰는 데 수 ms 가 들고 허브에서 사이드카로 가는 요청은 60초에 끊긴다. 한 청크의 적용이 그
-#: 시간의 한참 아래에 머물게 하는 값이다.
+#: 청크 하나가 싣는 항목(노드, 다시 싣는 끝점 노드, 엣지, 삭제 표식)의 개수 상한. 문서 삭제 표식 청크도 같다. 바이트만 보면
+#: 3MB 청크 하나가 표식은 2만 개, 작은 노드는 2만 개를 넘는데, 허브는 항목 하나를 쓰는 데 수 ms 가 들고 허브에서 사이드카로
+#: 가는 요청은 60초에 끊긴다. 한 청크의 적용이 그 시간의 한참 아래에 머물게 하는 값이다.
 CHUNK_ITEMS = 1000
 
 _SEL_KEY = "selected_domains"
@@ -763,18 +763,39 @@ def _marker_chunks(tombs: list, etombs: list, limit: int) -> list[tuple[dict, in
     return out
 
 
-def chunk_bundle(bundle: dict, *, limit: int | None = None) -> list[dict]:
+def _edges_joining(inside: dict, elist: list, placed: set, nid: str, here: set) -> list[int]:
+    """노드 `nid` 가 `here`(이미 든 노드)에 들어오면 그 청크 안에서 양끝이 갖춰지는, 아직 안 놓은 엣지의 번호."""
+    out = []
+    for i in inside.get(nid, ()):
+        if i in placed:
+            continue
+        other = elist[i]["to"] if elist[i]["from"] == nid else elist[i]["from"]
+        if other == nid or other in here:
+            out.append(i)
+    return out
+
+
+def chunk_bundle(bundle: dict, *, limit: int | None = None, held: list | None = None) -> list[dict]:
     """번들을 전송 가능한 크기로 쪼갠다. 노드·엣지·삭제 표식·엣지 삭제 표식 어느 것도 한 청크에 몰아 싣지 않는다.
-    노드 하나가 상한보다 크지 않은 한 어느 청크도 `limit` 바이트를 넘지 않는다.
+
+    한 청크가 `limit` 바이트나 `CHUNK_ITEMS` 개를 넘는 것은 더 쪼갤 수 없을 때뿐이다: 노드 하나(와 그 노드의 삭제
+    표식), 또는 엣지 하나와 그 끝점 둘. 끝점 둘이 각각 상한 가까이 크면 그 엣지의 청크는 허브의 본문 상한도 넘어
+    어떻게 보내도 413 이다. `held` 에 목록을 주면 그런 청크는 돌려주지 않고 `held` 에 `{bytes, limit, nodes, edges,
+    deletes, edge_deletes, error}` 로 적는다(`error` 는 이름과 크기를 대는 문장). 부르는 쪽이 그것을 보내지 않고 알린다.
 
     함께 가야 하는 것, 순서 (허브 `apply_delta` 가 청크마다 이것을 전제한다):
     - **엣지는 양끝 노드와 같은 청크에 싣는다.** 수신측 fragment 는 같은 payload 의 노드로 끝점 타입을 풀고,
       허브에 그 엣지의 삭제 표식이 있으면 같은 청크의 끝점 스탬프가 표식보다 늦을 때만 엣지를 받는다
       (`_edges_after_deletions`). 끝점이 갈라졌거나 자리가 모자란 엣지는 뒤쪽 넘침 청크에 끝점 노드를 다시 실어 보낸다.
-    - **삭제 표식(노드·엣지)은 노드를 쓰는 어떤 청크보다 앞서거나 그 첫 청크에 함께 간다.** 엣지 삭제는 끝점이 이 묶음을
-      적용하기 *전*의 스탬프로 "삭제 뒤에 다시 만든 엣지인가"를 가린다(`_endpoint_stamps_before`). 삭제 뒤에 고친 끝점
-      노드가 먼저 들어가면 허브는 그 삭제를 무시한다. 표식끼리와 표식-노드 사이는 스탬프 비교(LWW)라 순서가 결과를 바꾸지 않는다.
-    - 표식 청크와 넘침 엣지 청크는 개수도 `CHUNK_ITEMS` 로 끊는다. 이 항목들은 하나마다 허브가 쓰기를 한다.
+    - **노드 삭제 표식은 번들에 같은 id 의 노드가 있으면 그 노드와 같은 청크에 싣는다.** 삭제한 노드를 같은 id 로 다시 만들면
+      번들에 노드와 표식이 함께 든다. 한 번의 적용은 노드를 먼저 쓰고 표식을 그 뒤에 견주므로(표식은 더 늦게 고쳐진 노드를
+      지우지 못한다) 허브에 있던 그 노드와 엣지가 남는다. 표식이 먼저 들어가면 그것들을 지우고 노드만 새로 생긴다.
+    - **그 밖의 삭제 표식(노드·엣지)은 노드를 쓰는 어떤 청크보다 앞서거나 그 첫 청크에 함께 간다.** 엣지 삭제는 끝점이 이
+      묶음을 적용하기 *전*의 스탬프로 "삭제 뒤에 다시 만든 엣지인가"를 가린다(`_endpoint_stamps_before`). 삭제 뒤에 고친 끝점
+      노드가 먼저 들어가면 허브는 그 삭제를 무시한다. 이 표식들끼리의 순서는 스탬프 비교(LWW)라 결과를 바꾸지 않는다.
+    - 개수도 `CHUNK_ITEMS` 로 끊는다. 항목 하나마다 허브가 쓰기를 하기 때문이다. 센 것은 청크에 든 노드(다시 실은 끝점
+      포함)·엣지·표식 전부다. 한 청크에 든 엣지의 양끝은 그 청크의 노드라서, 노드를 채울 때 그 노드가 완성하는 엣지의
+      몫을 함께 센다.
     청크는 자기완결이고 멱등이라 중간에 끊겨 다시 보내도 안전하다. 커서·base 는 부르는 쪽이 모든 청크가 받아들여진 뒤에만 옮긴다."""
     limit = CHUNK_BYTES if limit is None else limit
     nodes = bundle.get("nodes") or []
@@ -785,69 +806,131 @@ def chunk_bundle(bundle: dict, *, limit: int | None = None) -> list[dict]:
         return []
 
     by_id = {n["id"]: n for n in nodes}
+    node_bytes = {i: _json_bytes(n) for i, n in by_id.items()}
+    own: dict[str, list[dict]] = {}          # 번들에 같은 id 의 노드가 있는 노드 삭제 표식
+    loose: list[dict] = []
+    for t in tombs:
+        if t.get("node_id") in by_id:
+            own.setdefault(t["node_id"], []).append(t)
+        else:
+            loose.append(t)
+    uniq: dict[tuple, dict] = {}
+    for e in edges:
+        uniq.setdefault((e["from"], e["type"], e["to"]), e)
+    elist = list(uniq.values())
+    edge_bytes = [_json_bytes(e) for e in elist]
+    inside: dict[str, list[int]] = {}        # 양끝이 모두 번들 노드인 엣지를 끝점별로
+    for i, e in enumerate(elist):
+        if e["from"] in by_id and e["to"] in by_id:
+            for end in {e["from"], e["to"]}:
+                inside.setdefault(end, []).append(i)
+
+    # 노드를 채운다. 노드 하나는 자기 삭제 표식과 함께 가고, 들어오며 완성하는 엣지의 바이트·개수까지 센다.
     chunks: list[dict] = []
     sizes: list[int] = []
-    cur: list[dict] = []
-    size = 0
+    counts: list[int] = []
+    placed: set[int] = set()
+    cur: dict = {"nodes": [], "edges": []}
+    here: set[str] = set()
+    size = count = 0
     for n in nodes:
-        b = _json_bytes(n)
-        if cur and size + b > limit:
-            chunks.append({"nodes": cur, "edges": []})
+        mine = own.pop(n["id"], [])
+        b = node_bytes[n["id"]] + sum(_json_bytes(t) for t in mine)
+        c = 1 + len(mine)
+        joined = _edges_joining(inside, elist, placed, n["id"], here)
+        if cur["nodes"] and (size + b + sum(edge_bytes[i] for i in joined) > limit
+                             or count + c + len(joined) > CHUNK_ITEMS):
+            chunks.append(cur)
             sizes.append(size)
-            cur, size = [], 0
-        cur.append(n)
-        size += b
-    if cur:
-        chunks.append({"nodes": cur, "edges": []})
+            counts.append(count)
+            cur, here, size, count = {"nodes": [], "edges": []}, set(), 0, 0
+            joined = _edges_joining(inside, elist, placed, n["id"], here)
+        cur["nodes"].append(n)
+        here.add(n["id"])
+        if mine:
+            cur.setdefault("tombstones", []).extend(mine)
+        for i in joined:
+            cur["edges"].append(elist[i])
+            placed.add(i)
+        size += b + sum(edge_bytes[i] for i in joined)
+        count += c + len(joined)
+    if cur["nodes"]:
+        chunks.append(cur)
         sizes.append(size)
+        counts.append(count)
 
-    # 엣지를 양끝이 함께 든 청크에 배치; 갈라진 엣지는 별도 청크(양끝 노드 동봉).
-    # 엣지 바이트도 상한에 센다. 근거 문장이 실리므로 노드만 세면 청크가 상한을 넘는다.
-    placed = set()
-    for i, ch in enumerate(chunks):
-        have = {n["id"] for n in ch["nodes"]}
-        for e in edges:
-            k = (e["from"], e["type"], e["to"])
-            if k in placed or e["from"] not in have or e["to"] not in have:
-                continue
-            b = _json_bytes(e)
-            if sizes[i] + b > limit:
-                continue                      # 넘치면 아래 넘침 청크로 간다
-            ch["edges"].append(e)
-            sizes[i] += b
-            placed.add(k)
-    spill = [e for e in edges if (e["from"], e["type"], e["to"]) not in placed]
-    # 넘침 청크도 상한을 지킨다: 엣지와 아직 안 실은 끝점 노드를 함께 세어 넘으면 새 청크. 끝점이 번들에 없는 엣지
-    # (노드 없이 엣지만 온 번들)는 노드 없이 엣지만 싣는다 — 수신측이 스토어에서 끝점을 찾는다.
+    # 갈라진 엣지는 별도 넘침 청크에 양끝 노드를 다시 실어 보낸다. 엣지와 아직 안 실은 끝점 노드를 함께 바이트·개수로
+    # 세어 넘으면 새 청크. 끝점이 번들에 없는 엣지(노드 없이 엣지만 온 번들)는 노드 없이 엣지만 싣는다 — 수신측이
+    # 스토어에서 끝점을 찾는다.
     s_ids: set[str] = set()
     s_edges: list[dict] = []
-    size = 0
-    for e in spill:
-        ends = {i for i in (e["from"], e["to"]) if i in by_id}
-        b = _json_bytes(e) + sum(_json_bytes(by_id[i]) for i in ends - s_ids)
-        if s_edges and (size + b > limit or len(s_edges) >= CHUNK_ITEMS):
-            chunks.append({"nodes": [by_id[i] for i in sorted(s_ids)], "edges": s_edges})
+    size = count = 0
+    for i, e in enumerate(elist):
+        if i in placed:
+            continue
+        ends = {x for x in (e["from"], e["to"]) if x in by_id}
+        new = ends - s_ids
+        b = edge_bytes[i] + sum(node_bytes[x] for x in new)
+        c = 1 + len(new)
+        if s_edges and (size + b > limit or count + c > CHUNK_ITEMS):
+            chunks.append({"nodes": [by_id[x] for x in sorted(s_ids)], "edges": s_edges})
             sizes.append(size)
-            s_ids, s_edges = set(), []
-            b = _json_bytes(e) + sum(_json_bytes(by_id[i]) for i in ends)
-            size = 0
-        s_ids |= ends
+            counts.append(count)
+            s_ids, s_edges, size, count = set(), [], 0, 0
+            new = ends
+            b = edge_bytes[i] + sum(node_bytes[x] for x in new)
+            c = 1 + len(new)
+        s_ids |= new
         s_edges.append(e)
         size += b
+        count += c
     if s_edges:
-        chunks.append({"nodes": [by_id[i] for i in sorted(s_ids)], "edges": s_edges})
+        chunks.append({"nodes": [by_id[x] for x in sorted(s_ids)], "edges": s_edges})
         sizes.append(size)
+        counts.append(count)
 
-    # 삭제 표식은 노드 청크보다 앞에 둔다. 마지막 표식 청크는 첫 노드 청크에 자리가 있으면 거기에 합친다.
-    marks = _marker_chunks(tombs, etombs, limit)
+    # 나머지 삭제 표식은 노드 청크보다 앞에 둔다. 마지막 표식 청크는 첫 청크에 자리가 있으면 거기에 합친다.
+    marks = _marker_chunks(loose, etombs, limit)
     if marks and chunks:
         last, m_size, m_count = marks[-1]
-        if m_size + sizes[0] <= limit and m_count + len(chunks[0]["edges"]) <= CHUNK_ITEMS:
+        if m_size + sizes[0] <= limit and m_count + counts[0] <= CHUNK_ITEMS:
             for key in ("tombstones", "edge_tombstones"):
                 if last[key]:
-                    chunks[0][key] = last[key]
+                    chunks[0].setdefault(key, []).extend(last[key])
+            sizes[0] += m_size
             marks.pop()
-    return [c for c, _, _ in marks] + chunks
+    out = [c for c, _, _ in marks] + chunks
+    if held is None:
+        return out
+    # 더 쪼갤 수 없어 상한을 넘은 청크만 본문을 실제로 재서 허브의 상한과 견준다.
+    big = [i for i, sz in enumerate([m[1] for m in marks] + sizes) if sz > limit]
+    if not big:
+        return out
+    from vinc_mcp import syncclient
+    hub_limit = _hub_body_limit()
+    drop = set()
+    for i in big:
+        wire = syncclient.push_bytes(out[i])
+        if wire > hub_limit:
+            held.append(_held_chunk(out[i], wire, hub_limit))
+            drop.add(i)
+    return [c for i, c in enumerate(out) if i not in drop]
+
+
+def _held_chunk(chunk: dict, wire: int, hub_limit: int) -> dict:
+    """허브의 본문 상한을 넘어 보내지 않는 청크를 이름으로 댄다."""
+    ids = [n.get("id") for n in chunk.get("nodes") or []]
+    refs = [edge_ref(e.get("from"), e.get("type"), e.get("to")) for e in chunk.get("edges") or []]
+    deletes = [t.get("node_id") for t in chunk.get("tombstones") or []]
+    edge_deletes = [edge_ref(t.get("src"), t.get("rel"), t.get("dst"))
+                    for t in chunk.get("edge_tombstones") or []]
+    named = refs or ids or deletes or edge_deletes
+    shown = ", ".join(str(x) for x in named[:3]) + (f" and {len(named) - 3} more" if len(named) > 3 else "")
+    return {"bytes": wire, "limit": hub_limit, "nodes": ids, "edges": refs, "deletes": deletes,
+            "edge_deletes": edge_deletes,
+            "error": (f"a sync chunk of {wire:,} bytes ({shown}) is more than the hub accepts in one request "
+                      f"({hub_limit:,} bytes), so it was not sent and stays queued; shrink the notes it names "
+                      "to sync it")}
 
 
 # ── apply (3-way 병합, S3) ────────────────────────────────────────────────────
@@ -1438,7 +1521,11 @@ def push_local(store, cfg, *, owner: str, remote) -> dict:
     push 성공 후 보낸 노드의 **base 를 로컬 현재값으로** 갱신한다(S3). 이유: base 는
     '마지막으로 원격과 합의한 값'이라야 3-way 가 이후 로컬 편집만 delta 로 잡는다.
     안 하면 로컬-only 편집이 매 sync 재전송되거나(에코), push 후·pull 전 편집이 조상에
-    섞여 유실될 수 있다."""
+    섞여 유실될 수 있다.
+
+    더 쪼갤 수 없어 허브의 본문 상한을 넘는 청크(`chunk_bundle` 의 `held`)는 보내지 않는다. 413 으로 모든 동기화가 그
+    청크에서 멈추기 때문이다. 결과 `held` 와 `warnings` 가 그 청크를 이름과 크기로 대고, 청크가 실은 노드는 새 순번을
+    받아 다음 동기화에 다시 실린다. 어느 청크로도 가지 못한 노드의 base 는 옮기지 않는다."""
     since = get_cursor(store, "push")
     bundle = export_delta(owner=owner, since=since, cfg=cfg, store=store)
     if not bundle.get("executed"):
@@ -1449,23 +1536,37 @@ def push_local(store, cfg, *, owner: str, remote) -> dict:
     if not nodes and not (bundle.get("edges") or []) and not tombs and not etombs:
         return {"phase": "push", "executed": True, "sent": 0, "deletes": 0, "edge_deletes": 0,
                 "cursor": since}
-    res = remote.push(chunk_bundle(bundle))
+    held: list[dict] = []
+    chunks = chunk_bundle(bundle, held=held)
+    res = remote.push(chunks)
     refused = _refused_ids(res)
-    for n in nodes:                       # base := 방금 보낸(=원격과 합의된) 값
+    # 허브의 본문 상한을 넘어 보내지 않은 청크(`chunk_bundle`)의 노드. 다른 청크로 간 노드는 보낸 것이다.
+    unsent = _held_names(held) - {n["id"] for ch in chunks for n in ch.get("nodes") or []}
+    sent_nodes = [n for n in nodes if n.get("id") not in unsent]
+    for n in sent_nodes:                  # base := 방금 보낸(=원격과 합의된) 값
         label = _SYNC_TYPES.get(n.get("type") or "")
         # 허브가 받지 않은 노드는 합의된 값이 아니다. base 를 옮기면 다음 3-way 가 그 편집을 잃는다.
         if label and n.get("id") not in refused:
             set_base(store, n["id"], label, _snapshot(label, n),
                      int(n.get("_rev") or 0), n.get("_updated_at") or "")
     set_cursor(store, "push", bundle["next_cursor"])
-    out = {"phase": "push", "executed": True, "sent": len(nodes),
+    out = {"phase": "push", "executed": True, "sent": len(sent_nodes),
            "deletes": len(tombs), "edge_deletes": len(etombs), "remote": res,
            "cursor": bundle["next_cursor"]}
+    if refused or held:
+        _send_again(store, owner, bundle, refused | _held_names(held))
     if refused:
-        _send_again(store, owner, bundle, refused)
         out[revstamp.CLOCK_SKEW] = sorted(refused)
         out["warnings"] = [revstamp.clock_skew_warning(len(refused))]
+    if held:
+        out["held"] = held
+        out["warnings"] = [*out.get("warnings", []), *(h["error"] for h in held)]
     return out
+
+
+def _held_names(held: list[dict]) -> set:
+    """보내지 않은 청크가 실은 노드·삭제 표식·엣지 삭제 표식의 이름(`_send_again` 이 읽는 이름)."""
+    return {x for h in held for key in ("nodes", "deletes", "edge_deletes") for x in h.get(key) or []}
 
 
 def _refused_ids(reply) -> set:
@@ -1554,16 +1655,26 @@ def _hub_body_limit() -> int:
     return hub_http.MAX_BODY
 
 
-def too_large_docs(payload: dict) -> list[dict]:
+def _doc_sizes(docs: list[dict]) -> list[int]:
+    """문서마다 본문에 실리는 JSON 의 바이트. 문서를 인코딩하는 곳은 여기 하나다 — `too_large_docs` 와 `_chunk_docs` 가
+    같은 목록을 받아 쓴다."""
+    return [_compact_bytes(d) for d in docs]
+
+
+def too_large_docs(payload: dict, sizes: list[int] | None = None) -> list[dict]:
     """혼자서 허브의 본문 상한을 넘는 문서. 프로토콜이 문서 하나를 쪼개지 못하므로 보낼 수 없다.
 
     항목은 `{doc_id, title, bytes, limit, error}` 다. `bytes` 는 그 문서 하나를 `docs_push` 가 싣는 본문의 크기이고
-    `error` 는 문서와 크기를 이름으로 대는 문장이다."""
+    `error` 는 문서와 크기를 이름으로 대는 문장이다. `sizes` 는 `_doc_sizes` 의 목록이다(없으면 여기서 잰다). 문서 하나가
+    든 본문은 문서 없는 본문에 그 문서의 JSON 만큼을 더한 크기다."""
     from vinc_mcp import syncclient
     limit = _hub_body_limit()
+    docs = payload.get("docs") or []
+    sizes = _doc_sizes(docs) if sizes is None else sizes
+    empty = syncclient.docs_push_bytes({"docs": [], "tombstones": []})
     out = []
-    for d in payload.get("docs") or []:
-        size = syncclient.docs_push_bytes({"docs": [d], "tombstones": []})
+    for d, own in zip(docs, sizes):
+        size = empty + own
         if size > limit:
             doc_id, title = d.get("doc_id") or "?", d.get("title") or ""
             out.append({"doc_id": doc_id, "title": title, "bytes": size, "limit": limit,
@@ -1574,25 +1685,28 @@ def too_large_docs(payload: dict) -> list[dict]:
     return out
 
 
-def _chunk_docs(payload: dict, max_bytes: int | None = None) -> list[dict]:
+def _chunk_docs(payload: dict, max_bytes: int | None = None, sizes: list[int] | None = None) -> list[dict]:
     """docs 를 크기 기준으로 쪼갠다(허브 MAX_BODY 4MB 보호 — 초과는 허브가 413 으로
     거절한다). 각 조각은 자기완결 LWW 라 재전송·순서 뒤바뀜에 안전하다.
 
     - 조각의 목표 크기 `max_bytes` 는 기본이 1.5MB 이고 허브 상한의 3/8 을 넘지 않는다.
     - 크기는 본문에 실리는 JSON 의 실제 바이트로 잰다(줄바꿈·따옴표 이스케이프가 들어간다).
     - 혼자서 상한을 넘는 문서(`too_large_docs`)는 어느 조각에도 싣지 않는다. 부르는 쪽이 그 문서를 알리고 큐에 남긴다.
+    - `sizes` 는 `_doc_sizes` 의 목록이다. 부르는 쪽이 이미 쟀으면 넘겨서 문서를 다시 인코딩하지 않는다.
     - 삭제 표식은 문서 조각 뒤에 온다. 바이트와 `CHUNK_ITEMS` 안에서 마지막 문서 조각에 합치고, 넘치면 표식만 든
       조각을 더 만든다.
     보낼 것이 없으면 빈 목록이다."""
     if max_bytes is None:
         max_bytes = min(1_500_000, _hub_body_limit() * 3 // 8)
-    skip = {t["doc_id"] for t in too_large_docs(payload)}
+    docs = payload.get("docs") or []
+    sizes = _doc_sizes(docs) if sizes is None else sizes
+    skip = {t["doc_id"] for t in too_large_docs(payload, sizes)}
     groups: list[list[dict]] = []
     size = 0
-    for d in payload.get("docs") or []:
+    for d, own in zip(docs, sizes):
         if d.get("doc_id") in skip:
             continue
-        n = _compact_bytes(d) + 1
+        n = own + 1
         if groups and size + n > max_bytes:
             groups.append([])
             size = 0
@@ -1632,10 +1746,11 @@ def push_docs(store, cfg, *, owner: str, remote) -> dict:
     if not docs and not tombs:
         return {"phase": "docs-push", "executed": True, "sent": 0, "deletes": 0,
                 "cursor": since}
-    too_large = too_large_docs(payload)
+    sizes = _doc_sizes(docs)
+    too_large = too_large_docs(payload, sizes)
     agg = {"applied": 0, "updated": 0, "skipped": 0, "deleted": 0}
     refused: set = set()
-    for ch in _chunk_docs(payload):
+    for ch in _chunk_docs(payload, sizes=sizes):
         res = remote.docs_push(ch)
         for k in agg:
             agg[k] += int(res.get(k) or 0)
@@ -1754,7 +1869,8 @@ def push_everything(store, cfg, *, owners: list[str], remote) -> dict:
             raise RuntimeError(bundle.get("note") or "could not read this device's graph")
         nodes = bundle.get("nodes") or []
         edges = bundle.get("edges") or []
-        chunks = chunk_bundle(bundle)
+        held: list[dict] = []
+        chunks = chunk_bundle(bundle, held=held)
         # 끝점이 갈라진 엣지의 청크는 노드를 한 번 더 싣는다. 받았다는 수는 청크마다
         # 세므로 대조도 청크에 실린 수로 한다(노드 수로 하면 넘친 만큼 빠진 것을 가린다).
         carried = sum(len(ch.get("nodes") or []) for ch in chunks)
@@ -1764,13 +1880,14 @@ def push_everything(store, cfg, *, owners: list[str], remote) -> dict:
         doc_payload = docsync.export_docs(store, owner=owner, everything=True)
         docs = doc_payload.get("docs") or []
         # 혼자서 허브의 본문 상한을 넘는 문서는 보내지 못한다. 받았다는 수에 들지 않아 `missing` 에 든다.
-        too_large = too_large_docs(doc_payload)
+        sizes = _doc_sizes(docs)
+        too_large = too_large_docs(doc_payload, sizes)
         doc_res = {"applied": 0, "updated": 0, "skipped": 0}
         # 계정이 받지 않은 항목(보낸 쪽 시계가 앞섬)은 받았다는 수에 들지 않아 `missing` 에 든다.
         # 이 스토어에는 쓰지 않으므로 다시 옮기기를 하면 그대로 다시 보낸다.
         refused = list(node_res.get(revstamp.CLOCK_SKEW) or [])
         if docs:
-            for ch in _chunk_docs({"docs": docs, "tombstones": []}):
+            for ch in _chunk_docs({"docs": docs, "tombstones": []}, sizes=sizes):
                 res = remote.docs_push(ch)
                 for k in doc_res:
                     doc_res[k] += int(res.get(k) or 0)
@@ -1782,9 +1899,10 @@ def push_everything(store, cfg, *, owners: list[str], remote) -> dict:
         acked_nodes = (int(node_res.get("applied") or 0)
                        + int(node_res.get("skipped_stale") or 0) - kept_deleted)
         acked_docs = sum(doc_res.values())
+        # 허브의 본문 상한을 넘어 보내지 않은 청크도 받았다는 수에 들지 않으므로 하나씩 `missing` 에 든다.
         missing = (max(0, before["nodes"] - len(nodes))
                    + max(0, carried - kept_deleted - acked_nodes)
-                   + max(0, before["docs"] - len(docs)) + max(0, len(docs) - acked_docs))
+                   + max(0, before["docs"] - len(docs)) + max(0, len(docs) - acked_docs) + len(held))
         rep["left_behind"] += int(before.get("left_behind") or 0)
         rep["owners"][owner] = {"before": before, "sent_nodes": len(nodes),
                                 "sent_edges": len(edges), "sent_docs": len(docs),
@@ -1796,6 +1914,9 @@ def push_everything(store, cfg, *, owners: list[str], remote) -> dict:
         rep["docs"] += len(docs)
         rep["missing"] += missing
         rep["warnings"] += node_res.get("warnings") or []
+        if held:
+            rep.setdefault("held", []).extend(held)
+            rep["warnings"] += [h["error"] for h in held]
         if too_large:
             rep.setdefault("too_large", []).extend(too_large)
             rep["warnings"] += [t["error"] for t in too_large]

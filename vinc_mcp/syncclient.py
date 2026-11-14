@@ -51,6 +51,15 @@ def _post(base: str, path: str, token: str, payload: dict, *, timeout: float) ->
         raise SyncError(f"remote {path} unreachable: {type(e).__name__}") from None
 
 
+def _push_body(chunk: dict) -> dict:
+    return {"bundle": {**chunk, **HANDLES}}
+
+
+def push_bytes(chunk: dict) -> int:
+    """`push` 가 청크 하나를 허브에 싣는 요청 본문의 바이트 수. 허브의 본문 상한(`hub_http.MAX_BODY`)과 견줄 때 쓴다."""
+    return len(hubhttp.encode_json(_push_body(chunk)))
+
+
 def push(bundle_chunks: list[dict], *, token: str, base: str = DEFAULT_URL,
          timeout: float = TIMEOUT) -> dict:
     """청크를 순차 전송. 각 청크는 자기완결·멱등이라 중단 후 재전송해도 안전하다.
@@ -61,7 +70,7 @@ def push(bundle_chunks: list[dict], *, token: str, base: str = DEFAULT_URL,
     warnings: list[str] = []
     refused: list = []
     for i, ch in enumerate(bundle_chunks):
-        out = _post(base, "/sync/push", token, {"bundle": {**ch, **HANDLES}}, timeout=timeout)
+        out = _post(base, "/sync/push", token, _push_body(ch), timeout=timeout)
         if not out.get("executed"):
             raise SyncError(f"chunk {i + 1}/{len(bundle_chunks)} rejected: "
                             f"{out.get('note') or out.get('error') or 'unknown'}")
