@@ -11,6 +11,7 @@ from test_topic_transfer import RawStore, SOURCE, TARGET, TOPIC, STAMP, seed, in
 from store.embedded_schema import render_embedded_ddl
 from store.topic_transfer import TransferRefused, fingerprint, plan_transfer, read_snapshot, transformed_snapshot
 from api import topic_conversion as tc
+from topic_rehearsal import injected_failure
 
 RUN = "00000000-0000-4000-8000-000000000099"
 
@@ -64,8 +65,8 @@ def test_commit_fences_both_scopes_until_account_activation(native):
 @pytest.mark.parametrize("point", ["nodes", "edges", "delete", "journal"])
 def test_failure_before_commit_preserves_original(native, point):
     before = fingerprint(read_snapshot(native))
-    with pytest.raises(RuntimeError, match="injected"):
-        stage(native, fail_at=point)
+    with pytest.raises(RuntimeError, match="injected"), injected_failure(point):
+        stage(native)
     after = read_snapshot(native)
     after["meta"]["_SyncMeta"] = [r for r in after["meta"]["_SyncMeta"] if not r["key"].startswith(tc.PREFIX)]
     assert fingerprint(after) == before
