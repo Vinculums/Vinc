@@ -26,7 +26,7 @@ import uuid
 from contextlib import contextmanager
 
 from . import pkns
-from .embedded_backend import _filter_clause, _Result
+from .adapter_common import CHILD_FANOUT, OVERSAMPLE, Result, filter_clause, fold_children
 from .write_batch import Batch, BatchSlot, flush
 from .embedded_schema import meta_table_specs, node_table_specs
 
@@ -38,8 +38,6 @@ _VEC_INDEX = "vinc_chunkvec_embedding"
 _NODE_VEC_INDEX = "vinc_nodevec_embedding"
 #: Lucene 질의 문법에서 뜻을 갖는 글자. 사용자 낱말은 낱말로만 찾게 하나씩 이스케이프한다.
 _LUCENE_SPECIAL = re.compile(r'([+\-!(){}\[\]^"~*?:\\/&|])')
-_CHILD_FANOUT = 4
-_OVERSAMPLE = 5
 
 
 class Neo4jVersionError(RuntimeError):
@@ -137,13 +135,13 @@ def lucene_terms(text: str) -> str:
 
 
 class _Session:
-    """neo4j Session 위의 얇은 판 — `.run(cypher, **params)` 가 `_Result` 를 준다(임베디드와 같다)."""
+    """neo4j Session 위의 얇은 판 — `.run(cypher, **params)` 가 `Result` 를 준다(임베디드와 같다)."""
 
     def __init__(self, backend):
         self._b = backend
 
     def run(self, cypher: str, **params):
-        return _Result(self._b.run(cypher, params or None))
+        return Result(self._b.run(cypher, params or None))
 
     def close(self):
         pass
@@ -438,9 +436,9 @@ class Neo4jBackend:
         q = lucene_terms(lex_text(text))
         if not q:
             return []
-        k = int(top_k) * (_OVERSAMPLE if filters else 1)
+        k = int(top_k) * (OVERSAMPLE if filters else 1)
         params: dict = {"q": q, "k": k}
-        where = _filter_clause("node", filters, params)
+        where = filter_clause("node", filters, params)
         rows = self.run(
             f"CALL db.index.fulltext.queryNodes('{_FTS_INDEX}', $q) YIELD node, score "
             f"{where}"
@@ -450,9 +448,9 @@ class Neo4jBackend:
 
     def vector_search(self, embedding, top_k, filters=None, *, conn=None) -> list[dict]:
         """자식(ChunkVec)에서 찾아 부모(Chunk)로 접는다. 거리는 1 - 코사인(임베디드와 같은 척도)."""
-        k = int(top_k) * (_OVERSAMPLE if filters else 1)
-        params: dict = {"emb": list(embedding), "k": k * _CHILD_FANOUT}
-        where = _filter_clause("p", filters, params)
+        k = int(top_k) * (OVERSAMPLE if filters else 1)
+        params: dict = {"emb": list(embedding), "k": k * CHILD_FANOUT}
+        where = filter_clause("p", filters, params)
         rows = self.run(
             f"CALL db.index.vector.queryNodes('{_VEC_INDEX}', $k, $emb) YIELD node AS v, score "
             "MATCH (p:Chunk {chunk_id: v.chunk_id}) "
@@ -460,14 +458,11 @@ class Neo4jBackend:
             # Neo4j 의 코사인 점수는 (1 + cos) / 2 다. 거리 1 - cos 로 되돌린다.
             "RETURN p.chunk_id AS id, p.text AS text, 2 - 2 * score AS distance "
             "ORDER BY distance", params)
-        best: dict[str, dict] = {}
-        for r in rows:
-            best.setdefault(r.get("id"), r)
-        return list(best.values())[:int(top_k)]
+        return fold_children(rows, top_k)
 
     def node_vector_search(self, embedding, top_k, *, owner=None, conn=None,
                            use_index: bool = False, kinds=None) -> list[dict]:
-        params: dict = {"emb": list(embedding), "k": int(top_k) * (_OVERSAMPLE if owner or kinds else 1)}
+        params: dict = {"emb": list(embedding), "k": int(top_k) * (OVERSAMPLE if owner or kinds else 1)}
         where = ""
         if owner:
             where, params["owner"] = "WHERE v.owner_id = $owner ", owner

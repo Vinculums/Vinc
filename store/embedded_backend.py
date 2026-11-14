@@ -31,6 +31,8 @@ import weakref
 from contextlib import contextmanager, nullcontext
 
 from . import pkns, request_timing
+from .adapter_common import (CHILD_FANOUT, CHUNK_FILTER_KEYS, OVERSAMPLE, Result,
+                             filter_clause, fold_children)
 from .write_batch import Batch, BatchSlot, flush
 from .envflag import truthy
 from .open_diagnostics import emit_open_failure
@@ -612,39 +614,11 @@ def _driver_error_text(exc: BaseException) -> str:
     return str(exc)
 
 
-#: 청크 검색 필터가 받는 키 — Chunk 표에 실제로 있는 열이다.
-_CHUNK_FILTER_KEYS = ("owner_id", "layer", "doc_id")
-
-
-def _filter_clause(var: str, filters: dict | None, params: dict, *,
-                   keyword: str = "WHERE") -> str:
-    """스코프 필터를 술어로 렌더(pre-filter, §4-2 — 스코프 1차 §1). params 를
-    in-place 로 채운다. QUERY_*_INDEX 의 YIELD 와 RETURN 사이에 붙인다.
-
-    ⚠ `keyword` 는 **붙는 자리에 이미 WHERE 가 있는가**로 정한다. `vector_search` 는
-    자식→부모 되돌리기(`MATCH (p:Chunk) WHERE p.chunk_id = node.chunk_id`) 때문에
-    WHERE 를 이미 갖고 있어서, 기본값을 그대로 쓰면 `WHERE … WHERE …` 가 되어
-    **파서가 통째로 거부한다**. 실제로 그렇게 났다(2026-08-07): F2 가 청크 팔에
-    owner 를 넘기기 시작하자 벡터 팔이 `Parser exception` 으로 죽었다. 그전에는
-    filters 가 None 이라 이 함수가 빈 문자열을 돌려줘 결함이 가려져 있었고, 질의
-    임베딩 자체가 없어 벡터 팔이 아예 안 돌던 것도 겹쳤다.
-
-    받는 키는 Chunk 의 실제 열(:data:`_CHUNK_FILTER_KEYS`)뿐이고, 모르는 키는 던진다.
-    조용히 버리면 `/search?doc=X` 가 같은 소유자의 다른 문서를 섞어 내고(`doc_id` 가
-    그렇게 버려졌다), Chunk 에 없는 열을 받으면 엔진이 Binder 오류로 쿼리를 죽인다."""
-    if not filters:
-        return ""
-    unknown = sorted(set(filters) - set(_CHUNK_FILTER_KEYS))
-    if unknown:
-        raise ValueError(f"unsupported chunk search filter: {', '.join(unknown)} "
-                         f"(Chunk columns: {', '.join(_CHUNK_FILTER_KEYS)})")
-    preds = []
-    for key in _CHUNK_FILTER_KEYS:
-        val = filters.get(key)
-        if val is not None:
-            preds.append(f"{var}.{key} = ${key}")
-            params[key] = val
-    return (f"{keyword} " + " AND ".join(preds) + " ") if preds else ""
+# 사설 별칭. 스코프 필터와 결과 묶음은 `store.adapter_common` 에 있고(두 어댑터가 같이 쓴다),
+# 이 이름들은 같은 객체를 가리킨다. 이 이름으로 부르는 호출부·테스트가 그대로 돈다.
+_CHUNK_FILTER_KEYS = CHUNK_FILTER_KEYS
+_filter_clause = filter_clause
+_Result = Result
 
 
 # ── DDL 배타 가드 — 인덱스·스키마 DDL 은 혼자 돈다 ─────────────────────────────
@@ -826,22 +800,6 @@ def _exclusive_ddl(fn):
     return wrapper
 
 
-class _Result:
-    """neo4j Result 동형 — 반복 가능 + `.single()`, 레코드는 dict(컬럼명 키)."""
-
-    def __init__(self, records: list[dict]):
-        self._records = records
-
-    def __iter__(self):
-        return iter(self._records)
-
-    def single(self):
-        return self._records[0] if self._records else None
-
-    def data(self) -> list[dict]:
-        return list(self._records)
-
-
 def _batched_exec(batch: Batch, conn, query: str, params, raw: bool = False) -> list[dict]:
     """묶음 안의 한 문장. 실패하면 엔진이 트랜잭션을 되돌리므로 묶음을 깨진 것으로 적고 다시 던진다.
     깨진 뒤의 문장은 엔진에 보내지 않는다(보내면 트랜잭션 밖에서 하나씩 커밋된다)."""
@@ -855,7 +813,7 @@ def _batched_exec(batch: Batch, conn, query: str, params, raw: bool = False) -> 
 
 
 class _Session:
-    """neo4j Session 동형 — `.run(cypher, **kwargs)` → `_Result`."""
+    """neo4j Session 동형 — `.run(cypher, **kwargs)` → `Result`."""
 
     def __init__(self, conn, guard=None, batch=None):
         self._conn = conn
@@ -867,8 +825,8 @@ class _Session:
             self._guard(cypher)
         b = self._batch() if self._batch is not None else None
         if b is None:
-            return _Result(_exec_to_dicts(self._conn, cypher, params or None))
-        return _Result(_batched_exec(b, self._conn, cypher, params or None))
+            return Result(_exec_to_dicts(self._conn, cypher, params or None))
+        return Result(_batched_exec(b, self._conn, cypher, params or None))
 
     def close(self):
         pass
@@ -891,7 +849,7 @@ class _ReaderView:
     #: `api.query.search` 가 owner 스코프 요청에서 이 표식을 확인하고, 없으면 청크
     #: 팔을 아예 돌리지 않는다(fail-closed). 표식을 안 다는 구현은 필터를 무시할 수도
     #: 있고, 그 경우 "스코프를 걸었다고 믿는 무스코프 조회"가 되기 때문이다 —
-    #: 위험 감사 1.1 이 정확히 그 모양이었다. 실제 적용은 :func:`_filter_clause`.
+    #: 위험 감사 1.1 이 정확히 그 모양이었다. 실제 적용은 :func:`store.adapter_common.filter_clause`.
     scoped_chunk_search = True
 
     @property
@@ -1642,9 +1600,10 @@ class EmbeddedBackend:
     #: 노드 색인까지 무너뜨린다.
     _NODE_VEC_INDEX = "node_vec"
     # 자식 과추출 배수 — 한 부모의 조각들이 상위 k 를 다 차지하지 않게(:meth:`vector_search`).
-    _CHILD_FANOUT = 4
+    # 값은 `store.adapter_common` 에 하나만 둔다(Neo4j 어댑터와 같은 값).
+    _CHILD_FANOUT = CHILD_FANOUT
     _FTS_INDEX = "chunk_ft"
-    _OVERSAMPLE = 5   # pre-filter 보장용 과추출 배수(§4-2 — 스코프 필터 선택도 대비)
+    _OVERSAMPLE = OVERSAMPLE   # pre-filter 보장용 과추출 배수(§4-2 — 스코프 필터 선택도 대비)
 
     def _load_ext(self, ext: str, *, reader: bool = False) -> None:
         """벡터/FTS/algo 확장 로드(ladybug 는 확장 기능 — 정적 링크가 아님).
@@ -2298,7 +2257,7 @@ class EmbeddedBackend:
         # 필터는 부모(Chunk)의 열을 본다 — 자식엔 layer 도 text 도 없다.
         # ⚠ `AND` 다. 아래 MATCH 가 자식→부모 되돌리기로 WHERE 를 **이미** 쓰고 있어서
         #    WHERE 를 또 붙이면 파서가 쿼리를 통째로 거부한다(실측 2026-08-07).
-        where = _filter_clause("p", filters, params, keyword="AND")
+        where = filter_clause("p", filters, params, keyword="AND")
         cypher = (
             f"CALL QUERY_VECTOR_INDEX('ChunkVec','{self._VEC_INDEX}', $emb, $k) "
             "MATCH (p:Chunk) WHERE p.chunk_id = node.chunk_id "
@@ -2309,15 +2268,12 @@ class EmbeddedBackend:
         with request_timing.measure("vector_index"):
             with _vector_query_guard():
                 rows = _exec_to_dicts(c, cypher, params)
-        best: dict[str, dict] = {}
-        for r in rows:                       # 이미 distance 오름차순 — 첫 등장이 최소
-            best.setdefault(r.get("id"), r)
-        out = list(best.values())[:int(top_k)]
+        out = fold_children(rows, top_k)     # 이미 distance 오름차순 — 첫 등장이 최소
         if filters and len(out) < int(top_k):
             # 필터는 **전역** HNSW 상위 k 뒤에 걸린다. 그 안에 이 필터의 행이 모자라면(작은
             # 스페이스·문서 하나) 필터 안을 정확히 훑는다. 거리는 색인의 기본(코사인)과 같은
             # 값이고(실측), 매개변수를 묶는 평범한 조회라 읽기 커넥션에서 돈다(DDL 없음).
-            scope = _filter_clause("p", filters, params)       # 여기선 첫 WHERE 다
+            scope = filter_clause("p", filters, params)        # 여기선 첫 WHERE 다
             with request_timing.measure("vector_fallback"):
                 out = _exec_to_dicts(
                     c, f"MATCH (p:Chunk) {scope}"
@@ -2488,7 +2444,7 @@ class EmbeddedBackend:
             if not text.strip():
                 return []                 # 기호만 있는 질의 — 엔진에 빈 질의를 보내지 않는다
         params: dict = {"q": text, "k": k}
-        where = _filter_clause("node", filters, params)
+        where = filter_clause("node", filters, params)
         cypher = (
             f"CALL QUERY_FTS_INDEX('Chunk','{self._FTS_INDEX}', $q) "
             f"{where}"

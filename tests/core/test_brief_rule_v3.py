@@ -83,6 +83,19 @@ def test_the_mean_row_scores_the_bias_only():
     assert q._brief_v3_p(list(q._V3_MU)) == pytest.approx(1 / (1 + math.exp(-q._V3_W[-1])))
 
 
+def test_first_ten_features_follow_the_research_definition():
+    # v3 특징의 앞 열(:func:`_brief_learned_features`)은 연구 정의 그대로다. 순서·정의가 바뀌면 상수가 뜻을 잃는다.
+    hits = [{"id": "a", "title": "Alpha", "colbert": 0.62, "prod_rank": 3, "hit_tokens": 2, "token_total": 4,
+             "title_tokens": 1, "sem_lead": 0.05, "distance": 0.4},
+            {"id": "b", "title": "Bravo", "colbert": 0.50, "prod_rank": 1, "hit_tokens": 1, "token_total": 4,
+             "title_tokens": 1, "distance": None}]
+    assert q._brief_learned_features("알파는?", hits) == pytest.approx(
+        [0.62, 0.12, 0.0, 3.0, 0.5, 1.0, 1.0, 0.05, 0.4, 1.0])
+    one = q._brief_learned_features("alpha", hits[:1])
+    assert one[1] == pytest.approx(0.62) and one[6] == 2.0
+    assert q._brief_learned_features("x", [{"id": "a"}]) is None     # 재채점 안 된 목록
+
+
 def test_hidden_row_features():
     hits = _lexical_hits()
     res = _res(hits, validity_filtered=3, validity_best_dropped=[4, 2], validity_best_dropped_distance=0.30)
@@ -146,8 +159,8 @@ def test_semantic_none_abstains_on_the_pre_rescore_order(run_brief):
     hits = _semantic_only_prod_head()
     out = run_brief("what is it", _res(hits))
     assert out["status"] == "none" and out["note"] == "no sufficiently close semantic candidate"
-    # v2 는 ColBERT 순서 앞 다섯을 보므로 토큰 맞은 행 때문에 기권하지 않는다.
-    assert run_brief("what is it", _res(hits), rule="learned")["status"] != "none"
+    # ColBERT 순서 앞 다섯으로 보면 토큰 맞은 행 때문에 기권하지 않는다 — 기권은 재채점 전 순서에서 나온다.
+    assert not brief_mod._brief_semantic_none(_res(hits))
 
 
 def test_semantic_none_ignores_a_colbert_head_that_is_semantic_only(run_brief, monkeypatch):
@@ -163,8 +176,8 @@ def test_token_tie_guard_does_not_run_on_v3(run_brief, monkeypatch):
     # 감춘 행이 1위와 토큰으로 비긴다. 기존 가드라면 되묻고, v3 는 특징으로만 본다.
     res = _res(_lexical_hits(), validity_filtered=1, validity_best_dropped=[2, 1],
                validity_best_dropped_distance=0.34)
-    monkeypatch.setattr(brief_mod, "_brief_resolve_learned", lambda query, hits: ("resolved", [hits[0]], 0.9))
-    assert run_brief("what is it", res, rule="learned")["status"] == "choose"
+    monkeypatch.setattr(brief_mod, "_brief_resolve", lambda query, hits, **kw: ("resolved", [hits[0]]))
+    assert run_brief("what is it", res, rule="production")["status"] == "choose"
     monkeypatch.setattr(brief_mod, "_brief_v3_p", lambda x: 0.9)
     out = run_brief("what is it", res)
     assert _picked(out) == "concept:n1" and "validity_note" not in out
@@ -209,10 +222,14 @@ def test_retrieval_switches_report_the_effective_values(monkeypatch):
 def test_switch_is_explicit_and_defaults_to_production(monkeypatch, run_brief):
     monkeypatch.delenv("VINC_BRIEF_RULE", raising=False)
     assert q._brief_rule() == "production" and not q._brief_rule_v3() and not q._brief_rule_colbert()
-    for raw, want in (("v3", "v3"), (" V3 ", "v3"), ("learned", "learned"), ("bogus", "production"), ("", "production")):
+    for raw, want in (("v3", "v3"), (" V3 ", "v3"), ("learned", "production"), ("bogus", "production"),
+                      ("", "production")):
         monkeypatch.setenv("VINC_BRIEF_RULE", raw)
         assert q._brief_rule() == want
     monkeypatch.setenv("VINC_BRIEF_RULE", "v3")
-    assert q._brief_rule_v3() and q._brief_rule_colbert() and not q._brief_rule_learned()
+    assert q._brief_rule_v3() and q._brief_rule_colbert()
     assert run_brief("what is it", _res([]), rule="v3")["_qc"] == "TOKENS"
     assert run_brief("what is it", _res([]), rule="production")["_qc"] is None
+    # 모르는 값은 production 그대로 답한다: ColBERT 순서를 안 받고 `resolution` 도 싣지 않는다.
+    out = run_brief("what is it", _res(_lexical_hits()), rule="learned")
+    assert out["_qc"] is None and "resolution" not in out

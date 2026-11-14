@@ -34,6 +34,15 @@
 /agents/                                         @Vinculums/platform
 /infra/                                          @Vinculums/platform
 /packaging/                                      @Vinculums/platform
+/api/brief.py                                    @Vinculums/rag
+/api/graph_edit.py                               @Vinculums/rag
+/api/graph_layout.py                             @Vinculums/rag
+/api/graph_rank.py                               @Vinculums/rag
+/api/graph_read.py                               @Vinculums/rag
+/api/neighbors.py                                @Vinculums/rag
+/api/node_read.py                                @Vinculums/rag
+/api/paths.py                                    @Vinculums/rag
+/api/query_base.py                               @Vinculums/rag
 /engines/recall_ingest.py                        @Vinculums/rag
 /packaging/bake_embed_model.py                   @Vinculums/rag
 /scripts/bench_models.py                         @Vinculums/rag
