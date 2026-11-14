@@ -65,4 +65,14 @@ export interface ViewHost {
   curEdges(): GraphEdge[];
   /** 지도 밖 진입점의 열기: 그 노드를 고르고(카드 · 주소) 레일까지 연다. */
   openDetail(nd: N3): void;
+  /** 지금 열의 판(레일의 `revision`). 열을 다시 열거나 층을 다시 그리면 바뀐다: 늦게 온 응답은 판이 같은지로 가린다. */
+  railRevision(): number;
+  /** 열이 넓게(지도를 덮는 크기로) 열려 있는가(레일의 `full`). */
+  railFull(): boolean;
+  /** 노드 상세의 ask 줄에 수치를 채우는 손. 노드 상세가 그리지 않았거나 다른 것이 열을 차지하면 null. */
+  railAskCounts(): ((deg: number, docs: number) => void) | null;
+  /** 그 손을 놓는다. 같은 열에 문서를 그릴 때 늦게 온 노드 수치가 문서의 메뉴를 덮지 않게 한다. */
+  dropRailAskCounts(): void;
+  /** 그 노드를 지도에 다시 세우고 문서 열의 노드 상세로 연다(기본 정보를 저장한 뒤). */
+  openNodePane(id: string, domain?: string, label?: string): Promise<void>;
 }

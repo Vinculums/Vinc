@@ -370,7 +370,7 @@ class TieSignalE2E(_EngineCase):
         self.assertFalse(self._ties(limit=50)["truncated"])
 
     def test_기존_필드는_그대로다(self):
-        """앱(view.ts)이 읽는 네 필드 — 지우거나 이름을 바꾸면 화면이 죽는다.
+        """앱(view-reader.ts 의 잇기 제안)이 읽는 네 필드 — 지우거나 이름을 바꾸면 화면이 죽는다.
 
         (이 검사만은 수정 전 코드에서도 통과한다. 회귀를 잡는 것이 아니라 **앞으로
         지우지 못하게** 못박는 하위호환 가드다.)"""
