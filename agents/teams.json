@@ -35,6 +35,7 @@
         "scripts/seed_bilingual.py",
         "scripts/seed_tooluse.py",
         "scripts/tooluse_shell.py",
+        "api/brief.py",
         "engines/recall_ingest.py",
         "packaging/bake_embed_model.py",
         ".github/workflows/rerank-probe.yml",
