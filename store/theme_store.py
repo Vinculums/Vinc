@@ -5,8 +5,9 @@
 (GraphStore→LadybugDB)가 아니라 별도 주제 메타(`<data_dir>.themes.json` — DB 파일 형제)에 둔다.
 어휘 편집이 그래프 데이터를 건드리지 않게 분리하는 것이 요점(IMPL §3).
 
-원자적 쓰기(tempfile + os.replace)는 `vinc_mcp/lifecycle.py::_write_state_atomic`
-패턴을 그대로 차용한다. 모든 뮤테이션은 사이드카 잡 큐(`api/jobs.py` run_sync)로
+원자적 쓰기(tempfile + os.replace)는 `_save` 가 한다: 같은 디렉터리의 임시 파일에 다 쓴 뒤
+os.replace 로 옮기는 방식이라 `store/atomicjson.py::write_json_0600` 과 같은 모양이다.
+모든 뮤테이션은 사이드카 잡 큐(`api/jobs.py` run_sync)로
 직렬화되어 호출되므로(R4) 쓰기 경합이 없다 — 리더는 파일을 직접 읽고, os.replace 가
 완전한 이전/이후 스냅샷을 보장한다.
 
