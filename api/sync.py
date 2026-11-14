@@ -1547,8 +1547,10 @@ def push_local(store, cfg, *, owner: str, remote) -> dict:
         label = _SYNC_TYPES.get(n.get("type") or "")
         # 허브가 받지 않은 노드는 합의된 값이 아니다. base 를 옮기면 다음 3-way 가 그 편집을 잃는다.
         if label and n.get("id") not in refused:
+            # 소유자 키로 쓴다: 병합(`apply_delta`)이 같은 키로 읽는다. 빼면 PK 네임스페이싱에서 아무도 못 읽는 행이 쌓이고
+            # 병합은 빈 조상으로 떨어진다.
             set_base(store, n["id"], label, _snapshot(label, n),
-                     int(n.get("_rev") or 0), n.get("_updated_at") or "")
+                     int(n.get("_rev") or 0), n.get("_updated_at") or "", owner)
     set_cursor(store, "push", bundle["next_cursor"])
     out = {"phase": "push", "executed": True, "sent": len(sent_nodes),
            "deletes": len(tombs), "edge_deletes": len(etombs), "remote": res,
