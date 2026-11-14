@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from api import docstore, fragment, query as q
+from api import docstore, fragment, node_read, query as q
 from store.backend import open_store
 from store.config import StoreConfig
 
@@ -70,7 +70,7 @@ class CitationIdsTests(unittest.TestCase):
         self.assertTrue(all(c["cite_id"] == c["id"] for c in out["candidates"]))
 
     def test_citation_lookup_failure_keeps_rows_and_exposes_failure(self):
-        with patch.object(q, "_doc_cite_ids", side_effect=RuntimeError("lookup failed")):
+        with patch.object(node_read, "_doc_cite_ids", side_effect=RuntimeError("lookup failed")):
             out = q.search("Canonical citation", owner="user:cites", store=self.store)
             brief = q.brief("concept:citation", owner="user:cites", store=self.store)
         self.assertTrue(out["rows"])
@@ -91,8 +91,8 @@ class SearchCitationStoreFailureTests(unittest.TestCase):
 
     def test_citation_only_store_open_failure_preserves_search_results(self):
         with patch.object(q._retrieval, "search", return_value=self._result()), \
-                patch.object(q, "load_config", return_value=object()), \
-                patch.object(q, "open_store", side_effect=RuntimeError("open failed")):
+                patch.object(node_read, "load_config", return_value=object()), \
+                patch.object(node_read, "open_store", side_effect=RuntimeError("open failed")):
             out = q.search("citation", owner="user:cites")
         self.assertEqual(out["rows"][0]["id"], "cites.present#00000")
         self.assertEqual(out["rows"][0]["score"], 7.5)
@@ -107,8 +107,8 @@ class SearchCitationStoreFailureTests(unittest.TestCase):
         store.run.return_value = [{"id": "concept:doc.cites.present"}]
         store.close.side_effect = RuntimeError("close failed")
         with patch.object(q._retrieval, "search", return_value=self._result()), \
-                patch.object(q, "load_config", return_value=object()), \
-                patch.object(q, "open_store", return_value=store):
+                patch.object(node_read, "load_config", return_value=object()), \
+                patch.object(node_read, "open_store", return_value=store):
             out = q.search("citation", owner="user:cites")
         self.assertEqual(out["rows"][0]["cite_id"], "concept:doc.cites.present")
         self.assertEqual(out["next_cursor"], "original-cursor")

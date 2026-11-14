@@ -15,6 +15,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from api import node_read  # noqa: E402
 from api import query as q  # noqa: E402
 from store import pkns  # noqa: E402
 
@@ -130,7 +131,7 @@ class FtsFallbackRank(_Store, unittest.TestCase):
     LINKED = False
 
     def test_전문_검색_순위를_지킨다(self):
-        with mock.patch.object(q, "_owner_fts_ids", return_value=(["c2", "c1", "c0"], "")), \
+        with mock.patch.object(node_read, "_owner_fts_ids", return_value=(["c2", "c1", "c0"], "")), \
                 mock.patch.dict(os.environ, {"VINC_EXCERPT_WINDOW": "head"}):
             out = self._ctx(limit=3)
         self.assertEqual({e["method"] for e in out["excerpts"]}, {"fts"})

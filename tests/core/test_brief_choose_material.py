@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from api import docstore as ds  # noqa: E402
 from api import fragment as frag  # noqa: E402
+from api import brief as brief_mod  # noqa: E402
 from api import query as q  # noqa: E402
 from store.embedded_backend import import_driver  # noqa: E402
 from vinc_mcp import tools  # noqa: E402
@@ -105,7 +106,7 @@ class ChooseMaterialE2E(unittest.TestCase):
     def test_목록과_나머지_응답은_재료가_없을_때와_같다(self):
         self._brief("alpha")                           # 지연 색인 빌드를 먼저 치른다
         on = self._brief("alpha")
-        with mock.patch.object(q, "_brief_candidate_material", return_value=None):
+        with mock.patch.object(brief_mod, "_brief_candidate_material", return_value=None):
             off = self._brief("alpha")
         self.assertNotIn("candidate_material", off)
         on.pop("candidate_material")

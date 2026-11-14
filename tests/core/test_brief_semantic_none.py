@@ -4,6 +4,7 @@ import math
 import unittest
 from unittest import mock
 
+from api import brief as brief_mod
 from api import query as q
 
 
@@ -50,7 +51,7 @@ class SemanticNoneTests(unittest.TestCase):
         self.assertFalse(q._brief_semantic_none({"node_hits": []}))
 
     def test_brief_returns_executed_none_without_candidates_or_grounds(self):
-        with mock.patch.object(q, "search", return_value=result(0.6)):
+        with mock.patch.object(brief_mod, "search", return_value=result(0.6)):
             out = q.brief("xqzvjk", owner="user:test", store=object())
         self.assertTrue(out["executed"])
         self.assertEqual(out["status"], "none")
@@ -62,7 +63,7 @@ class SemanticNoneTests(unittest.TestCase):
         res = result(0.6)
         res.update(vector_note=q.UNSTAMPED_RUNTIME_NOTE, encoder_runtime_warning=True)
         self.assertTrue(q._brief_semantic_none(res))
-        with mock.patch.object(q, "search", return_value=res):
+        with mock.patch.object(brief_mod, "search", return_value=res):
             out = q.brief("xqzvjk", owner="user:test", store=object())
         self.assertEqual(out["status"], "none")
         self.assertEqual(out["vector_note"], q.UNSTAMPED_RUNTIME_NOTE)
@@ -70,7 +71,7 @@ class SemanticNoneTests(unittest.TestCase):
         self.assertFalse(q._brief_semantic_none(res))
 
     def test_near_zero_token_multilingual_candidate_still_asks_back(self):
-        with mock.patch.object(q, "search", return_value=result(0.4)):
+        with mock.patch.object(brief_mod, "search", return_value=result(0.4)):
             out = q.brief("다국어 질문", owner="user:test", store=object())
         self.assertEqual(out["status"], "choose")
         self.assertEqual(out["candidates"][0]["id"], "concept:a")

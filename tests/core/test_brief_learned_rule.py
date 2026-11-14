@@ -8,6 +8,7 @@ import math
 
 import pytest
 
+from api import brief as brief_mod
 from api import query as q
 
 
@@ -31,10 +32,10 @@ def test_the_mean_row_scores_the_bias_only():
 
 
 def test_threshold_splits_and_named_wins(monkeypatch):
-    monkeypatch.setattr(q, "_brief_learned_p", lambda x: q._LEARNED_T)
+    monkeypatch.setattr(brief_mod, "_brief_learned_p", lambda x: q._LEARNED_T)
     st, picked, p = q._brief_resolve_learned("what is it", _hits())
     assert (st, picked[0]["id"], p) == ("resolved", "a", q._LEARNED_T)
-    monkeypatch.setattr(q, "_brief_learned_p", lambda x: q._LEARNED_T - 1e-9)
+    monkeypatch.setattr(brief_mod, "_brief_learned_p", lambda x: q._LEARNED_T - 1e-9)
     st, picked, _ = q._brief_resolve_learned("what is it", _hits())
     assert st == "choose" and [h["id"] for h in picked] == ["a", "b"]
     st, picked, p = q._brief_resolve_learned("  bravo ", _hits())
@@ -55,7 +56,7 @@ def test_production_rule_never_sees_the_colbert_order(monkeypatch):
         seen["qc"] = kw.get("query_colbert")
         return {"executed": True, "node_hits": [], "rows": []}
 
-    monkeypatch.setattr(q, "search", fake_search)
+    monkeypatch.setattr(brief_mod, "search", fake_search)
     monkeypatch.delenv("VINC_BRIEF_RULE", raising=False)
     q.brief("what is it", owner="o", query_colbert="TOKENS", store=object())
     assert seen["qc"] is None
