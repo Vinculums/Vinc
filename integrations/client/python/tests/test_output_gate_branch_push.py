@@ -2,7 +2,10 @@
 
 P1 부분집합: 이 게이트가 거는 것(끼어들기·막기)은 main 도 같은 검사로 건다. 새로 거는 것이 없다.
 P2 차이: main 이 끼어들고 이 게이트가 통과시키는 출력은, main 이 건 것이 모두 push_tag 이고 그 문장이
-    이름 붙은 작업 브랜치(보호 이름·태그·버전이 아닌)의 push 인 것뿐이다.
+    이름 붙은 작업 브랜치(보호 이름·태그·버전이 아닌)의 push 인 것뿐이다. 다른 행동의 질문이 줄어드는 차이는
+    키워드가 작업 브랜치 이름의 한 조각이거나 다른 낱말의 속일 때뿐이고(embedded_or_named), 말뭉치에서는 사람이 읽고
+    적은 글뿐이다(REVIEWED_OTHER_READINGS: 소유자에게 남긴다는 말, git 용어). 이 차이를 다루는 시험은
+    test_output_gate_false_positives.py 다.
 P3 권하는 말: 거절·끼어들기가 권하는 말은 통과하고, 그 브랜치 자리에 보호·태그 이름을 넣으면 main 과 같이 걸린다.
 P4 완료 주장: 막는 출력의 집합은 main 과 같고, 메시지는 무엇을 시도했고 결과를 어디서 읽는지 말하라고 한다.
 
@@ -18,6 +21,7 @@ import time
 import pytest
 
 from output_gate_corpus import CASES, MAIN_COMMIT
+from output_gate_cues import named_drop
 from output_gate_corpus_record import PROPS
 from output_gate_main_reference import main_person_only
 from vinc_client.output_gate import BRANCH_PUSH_EXAMPLE, RESTATE_EXAMPLE, OutputGate
@@ -34,6 +38,13 @@ _NOT_ORDINARY = re.compile(
 # 말뭉치에서 main 이 끼어들고 이 게이트가 통과시킨 출력: id 와, 사람이 읽은 그 문장의 브랜치 이름.
 # 비어 있지 않으면 하나하나 읽고 여기 적는다. 시험은 이 목록 밖의 차이를 실패로 본다.
 REVIEWED_DIFFERENCES: dict[str, str] = {}
+# 위와 같되 branch push 가 아니라 키워드 곁의 말을 읽어 거둔 정직한 글: id 와, 사람이 읽은 그 말. 비어 있지 않으면 하나하나 읽고 적는다.
+REVIEWED_OTHER_READINGS: dict[str, str] = {
+    "c2-235": "is the owner's decision",
+    "c2-236": "stay with the owner",
+    "c3-156": "merge queue rejected",
+    "t-051": "is the owner's call",
+}
 
 
 def _split(field: str) -> set[str]:
@@ -67,11 +78,14 @@ def test_the_corpus_keeps_p1_and_every_difference_is_a_reviewed_branch_push():
         assert ("side_effect_evidence" in mine) == ("side_effect_evidence" in main_failed), (cid, text)
         if mine != main_failed:
             differences.append(cid)
+            if cid in REVIEWED_OTHER_READINGS:
+                assert main_failed - mine == {"person_only"} and REVIEWED_OTHER_READINGS[cid] in text.replace("’", "'"), (cid, text)
+                continue
             # P2: main 이 건 것이 push_tag 하나뿐이고, 사람이 읽은 브랜치 이름이 그 글에 있으며 보호·태그 꼴이 아니다.
             assert main_failed - mine == {"person_only"} and _split(actions) == {"push_tag"}, (cid, text)
             name = REVIEWED_DIFFERENCES.get(cid)
             assert name and name in text and not _NOT_ORDINARY.search(name), (cid, text)
-    assert sorted(differences) == sorted(REVIEWED_DIFFERENCES)
+    assert sorted(differences) == sorted(set(REVIEWED_DIFFERENCES) | set(REVIEWED_OTHER_READINGS))
 
 
 # ---- 생성 시험: 문장 틀 × 대상 × 따옴표 × 플래그 × 덧붙는 절. 표지는 생성기가 대상의 종류에서 붙인다.
@@ -151,7 +165,8 @@ def test_the_generated_outputs_keep_p1_and_differ_only_on_an_ordinary_branch_pus
         main = set(main_person_only(text, ACTIONS))
         assert mine <= main, (text, mine, main)
         dropped = main - mine
-        assert dropped <= {"push_tag"}, (text, dropped)
+        # push_tag 말고 줄어든 행동은 그 낱말이 브랜치 이름의 조각일 때뿐이다(fix/send-retry 의 send).
+        assert all(a == "push_tag" or named_drop(text, a, main_person_only, ACTIONS) for a in dropped), (text, dropped)
         if dropped:
             assert ordinary, text
             if mine:
