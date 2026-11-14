@@ -139,7 +139,6 @@ def test_app_startup_restores_cancelled_run_when_new_conversion_feature_is_off(n
         assert not legacy.fenced(native, SOURCE)
     finally:
         app.jobs.shutdown(drain=True)
-        app.roots.close()
         app._graph_reads.close()
 
 

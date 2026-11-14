@@ -32,7 +32,7 @@ GET_ROUTES: dict[str, str] = {
     "/roles": "read_roles",
     "/roles/export": "read_role_export",
     "/learner": "read_learner", "/graph": "read_graph",
-    "/graph/roots": "read_graph_roots",   # 들고 있는 시간 가지 배치(`api.layout_remote`)
+    "/graph/roots": "read_graph_roots",   # 시간 가지 배치 자리: 늘 꺼진 답
     "/search": "read_search", "/decide": "read_decide",
     "/decide-paths": "read_decide_paths",   # 결정 문
     "/themes": "read_themes", "/types": "read_types",
@@ -177,7 +177,7 @@ def store_unavailable() -> dict:
 def route_get(app, path: str, params: dict):
     """GET 디스패치. 반환은 `(상태, 본문)` 이다."""
     if app.store is not None and topic_conversion_guard.guard_active(app.store):
-        # Covers cached staged reads and remote layouts which bypass _read.
+        # Covers cached staged reads which bypass _read.
         from . import topic_conversion as conversion
         code, result = app._read(lambda r: conversion.check_read(r, params.get("owner")))
         if code != 200:

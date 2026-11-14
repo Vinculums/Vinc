@@ -44,7 +44,7 @@ HUB_APP = os.environ.get("HUB_APP") or target_hub_app()
 ACCOUNT_APP = os.environ.get("ACCOUNT_APP") or target_account_app()
 # 게이트는 여기 적힌 앱만 읽는다. 목록에 없는 앱은 라이브에 남아 있어도 대조하지 않으므로
 # 앱을 내릴 때는 이 목록과 기준선에서 먼저 빼고, 라이브 삭제는 그 뒤에 해도 게이트가 울지 않는다.
-APPS = (HUB_APP, ACCOUNT_APP, "vinc-layout")
+APPS = (HUB_APP, ACCOUNT_APP)
 RG = "vincsRG"
 BASELINE = Path(__file__).resolve().parent / "app-config-baseline.json"
 

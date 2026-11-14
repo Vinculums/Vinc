@@ -3,7 +3,7 @@
     "what": "files -> history-marker comment lines, counted by scripts/gate_comment_history.py",
     "regenerate": "python -X utf8 scripts/gate_comment_history.py --write-baseline",
     "new_file_allowance": 3,
-    "total": 2269
+    "total": 2267
   },
   "files": {
     ".github/actions/runner-preflight/action.yml": 3,
@@ -20,7 +20,6 @@
     ".github/workflows/hub-store-rebuild.yml": 7,
     ".github/workflows/hub-store-recover.yml": 3,
     ".github/workflows/infra.yml": 8,
-    ".github/workflows/layout-deploy.yml": 1,
     ".github/workflows/pk-migrate.yml": 3,
     ".github/workflows/prefetch-bench.yml": 2,
     ".github/workflows/release.yml": 39,
@@ -55,7 +54,6 @@
     "api/graph_cache.py": 2,
     "api/graphmd.py": 11,
     "api/jobs.py": 4,
-    "api/layout_remote.py": 1,
     "api/localmode.py": 1,
     "api/merge_candidates.py": 6,
     "api/mirror_status.py": 1,

@@ -53,12 +53,12 @@ class ProjectionTests(unittest.TestCase):
 
     def test_strict_capture_does_not_turn_an_unanswered_read_into_a_baseline(self):
         with patch("gate_app_config._az", side_effect=RuntimeError("unavailable")):
-            self.assertTrue(measure(apps=("vinc-layout",))["vinc-layout"]["missing"])
+            self.assertTrue(measure(apps=("vinc-account-vnet",))["vinc-account-vnet"]["missing"])
             with self.assertRaises(RuntimeError):
-                measure(apps=("vinc-layout",), strict=True)
+                measure(apps=("vinc-account-vnet",), strict=True)
         with patch("gate_app_config._az", side_effect=[_show(), RuntimeError("auth unavailable")]):
             with self.assertRaises(RuntimeError):
-                measure(apps=("vinc-layout",), strict=True)
+                measure(apps=("vinc-account-vnet",), strict=True)
 
     def test_값은_투영에_실리지_않는다(self):
         """env 값·시크릿 값이 기준선에 새면 기준선 파일이 유출면이 된다."""

@@ -196,9 +196,8 @@ class HubSecretCleanup(unittest.TestCase):
             self.assertNotIn(name, hub["env_names"])
         for name in RETIRED_SECRETS:
             self.assertNotIn(name, hub["secret_names"])
-        # 배치 앱은 단계 2 에서 지울 때까지 기준선에 남는다.
-        self.assertIn("VINC_LAYOUT_TOKEN", baseline["vinc-layout"]["env_names"])
-        self.assertIn("layout-token", baseline["vinc-layout"]["secret_names"])
+        # 배치 앱은 기준선에도 게이트의 앱 목록에도 없다.
+        self.assertNotIn("vinc-layout", baseline)
 
 
 if __name__ == "__main__":
