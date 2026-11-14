@@ -24,7 +24,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; img-src 'self' data:; connect-src 'self' http://127.0.0.1:*; style-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self' http://127.0.0.1:*; style-src 'self' 'unsafe-inline'"
     },
     "withGlobalTauri": false
   },
