@@ -26,6 +26,12 @@ REQUIRED = [None, "", " ", "0", "1", "on", "off", "true", "false", "yes", "no",
 
 CASES = [(fn, i) for fn in ENV for i in range(len(VALUES))]
 
+#: 이 두 이름은 파서가 아니라 규칙 표(`_BRIEF_RULES`)의 칸이다. 같은 환경변수에서 기록된 답이 나와야 한다.
+TABLE_FIELDS = {
+    "_brief_rule_v3": lambda: brief_mod._BRIEF_RULES[brief_mod._brief_rule()].needs_rescore,
+    "_brief_rule_colbert": lambda: brief_mod._BRIEF_RULES[brief_mod._brief_rule()].uses_colbert,
+}
+
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
@@ -50,11 +56,11 @@ def test_parser_answers_match_the_recorded_table(monkeypatch, fn, i):
     if value is not None:
         monkeypatch.setenv(ENV[fn], value)
     want = TABLE["answers"][fn][i]
-    got = getattr(brief_mod, fn)()
+    got = TABLE_FIELDS[fn]() if fn in TABLE_FIELDS else getattr(brief_mod, fn)()
     assert got == want and type(got) is type(want), (fn, ENV[fn], value, got, want)
 
 
-@pytest.mark.parametrize("fn", sorted(ENV))
+@pytest.mark.parametrize("fn", sorted(set(ENV) - set(TABLE_FIELDS)))
 def test_query_reexport_is_the_same_function(fn):
     assert getattr(q, fn) is getattr(brief_mod, fn)
 
