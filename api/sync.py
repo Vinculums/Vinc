@@ -25,6 +25,7 @@ import json
 import os
 
 from . import fragment as frag
+from . import node_schema
 from . import revstamp
 from . import syncmerge
 from . import query as q
@@ -39,29 +40,9 @@ CHUNK_BYTES = 3 * 1024 * 1024
 _SEL_KEY = "selected_domains"
 
 # ── 동기화 필드(=merge_fragment 가 실제로 왕복시키는 것만, S3) ─────────────────
-# 급소: **fragment 가 왕복시키는 필드만** 나른다 — 그 밖의 필드(Concept 의 topic·
-# status·stem, Episode 의 pinned)는 동기화하면 유실된다([[vinc.spec.dataplane §6.1]]).
-# Concept 의 one_liner 와 Episode 의 props 는 fragment 가 왕복시키므로 여기 든다.
-# ⚠ 열이 있는 라벨에만 넣을 것 — 없는 라벨에 넣으면 `_local_snapshot` 의 SELECT 가
-# Binder 로 죽는다(`content_time` 은 Concept 에만 있다).
-# ⚠ `created`(출생)는 여기 넣지 않는다 — 3-way 병합 대상이 아니고 규칙이 다르다
-# (`_reconcile_birth` — 가장 이른 값이 이긴다 · [[vinc.plan.sync-node-time-fields]]).
-SYNC_FIELDS: dict[str, tuple[str, ...]] = {
-    "Concept": ("title", "domain", "tags", "props", "content_time", "one_liner"),
-    "Episode": ("title", "date", "domain", "summary", "tags", "props"),
-    # Record — 라이브 실측 277건으로 **노드 종류 중 최대**인데 여기 없어서 기기와
-    # 계정 사이를 통째로 못 오갔다. Bridge·Entity 제외는 아래 스코프 결정이지만
-    # Record 는 그 문장에도 없었다: 빠진 줄 아무도 몰랐다는 뜻이다.
-    # 열은 Concept 과 같다(content_time 은 v7 이 Concept·Record 둘 다에 붙였다).
-    # v15(W13) — 유효구간 둘. 여기 안 넣으면 한 기기의 무효화("X 까지였다")가
-    # 다른 기기로 안 넘어가 그쪽에서 낡은 주장이 유효한 채 남는다.
-    "Record": ("title", "domain", "tags", "props", "content_time",
-               "valid_from", "valid_until"),
-    # v12 — 결정. **빼면 안 된다**: 결정은 여태 Concept 이었고 그래서 동기화되고
-    # 있었다. 라벨만 옮기고 여기 안 넣으면 기기 간에 결정이 조용히 안 넘어간다
-    # (오류도 경고도 없이 — 다른 기기에서 결정이 통째로 사라진 것처럼 보인다).
-    "Decision": ("title", "domain", "tags", "props"),
-}
+# 정본은 `api.node_schema.NODE_FIELDS` 이고 넣는 규칙과 근거(Concept·Episode·Record·Decision 이 왜 들고
+# Bridge·Entity 가 왜 빠지는지)도 그 표에 있다. 여기는 그 기록에서 만든 표다.
+SYNC_FIELDS: dict[str, tuple[str, ...]] = node_schema.sync_fields_table()
 # fragment 노드 타입 → 라벨(export/apply 대상). Bridge/Entity 제외는 이제 왕복 결함이
 # 아니라 **스코프 결정**(F1 포팅으로 Entity 필드는 왕복 가능; Bridge 구조 필드
 # source/target_domain 은 여전히 fragment 미기록) — 편입은 후속 과제.
@@ -73,9 +54,8 @@ _SYNC_LABELS = tuple(_SYNC_TYPES.values())
 _SYNC_PK = {lbl: frag._NODE_MAP[t][1] for t, lbl in _SYNC_TYPES.items()}
 #: 나중에 SYNC_FIELDS 에 든 필드. 이 필드를 모르는 구버전 클라이언트의 번들에는 **키가 없다**.
 #: 키가 없는 것을 "원격이 비웠다"로 읽으면 3-way 병합이 받는 쪽 값을 지우므로,
-#: apply 는 키가 없으면 그 필드를 말하지 않은 것으로 본다(`apply_delta`).
-_LATE_SYNC_FIELDS: dict[str, tuple[str, ...]] = {"Concept": ("one_liner",),
-                                                 "Episode": ("props",)}
+#: apply 는 키가 없으면 그 필드를 말하지 않은 것으로 본다(`apply_delta`). `NODE_FIELDS` 의 `late` 열이다.
+_LATE_SYNC_FIELDS: dict[str, tuple[str, ...]] = node_schema.late_sync_fields_table()
 #: 근거 열이 ALTER 기본값(''·0.0)으로 붙은 rel(v3 의 다섯, v16 의 ATTACHES_TO). 열이 붙기
 #: 전부터 있던 행의 그 값은 "모름"이라 실어 보내면 받는 쪽의 실제 근거·신뢰도를 덮는다. 그래서 값이 있을
 #: 때만 싣는다. RETURNS_TO·SUPERSEDES 는 열과 함께 만들어져 0.0 도 저작한 값이다.

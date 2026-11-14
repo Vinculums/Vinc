@@ -3,7 +3,7 @@
     "what": "files -> history-marker comment lines, counted by scripts/gate_comment_history.py",
     "regenerate": "python -X utf8 scripts/gate_comment_history.py --write-baseline",
     "new_file_allowance": 3,
-    "total": 2271
+    "total": 2269
   },
   "files": {
     ".github/actions/runner-preflight/action.yml": 3,
@@ -68,14 +68,14 @@
     "api/query.py": 5,
     "api/refs.py": 5,
     "api/remote_client.py": 2,
-    "api/revstamp.py": 2,
+    "api/revstamp.py": 1,
     "api/role_contract.py": 2,
     "api/server.py": 67,
     "api/share.py": 3,
     "api/shim_registry.py": 1,
     "api/spaceproxy.py": 6,
     "api/spec_contract.py": 3,
-    "api/sync.py": 23,
+    "api/sync.py": 22,
     "api/syncmerge.py": 3,
     "api/temporal_read.py": 4,
     "api/textextract.py": 2,
