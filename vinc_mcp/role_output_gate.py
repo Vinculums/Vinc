@@ -1031,7 +1031,7 @@ def _branch_push_only(sentence: str, before: str = "", after: str = "") -> bool:
 #  2. 인계: "merging is left to the owner", "left the tag push to the owner", "left for the owner to merge".
 #  3. git 용어: merge-tree·merge-base·merge order·merge queue·merge conflict, "merging main into <작업 브랜치>".
 #  4. 작업 브랜치 이름의 한 조각: "fix/sync-push-over-limit" 안의 push 는 동사가 아니다.
-_WORD_START = r"(?<![a-z0-9])(?:re|un|auto)?"
+_WORD_START = r"(?:(?<![A-Za-z0-9])(?i:re|un|auto)?|(?<=[a-z])(?=[A-Z]))"
 # 부정된 과거형을 지운 자리의 표지(own 이 지우는 구절과 같은 구절). 걸림을 읽는 글에만 남기고 검사 글에는 쓰지 않는다.
 # _CUT 은 "not pushed" 꼴(앞 낱말이 주어일 수 있다), _CUT_NONE 은 "no tag was pushed"·"nothing merged" 처럼 제 주어를 가진 구절이다.
 _CUT = "\x01"
@@ -1049,8 +1049,10 @@ _VERB_NEG_BEFORE = re.compile(
     rf"|{_CUT_ANY}\s+(?:(?:to|into|onto|for|from|of)\s+(?:(?:an?|any|the|this|that|one|v?\d[\w.]*)\s+){{0,2}}"
     rf"|(?:(?:an?|any|the|this|that|one|v?\d[\w.]*)\s+){{1,2}})$", re.I)
 # 키워드 바로 뒤의 부정: "migration is not needed", "merge not required", "Tag: none", "tag was <not pushed>".
-_NEG_AFTER = re.compile(r"^\s*[:=]\s*(?:none|no|n/a|nothing|not\s+done|not\s+applicable)\b"
-                        rf"|^(?:\s+[\w#./`-]+)?(?:\s+(?:was|were|is|are|has|have|had|been))+\s*{_CUT}|^\s*{_CUT}"
+_LABEL_VALUE = re.compile(r"^\s*[:=]\s*(?:none|no|n/a|nothing|not\s+done|not\s+applicable)\s*(?:[.;,)\]|]|$)", re.I)
+_LABEL_HEAD = re.compile(r"(?:^|[;|]\s*)[\s\-*+•#>`_\[]*$")
+_NOUN_HEAD = re.compile(r"(?:^|[;:|(]\s*)[\s\-*+•]*(?:(?:the|a|an|this|that|its|our|my|your|new|git|release|version|annotated|lightweight)\s+)*$", re.I)
+_NEG_AFTER = re.compile(rf"^(?:\s+[\w#./`-]+)?(?:\s+(?:was|were|is|are|has|have|had|been))+\s*{_CUT}|^\s*{_CUT}"
                         r"|^(?:\s+\w+)?(?:\s+of\s+(?:the\s+)?\w+)?\s+(?:(?:is|are|was|were)\s+)?(?:not|never)\s+"
                         r"(?:needed|necessary|required|involved|applicable|relevant|affected|performed)\b"
                         r"|^(?:\s+\w+)?(?:\s+of\s+(?:the\s+)?\w+)?\s+(?:isn|aren|wasn|weren)['’]t\s+"
@@ -1085,7 +1087,8 @@ _OWNER = r"(?:(?:the|an?|our|your)\s+)?(?:owner|person|human|maintainer|reviewer
 _OBJ = r"(?:\s+[\w#/.`-]+)?"
 _LEFT_AFTER = re.compile(
     rf"^{_OBJ}\s*:?\s*(?:(?:is|are|was|were|stays?|remains?|will be|has been|have been)\s+)?"
-    rf"(?:(?:left|deferred|reserved|held|handed\s+(?:over|off)|up)\s+(?:to|for|with)|(?:stays?|remains?)\s+with)\s+{_OWNER}\b",
+    rf"(?:(?:left|deferred|reserved|held|handed\s+(?:over|off)|up)\s+(?:to|for|with)|(?:stays?|remains?)\s+with)\s+{_OWNER}\b"
+    r"(?!['’]s\s+(?!(?:call|decision|choice|job|task|step|action|responsibilit)))",
     re.I)
 _OWNER_STEP = re.compile(rf"^{_OBJ}\s+(?:is|are)\s+{_OWNER}\s+(?:steps?|calls?|jobs?|tasks?|decisions?|actions?|responsibilit(?:y|ies))\b", re.I)
 _LEFT_BEFORE = re.compile(r"\b(?:left|leaves|leaving|deferred|deferring|reserved|handed\s+over|handing\s+over)\s+"
@@ -1154,9 +1157,10 @@ def _in_branch_name(text: str, start: int, end: int) -> bool:
     token = text[left:right].rstrip(".:!?")
     # 끝 칸에 확장자가 붙은 이름(scripts 아래 push-release.sh)은 파일이라 브랜치로 읽지 않는다.
     return ((left < start or right > end) and "/" in token and not _FILE_NAME.search(token)
-            and _push_name(token) == "NP")
+            and any(c in token.split("/", 1)[1] for c in "-_") and _push_name(token) == "NP")
 
 
+_CUT_AFTER = re.compile(rf"^\s*{_CUT}")
 _NEG_VERB, _NEG_NOUN, _GOVERNED, _GOVERNED_LEFT = 1, 3, 2, 4
 
 
@@ -1168,7 +1172,9 @@ def _governed(text: str, start: int, end: int) -> int:
         return _NEG_VERB
     if _NOUN_NEG_BEFORE.search(before):
         return _NEG_NOUN
-    if _NEG_AFTER.match(after):
+    if _LABEL_VALUE.match(after) and _LABEL_HEAD.search(before):
+        return _GOVERNED
+    if _NEG_AFTER.match(after) and (_NOUN_HEAD.search(before) or not _CUT_AFTER.match(after)):
         return _GOVERNED
     if _LEFT_AFTER.match(after) or _OWNER_STEP.match(after):
         return _GOVERNED_LEFT
@@ -1199,7 +1205,7 @@ def _keyword_patterns(actions: frozenset[str]) -> tuple[tuple[str, str, "re.Patt
         words = _DECISION_WORDS.get(action, ())
         if words:
             out.append((action, "decision", re.compile(
-                "|".join((_WORD_START if word[:1].isalnum() else "") + re.escape(word) for word in words), re.I)))
+                "|".join((_WORD_START if word[:1].isalnum() else "") + "(?i:" + re.escape(word) + ")" for word in words))))
     return tuple(out)
 
 
