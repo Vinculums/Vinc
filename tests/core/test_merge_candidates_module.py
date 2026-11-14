@@ -6,7 +6,7 @@
   `q.suggest_merge_candidates`·`q.reject_merge_pair` 를 부르는 사이드카 경로와, 기각 키를 `api.query` 에서
   가져오는 `api/owner_fold.py`, `from api.query import ...` 가 그대로 돈다.
 - `api.merge_candidates` 는 `api.query` 를 import 하지 않는다(함수 안의 지연 import 포함).
-- 가져온 이름은 제 것과 같은 객체다(`execute`·`QueryPlan` 은 `store.querybase`, `_DOC_CONCEPT_PREFIX` 는 `query_base`).
+- 가져온 이름은 제 것과 같은 객체다(`execute`·`QueryPlan` 은 `store.querybase`, `_store_scope` 는 `query_base`).
 - 옮긴 함수가 전역에서 찾는 이름은 모두 이 모듈에 묶여 있다(빠진 import 는 부를 때에야 `NameError` 로 드러난다).
 """
 from __future__ import annotations
@@ -79,7 +79,7 @@ def test_merge_candidates_does_not_import_api_query():
 def test_imported_names_are_their_home_modules_objects():
     assert mc.re is re and query.re is re
     for name, home in (("execute", querybase), ("QueryPlan", querybase), ("open_store", backend),
-                       ("_DOC_CONCEPT_PREFIX", query_base), ("_store_scope", query_base)):
+                       ("_store_scope", query_base)):
         assert getattr(mc, name) is getattr(home, name), name
         assert getattr(query, name) is getattr(home, name), name
     assert query.load_config is config.load_config

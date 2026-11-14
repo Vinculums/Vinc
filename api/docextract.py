@@ -18,6 +18,7 @@ from typing import Any
 from engines import domain_hierarchy
 from engines.mentions_link import MAX_TITLE_TOKENS
 from store import pkns
+from store.querybase import mirror_id
 
 
 # ── 정본→노드 파생 (D45-V — 옵션1 결정론 + 옵션2 확인 흐름의 공용 백엔드) ────────
@@ -256,14 +257,11 @@ def _doc_topic(store, doc_id: str, *, owner: str) -> str:
     """이 문서의 주제 하나. 적힌 주제(미러 domain)가 있으면 그것, 없으면 파생.
     :func:`mention_tally` 와 **같은 규칙**의 단일 문서판이어야 한다 — 두 경로가
     갈리면 목록과 상세가 서로를 반박한다(MentionTally 클래스 주석의 이유)."""
-    # docstore 가 이 모듈을 다시 내보내므로 docstore 쪽 이름은 호출 때 읽는다. 그래서
-    # docstore 의 이름을 바꿔 끼우면(테스트의 monkeypatch) 여기에도 그대로 닿는다.
-    from .docstore import _DOC_MIRROR_PREFIX
     try:
         arow = store.run(
             "MATCH (c:Concept) WHERE c.concept_id = $id AND c.owner_id = $o "
             "AND c.domain IS NOT NULL AND c.domain <> '' RETURN c.domain AS domain",
-            {"id": pkns.key(owner, _DOC_MIRROR_PREFIX + doc_id), "o": owner}) or []
+            {"id": pkns.key(owner, mirror_id(doc_id)), "o": owner}) or []
         if arow:
             return (arow[0].get("domain") or "").strip()
     except Exception:

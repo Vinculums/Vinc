@@ -21,13 +21,21 @@ from dataclasses import dataclass
 from store import envflag, pkns
 from store.backend import open_store
 from store.config import load_config
-from store.querybase import holds_during, normalize_query_tokens, time_scope, validity_state
+from store.querybase import (
+    DOC_MIRROR_PREFIX,
+    doc_id_of,
+    holds_during,
+    mirror_id,
+    normalize_query_tokens,
+    time_scope,
+    validity_state,
+)
 from vinc_rag import excerpt as _excerpt
 from vinc_rag import retrieval as _retrieval
 from vinc_rag.retrieval import UNSTAMPED_RUNTIME_NOTE
 
 from .node_read import node_context, search
-from .query_base import _DOC_CONCEPT_PREFIX, _seed_table
+from .query_base import _seed_table
 
 
 # ── vinc_brief — 질문 하나로 답변 재료를 모으는 결정론 조인 읽기 ──────────────
@@ -693,7 +701,7 @@ def _brief_section(store, *, owner: str, query: str, rows: list[dict],
     if top is None:
         return None
     doc_id = str(top["doc_id"])
-    mirror = _DOC_CONCEPT_PREFIX + doc_id
+    mirror = mirror_id(doc_id)
     if mirror not in nodes:
         return None
     try:
@@ -751,12 +759,12 @@ def _brief_node_quotes(store, *, owner: str, node_id: str, query: str,
     문서의 어느 절에서 왔는지를 주장이 인용문 밖에서 끌어오지 않게 하려는 것이다. 다른 종류의
     노드나 읽기 실패는 빈 목록이다. 이 키는 증강이라 답을 막지 않는다."""
     try:
-        if node_id.startswith(_DOC_CONCEPT_PREFIX):
+        if node_id.startswith(DOC_MIRROR_PREFIX):
             chunks = store.run(
                 "MATCH (c:Chunk) WHERE c.doc_id = $d AND (c.owner_id = $o OR c.owner_id = '') "
                 "RETURN c.chunk_id AS cid, c.doc_id AS doc_id, c.section_title AS sec, "
                 "c.text AS text ORDER BY c.chunk_index",
-                {"d": node_id[len(_DOC_CONCEPT_PREFIX):], "o": owner}) or []
+                {"d": doc_id_of(node_id), "o": owner}) or []
         elif node_id.startswith("concept:"):
             label, pk = _seed_table(node_id)
             if label != "Concept":

@@ -76,8 +76,7 @@ def test_imported_modules_are_their_home_modules():
 
 
 def test_imported_names_are_their_home_modules_objects():
-    for name, home in (("search", node_read), ("node_context", node_read), ("_seed_table", query_base),
-                       ("_DOC_CONCEPT_PREFIX", query_base)):
+    for name, home in (("search", node_read), ("node_context", node_read), ("_seed_table", query_base)):
         assert getattr(brief, name) is getattr(home, name), name
         assert getattr(query, name) is getattr(home, name), name
 
