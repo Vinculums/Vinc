@@ -224,7 +224,8 @@ class ThisRepo(unittest.TestCase):
         self.assertEqual(serial, ["azure-ops.yml", "hub-capacity-trial.yml", "hub-data-repair.yml", "hub-deploy.yml", "hub-durability-latency.yml",
                                   "hub-handoff-rehearsal.yml", "hub-relevance-measure.yml", "hub-store-rebuild.yml",
                                   "hub-store-recover.yml", "hub-verify-current.yml", "infra.yml", "integrations-publish.yml", "pk-migrate.yml",
-                                  "prefetch-bench.yml", "release.yml", "topic-copy-rehearsal.yml", "topic-snapshot-audit.yml"], serial)
+                                  "prefetch-bench.yml", "release.yml", "topic-copy-rehearsal.yml", "topic-journal-inventory.yml",
+                                  "topic-snapshot-audit.yml"], serial)
 
 
 if __name__ == "__main__":

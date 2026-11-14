@@ -1,0 +1,119 @@
+# 운영 사본에 남은 토픽 이동 저널을 판·상태별로 센다(읽기 전용). 운영 담당이 main 에서 수동 호출한다.
+# 공유 스냅숏 하나를 만들어 러너 안에 비공개 사본으로 복원하고, 식별자 없는 개수 한 줄만 낸다.
+# 공유는 읽고, 이 실행이 만든 스냅숏만 만들고 지운다. 허브·스토어·공유 본체는 바꾸지 않는다.
+name: topic-journal-inventory
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: hub-deploy
+  cancel-in-progress: false
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RG: vincsRG
+      STORAGE: vinchubssd01
+      SHARE: hub-data
+    steps:
+      - name: Require operator and main branch
+        env:
+          OPERATORS: ${{ vars.PROD_OPERATORS }}
+          ACTOR: ${{ github.triggering_actor }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          case ",$OPERATORS," in *",$ACTOR,"*) ;; *) exit 1 ;; esac
+      - uses: actions/checkout@v4
+      # 허브 앱은 대상 설정(.github/container-apps-target.env)을 hub-deploy 의 표로 푼 이름이다(HUB_APP).
+      # 앱 이름을 여기 적으면 대상 설정이 바뀌어도 그 이름의 앱을 읽거나 바꾼다. 컨테이너 이름과 이미지 저장소 이름은 앱 이름과 따로다.
+      - name: 허브 앱을 대상 설정에서 푼다
+        run: python3 scripts/hub_target.py >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Isolate Azure profile
+        run: echo "AZURE_CONFIG_DIR=$RUNNER_TEMP/azure-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Resolve live store name and runtime policy
+        id: live
+        run: |
+          set -euo pipefail
+          env_of() {
+            az containerapp show -n "$HUB_APP" -g "$RG" --query "properties.template.containers[0].env[?name=='$1'].value | [0]" -o tsv
+          }
+          p=$(env_of VINC_STORE_SNAPSHOT)
+          [ -n "$p" ] || p=$(env_of VINC_DATA_DIR)
+          case "$p" in /data/*) ;; *) exit 1 ;; esac
+          rel=${p#/data/}
+          case "$rel" in ""|*/*|*..*) exit 1 ;; esac
+          durable=$(env_of VINC_DURABLE_ACK)
+          case "${durable,,}" in 1|true|on) durable=on ;; *) durable=off ;; esac
+          pkns=$(env_of VINC_PK_NAMESPACED)
+          test "$pkns" = on
+          conversion=$(env_of VINC_TOPIC_CONVERSION)
+          case "$conversion" in ""|0|1) ;; *) exit 1 ;; esac
+          echo "DURABLE_ACK=$durable" >> "$GITHUB_ENV"
+          echo "VINC_PK_NAMESPACED=$pkns" >> "$GITHUB_ENV"
+          # 전역 ACK가 꺼져 있어도 전환 전용 게시 세대는 같은 복원 경로로 고른다.
+          echo "VINC_TOPIC_CONVERSION=$conversion" >> "$GITHUB_ENV"
+          echo "rel=$rel" >> "$GITHUB_OUTPUT"
+      # 스냅숏을 만들 권한이 있는지는 이 단계가 확인한다. 못 만들면 여기서 멈추고 아무것도 남지 않는다.
+      - name: Create isolated share snapshot
+        id: snap
+        run: |
+          set -euo pipefail
+          ts=$(az storage share snapshot --account-name "$STORAGE" --name "$SHARE" --query snapshot -o tsv)
+          test -n "$ts"
+          echo "ts=$ts" >> "$GITHUB_OUTPUT"
+      - name: Restore private copy of the store
+        env:
+          SOURCE: ${{ steps.live.outputs.rel }}
+          SNAPSHOT: ${{ steps.snap.outputs.ts }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir restored
+          python scripts/restore_hub_snapshot.py --account "$STORAGE" --share "$SHARE" --snapshot "$SNAPSHOT" --source "$SOURCE" --out restored/db --durable-ack "$DURABLE_ACK" > restored/restore-private.log 2>&1
+          test -s restored/db
+      - name: Count journals in the copy
+        run: |
+          set -euo pipefail
+          engine=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['optional-dependencies']['embedded'][0])")
+          test "$engine" = ladybug==0.21.2
+          pip install --quiet --disable-pip-version-check "$engine" argon2-cffi pyyaml
+          export VINC_LBUG_EXT_DIR="$GITHUB_WORKSPACE/packaging/lbug_extensions"
+          # 네이티브 로그도 비공개 임시 파일에 둔다. 개수 한 줄만 보고 파일로 나간다.
+          python -X utf8 scripts/topic_journal_inventory.py restored/db --out inventory-report.json > restored/inventory-private.log 2>&1
+      - name: Publish aggregate result only
+        if: always()
+        run: |
+          set -euo pipefail
+          line='{"error":"no_report"}'
+          if test -f inventory-report.json; then line=$(head -n 1 inventory-report.json); fi
+          # 판/상태 이름, 개수, 구분 기호만 통과한다. 하이픈이나 대문자가 섞인 값은 식별자일 수 있어 막는다.
+          if ! grep -Eq '^[][{}":,/_a-z0-9]+$' <<< "$line"; then line='{"error":"report_rejected"}'; fi
+          echo "$line"
+          { echo '```json'; echo "$line"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          case "$line" in *'"error"'*) exit 1 ;; esac
+      - name: Remove only this inventory snapshot
+        if: ${{ always() && steps.snap.outputs.ts != '' }}
+        env:
+          SNAPSHOT: ${{ steps.snap.outputs.ts }}
+        run: |
+          set -euo pipefail
+          test -n "$SNAPSHOT"
+          az storage share delete --account-name "$STORAGE" --name "$SHARE" --snapshot "$SNAPSHOT" --output none
+      - name: Remove private runner copy
+        if: always()
+        run: |
+          set -euo pipefail
+          test "$PWD" = "$GITHUB_WORKSPACE"
+          rm -rf -- restored inventory-report.json
