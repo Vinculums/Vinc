@@ -502,6 +502,12 @@ def _strip_ko_suffix(tok: str) -> str:
     return tok
 
 
+#: 질문을 낱말로 가르는 경계 문자류. 질의 쪽(`normalize_query_tokens`)과 색인 쪽 조사 벗기기
+#: (`rag_eval.rerank.ko_stripped_text`)가 **이 한 벌**을 쓴다 — 두 쪽이 다르게 자르면 그
+#: 차이가 곧 결과를 바꾼다.
+QUERY_SPLIT_RE = re.compile(r"[\s,./?!;:()\[\]{}\"'`~]+")
+
+
 def normalize_query_tokens(query: str, *, cap: int = 8) -> list[str]:
     """질문 → 검색 토큰(순수·결정론). 구두점 제거 → 소문자 → 조사 절단 → 불용어 제거.
 
@@ -509,7 +515,7 @@ def normalize_query_tokens(query: str, *, cap: int = 8) -> list[str]:
     마디만 물었을 때 질의가 통째로 사라져 전 노드를 삼키는 것을 막는다(빈 토큰은
     호출부가 조기 반환한다). 조사 절단본과 원형을 **둘 다** 남기지는 않는다:
     중복 토큰은 매치 수 집계를 왜곡한다."""
-    raw = [t for t in re.split(r"[\s,./?!;:()\[\]{}\"'`~]+", (query or "").lower()) if t]
+    raw = [t for t in QUERY_SPLIT_RE.split((query or "").lower()) if t]
     stemmed = [_strip_ko_suffix(t) for t in raw]
     # 불용어는 원형과 절단형 **둘 다** 본다 — 절단이 먼저면 '무엇인가'가 '무엇인'이 되어
     # 목록을 빠져나간다.

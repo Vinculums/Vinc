@@ -16,6 +16,7 @@ import random
 from collections import Counter, defaultdict
 
 from rag_eval.evalkit.funnel import mcnemar_p
+from rag_eval.evalkit.stats import boot_means
 
 BOOT_B, BOOT_SEED = 2000, 7
 HEADLINE = (("A2", "A0"), ("A3", "A0"), ("A2", "A1"), ("A3", "A1"),
@@ -179,7 +180,7 @@ def paired(base: list[dict], other: list[dict]) -> dict:
     d = [y - x for x, y in zip(da, db)]
     rng = random.Random(BOOT_SEED)
     m = len(d)
-    boots = sorted(sum(d[rng.randrange(m)] for _ in range(m)) / m for _ in range(BOOT_B))
+    boots = boot_means(d, BOOT_B, rng)
     ma = [majority(a[t]) for t in tasks]
     mb = [majority(b[t]) for t in tasks]
     lost = sum(1 for x, y in zip(ma, mb) if x and not y)

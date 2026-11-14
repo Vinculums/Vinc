@@ -58,6 +58,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from rag_eval.evalkit.stats import boot_means, mean4   # noqa: E402
+
 PROMPTS = ROOT / "rag_eval" / "fixtures" / "answer_material"
 GOLD = ROOT / "rag_eval" / "fixtures" / "brief_gold.jsonl"
 #: 이 크기 아래 층에는 구간을 내지 않는다(파일럿에서 미리 정한 값).
@@ -322,15 +324,14 @@ def cited_bytes(r, arm, cited: set[str]) -> int:
 
 def boot(d: list[float], n=10000, seed=0) -> list[float]:
     """짝지은 부트스트랩 95 퍼센트(집 규칙 8). [평균, 하한, 상한]."""
-    rng, m = random.Random(seed), len(d)
-    means = sorted(sum(d[rng.randrange(m)] for _ in range(m)) / m for _ in range(n))
+    m = len(d)
+    means = boot_means(d, n, random.Random(seed))
     return [round(sum(d) / m, 4), round(means[int(0.025 * n)], 4),
             round(means[int(0.975 * n) - 1], 4)]
 
 
 def mean(xs):
-    xs = [x for x in xs if x is not None]
-    return round(statistics.fmean(xs), 4) if xs else None
+    return mean4([x for x in xs if x is not None])
 
 
 def med(xs):

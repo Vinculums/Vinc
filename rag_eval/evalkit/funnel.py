@@ -27,6 +27,8 @@ import random
 import sys
 from collections import Counter
 
+from rag_eval.evalkit.stats import boot_means
+
 GATES = ("union", "exposed", "first", "committed")
 BOOT_B, BOOT_SEED = 2000, 0
 
@@ -326,7 +328,7 @@ def paired(base: list[dict], run: list[dict]) -> dict:
         b = [val(run[i]) for i in idx]
         m = len(idx)
         d = [y - x for x, y in zip(a, b)]
-        boots = sorted(sum(d[rng.randrange(m)] for _ in range(m)) / m for _ in range(BOOT_B)) if m else []
+        boots = boot_means(d, BOOT_B, rng) if m else []
         lost = sum(1 for x, y in zip(a, b) if x and not y)
         gained = sum(1 for x, y in zip(a, b) if y and not x)
         out[name] = {"n": m, "base": sum(a), "run": sum(b),
@@ -337,7 +339,7 @@ def paired(base: list[dict], run: list[dict]) -> dict:
     if all(r.get("resp_bytes") is not None for r in base + run):
         # 응답 크기는 0/1 이 아니라 연속값이라 뒤집힘 대신 문항별 차의 평균을 짝지어 잰다.
         d = [b["resp_bytes"] - a["resp_bytes"] for a, b in zip(base, run)]
-        boots = sorted(sum(d[rng.randrange(len(d))] for _ in d) / len(d) for _ in range(BOOT_B))
+        boots = boot_means(d, BOOT_B, rng)
         out["response_bytes"] = {"n": len(d), "delta_mean": round(sum(d) / len(d), 1),
                                  "ci95": [round(boots[int(0.025 * BOOT_B)], 1),
                                           round(boots[int(0.975 * BOOT_B) - 1], 1)],

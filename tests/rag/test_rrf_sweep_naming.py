@@ -69,3 +69,19 @@ def test_ko_stripper_is_one_function_and_leaves_english_alone():
         assert ko_stripped_text(s) == " ".join(s.split())
     # 어간이 한 글자로 줄 것은 손대지 않는다(`_strip_ko_suffix` 의 계약).
     assert ko_stripped_text("국가") == "국가"
+
+
+def test_ko_stripper_splits_with_the_query_normalizer_pattern():
+    """색인 쪽 조사 벗기기와 질의 쪽 정규화가 **같은 정규식 객체**로 낱말을 가른다. 복사본이
+    남으면 한쪽만 구분 문자를 바꿔도 아무 테스트가 안 깨지고 색인과 질의가 갈라진다."""
+    from rag_eval import rerank
+    from store import querybase
+
+    assert rerank.QUERY_SPLIT_RE is querybase.QUERY_SPLIT_RE
+    assert not hasattr(rerank, "_KO_SPLIT")
+    # 구분 문자 전부를 한 문장에 넣어도 두 쪽의 낱말 경계가 같다.
+    text = "환불은,며칠/이내에?되나요!(약관);제어가:{정책}[목록]\"따옴표\"'작은'`틱`~물결"
+    words = [w for w in querybase.QUERY_SPLIT_RE.split(text) if w]
+    assert rerank.ko_stripped_text(text) == " ".join(querybase._strip_ko_suffix(w) for w in words)
+    assert len(words) == 12
+
