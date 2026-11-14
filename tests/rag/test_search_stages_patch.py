@@ -412,7 +412,8 @@ class SearchAppliesEachPatchAtOnce(unittest.TestCase):
                 mock.patch.object(R, "_paginate", side_effect=paginate), \
                 mock.patch.object(R, "_node_semantic_arm", side_effect=semantic), \
                 mock.patch.object(R, "_fuse_graph_arm", side_effect=graph):
-            res = R._search("q", store=object(), owner="u")
+            res = R._search("q", store=object(), owner="u",
+                            _mode_scope=R.temporal.mode_scope(None, False, None, "q"))
         return res, seen
 
     def test_every_stage_sees_the_patches_of_the_stages_before_it(self):
