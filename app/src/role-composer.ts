@@ -22,6 +22,7 @@ import { esc } from "./components";
 import { icon } from "./icons";
 import { setTopbarLead } from "./topbar";
 import { AGENTS_BOARD, setLnbActive, showAgentRail } from "./lnb";
+import { AGENT_ID_PREFIX, withoutPrefix } from "./agent-ids";
 import { AGENT_TOPICS, buildAgentRoster, type AgentRole } from "./agent-roster";
 import { evalCardsHtml, sharedEvalCardsHtml } from "./role-eval";
 import { absoluteViewUrl } from "./view-url";
@@ -231,7 +232,7 @@ export async function renderRoleEditor(el: HTMLElement, live: () => boolean, res
   const missionEl = $<HTMLTextAreaElement>("#rc-mission");
   const btn = el.querySelector<HTMLButtonElement>("#rc-save");
   const msg = (html: string) => { $("#rc-msg").innerHTML = html; };
-  const idOf = () => editing ? editId : `concept:agent-${slugEl.value.trim()}`;
+  const idOf = () => editing ? editId : `${AGENT_ID_PREFIX}${slugEl.value.trim()}`;
   let tier = "";
   let rung = "";
   let teamRole = "";
@@ -292,7 +293,7 @@ export async function renderRoleEditor(el: HTMLElement, live: () => boolean, res
 
   if (editing) {
     jobEl.value = baseTitle;
-    slugEl.value = editId.replace(/^concept:agent-/, "");
+    slugEl.value = withoutPrefix(editId, AGENT_ID_PREFIX);
     missionEl.value = strOf(baseProps.mission);
     teamEl.value = strOf(baseProps.team);
     $<HTMLTextAreaElement>("#rc-never").value = listLines(baseProps.never).join("\n");
