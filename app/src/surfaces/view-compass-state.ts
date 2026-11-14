@@ -35,7 +35,7 @@ export interface WholeState { on: boolean; cam: WholeCam; rels: boolean; sel: st
 /** 앞뒤 기록에서 전체 보기를 뜻하는 한 칸. */
 export const WHOLE_ENTRY = "@whole";
 /** 전체 보기의 맞춤 여백(px). */
-export const WHOLE_PAD = 48;
+const WHOLE_PAD = 48;
 
 /** 렌즈 상태. 길(path)은 노드 id 의 사슬이다(첫 칸이 뿌리 주제, 끝이 지금 가운데). */
 export interface LensState {
@@ -90,7 +90,7 @@ export type SavedLens = Partial<CompassState> & { path: string[] };
 const without = <T,>(a: T[], x: T): T[] => a.filter((y) => y !== x);
 const withAdded = <T,>(a: T[], x: T): T[] => (a.includes(x) ? a : [...a, x]);
 /** 표에 값을 넣는다. 이미 있는 열쇠는 제자리에서 값만 바뀐다(Map.set 과 같다). */
-export function entrySet<V>(a: [string, V][], k: string, v: V): [string, V][] {
+function entrySet<V>(a: [string, V][], k: string, v: V): [string, V][] {
   const i = a.findIndex(([x]) => x === k); if (i < 0) return [...a, [k, v]];
   const o = a.slice(); o[i] = [k, v]; return o;
 }
@@ -139,7 +139,7 @@ export function historyStep(s: LensState, dir: -1 | 1, known: (id: string) => st
 
 // ── 전체 보기로 오가기 ─────────────────────────────────────────────────────────────
 /** 전체 보기로. push 면 앞뒤 기록에 전체 보기 한 칸을 남긴다. 카메라는 떠날 때 남긴 것(처음이면 맞춤)이다. */
-export function toWhole(s: LensState, push = true): LensState {
+function toWhole(s: LensState, push = true): LensState {
   if (s.whole.on) return s;
   const hist = push ? [...s.hist.slice(0, s.hi + 1), [WHOLE_ENTRY]] : s.hist;
   return { ...s, hist, hi: push ? hist.length - 1 : s.hi, hover: null, pan: null, whole: { ...s.whole, on: true, hov: "" } };
@@ -341,7 +341,7 @@ export const moreOf = (s: LensState, key: string): number => entryGet(s.more, ke
 /** 날짜가 기간 안인가(날짜가 없으면 안으로 친다). */
 export const inRange = (w: string, rg: [string, string] | null): boolean => !rg || !w || (w >= rg[0] && w <= rg[1]);
 /** 시간 막대의 칸 i 가 뜻하는 날. 첫 칸은 '이전'이라 시작이면 0000-01-01, 끝이면 그다음 칸의 날이다. */
-export const barDay = (days: string[], i: number, end: boolean): string => (i === 0 ? (end ? days[1] : "0000-01-01") : days[i]);
+const barDay = (days: string[], i: number, end: boolean): string => (i === 0 ? (end ? days[1] : "0000-01-01") : days[i]);
 /** 기간 단추: 마지막 날에서 k 일, 'all' 이면 전체. */
 export const rangeOf = (days: string[], k: string): [string, string] | null => (k === "all" ? null : [days[Math.max(1, days.length - +k)], days[days.length - 1]]);
 export const barStart = (s: LensState, days: string[], i: number): LensState => ({ ...s, bar: i, tsel: [barDay(days, i, false), barDay(days, i, true)] });

@@ -7,7 +7,7 @@
  *  근거: [[vinc.canon.agent-roles §3]] */
 
 /** 행동 키 규칙(`api/role_contract._ACTION`). */
-export const ACTION_KEY = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
+const ACTION_KEY = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 
 export type PersonAction = { action: string; reason: string };
 
@@ -54,12 +54,12 @@ export function foldPersonOnly(lines: string[], stored: unknown): FoldedPersonOn
  *  비우면 키째 뺀다(빈 객체를 정책으로 남기지 않는다). */
 
 export const OUTPUT_KINDS = ["prose", "code", "verdict", "write_proposal", "none"] as const;
-export const ACT_MODES = ["act", "act_and_report", "ask_first", "never"] as const;
-export const BUDGET_INTS = ["tool_calls", "model_calls", "tokens"] as const;
-export const BUDGET_NUMBERS = ["cost_usd", "wall_seconds"] as const;
+const ACT_MODES = ["act", "act_and_report", "ask_first", "never"] as const;
+const BUDGET_INTS = ["tool_calls", "model_calls", "tokens"] as const;
+const BUDGET_NUMBERS = ["cost_usd", "wall_seconds"] as const;
 export const BUDGET_KEYS = [...BUDGET_INTS, ...BUDGET_NUMBERS] as const;
 export const CAPABILITY_LISTS = ["allow", "approve", "deny"] as const;
-export const CAPABILITY_ID = /^[a-z][a-z0-9_-]*(?:\.[a-z0-9_-]+)*(?:\.\*)?$/;
+const CAPABILITY_ID = /^[a-z][a-z0-9_-]*(?:\.[a-z0-9_-]+)*(?:\.\*)?$/;
 
 /** 키를 지운다는 뜻의 값. 저장할 때 props 에서 그 키를 뺀다. */
 export const ABSENT = undefined;
