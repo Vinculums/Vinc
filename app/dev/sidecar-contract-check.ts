@@ -10,7 +10,7 @@
  *
  *  호출은 소스를 실행하지 않고 TypeScript 파서로 읽는다(`typescript` 는 devDependency):
  *    - `app/src` 의 `call`·`localCall`·`accountCall`·`previewDelete`·`applyDelete`·
- *      `viaProxy`·`fetch` 호출에서 경로 인자(문자열·템플릿·`new URL("…")`)와 메서드.
+ *      `viaProxy`·`webFetch`·`fetch` 호출에서 경로 인자(문자열·템플릿·`new URL("…")`)와 메서드.
  *    - `app/src-tauri/src` 의 Rust 셸이 손으로 쓰는 요청 줄(`"POST /shutdown HTTP/1.1`).
  *  경로나 메서드를 글자로 읽을 수 없는 호출은 실패다. 예외는 `api.ts` 의 그 함수들 자신이
  *  인자로 받은 경로를 넘기는 자리뿐이다(그 경로는 함수를 부른 쪽에서 이미 읽혔다).
@@ -31,14 +31,16 @@ type Method = "GET" | "POST";
 type Call = { method: Method; path: string; at: string };
 type Op = { method: Method; path: string; internal: boolean; re: RegExp };
 
-// 경로 인자 위치와 메서드를 정하는 법. `body2` 는 세 번째 인자(본문)가 있으면 POST 다.
-const WRAPPERS: Record<string, { path: number; method: "body2" | Method | number }> = {
+// 경로 인자 위치와 메서드를 정하는 법. `body2` 는 세 번째 인자(본문)가 있으면 POST 다. `init1` 은 두 번째 인자의
+// `method`(없으면 GET)로, `fetch` 와 같이 읽는다.
+const WRAPPERS: Record<string, { path: number; method: "body2" | "init1" | Method | number }> = {
   call: { path: 0, method: "body2" },
   localCall: { path: 0, method: "body2" },
   accountCall: { path: 0, method: "body2" },
   previewDelete: { path: 0, method: "POST" },
   applyDelete: { path: 0, method: "POST" },
   viaProxy: { path: 2, method: 1 },
+  webFetch: { path: 0, method: "init1" },
 };
 
 function files(dir: string, ext: string): string[] {
@@ -108,7 +110,7 @@ for (const file of files(join(APP, "src"), ".ts")) {
         const spec = WRAPPERS[name];
         const path = literalPath(name === "fetch" ? args[0] : args[spec!.path]);
         let method: Method | null;
-        if (name === "fetch") method = fetchMethod(args[1]);
+        if (name === "fetch" || spec!.method === "init1") method = fetchMethod(args[1]);
         else if (spec!.method === "body2")
           method = args.length > 2 && !(ts.isIdentifier(args[2]!) && args[2]!.text === "undefined")
             ? "POST" : "GET";

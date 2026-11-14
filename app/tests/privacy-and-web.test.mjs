@@ -78,11 +78,15 @@ test('outbound addresses are the graph and the site pages only', async () => {
   let fetches = 0;
   for (const [p, s] of await sources()) {
     for (const m of s.matchAll(/\bfetch\((new URL\([^)]*\)|"[^"]*"|[\w.]+)/g)) {
-      assert.match(m[1], /^(new URL\("[^"]+", (cfg\.base|location\.origin)\)|"\/api\/[^"]+"|url)$/, `${p}: fetch(${m[1]})`);
+      // `new URL(path, location.origin)` 은 계정 쿠키 라우트의 문(api.ts `webFetch`) 하나다. 그 경로는 아래에서 본다.
+      assert.match(m[1], /^(new URL\("[^"]+", (cfg\.base|location\.origin)\)|new URL\(path, location\.origin\)|"\/api\/[^"]+"|url)$/, `${p}: fetch(${m[1]})`);
       fetches++;
     }
   }
   assert.ok(fetches >= 5);
+  // 계정 쿠키 라우트는 `webFetch` 로 같은 오리진에 간다. 경로는 부르는 자리의 글자 그대로다(같은 오리진의 절대 경로).
+  const doors = [...api.matchAll(/\bwebFetch\(([^)]*?)[,)]/g)].map((m) => m[1]).filter((a) => !a.startsWith('path: string'));
+  assert.ok(doors.length >= 9 && doors.every((a) => /^"\/[^"]+"$/.test(a)), doors.join(' | '));
   assert.match(api, /const url = new URL\(WEB \? "\/api\/graph" \+ path : path, cfg\.base\);/);
 });
 
@@ -168,4 +172,38 @@ test('the space name is kept next to the space id and never names another space'
   cfg.team = 'community:c'; cfg.teamName = 'Physics';
   local();
   assert.equal(cfg.team, ''); assert.equal(cfg.teamName, '', 'local mode names no account space');
+});
+
+// 계정 쿠키 라우트의 문(api.ts `webFetch`): 쿠키 · CSRF · JSON 을 거기 한 곳에서 싣는다. 함수를 소스에서 잘라 가짜 fetch 로 돌린다.
+test('the account-cookie routes go through one door: the cookie always, the CSRF mark on writes, JSON when a body is given', async () => {
+  const fn = slice(api, 'function webFetch(', '\n}\n') + '\n}\n';
+  const webFetch = await run(`const sent = []; const location = { origin: 'https://vincs.io' };
+    const fetch = async (url, init) => { sent.push([String(url), init]); return { ok: true }; };
+    const csrfToken = () => 'tok';
+    ${fn}
+    export default async (...a) => { sent.length = 0; await webFetch(...a); return sent[0]; };`);
+  const signal = new AbortController().signal;
+  assert.deepEqual(await webFetch('/api/teams'), ['https://vincs.io/api/teams', { credentials: 'include' }]);
+  assert.deepEqual(await webFetch('/api/me', {}), ['https://vincs.io/api/me', { credentials: 'include' }]);
+  // 부르는 쪽의 옵션은 받은 그대로(값이 undefined 여도 열쇠째) 넘긴다.
+  assert.deepEqual(await webFetch('/api/me', { cache: undefined }), ['https://vincs.io/api/me', { credentials: 'include', cache: undefined }]);
+  assert.deepEqual(await webFetch('/api/community/agents/destinations', { cache: 'no-store', signal }),
+    ['https://vincs.io/api/community/agents/destinations', { credentials: 'include', cache: 'no-store', signal }]);
+  assert.deepEqual(await webFetch('/api/push/test', { method: 'POST', cache: 'no-store', json: { a: 1 } }),
+    ['https://vincs.io/api/push/test', { method: 'POST', credentials: 'include', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'tok' }, body: '{"a":1}' }]);
+  assert.deepEqual(await webFetch('/api/push/subscribe', { method: 'POST', cache: 'no-store', json: undefined }),
+    ['https://vincs.io/api/push/subscribe', { method: 'POST', credentials: 'include', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'tok' }, body: undefined }]);
+  assert.deepEqual(await webFetch('/logout', { method: 'POST' }),
+    ['https://vincs.io/logout', { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': 'tok' } }]);
+});
+
+test('api.ts sends the account cookie only through webFetch and the graph transport', () => {
+  // `credentials: "include"` 는 두 자리뿐이다: 계정 쿠키 라우트의 문과, 웹의 그래프 평면(localCall).
+  assert.equal([...api.matchAll(/credentials: "include"/g)].length, 2);
+  for (const route of ['/api/me', '/api/teams', '/api/push/devices', '/api/push/subscribe', '/api/push/unsubscribe',
+    '/api/push/test', '/api/community/agents/destinations', '/logout', '/api/selfhost/seats'])
+    assert.match(api, new RegExp(`webFetch\\("${route.replace(/\//g, '\\/')}"`), route);
+  assert.doesNotMatch(api, /fetch\(new URL\("\/api\/(?!graph)/, 'no raw fetch to an account route');
 });
