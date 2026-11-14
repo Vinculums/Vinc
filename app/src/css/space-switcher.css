@@ -1,0 +1,134 @@
+/* ── 공간 전환(`space-switcher.ts`) ───────────────────────────────────────
+   뷰 머리의 맨 앞 칸(`#tb-space`): 지금 공간의 이름과 캐럿, **글자만**이다(표식이 없다). 커뮤니티는
+   이름 옆에 자물쇠와 "읽기 전용"이 선다. 종류는 메뉴의 묶음 이름이 말한다. 계정 그래프에서만
+   채워지고, 비어 있으면(로컬 모드) 자리를 차지하지 않아 앞자리가 지금 자리 그대로다.
+   이름의 첫 글자가 머리의 시작선(`.tb-col` 의 왼쪽 여백)에 선다: 단추 안쪽 여백만큼 바깥으로 뺀다.
+   이름 뒤에 세로 구분선, 그다음이 앞자리(경로 · "그래프 · 범위")다.
+   좁은 머리: 이름은 머리 폭의 45% 까지만 쓰고 말줄임으로 준다(뒤 묶음은 줄지 않는다). 앞자리는 남는 폭을
+   쓰고, 이름이 읽히지 않을 만큼 줄 때에만 비킨다(아래 `[data-tight]` · `[data-ro-short]`, 판단은
+   space-switcher.ts `fit` 이 실제 폭을 재서 한다). */
+#tb-space {
+  flex: 0 1 auto; min-width: 0; max-width: min(18rem, 45cqi);
+  display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-sm);
+}
+#tb-space:empty { display: none; }
+/* 공간이 있으면 앞자리는 남는 폭만 쓴다(기준 폭 0): 모자라면 앞자리가 먼저 말줄임으로 준다. 다만 서 있는 동안은
+   글자 셋쯤(3em)을 지킨다 — 폭 0 으로 줄어 구분선만 남는 일이 없다. 그 폭도 없으면 아래 마지막 수단이 켜진다. */
+#tb-space:not(:empty) + .tb-lead { flex-basis: 0; min-width: 3em; }
+/* 마지막 수단(space-switcher.ts `fit`): 이름이 읽을 수 없을 만큼 줄면 구분선과 앞자리가 비켜서고 이름이
+   45% 상한 없이 그 폭을 쓴다. 스크립트가 이름의 실제 폭을 재서 켠다(머리 폭 하나로 정하지 않는다). */
+#tb-space[data-tight] { max-width: none; }
+#tb-space[data-tight] .tb-space-sep, #tb-space[data-tight] + .tb-lead { display: none; }
+#tb-space[data-tight] ~ .tb-trail { margin-left: auto; }
+/* 그다음 수단: 앞자리가 비켜도 이름이 읽히지 않으면 커뮤니티의 "읽기 전용" 글자가 비키고 자물쇠만 남는다(같은 `fit`). */
+#tb-space[data-ro-short] .space-ro-text { display: none; }
+.space-switch {
+  /* 폭은 칸(`#tb-space`)이 정한다: 칸이 flex 라 단추는 `min-width: 0` 으로 줄고 이름이 말줄임이 된다.
+     ⚠ `max-width: 100%` 를 주지 말 것 — 음수 왼쪽 여백만큼 칸이 단추보다 좁게 잡혀 이름이 늘 8px 잘린다. */
+  display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0;
+  height: var(--ctl-h); margin-left: calc(var(--space-2) * -1); padding: 0 var(--space-2);
+  border: none; border-radius: var(--shell-ctl-r); background: none; cursor: pointer;
+  font: inherit; font-size: var(--fs-sm); color: hsl(var(--foreground)); white-space: nowrap;
+  transition: background-color var(--dur-hover) var(--ease-out);
+}
+.space-switch:hover, .space-switch[aria-expanded="true"] { background: hsl(var(--muted-foreground) / .12); }
+.space-switch:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.space-name { min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.space-ro { flex: 0 0 auto; display: inline-flex; align-items: center; gap: var(--space-1); color: hsl(var(--muted-foreground)); }
+.space-ro .icon, .space-row-sub .icon { flex: 0 0 auto; }
+.space-caret {
+  flex: 0 0 auto; display: inline-flex; color: hsl(var(--muted-foreground));
+  transform: rotate(-90deg); transition: transform var(--dur-fast) var(--ease-out);
+}
+.space-switch[aria-expanded="true"] .space-caret { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .space-switch, .space-caret { transition: none; } }
+/* 공간과 지금 자리 사이의 세로 구분선(장식). */
+.tb-space-sep { flex: 0 0 auto; width: 1px; height: 1.5em; background: hsl(var(--border)); }
+/* 크럼의 첫 글자를 칼럼 시작선으로 빼던 일(`.tb-lead .home-crumbs`)은 공간 이름이 맡는다. */
+#tb-space:not(:empty) + .tb-lead .home-crumbs > :first-child { margin-left: 0; }
+
+/* 공간 메뉴: 판(카드 면 · 테두리 · 그림자 · 등장)은 `.ctx-menu` 와 한 규칙을 나눠 쓰고(아래 `.ctx-menu,
+   .space-menu`), 클래스는 따로다 — `openContextMenu` 가 `.ctx-menu` 를 전부 지우므로 같은 클래스면
+   이 메뉴가 듣기를 단 채 사라진다. 폭(15rem 이상)과 자리는 스크립트가 준다(단추 바로 아래).
+   묶음 이름은 사이드바 절 이름(`.lnb-sec-label`)을 그대로 쓴다. 지금 공간 = 알약 + 굵기 + 체크. */
+.space-menu { overflow: hidden; word-break: keep-all; }
+.space-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.space-group + .space-group, .space-group + .space-nomatch {
+  margin-top: var(--space-1); padding-top: var(--space-1); border-top: 1px solid hsl(var(--border));
+}
+.space-group-label { display: block; padding: var(--space-2) var(--pad-row) var(--space-1); }
+.ctx-item.space-row {
+  display: flex; align-items: center; gap: var(--space-2); width: 100%; min-width: 0;
+  min-height: var(--ctl-h); padding: var(--space-1) var(--pad-row);
+  border-radius: var(--shell-ctl-r);
+  transition: background-color var(--dur-hover) var(--ease-out);
+}
+.ctx-item.space-row:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+.ctx-item.space-row[aria-checked="true"] { background: hsl(var(--ring) / .14); font-weight: 600; }
+.ctx-item.space-row-off { color: hsl(var(--muted-foreground)); cursor: default; }
+.ctx-item.space-row-off:hover { background: none; }
+.space-row-text { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; line-height: var(--lh-tight); }
+.space-row-name { font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.space-row-sub {
+  display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0;
+  font-size: var(--fs-sm); font-weight: 400; color: hsl(var(--muted-foreground));
+}
+.space-row-end { flex: 0 0 auto; display: inline-flex; color: hsl(var(--point-text)); }
+.space-vh {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.space-note {
+  margin: var(--space-1) var(--pad-row) var(--space-2);
+  font-size: var(--fs-sm); line-height: var(--lh-normal); color: hsl(var(--muted-foreground));
+}
+.space-retry { margin: 0 var(--pad-row) var(--space-2); }
+.space-foot {
+  flex: 0 0 auto; margin: var(--space-1) 0 0; padding: var(--space-2) var(--pad-row) var(--space-1);
+  border-top: 1px solid hsl(var(--border));
+  font-size: var(--fs-sm); line-height: var(--lh-normal); color: hsl(var(--muted-foreground));
+  overflow-wrap: break-word;
+}
+.space-find {
+  flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-2);
+  margin: 0 0 var(--space-1); padding: 0 var(--pad-row);
+  border: 1px solid hsl(var(--input)); border-radius: var(--shell-ctl-r);
+  background: hsl(var(--background)); color: hsl(var(--muted-foreground));
+}
+.space-find:focus-within { border-color: hsl(var(--ring)); }
+.space-find-input {
+  flex: 1 1 auto; min-width: 0; height: calc(var(--ctl-h) - 2px); padding: 0;
+  border: 0; outline: none; background: none; color: hsl(var(--foreground));
+  font: inherit; font-size: var(--fs-sm);
+}
+.space-find-input::placeholder { color: hsl(var(--muted-foreground)); }
+/* 지우기 단추는 검색바(`#tb-q`)와 같이 무채색으로 둔다(브라우저 기본은 파랑이다). */
+.space-find-input::-webkit-search-cancel-button { filter: grayscale(1) opacity(.5); }
+/* 좁은 창: 손이 짚는 자리는 44px 이상이다(`--ctl-h` 36 + 8). 머리의 단추는 머리 줄(36)에 맞춰 그리고
+   메뉴의 줄만 키운다. */
+@media (max-width: 600px) {
+  .ctx-item.space-row { min-height: calc(var(--ctl-h) + var(--space-2)); }
+  /* 16px 아래 글씨의 입력은 iOS 가 누르는 순간 화면을 확대한다. 그래서 여기만 1rem 이다. */
+  .space-find-input { height: calc(var(--ctl-h) + var(--space-2) - 2px); font-size: 1rem; }  /* fs-allow: 휴대폰 입력 칸은 16px 아래면 브라우저가 화면을 확대한다 */
+}
+
+/* 머리 — 스크롤 밖. 좌우 여백은 본문과 같고 위 여백만 본문의 것을 가져온다. */
+.lnb-head {
+  flex: 0 0 auto;
+  padding: var(--pad-card) var(--pad-card) 0;
+}
+.lnb-head:empty { display: none; }
+.lnb-body {
+  flex: 1 1 auto; overflow-y: auto; overflow-x: hidden;
+  /* 위 여백이 생겼다 — 머리가 없어졌으므로 첫 줄이 카드 모서리에 붙지 않게.
+     레일도 같은 값을 쓰므로 **두 층의 첫 줄이 같은 높이에서 시작한다**. */
+  padding: var(--space-1, .25rem) var(--pad-card) var(--space-3, .75rem);
+  /* 스크롤바 자리를 미리 비운다. 이 앱의 스크롤바는 홈(track)이 없는 막대라
+     내용 위에 떠서, 홈 알약의 오른쪽 끝을 물고 있었다(발주자 `수정항목/lnb.JPG`). */
+  scrollbar-gutter: stable;
+}
+
+/* ⚠ 접힌 사이드바를 다시 여는 **셸 직속 손잡이는 사라졌다**(2026-09-09).
+   상단 바의 `#tb-lnb-toggle` 하나가 양방향을 겸한다 — 접힘에 따라 자리가 바뀌지
+   않는 것이 그 이유다(같은 것은 같은 자리에 있어야 한다). */
+

@@ -1,0 +1,39 @@
+/* ── D37 부유 크롬 = Liquid Glass. 콘텐츠 평면(목록·캔버스 마크·레일)은 불변.
+      기본(폴백) = 기존 불투명 카드 그대로 — 아래 @supports 블록만 유리화. */
+@supports (backdrop-filter: blur(1px)) {
+  @media not (prefers-reduced-transparency: reduce) {
+    /* #view-lens-panel 은 여기서 뺐다(2026-08-17): 그 패널의 유리는 ::before 형제 층이
+       맡는다(위 #view-lens-panel 주석 — 조상 블러는 스크롤을 끊는다). 여기 남겨 두면
+       패널 자신에게 블러가 한 번 더 걸려 같은 화면을 두 겹 블러하고 있었다. */
+    /* 상단 바가 이 목록에 든다(2026-09-09): 지도 위에 떠 있게 된 뒤로는 **부유
+       크롬**이고, D37 은 부유 크롬을 유리로 규정한다(불투명 카드로 두면 지도의
+       위 띠가 통째로 가려져 "떠 있다"가 "잘려 있다"로 읽힌다).
+       ⚠ 조상 블러는 그 안의 스크롤을 끊는다(`#view-lens-panel` 주석) — 바 안에서
+       스크롤하는 것은 검색 결과 목록(`#tb-results`)이고 그것은 바 **밖으로** 뻗는
+       absolute 층이라 여기서는 안전하다. 바 안에 스크롤 면을 새로 넣지 말 것. */
+    .palette-card, #view-detail, .tip, .float-card {
+      background: var(--glass-bg);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      box-shadow: var(--glass-edge), var(--shadow-elev-3, 0 10px 34px hsl(var(--foreground) / .14));
+    }
+    .palette-card, .tip, .float-card {
+      border: 1px solid hsl(var(--border) / .6);
+    }
+  }
+}
+
+/* 자체 툴팁(D48-T) — 네이티브 title 대체. WCAG 1.4.13 을 만족시키려면 툴팁이
+   **실제 요소**여야 한다(Esc 로 닫고, 위에 포인터를 올릴 수 있어야 하므로
+   pointer-events 를 끄지 않는다). 위치는 tooltip.ts 가 transform 으로 잡는다.
+   폴백(백드롭 미지원)은 불투명 카드 — 위 @supports 블록이 유리화한다. */
+.tip {
+  position: fixed; top: 0; left: 0; z-index: 60;
+  max-width: 22rem; padding: .3rem .5rem;
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  background: hsl(var(--card)); color: hsl(var(--foreground));
+  font-size: var(--fs-sm); line-height: 1.35; white-space: pre-wrap;
+  box-shadow: var(--shadow-elev-3, 0 10px 34px hsl(var(--foreground) / .14));
+}
+.tip[hidden] { display: none; }
+

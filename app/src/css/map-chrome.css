@@ -1,0 +1,149 @@
+/* ── 지도 크롬 바(D65) — 렌즈 · 관점 · 지표를 한 줄에 모은다 ────────────────
+   근접성: 같은 대상(지도)을 다루는 손잡이가 세 모서리에 흩어져 있던 것을 한 자리로.
+   선택적 주의: 떠 있는 알약은 배너로 읽혀 무시되므로 상태 표시줄로 눕힌다. */
+
+#view-chrome {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
+  display: flex; align-items: center; gap: var(--space-3, .75rem);
+  padding: .4rem var(--space-4, 1rem);
+  background: linear-gradient(hsl(var(--background) / 0), hsl(var(--background) / .82) 45%);
+  pointer-events: none;
+}
+#view-chrome > * { pointer-events: auto; }
+#view-metrics {
+  margin-left: auto; display: flex; gap: 1.1rem; white-space: nowrap;
+  font-size: var(--fs-xs); color: hsl(var(--caption-foreground));
+}
+/* 연결 없음 = 누를 수 있는 수치(세어만 놓고 해소할 길을 안 주지 않는다). */
+.metric-act { cursor: pointer; border-bottom: 1px dashed hsl(var(--border)); }
+.metric-act:hover { color: hsl(var(--foreground)); }
+
+/* 렌즈 = 아이콘 하나. 지도 위 크롬은 최소 잉크로 — 이름표는 툴팁이 맡는다. */
+.lens-btn {
+  /* 규격 밖에 남아 있던 값(2.15rem = 34.4px)이었다. 그 2px 때문에 보기·범례 묶음의
+     폭이 326 이 되어 패널(328)과 오른쪽 끝이 어긋났다 - 정렬이 컨트롤 하나의 크기에
+     걸려 있었다는 뜻이다. 다른 아이콘 버튼과 같은 높이를 쓴다. */
+  display: grid; place-items: center;
+  width: var(--ctl-h); height: var(--ctl-h); padding: 0;
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--card) / .82); color: hsl(var(--muted-foreground)); cursor: pointer;
+}
+.lens-btn:hover, .lens-btn[aria-expanded="true"] {
+  background: hsl(var(--card)); color: hsl(var(--foreground)); border-color: hsl(var(--muted-foreground));
+}
+.lens-btn svg { width: 17px; height: 17px; }
+/* 패널 머리의 닫기 — 탭줄 오른쪽 끝. 모양은 `?` 토글과 같은 급(작은 아이콘 버튼)이다. */
+.lens-close {
+  display: grid; place-items: center; flex: 0 0 auto;
+  width: 1.75rem; height: 1.75rem; padding: 0; margin-left: .15rem;
+  border: 1px solid transparent; border-radius: var(--radius-sm, .625rem);
+  background: none; color: hsl(var(--muted-foreground)); cursor: pointer;
+}
+.lens-close:hover { color: hsl(var(--foreground)); background: hsl(var(--muted-foreground) / .1); }
+.lens-close:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+
+/* 메시지 층은 캔버스를 통째로 덮는 오버레이(inset:0)다. 문구만 얹는 층이 그 아래
+   그려진 차트의 hover·click 을 전부 삼키면(예: 씨앗 혼자일 때 점 하나 + 안내 문구)
+   보이는 마크가 아무 반응도 하지 않는다 → 층은 포인터를 통과시키고, 층 안의 실제
+   컨트롤만 되살린다(빈 상태의 CTA 링크·에러 상태의 재시도 버튼은 그대로 눌린다). */
+#view-msg { pointer-events: none; }
+/* 전환 중(>400ms) — 캔버스를 살짝 물리고 상단에 진행 막대. 내용을 가리지 않는다. */
+.view-busy #view-canvas { opacity: .5; transition: opacity .12s ease; }
+.view-busy::after {
+  content: ""; position: absolute; left: 0; top: 0; width: 40%; height: 2px; z-index: 8;
+  background: linear-gradient(90deg, transparent, hsl(var(--muted-foreground)), transparent);
+  animation: busySweep 1s linear infinite;
+}
+/* 합성만 한다 — background-position 은 매 프레임 띠 전체를 다시 칠했다. 40% 폭이라 350% 가 오른쪽 끝 밖이다. */
+@keyframes busySweep { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
+@media (prefers-reduced-motion: reduce) {
+  .view-busy::after { animation: none; width: 100%; opacity: .5; }
+}
+#view-msg a, #view-msg button { pointer-events: auto; }
+/* 렌즈 패널 — 좌하단 렌즈 버튼 **위로** 열린다(버튼이 패널을 가리지 않게).
+   안에는 보기(관점·범위·옵션)와 범례가 함께 산다. */
+/* 렌즈 패널 — 좌표는 openPanel() 이 렌즈 버튼 rect 에서 실측해 박는다(D71).
+   버튼이 상단 바(표면 밖)로 올라가 표면 기준 absolute 로는 못 맞춘다. */
+/* 범례·옵션 패널 — 문서 패널과 **같은 유리 언어**를 쓴다(2026-08-05). 지도 위에
+   뜨는 두 면이 하나는 불투명, 하나는 유리면이면 같은 층에 있다는 사실이 안 읽힌다.
+   좌표는 JS 가 렌즈 버튼 rect 에서 뽑아 인라인으로 얹는다(view.ts openPanel) —
+   버튼이 상단 바 오른쪽으로 옮겨 갔으므로 패널도 자동으로 그쪽에 선다.
+   아래 left/top 은 그 값이 오기 전 한 프레임의 기본값일 뿐이다.
+   등장·퇴장 모션은 motion.ts 가 준다(렌즈 버튼에서 자라나고 그리로 빨려 든다). */
+#doc-opts-panel {
+  position: fixed; left: var(--space-4, 1rem); top: 4rem;
+  /* 영역 상자가 생기며 좌우 여백이 한 겹 늘어 세그가 두 줄로 접혔다 — 그만큼 넓힌다.
+     v2(견본 타일 + 개수 막대)에서 1rem 더: 타일 4장 + 활성값 이름이 한 줄에 선다. */
+  z-index: 46; width: var(--lens-panel-w);
+  max-height: calc(100vh - 8rem); max-height: calc(100dvh - 8rem);
+  /* ⚠ 유리면을 스크롤 면의 **조상에서 떼어낸다**(2026-08-05 — 스크롤이 계단처럼
+     끊겼다). `backdrop-filter` 가 조상에 있으면 그 안에서 스크롤할 때마다 블러가
+     다시 계산된다. 그래서 블러는 **형제 층**(::before)이 갖고, 스크롤은
+     `.lens-scroll` 이 맡는다 — 둘이 남매라 서로의 페인트를 무효화하지 않는다. */
+  display: flex; flex-direction: column; overflow: hidden;
+  background: transparent;
+  border: 1px solid hsl(var(--border) / .6);
+  border-radius: var(--radius);
+  box-shadow: 0 1.5rem 3rem hsl(0 0% 0% / .32);
+}
+/* 유리 층 — 내용과 **남매**다(조상이 아니다). 스크롤은 이 층을 건드리지 않는다. */
+#doc-opts-panel::before {
+  content: ""; position: absolute; inset: 0; z-index: 0; border-radius: inherit;
+  background: hsl(var(--card) / .78);
+  /* 18px → 12px(F7, 2026-08-17). backdrop-filter 는 뒤의 캔버스를 **매 프레임** 다시
+     샘플링한다 — 반경이 곧 비용이라, 패널이 열려만 있어도 GPU 가 두 배로 일했다
+     (그래프 문서 `vinc.research.view-interaction-perf` §2 C7). 12px 는 유리 인상이
+     남는 하한 근처다. */
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  pointer-events: none;
+}
+/* 투명도를 줄여 달라는 사용자에겐 불투명 카드로 — 블러 자체를 안 한다. */
+@media (prefers-reduced-transparency: reduce) {
+  #doc-opts-panel::before {
+    background: hsl(var(--card));
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+  }
+}
+/* 스크롤하는 안쪽 면. 여백을 여기에 두는 이유: 스크롤바가 패널 모서리에 붙어야
+   내용과 겹치지 않는다(패널에 패딩을 두면 스크롤바가 그 안으로 들어온다). */
+.lens-scroll {
+  position: relative; z-index: 1;   /* 유리 층 위 */
+  flex: 1 1 auto; min-height: 0; overflow: auto;
+  /* 좌우만. 위아래 여백은 머리(`.lg-tabrow`)와 발(`.lens-foot`)이 갖는다 — 시트의
+     `.sheet-body` 와 같은 배분이다. 여기에 위 여백을 주면 스크롤한 내용이 그
+     여백 위로 올라와 머리 밑에 붙는다. */
+  padding: 0 var(--space-4, 1rem);
+  /* `will-change: transform` 을 쓰지 않는다 — 스크롤 컨테이너를 미리 레이어로 올려도
+     이득이 없고(브라우저가 스크롤 레이어는 스스로 만든다) 메모리만 잡는다. 끊김의
+     원인은 레이어가 아니라 **조상의 블러**였다. */
+}
+
+/* 읽기 설정(doc-options.ts) — `<html>` 의 `data-doc-*` 가 문서 글자와 본문 폭을 정한다.
+   폭은 셸에 얹는다: 머리(`.tb-col`)와 본문(`.home`)이 같은 칼럼 값을 읽어야 경로와 첫 글자가
+   같은 세로선에 남는다. 기본값은 속성이 없을 때의 값이다(`--page-col` 60rem · 1rem · 1.65). */
+:root[data-doc-text="small"] { --doc-fs: .9375rem; }
+:root[data-doc-text="large"] { --doc-fs: 1.125rem; }
+:root[data-doc-lines="compact"] { --doc-lh: 1.5; }
+:root[data-doc-lines="relaxed"] { --doc-lh: 1.85; }
+:root[data-doc-width="narrow"] #shell { --page-col: 48rem; }
+:root[data-doc-width="wide"] #shell { --page-col: 72rem; }
+/* 범례 — 문서 면에 실제로 그려지는 표시를 견본 그대로 보인다. 견본의 선 · 면은
+   편집기 테마(codemirror-editor.ts)와 옆 칸(`.ha-graph-warn`)의 값을 따른다. */
+.dl-list { display: flex; flex-direction: column; gap: .55rem; padding: .25rem 0 .5rem; }
+.dl-row { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: .6rem; align-items: baseline; font-size: var(--fs-sm); }
+.dl-ex { justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: hsl(var(--foreground)); }
+.dl-say { color: hsl(var(--muted-foreground)); line-height: 1.45; }
+.dl-ex-link { text-decoration: underline; }
+.dl-ex-concept { text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+.dl-ex-fm {
+  padding: .1rem .4rem; font-size: var(--fs-xs);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-xs, .375rem); background: hsl(var(--muted));
+}
+.dl-ex-done { color: hsl(var(--muted-foreground)); text-decoration: line-through; }
+.dl-ex-warn { padding: .1rem .4rem; font-size: var(--fs-xs); border-radius: var(--radius-xs, .375rem); background: hsl(var(--warning) / .16); }
+/* 읽기 설정의 한 줄 = 이름 위, 고르기 아래. 이름과 세 칸을 한 줄에 세우면 패널 폭에서 이름이 잘린다. */
+.dopt-row { display: flex; flex-direction: column; align-items: flex-start; gap: .2rem; margin: .45rem 0 0; }
+.dopt-row .hint { margin: 0; }
+.dopt-reset { display: flex; justify-content: flex-end; margin: .6rem 0 .25rem; }
+
