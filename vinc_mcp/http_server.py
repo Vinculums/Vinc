@@ -65,8 +65,8 @@ from .proxy_ops import (  # noqa: F401
     _COMMUNITY_SOCIAL_NODE_RE, _COMMUNITY_WIKI_RELS, _EDITOR_OPS, _JOB_ID_RE, _PROXY_OPS, _PURE_POST_OPS,
     _TEAM_REFUSED_OPS, _TEAM_ROLES, _community_page_node, _role_allows, team_role_tiers)
 from .rpc import PROTOCOL_VERSIONS, Dispatcher
-
-MAX_BODY = 4 * 1024 * 1024
+# 본문 상한은 `/v1`(rest_api)과 같은 값 하나다. `http_server.MAX_BODY` 로 읽는 호출자도 같은 객체를 본다.
+from .hub_http import MAX_BODY
 
 
 # 팀 그래프 소유자 형식(AP-1 §4.3). 계정이 서명해 보내지만 **형식은 우리가 다시 본다** —
