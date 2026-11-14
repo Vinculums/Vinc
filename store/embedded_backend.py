@@ -31,6 +31,7 @@ import weakref
 from contextlib import contextmanager, nullcontext
 
 from . import pkns, request_timing
+from . import topic_conversion_guard
 from .adapter_common import (CHILD_FANOUT, CHUNK_FILTER_KEYS, OVERSAMPLE, Result,
                              filter_clause, fold_children)
 from .write_batch import Batch, BatchSlot, flush
@@ -857,7 +858,7 @@ class _ReaderView:
     @property
     def _topic_conversion_terminals(self):
         # 완료 증명은 프로세스의 writer가 검증한다. 리더마다 복사하면 철회가 늦어진다.
-        return getattr(self._b, "_topic_conversion_terminals", set())
+        return topic_conversion_guard.terminals(self._b)
 
     def __init__(self, backend: "EmbeddedBackend", conn, writer=None):
         self._b = backend
@@ -1167,7 +1168,7 @@ class EmbeddedBackend:
         self._manual_tx = threading.local()
         self.driver_name = driver_name
         self._cfg = cfg
-        self._topic_conversion_guard = os.environ.get("VINC_TOPIC_CONVERSION") == "1"
+        self._topic_conversion_guard = topic_conversion_guard.enabled_by_env()
         if not self._topic_conversion_guard and db is not None:
             try:
                 self._topic_conversion_guard = bool(_exec_to_dicts(conn,

@@ -11,14 +11,14 @@
 """
 from __future__ import annotations
 
-import os
+from store import topic_conversion_guard
 
 
 def write_topic_conversion(app, body):
     from . import topic_conversion as conversion
     from . import revstamp
     from store.topic_transfer import TransferRefused
-    if body.get("action") == "preflight" and os.environ.get("VINC_TOPIC_CONVERSION") != "1":
+    if body.get("action") == "preflight" and not topic_conversion_guard.enabled_by_env():
         return 503, {"error": "topic_conversion_unavailable"}
     source = body.get("owner")
     action = body.get("action")
