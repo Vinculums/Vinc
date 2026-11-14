@@ -47,6 +47,7 @@
 /api/node_read.py                                @Vinculums/rag
 /api/paths.py                                    @Vinculums/rag
 /api/query_base.py                               @Vinculums/rag
+/api/ties.py                                     @Vinculums/rag
 /engines/recall_ingest.py                        @Vinculums/rag
 /packaging/bake_embed_model.py                   @Vinculums/rag
 /scripts/bench_models.py                         @Vinculums/rag

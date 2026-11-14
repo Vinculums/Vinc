@@ -48,6 +48,7 @@
         "api/merge_candidates.py",
         "api/diagnose.py",
         "api/decide_read.py",
+        "api/ties.py",
         "engines/recall_ingest.py",
         "packaging/bake_embed_model.py",
         ".github/workflows/rerank-probe.yml",
