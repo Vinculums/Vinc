@@ -1756,7 +1756,8 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
            relevance_corpus_revision: str | None = None,
            node_k: int | None = None,
            kinds=None,
-           cfg=None, store=None) -> dict:
+           cfg=None, store=None,
+           _mode_scope: tuple | None = None) -> dict:
     """하이브리드 검색 **재설계**(T3b) — BM25(FTS)+(선택)벡터 RRF(§4-2) 위에 3개
     실사용 사고 대응을 얹는다:
 
@@ -1826,12 +1827,14 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
     qh = _query_fingerprint(query, owner, filters, detail, as_of, mode=mode,
                             historical=historical, known_at=known_at, kinds=kinds)
     # 시점 인자도 스토어를 열기 전에 검사한다. 틀린 값이 조용히 오늘로 떨어지면 부르는
-    # 쪽은 과거를 읽은 줄 안다.
-    try:
-        historical, _scope, _scope_info = temporal.mode_scope(mode, historical, as_of, query)
-    except ValueError as exc:
-        base["note"] = base["error"] = f"invalid_temporal_mode: {exc}" if mode else f"invalid_as_of: {exc}"
-        return base
+    # 쪽은 과거를 읽은 줄 안다. :func:`search` 가 이미 풀어 넘겼으면(`_mode_scope`) 다시 풀지 않는다.
+    if _mode_scope is None:
+        try:
+            _mode_scope = temporal.mode_scope(mode, historical, as_of, query)
+        except ValueError as exc:
+            base["note"] = base["error"] = f"invalid_temporal_mode: {exc}" if mode else f"invalid_as_of: {exc}"
+            return base
+    historical, _scope, _scope_info = _mode_scope
     if mode:
         base["mode"] = mode
         base["claim_assessment_scope"] = "retrieved_candidates"
@@ -1976,13 +1979,17 @@ def _temporal_failed(res: dict, exc: Exception) -> str:
 
 
 def _finish_search_temporal(res: dict, store, query: str, *, mode, known_at, kwargs: dict,
-                            doc_states: dict) -> None:
+                            doc_states: dict, _mode_scope: tuple | None = None) -> None:
     """검색 응답에 시간 메타를 붙이고 시점 필터를 건다(:func:`search`).
 
     시간 메타를 못 읽으면 current·known_at 은 노드 후보를 내지 않는다(fail closed). 은퇴한 노드와
-    컷오프 뒤에 생긴 노드가 걸러지지 않은 채 섞여 있기 때문이다. general 은 메타만 비운다."""
+    컷오프 뒤에 생긴 노드가 걸러지지 않은 채 섞여 있기 때문이다. general 은 메타만 비운다.
+    ``_mode_scope`` 는 :func:`search` 가 한 번 푼 ``temporal.mode_scope`` 의 답이다. 없으면(직접 부를
+    때) 여기서 풀고, 틀린 인자는 ``ValueError`` 로 그대로 올린다."""
     owner = kwargs.get("owner")
-    _, scope, _ = temporal.mode_scope(mode, kwargs.get("historical", False), kwargs.get("as_of"), query)
+    if _mode_scope is None:
+        _mode_scope = temporal.mode_scope(mode, kwargs.get("historical", False), kwargs.get("as_of"), query)
+    _, scope, _ = _mode_scope
     stats: dict = {}
     hits = res.get("node_hits") or []
     try:
@@ -2097,7 +2104,7 @@ def search(query: str, *, mode: str | None = None, known_at: str | None = None, 
 
     current 의 top_k 자르기는 거르기가 끝난 뒤에, 시간 메타 읽기의 성패와 상관없이 한다."""
     try:
-        temporal.mode_scope(mode, kwargs.get("historical", False), kwargs.get("as_of"), query)
+        mode_scope = temporal.mode_scope(mode, kwargs.get("historical", False), kwargs.get("as_of"), query)
         if known_at and not temporal.time_scope(known_at):
             raise ValueError("invalid known_at")
     except ValueError as exc:
@@ -2115,14 +2122,14 @@ def search(query: str, *, mode: str | None = None, known_at: str | None = None, 
     if owns:
         store = open_store(kwargs.get("cfg") or load_config())
     if store is None:
-        return _search(query, mode=mode, known_at=known_at, **kwargs)
+        return _search(query, mode=mode, known_at=known_at, _mode_scope=mode_scope, **kwargs)
     try:
-        res = _search(query, mode=mode, known_at=known_at, **{**kwargs, "store": store})
+        res = _search(query, mode=mode, known_at=known_at, _mode_scope=mode_scope, **{**kwargs, "store": store})
         doc_states = res.pop("_current_doc_temporal", {})
         if not res.get("error", "").startswith(("invalid_", "stale_cursor")):
             try:
                 _finish_search_temporal(res, store, query, mode=mode, known_at=known_at,
-                                        kwargs=kwargs, doc_states=doc_states)
+                                        kwargs=kwargs, doc_states=doc_states, _mode_scope=mode_scope)
             except Exception as exc:
                 err = _temporal_failed(res, exc)
                 if mode == "current" or known_at:
