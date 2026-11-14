@@ -170,21 +170,33 @@ def recall_plan(query: str = "", *, owner: str | None = None, tenant: str | None
 
 
 def rrf_fuse(ranked_lists: list[list[dict]], *, k: int = 60,
-             top_k: int | None = None, id_key: str = "id") -> list[dict]:
+             top_k: int | None = None, id_key: str = "id",
+             weights: list[float] | None = None, tie_by_id: bool = False) -> list[dict]:
     """Reciprocal Rank Fusion — 하이브리드 검색의 순수 융합 함수(§4-2, 백엔드 밖).
 
     각 순위 리스트에서 항목의 기여 = 1/(k + rank). 여러 암(vector·BM25)의 기여를
-    합산해 재정렬한다. 학습·점수 보정 불요(k≈60 기본). 각 행에 ``rrf_score`` 부여."""
+    합산해 재정렬한다. 학습·점수 보정 불요(k≈60 기본). 각 행에 ``rrf_score`` 부여.
+
+    ``weights`` 는 팔마다의 가중치다(기여 = w_i/(k + rank)). 없으면 전부 1.0 이고 프로덕션
+    호출부는 아무도 안 넘긴다 — 가중치는 평가 하네스의 대조군(`rag_eval.rerank`)이 쓴다.
+    ``tie_by_id`` 가 거짓(기본)이면 동점은 처음 본 순서를 지키고(안정 정렬), 참이면 id 문자열
+    오름차순으로 깬다. 반환 행은 입력 행 자체(처음 본 쪽)이고 ``rrf_score`` 가 그 위에 쓰인다."""
+    if weights is not None and len(weights) != len(ranked_lists):
+        raise ValueError("lists and weights differ in length")
     scores: dict = {}
     rows_by_id: dict = {}
-    for rows in ranked_lists:
+    for arm, rows in enumerate(ranked_lists):
+        w = 1.0 if weights is None else float(weights[arm])
         for rank, row in enumerate(rows):
             rid = row.get(id_key)
             if rid is None:
                 continue
-            scores[rid] = scores.get(rid, 0.0) + 1.0 / (k + rank + 1)
+            scores[rid] = scores.get(rid, 0.0) + w / (k + rank + 1)
             rows_by_id.setdefault(rid, row)
-    fused = sorted(rows_by_id.values(), key=lambda r: scores[r[id_key]], reverse=True)
+    if tie_by_id:
+        fused = sorted(rows_by_id.values(), key=lambda r: (-scores[r[id_key]], str(r[id_key])))
+    else:
+        fused = sorted(rows_by_id.values(), key=lambda r: scores[r[id_key]], reverse=True)
     for r in fused:
         r["rrf_score"] = scores[r[id_key]]
     return fused[:top_k] if top_k else fused
