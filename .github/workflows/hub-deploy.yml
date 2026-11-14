@@ -117,6 +117,13 @@ jobs:
   # 노트북에 남기면 줄이 다시 노트북을 기다린다.
   # 되돌릴 조건: 월 포함분이 다시 바닥에 가까워지면(정지는 배포까지 멈춘다).
   plan:
+    # 공개 저장소에서는 포크의 `main` 브랜치에서 돈 ci 도 `branches: [main]` 에 걸린다. 그래서
+    # workflow_run 은 이 저장소의 main 에 push 해서 돈 ci 만 받는다(수동 실행은 그대로).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     # git fetch · az 한 번 · API 몇 번이다. 걸린 호출 하나가 배포 줄을 붙잡지 않게 짧게.
     timeout-minutes: 10

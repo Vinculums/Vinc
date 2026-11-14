@@ -221,9 +221,11 @@ jobs:
       # VINC_GATE_SPACE(없으면 개인 그래프). 쓰기 키가 들어 있으면 실행 하나가 실행 기록
       # 하나가 되고, 원본 결과는 아래 아티팩트로 남는다.
       # 근거: [[vinc.plan.agent-harness-work-order-2026-10-25 §2]]
+      # 공개 저장소에서는 돌지 않는다. 잡 요약과 아티팩트는 누구나 읽는데, 이 게이트는 비공개
+      # 그래프의 결정 제목을 거기에 적는다.
       - name: Decision gate notice (recorded decisions on touched paths, advisory)
         id: gate
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.repository.private
         continue-on-error: true
         timeout-minutes: 3
         env:
@@ -256,7 +258,7 @@ jobs:
           if [ -f "$trace" ]; then echo "trace=$trace" >> "$GITHUB_OUTPUT"; fi
           exit 0
       - name: Keep the decision gate result
-        if: github.event_name == 'pull_request' && steps.gate.outputs.trace != ''
+        if: github.event_name == 'pull_request' && github.event.repository.private && steps.gate.outputs.trace != ''
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
