@@ -268,7 +268,7 @@ async (page) => {
   // its ongoing movement is incorrectly attributed to the theme repaint.
   await page.waitForTimeout(600);
   await page.evaluate(async () => { const camera = window.__g3.cameraPosition(); document.documentElement.dataset.theme = "light";
-    localStorage.setItem("vinc.theme", "light"); const app = await import("/src/main.ts"); app.applyTheme();
+    localStorage.setItem("vinc.theme", "light"); const app = await import("/src/theme-apply.ts"); app.applyTheme();
     window.__qaThemeCamera = JSON.stringify(camera); });
   const theme = await page.evaluate(() => ({ light: document.documentElement.dataset.theme === "light",
     sameCamera: JSON.stringify(window.__g3.cameraPosition()) === window.__qaThemeCamera }));

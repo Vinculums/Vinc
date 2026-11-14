@@ -75,7 +75,7 @@ export function leaveView(): void { disposeView?.(); disposeView = undefined; ++
 
 /** 살아 있는 마운트의 테마 재칠 — renderView 가 걸고, 표면이 떠나면 스스로 물러난다. */
 let themeRepaint: (() => void) | null = null;
-/** 테마가 뒤집혔다 — 열린 화면을 **다시 칠하기만** 한다. `main.ts applyTheme` 가 좌측
+/** 테마가 뒤집혔다 — 열린 화면을 **다시 칠하기만** 한다. `theme-apply.ts applyTheme` 가 좌측
  *  트리(`repaintLnb`)와 나란히 부른다: 설정 클릭과 OS 추종이 만나는 곳이 거기뿐이다.
  *  근거: [[decision:a-theme-switch-repaints-the-open-view-in-place]] */
 export function repaintView(): void { themeRepaint?.(); }
