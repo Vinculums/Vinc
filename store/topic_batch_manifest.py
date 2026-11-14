@@ -16,7 +16,8 @@ from uuid import UUID
 from . import canon, durable_generation as generation, pkns
 from .embedded_schema import SCHEMA_VERSION, meta_table_specs, node_table_specs
 from .embedded_schema import rel_table_specs
-from .topic_transfer import TransferRefused, _KINDS, _canonical, fingerprint, mapped_rejection_key, retained_history_counts
+from .canon import canonical_json_ascii_v1 as canonical
+from .topic_transfer import TransferRefused, KINDS, fingerprint, mapped_rejection_key, retained_history_counts
 
 PROTOCOL = 3
 LINE_BYTES = 16 * 1024
@@ -66,8 +67,8 @@ def transform_row(row, instruction, binding):
 
 def untouched_summary(store, manifest, source):
     """Bounded full-field proof for source rows/edges outside this mutation."""
-    from .scoped_topic_inventory import _Reader, _node_projection
-    reader = _Reader(store)
+    from .scoped_topic_inventory import InventoryReader, node_projection
+    reader = InventoryReader(store)
     db = manifest.db
     db.execute("CREATE TABLE IF NOT EXISTS affected(label TEXT,key TEXT,PRIMARY KEY(label,key))")
     for _, body in db.execute("SELECT ordinal,body FROM instructions WHERE kind IN ('node','generated')"):
@@ -92,7 +93,7 @@ def untouched_summary(store, manifest, source):
             from .topic_manifest import ManifestLimit
             split=False
             try:
-                values=reader.page(f'MATCH (n:{label}) WHERE n.{pk} IN $keys RETURN {_node_projection(label)} ORDER BY n.{pk}',{'keys':keys})
+                values=reader.page(f'MATCH (n:{label}) WHERE n.{pk} IN $keys RETURN {node_projection(label)} ORDER BY n.{pk}',{'keys':keys})
             except ManifestLimit as exc:
                 if exc.reason!='page_bytes':raise
                 if len(keys)==1:raise ManifestLimit('single_row_bytes',**exc.details) from None
@@ -110,7 +111,7 @@ def untouched_summary(store, manifest, source):
             nonlocal count
             for value in full_rows(keys):
                 manifest.check_time()
-                sha.update((_canonical(value)+'\n').encode());count+=1
+                sha.update((canonical(value)+'\n').encode());count+=1
         # 먼저 키만 읽는다. 선택된 본문과 벡터를 다시 역직렬화하지 않고,
         # 범위 밖의 행만 모든 열을 읽어 같은 순서와 전체 해시로 확인한다.
         for coordinate in reader.scan(f'MATCH (n:{label}) WHERE {condition}',f'n.{pk} AS {pk}',f'n.{pk}',params,ordered=True):
@@ -132,7 +133,7 @@ def untouched_summary(store, manifest, source):
         for value in reader.scan(f"MATCH (a:{src})-[r:{label}]->(b:{dst}) WHERE {' OR '.join(conditions)}",', '.join(columns),order,{'source':source},ordered=True):
             manifest.check_time()
             if affected(src,value['src']) or affected(dst,value['dst']):continue
-            sha.update((_canonical(value)+'\n').encode());count+=1
+            sha.update((canonical(value)+'\n').encode());count+=1
         result['edges:'+label+':'+src+':'+dst]={'count':count,'sha256':sha.hexdigest()}
     return result
 
@@ -162,7 +163,7 @@ def prepare(manifest, plan, *, run, stamp, indexes, store):
 
     def emit(instruction):
         nonlocal count, thin_bytes
-        body = _canonical(instruction)
+        body = canonical(instruction)
         size = len(body.encode()) + 1
         if size > LINE_BYTES:
             raise TransferRefused("conversion_manifest_row_too_large")
@@ -186,7 +187,7 @@ def prepare(manifest, plan, *, run, stamp, indexes, store):
     def generated(label, row, origin):
         nonlocal projected_bytes
         claim(label, row[SPECS[label]["pk"]], origin)
-        projected_bytes += len(_canonical(row).encode())
+        projected_bytes += len(canonical(row).encode())
         emit({"kind": "generated", "label": label, "row": row, "after": digest(row)})
 
     for group in ("nodes", "meta"):
@@ -206,10 +207,10 @@ def prepare(manifest, plan, *, run, stamp, indexes, store):
                     item["sync_seq"] = seqs[plan.target]
                 after = transform_row(row, item, binding)
                 item["after"] = digest(after)
-                item["payload_bytes"] = len(_canonical(after).encode())
+                item["payload_bytes"] = len(canonical(after).encode())
                 projected_bytes += item["payload_bytes"]
                 emit(item)
-                if label in _KINDS + ("Bridge",):
+                if label in KINDS + ("Bridge",):
                     seqs[plan.source] += 1
                     generated("_Tombstone", {"node_id": old, "label": label, "owner_id": plan.source,
                         "deleted_at": stamp, "rev": after.get("rev") or 1,
@@ -232,12 +233,12 @@ def prepare(manifest, plan, *, run, stamp, indexes, store):
         emit({"kind": "edge", "label": edge["label"], "from_label": edge["from_label"],
               "to_label": edge["to_label"], "from": edge["from"], "to": edge["to"],
               "mapped_from": after["from"], "mapped_to": after["to"],
-              "before": edge_hash, "after": digest(after), "payload_bytes": len(_canonical(after).encode())})
-        projected_bytes += len(_canonical(after).encode())
+              "before": edge_hash, "after": digest(after), "payload_bytes": len(canonical(after).encode())})
+        projected_bytes += len(canonical(after).encode())
     for ordinal, body in db.execute("SELECT ordinal,body FROM instructions WHERE kind='edge'"):
         instruction = json.loads(body)
         instruction["multiplicity"] = db.execute("SELECT total FROM edge_multiplicity WHERE digest=?", (instruction["before"],)).fetchone()[0]
-        db.execute("UPDATE instructions SET body=? WHERE ordinal=?", (_canonical(instruction), ordinal))
+        db.execute("UPDATE instructions SET body=? WHERE ordinal=?", (canonical(instruction), ordinal))
     for owner, value in seqs.items():
         generated("_SyncMeta", {"key": "seq:" + owner, "value": str(value)}, "_SyncMeta")
     if collisions:
@@ -261,7 +262,7 @@ def seal(manifest, destination, header):
     sha = hashlib.sha256()
     with os.fdopen(os.open(destination, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600), "wb") as out:
         for item in [header]:
-            line = (_canonical(item) + "\n").encode()
+            line = (canonical(item) + "\n").encode()
             if len(line) > LINE_BYTES:
                 raise TransferRefused("conversion_manifest_row_too_large")
             out.write(line); sha.update(line)
@@ -341,7 +342,7 @@ def read(path, expected, *, binding):
                 count += 1
             if count != header["instructions"]:
                 raise ValueError
-        _VALIDATED[expected]=_canonical(header)
+        _VALIDATED[expected]=canonical(header)
         while len(_VALIDATED)>64:_VALIDATED.popitem(last=False)
     except (OSError, ValueError, AttributeError):
         raise TransferRefused("conversion_manifest_invalid") from None
