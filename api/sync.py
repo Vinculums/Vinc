@@ -1549,7 +1549,7 @@ def _compact_bytes(x) -> int:
 
 
 def _hub_body_limit() -> int:
-    """허브가 받는 요청 본문의 상한. 허브 문서에는 이 밖의 크기 제한이 없다."""
+    """허브가 받는 요청 본문의 상한. 문서 크기만 따로 제한하는 곳은 없어 이 값 하나가 기준이다."""
     from vinc_mcp import hub_http
     return hub_http.MAX_BODY
 
