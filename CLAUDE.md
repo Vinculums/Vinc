@@ -139,7 +139,7 @@ vinc_ingest    노드와 엣지 — 개념 · 기록(Record) · 사건(Episode) 
 | 팀 | 주로 만지는 곳 | 먼저 읽을 것 |
 |---|---|---|
 | core | `store/` · `api/` · `vinc_mcp/` · `engines/` · 허브 스토어 | [[vinc.manual.core]] |
-| rag | `vinc_rag/`(검색 코어·리랭커·임베딩 워커) · `rag_eval/`(평가 하네스·평가셋·고정 스토어 락) · `api/brief.py`(brief 해소 규칙·답 조립) · `api/query.py` 에서 나온 검색 읽기 모듈(`query_base` · `graph_*` · `neighbors` · `paths` · `node_read` · `nav` · `merge_candidates`) | [[vinc.manual.rag]] |
+| rag | `vinc_rag/`(검색 코어·리랭커·임베딩 워커) · `rag_eval/`(평가 하네스·평가셋·고정 스토어 락) · `api/brief.py`(brief 해소 규칙·답 조립) · `api/query.py` 에서 나온 검색 읽기 모듈(`query_base` · `graph_*` · `neighbors` · `paths` · `node_read` · `nav` · `merge_candidates` · `diagnose` · `decide_read`) | [[vinc.manual.rag]] |
 | app | `app/` (데스크톱·웹 프론트엔드), 사이드카 라우트 | [[vinc.manual.app]] |
 | design-content | 그래프의 토큰 노드(`vinc/design/tokens`) · `scripts/design/` · `starter-packs/` · `emails/` · `Vinc-homepage/site/` · `app/src/copy.ts`(app 과 공동) | [[vinc.manual.design]] |
 | platform | `infra/` · `packaging/` · `.github/` · `scripts/gate_*` · `agents/` · 허브 운영(배포·`az`·파일 공유) | [[vinc.manual.platform]] |

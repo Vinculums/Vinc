@@ -35,10 +35,14 @@
 /infra/                                          @Vinculums/platform
 /packaging/                                      @Vinculums/platform
 /api/brief.py                                    @Vinculums/rag
+/api/decide_read.py                              @Vinculums/rag
+/api/diagnose.py                                 @Vinculums/rag
 /api/graph_edit.py                               @Vinculums/rag
 /api/graph_layout.py                             @Vinculums/rag
 /api/graph_rank.py                               @Vinculums/rag
 /api/graph_read.py                               @Vinculums/rag
+/api/merge_candidates.py                         @Vinculums/rag
+/api/nav.py                                      @Vinculums/rag
 /api/neighbors.py                                @Vinculums/rag
 /api/node_read.py                                @Vinculums/rag
 /api/paths.py                                    @Vinculums/rag

@@ -1,11 +1,13 @@
-import { api, cfg, shellInvoke, type Scope } from "./api";
+import { api, cfg, shellInvoke, ApiError, type Scope } from "./api";
+import { parseEnvelope } from "./api-error";
 
 type DeleteOutcome = "deleted" | "present" | "unknown";
 
 // 문서·키·서버 메시지는 로그에 싣지 않는다. 상태와 오류 코드만 남긴다.
 async function logFailure(operation: string, failure: any): Promise<void> {
   const status = Number(failure?.status) || 0;
-  const rawCode = failure?.code || failure?.error?.code || failure?.error;
+  // 던져진 실패는 `ApiError.code`, 실패를 돌려준 응답은 맨 위 `code` 또는 오류 봉투(api-error.ts)를 든다.
+  const rawCode = failure instanceof ApiError ? failure.code : failure?.code || parseEnvelope(failure).code;
   const code = typeof rawCode === "string" && /^[a-z_][a-z0-9_]{0,63}$/i.test(rawCode)
     ? rawCode : status ? "http_error" : "network_or_operation_error";
   const message = `${operation} failed status=${status} code=${code}`;

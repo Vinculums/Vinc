@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { installDom, settle, El } from './mini-dom.mjs';
-import { loadTs, srcText, COPY_STUB, COMPONENTS_STUB } from './ts-load.mjs';
+import { loadTs, tsUrl, srcText, COPY_STUB, COMPONENTS_STUB } from './ts-load.mjs';
 
 const { body } = installDom({ hash: '#home' });
 
@@ -21,6 +21,16 @@ globalThis.__home = {
   mount: (host, o) => { calls.mounted.push(o); host.innerHTML = '<div class="ed">body</div>';
     return { getText: () => '# A\n\n# B\n', dispose: async () => {}, scrollToOffset() {}, pauseSaving: async () => {} }; },
 };
+
+// 표면이 셸에 거는 문(surface-binding.ts)은 실제 것을 쓰고, 그 문이 부르는 셸 쪽 setter 아홉은 받은 것을 적는다.
+globalThis.__bound = [];
+const recorder = (names) => names.map((n) =>
+  `export const ${n} = (v) => { globalThis.__bound.push(['${n}', v === null ? null : typeof v]); };`).join('\n');
+const BIND_URL = await tsUrl('surface-binding.ts', {
+  './topbar': recorder(['setViewHooks', 'setSearchFilter', 'setTopbarTools']),
+  './lnb': recorder(['setLnbNavigator', 'setLnbTopicPicker', 'setLnbScopeClearer', 'setLnbDocOpener', 'setLnbGraphSource']),
+  './live': recorder(['setLiveRefresher']),
+});
 
 const stubs = {
   '../api': `export const api = { docList: (...a) => globalThis.__home.docList(...a),
@@ -41,6 +51,7 @@ const stubs = {
   '../agent-roster': `export const agentRoleCount = () => 0;`,
   '../doc-graph': `export const namedDecisions = () => []; export const docMirrorId = (id) => 'concept:doc.' + id;`,
   '../live': `export const setLiveRefresher = () => {};`,
+  '../surface-binding': BIND_URL,
   '../vinc-loaders.js': `export const loaderRows = () => '';`,
   '../doc-editor': `export const mountDocEditor = (...a) => globalThis.__home.mount(...a);`,
   '../authoring': `export const fillTopicList = async () => {}; export const forgetTopics = () => {};`,
@@ -159,4 +170,58 @@ test('the reader rail shows Reconstructed (not verified) only on verified false 
   assert.match(after, /detail\.innerHTML = `[\s\S]*\$\{badge\}/, 'the badge is drawn into the reader rail');
   const copy = await srcText('copy.ts');
   assert.match(copy, /readerUnverified: "Reconstructed \(not verified\)"/);
+});
+
+// 라우터(main.ts route)는 표면을 갈아 끼울 때마다 `unbindSurface` 한 번으로 표면이 건 손잡이를 전부 푼다.
+test('the documents home binds its shell hooks through one door, and a route change clears each of them', async () => {
+  const bind = await import(BIND_URL);
+  bind.unbindSurface(); globalThis.__bound.length = 0;
+  await mountHome();
+  assert.deepEqual(globalThis.__bound.map(([n, v]) => `${n}:${v}`),
+    ['setViewHooks:object', 'setLnbDocOpener:function', 'setLnbTopicPicker:function', 'setLiveRefresher:function']);
+  assert.deepEqual(bind.boundSurfaceKeys(), ['viewHooks', 'liveRefresher', 'lnbDocOpener', 'lnbTopicPicker']);
+  globalThis.__bound.length = 0;
+  bind.unbindSurface();
+  assert.deepEqual(globalThis.__bound,
+    [['setViewHooks', null], ['setLiveRefresher', null], ['setLnbDocOpener', null], ['setLnbTopicPicker', null]]);
+  assert.deepEqual(bind.boundSurfaceKeys(), []);
+});
+
+test('a route change clears every hook the graph binds, its topic picker and its all button included', async () => {
+  const bind = await import(BIND_URL);
+  bind.unbindSurface(); globalThis.__bound.length = 0;
+  // 그래프(view.ts)가 거는 것, 건 순서대로: View 동작 · 착지 · "전체" · 주제 고르기 · 갱신, 나침반의 트리와 단추, 검색 거르개.
+  bind.bindSurface({ viewHooks: {} });
+  bind.bindSurface({ lnbNavigator: () => {} });
+  bind.bindSurface({ lnbScopeClearer: () => false });
+  bind.bindSurface({ lnbTopicPicker: () => {} });
+  bind.bindSurface({ liveRefresher: async () => {} });
+  bind.bindSurface({ lnbGraphSource: {}, topbarTools: new El('span') });
+  bind.bindSurface({ searchFilter: () => {} });
+  globalThis.__bound.length = 0;
+  bind.unbindSurface();
+  assert.deepEqual(globalThis.__bound.map(([n]) => n), ['setViewHooks', 'setLiveRefresher', 'setLnbNavigator',
+    'setLnbTopicPicker', 'setLnbScopeClearer', 'setLnbGraphSource', 'setTopbarTools', 'setSearchFilter']);
+  assert.ok(globalThis.__bound.every(([, v]) => v === null));
+  assert.deepEqual(bind.boundSurfaceKeys(), []);
+  globalThis.__bound.length = 0;
+  bind.unbindSurface();
+  assert.deepEqual(globalThis.__bound, [], 'nothing bound, nothing cleared');
+});
+
+test('a part unbinds only what it bound and leaves a newer binding of the same hook', async () => {
+  const bind = await import(BIND_URL);
+  bind.unbindSurface(); globalThis.__bound.length = 0;
+  const offGraph = bind.bindSurface({ lnbGraphSource: {}, topbarTools: new El('span') });
+  const offA = bind.bindSurface({ searchFilter: () => 'a' });
+  offGraph();
+  assert.deepEqual(globalThis.__bound.slice(-2), [['setLnbGraphSource', null], ['setTopbarTools', null]]);
+  const offB = bind.bindSurface({ searchFilter: () => 'b' });
+  globalThis.__bound.length = 0;
+  offA();
+  assert.deepEqual(globalThis.__bound, [], 'the newer filter stays');
+  assert.deepEqual(bind.boundSurfaceKeys(), ['searchFilter']);
+  offB(); offB();
+  assert.deepEqual(globalThis.__bound, [['setSearchFilter', null]]);
+  assert.deepEqual(bind.boundSurfaceKeys(), []);
 });

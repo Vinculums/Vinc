@@ -68,6 +68,8 @@ from . import node_mirror
 from . import config_routes
 from .connect_mailbox import ConnectMailbox
 from . import topic_conversion_routes
+from . import routes
+from .routes import store_unavailable  # noqa: F401  재수출(`api.server.store_unavailable`)
 # 질의 임베딩 창구 클라이언트(`api/encoder_client.py`). 아래 이름은 그 모듈 객체의 재수출이다.
 # 이 파일에서는 read_search·read_brief 가 응답 ContextVar 셋을 이 이름으로 읽고, 나머지는 `api.server`
 # 에서 가져다 쓰는 import 를 지킨다. ⚠ 여기 이름을 바꿔 끼워도(테스트의 패치 포함) `EncoderClient`·
@@ -114,22 +116,6 @@ def _ingest_recall(store, body: dict) -> dict:
 
 
 DEFAULT_INGEST = {"recall": _ingest_recall}
-
-
-def store_unavailable() -> dict:
-    """스토어 도달 불가의 **사유 봉투** — `/health` 와 조회 503 이 같은 것을 말하게.
-
-    `EmbeddedBackend.open` 은 실패 사유를 `last_open_error` 에 담는다(락 충돌·손상·
-    확장 경로). 그 값을 읽는 곳이 `/health` 하나뿐이면, 조회가 거절당한 클라이언트는
-    거절만 받고 이유는 다른 엔드포인트에 가서 물어야 한다. 한 벌로 묶는다."""
-    out = {"error": "no reachable store", "note": "no reachable store"}
-    try:
-        from store.backend import last_open_error
-        if last_open_error():
-            out["open_error"] = last_open_error()
-    except Exception:   # noqa: BLE001 — 진단이 응답을 죽이지 않는다
-        pass
-    return out
 
 
 # ── 앱(라우트 핸들러의 상태 컨테이너) ─────────────────────────────────────────
@@ -629,7 +615,11 @@ class VincApp:
                 result["durability"] = "published_generation"
                 result["durable_sequence"] = durable.sequence
 
-    def _run_mutation(self, kind, body, apply):
+    def _run_mutation(self, kind, body, apply, *, required=()):
+        """뮤테이션 하나를 쓰기 잡으로 돈다. ``required`` 는 ``apply`` 가 잡 안에서 읽는 필수 필드다.
+
+        ⚠ 필수 필드는 잡에 넣기 **전에** 확인한다. 잡 안에서 `_Missing` 이 나면 잡 오류(500)로
+        감싸여, 라우터가 그 필드 누락을 400 으로 바꾸지 못한다."""
         from . import mutation_preview, operation_receipts
         if type(body.get("dry_run", False)) is not bool:
             return {"executed": False, "error": "invalid_dry_run"}
@@ -639,6 +629,8 @@ class VincApp:
         digest = body.get("preview_digest")
         if digest is not None and (not isinstance(digest, str) or len(digest) != 64):
             return {"executed": False, "error": "invalid_preview_digest"}
+        for key in required:
+            _req(body, key)
         # 미리보기 재검증과 조건 검사도 같은 writer 안에서 읽는다.
         def checked():
             if digest is not None:
@@ -1628,7 +1620,7 @@ class VincApp:
 
     def write_doc_delete(self, body):
         res = self._run_mutation("doc.delete", body, lambda: docstore.delete_doc(
-            self.store, _req(body, "id"), owner=body.get("owner") or None))
+            self.store, _req(body, "id"), owner=body.get("owner") or None), required=("id",))
         return 200, res
 
     def write_doc_reembed(self, body):
@@ -1658,7 +1650,7 @@ class VincApp:
         res = self._run_mutation("doc.extract", body, lambda: docstore.extract_doc(
             self.store, _req(body, "id"), owner=owner,
             apply=bool(body.get("apply")), candidates=body.get("candidates"),
-            approved_candidate_ids=body.get("approved_candidate_ids")))
+            approved_candidate_ids=body.get("approved_candidate_ids")), required=("id",))
         return 200, res
 
     def write_evidence_backfill(self, body):
@@ -1681,6 +1673,7 @@ class VincApp:
         owner = body.get("owner") or None
         if not owner:
             return 400, {"error": "owner required — 도메인 변경은 소유 스코프(SEC-1)"}
+        _req(body, "old")   # 잡에 넣기 전에 확인한다(`_run_mutation` 주석)
         res = self.jobs.run_sync("domain.rename", lambda: q.rename_domain(
             owner=owner, old=_req(body, "old"), new=body.get("new") or "",
             store=self.store))
@@ -2232,6 +2225,79 @@ def _pop_max_domains(body) -> int | None:
 
 # ── HTTP 핸들러 ──────────────────────────────────────────────────────────────
 
+def health(app, query: str = "") -> dict:
+    """`GET /health` 의 본문. 무인증 준비성 프로브이고, ``query`` 는 요청의 쿼리 문자열이다(`live=1`)."""
+    # 기동은 했지만 스토어가 성치 않은 상태(프로비저닝 실패·드라이버 부재)를
+    # 숨기지 않는다 — "ok" 만 보고 정상이라 믿으면 뒤따르는 전 조회가 원인
+    # 불명으로 깨진다(실패 신호 설계: 조용한 성공 금지).
+    body = {"status": "ok"}
+    if getattr(app, "provision_error", None):
+        body = {"status": "degraded", "provision_error": app.provision_error}
+    elif app.store is None:
+        # ⚠ **사유를 여기까지 들고 온다** — "no reachable store" 한 줄이면 앱
+        # 화면이 빈 그래프와 구분되지 않는다. 조립은 `store_unavailable()` 한
+        # 벌이라 조회 503 과 문장이 갈라지지 않는다:
+        # [[record:a-failure-reason-nothing-reads-is-not-an-error-message]].
+        body = {"status": "degraded", **store_unavailable()}
+        body.pop("note", None)   # note 는 조회 봉투 전용 — 헬스 계약 불변
+    else:
+        # 열리긴 했지만 기동 점검이 WAL 을 옆으로 옮겼다(store/wal_guard.py).
+        if getattr(app, "store_note", ""):
+            body["store_note"] = app.store_note
+        # 검색 색인 이관 중(v21) — 가드가 스토어를 쥐고 있으니 아래 백로그 읽기를 건너뛴다.
+        migrating = getattr(app, "lex_migration", None)
+        if migrating:
+            body["migrating"] = dict(migrating)
+        # 임베딩 백로그 — 정체가 밖에서 보여야 한다(App.embed_health 주석).
+        # 진단이 헬스를 죽이지 않게 통째로 감싼다: 여기서 예외가 나가면
+        # 엔트리포인트의 기동 대기가 실패하고 워치독이 사이드카를 재기동시킨다.
+        # `?live=1` 은 **스토어를 안 읽는** 생존 확인이다. 엔트리포인트 워치독이
+        # 5초마다 부르는데, 그때마다 리더를 열고 백로그를 세던 것이 허브를 하루
+        # 종일 활성 요금 구간에 붙잡아 둔 원인 후보였다. 상태 판정(ok·degraded)과
+        # 스냅샷 상태는 메모리 값이라 그대로 싣는다.
+        # 근거: [[vinc.ops.container-apps-cost-rise-2026-09-25]] §4
+        if not migrating and not truthy(
+                urllib.parse.parse_qs(query).get("live", [""])[0]):
+            try:
+                body["embed"] = app.embed_health()
+            except Exception as exc:   # noqa: BLE001
+                body["embed"] = {"error": f"{type(exc).__name__}: {exc}"}
+        # 영속 스냅샷 상태 — 꺼져 있으면 'off'. 이게 조용히 실패하면
+        # "돌고 있다고 믿는 백업이 없는" 최악의 형태가 된다(이 리포가
+        # 임베딩 워커에서 38시간 겪은 그 모양).
+        # 상태 문자열만으로는 "언젠가 됐다"와 "방금 됐다"가 구분되지 않는다.
+        # `age_s`(마지막 **성공** 이후 경과)가 곧 지금 잃을 수 있는 양의
+        # 하한이고, null 이면 이 프로세스가 사는 동안 한 번도 성공한 적이
+        # 없다는 뜻이다 — 그게 가장 위험한 값이다(SnapshotPolicy.detail 주석).
+        snaps = getattr(app, "_snapshots", None)
+        if snaps is not None:
+            det = getattr(snaps, "detail", None)
+            body["snapshot"] = (det() if callable(det)
+                                else getattr(snaps, "last_state", "unknown"))
+        # ACK 전 세대 게시(VINC_DURABLE_ACK). 꺼져 있으면 키가 없다.
+        durable = getattr(app, "_durable", None)
+        if durable is not None:
+            body["durable_ack"] = durable.detail()
+    if embed_apply_paused():
+        body["embed_apply_paused"] = True
+    # 검색 품질을 크게 떨어뜨리는 비상구가 열려 있으면 이름을 싣는다. 정상이면 키가 없다.
+    overrides = q.retrieval_overrides()
+    if overrides:
+        body["retrieval_overrides"] = overrides
+    # 노드 재채점과 brief 규칙의 실제 값은 늘 싣는다(켜진 것이 정상이라 위 목록에 넣지 않는다).
+    body["retrieval_switches"] = q.retrieval_switches()
+    # 색인이 잔해로 막혔다 — 그 팔이 꺼져 있고 그 표의 쓰기가 거절된다(fts_index 면
+    # 문서 저장·삭제가 전부다). 재기동이 고친다(`_heal_search_indexes`). 정상이면 키가 없다.
+    for key, attr in (("vector_index", "vector_index_remnant"),
+                      ("fts_index", "fts_index_remnant"),
+                      ("node_vector_index", "node_vector_index_remnant")):
+        if getattr(app.store, attr, False):
+            body[key] = "remnant"
+    from .mirror_status import read_status
+    body["node_mirror"] = read_status()
+    return body
+
+
 class _Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -2328,77 +2394,9 @@ class _Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
 
-        # /health — 무인증 준비성 프로브.
+        # /health — 무인증 준비성 프로브(`health`).
         if method == "GET" and path == "/health":
-            # 기동은 했지만 스토어가 성치 않은 상태(프로비저닝 실패·드라이버 부재)를
-            # 숨기지 않는다 — "ok" 만 보고 정상이라 믿으면 뒤따르는 전 조회가 원인
-            # 불명으로 깨진다(실패 신호 설계: 조용한 성공 금지).
-            body = {"status": "ok"}
-            if getattr(self.app, "provision_error", None):
-                body = {"status": "degraded", "provision_error": self.app.provision_error}
-            elif self.app.store is None:
-                # ⚠ **사유를 여기까지 들고 온다** — "no reachable store" 한 줄이면 앱
-                # 화면이 빈 그래프와 구분되지 않는다. 조립은 `store_unavailable()` 한
-                # 벌이라 조회 503 과 문장이 갈라지지 않는다:
-                # [[record:a-failure-reason-nothing-reads-is-not-an-error-message]].
-                body = {"status": "degraded", **store_unavailable()}
-                body.pop("note", None)   # note 는 조회 봉투 전용 — 헬스 계약 불변
-            else:
-                # 열리긴 했지만 기동 점검이 WAL 을 옆으로 옮겼다(store/wal_guard.py).
-                if getattr(self.app, "store_note", ""):
-                    body["store_note"] = self.app.store_note
-                # 검색 색인 이관 중(v21) — 가드가 스토어를 쥐고 있으니 아래 백로그 읽기를 건너뛴다.
-                migrating = getattr(self.app, "lex_migration", None)
-                if migrating:
-                    body["migrating"] = dict(migrating)
-                # 임베딩 백로그 — 정체가 밖에서 보여야 한다(App.embed_health 주석).
-                # 진단이 헬스를 죽이지 않게 통째로 감싼다: 여기서 예외가 나가면
-                # 엔트리포인트의 기동 대기가 실패하고 워치독이 사이드카를 재기동시킨다.
-                # `?live=1` 은 **스토어를 안 읽는** 생존 확인이다. 엔트리포인트 워치독이
-                # 5초마다 부르는데, 그때마다 리더를 열고 백로그를 세던 것이 허브를 하루
-                # 종일 활성 요금 구간에 붙잡아 둔 원인 후보였다. 상태 판정(ok·degraded)과
-                # 스냅샷 상태는 메모리 값이라 그대로 싣는다.
-                # 근거: [[vinc.ops.container-apps-cost-rise-2026-09-25]] §4
-                if not migrating and not truthy(
-                        urllib.parse.parse_qs(parsed.query).get("live", [""])[0]):
-                    try:
-                        body["embed"] = self.app.embed_health()
-                    except Exception as exc:   # noqa: BLE001
-                        body["embed"] = {"error": f"{type(exc).__name__}: {exc}"}
-                # 영속 스냅샷 상태 — 꺼져 있으면 'off'. 이게 조용히 실패하면
-                # "돌고 있다고 믿는 백업이 없는" 최악의 형태가 된다(이 리포가
-                # 임베딩 워커에서 38시간 겪은 그 모양).
-                # 상태 문자열만으로는 "언젠가 됐다"와 "방금 됐다"가 구분되지 않는다.
-                # `age_s`(마지막 **성공** 이후 경과)가 곧 지금 잃을 수 있는 양의
-                # 하한이고, null 이면 이 프로세스가 사는 동안 한 번도 성공한 적이
-                # 없다는 뜻이다 — 그게 가장 위험한 값이다(SnapshotPolicy.detail 주석).
-                snaps = getattr(self.app, "_snapshots", None)
-                if snaps is not None:
-                    det = getattr(snaps, "detail", None)
-                    body["snapshot"] = (det() if callable(det)
-                                        else getattr(snaps, "last_state", "unknown"))
-                # ACK 전 세대 게시(VINC_DURABLE_ACK). 꺼져 있으면 키가 없다.
-                durable = getattr(self.app, "_durable", None)
-                if durable is not None:
-                    body["durable_ack"] = durable.detail()
-            if embed_apply_paused():
-                body["embed_apply_paused"] = True
-            # 검색 품질을 크게 떨어뜨리는 비상구가 열려 있으면 이름을 싣는다. 정상이면 키가 없다.
-            overrides = q.retrieval_overrides()
-            if overrides:
-                body["retrieval_overrides"] = overrides
-            # 노드 재채점과 brief 규칙의 실제 값은 늘 싣는다(켜진 것이 정상이라 위 목록에 넣지 않는다).
-            body["retrieval_switches"] = q.retrieval_switches()
-            # 색인이 잔해로 막혔다 — 그 팔이 꺼져 있고 그 표의 쓰기가 거절된다(fts_index 면
-            # 문서 저장·삭제가 전부다). 재기동이 고친다(`_heal_search_indexes`). 정상이면 키가 없다.
-            for key, attr in (("vector_index", "vector_index_remnant"),
-                              ("fts_index", "fts_index_remnant"),
-                              ("node_vector_index", "node_vector_index_remnant")):
-                if getattr(self.app.store, attr, False):
-                    body[key] = "remnant"
-            from .mirror_status import read_status
-            body["node_mirror"] = read_status()
-            return self._send(200, body)
+            return self._send(200, health(self.app, parsed.query))
 
         # /connect/callback — 무인증 예외(디바이스 연결: 브라우저의 루프백 전달,
         # RFC 8252 변형). 인증은 start 가 발급한 state 논스(단일사용·TTL)가 대신하고,
@@ -2453,174 +2451,15 @@ class _Handler(BaseHTTPRequestHandler):
             code, obj = 500, {"error": f"{type(exc).__name__}: {exc}"}
         self._send(code, obj)
 
-    # ── 라우트 표(CLI 1:1) ────────────────────────────────────────────────
-    # 라우트를 더하거나 빼면 `api/contract/sidecar.json` 도 같이 고친다(앱이 안 부르면
-    # `x-internal: true`). 두 쪽은 `tests/core/test_sidecar_contract.py` 가 대조한다.
-    def _route_get(self, path: str, p: dict):
-        app = self.app
-        if app.store is not None and getattr(app.store, "_topic_conversion_guard", False):
-            # Covers cached staged reads and remote layouts which bypass _read.
-            from . import topic_conversion as conversion
-            code, result = app._read(lambda r: conversion.check_read(r, p.get("owner")))
-            if code != 200:
-                return code, result
-        table = {
-            "/recall": app.read_recall, "/domains": app.read_domains,
-            "/view": app.read_view, "/ledger": app.read_ledger, "/share": app.read_share,
-            "/coupling": app.read_coupling, "/promote-candidates": app.read_promote,
-            "/suggest-ties": app.read_suggest, "/diagnose": app.read_diagnose,
-            "/merge-candidates": app.read_merge_candidates,
-            "/merge-rejections": app.read_merge_rejections,   # F10-b 기각 목록
-            "/neighbors": app.read_neighbors, "/path": app.read_path,
-            "/node-edges": app.read_node_edges,
-            "/roles": app.read_roles,
-            "/roles/export": app.read_role_export,
-            "/learner": app.read_learner, "/graph": lambda p: app.read_graph(p, wire=True),
-            "/graph/roots": app.read_graph_roots,   # 들고 있는 시간 가지 배치(`api.layout_remote`)
-            "/search": app.read_search, "/decide": app.read_decide,
-            "/decide-paths": app.read_decide_paths,   # 결정 문
-            "/themes": app.read_themes, "/types": app.read_types,
-            # 문서 정본(D45 P4) — get(복원+검증) · list. + 노드 클릭 상세(D45-V).
-            "/doc": app.read_doc, "/docs": app.read_docs,
-            # 관례(GRAPH.md) — 어시스턴트가 쓰기 전에 읽는 채널([[vinc.canon.graph-conventions]]).
-            "/conventions": app.read_conventions,
-            "/nav-tree": app.read_nav_tree,   # 좌측 문서 트리(D69)
-            # 변경 표식(VIN-129) — 열린 화면이 몇 초마다 묻는다. 스토어를 안 읽는다.
-            "/changes": app.read_changes,
-            "/diagnostics/writes": app.read_write_waits,   # 쓰기 대기 집계(내부, 스토어 없이 답한다)
-            "/doc/highlights": app.read_doc_highlights,   # Reader 밑줄(D45-V2 2단계)
-            "/doc/context": app.read_doc_context,   # 리더 머리(개념 칩·목차·청크 오프셋)
-            "/node": app.read_node,
-            "/node-context": app.read_node_context,
-            "/operation-status": app.read_operation_status,
-            "/events": app.read_events,   # 변경 기록에서 계산한 이벤트 피드
-            "/runs": app.read_runs,   # 실행 기록 목록, 인용한 주장으로 거른다
-            "/runs/waiting": app.read_waiting_runs,   # 사람의 답을 기다리는 실행
-            "/agent-writes": app.read_agent_writes,   # 최근 쓰기를 출처별로 묶은 검토(A5)
-            "/eval-cards": app.read_eval_cards,   # 역할에 붙은 평가 카드
-            "/community-agent/import-result": app.read_community_agent_result,
-            "/brief": app.read_brief,   # W1 — 질문 하나로 답변 재료 조인
-            "/edge-context": app.read_edge_context,   # 흐름 선 클릭(D45-V 1단계)
-            "/ledger-drilldown": app.read_ledger_drilldown,   # 합계 구간 클릭(D45-V2 3단계)
-            "/docs-in-range": app.read_docs_in_range,   # 타임라인 기간 브러시(D45-V2 4단계)
-            # 동기화(S1) — 선택 도메인 조회 · delta 번들 export.
-            "/sync/domains": app.read_sync_domains,
-            "/sync/pull-delta": app.read_sync_pull_delta,
-            "/sync/docs-export": app.read_sync_docs_export,   # 문서 정본 delta(D45 P3)
-            # 저장 설정(VIN-130) — 스토어 없이 답한다.
-            "/config": app.read_config, "/config/inspect": app.read_config_inspect,
-            "/embed/pending": app.read_embed_pending,   # 자체호스팅 임베딩 워커(B, 내부)
-            "/owner-stats": app.read_owner_stats,   # 운영자 사용량 덤프(W1c, 허브 내부 전용)
-            # 계정 연결(디바이스 플로우) — 메일박스 1회 수령(인증).
-            "/connect/status": app.read_connect_status,
-        }
-        if path in table:
-            return table[path](p)
-        if path.startswith("/plan/"):
-            return app.read_plan(path[len("/plan/"):], p)
-        if path.startswith("/jobs/"):
-            return app.get_job(path[len("/jobs/"):], p)
-        return 404, {"error": f"no such route: GET {path}"}
+    # ── 라우트(CLI 1:1) ───────────────────────────────────────────────────
+    # 표와 디스패치는 `api.routes` 에 있다. CLI 의 프로세스 안 브리지도 같은 것을 부른다.
+    _POST_WITHOUT_STORE = routes.POST_WITHOUT_STORE
 
-    #: 스토어 없이도 **옳게** 도는 POST. 어휘(themes·types)는 그래프 밖 JSON 파일이고
-    #: (`ThemeStore`, `<data_dir>.themes.json`), 계정 연결 시작은 인메모리 메일박스다.
-    #: 그것들은 그래프가 죽어도 답하는 게 맞다 — GET 쪽 `READ_ROUTES` 주석과 같은 갈래다.
-    #: ⚠ 새 POST 라우트를 더할 때 여기 넣을지 판단할 것. 기본값은 **넣지 않는다**(가드를
-    #: 받는다) — 빠뜨려도 조용히 새지 않고 503 으로 막히므로 안전측이다.
-    _POST_WITHOUT_STORE = frozenset({
-        "/community-agent/export",
-        "/community-pack/inspect",
-        "/themes", "/themes/activate",
-        "/types/ratify", "/types/reject", "/types/rename",
-        "/connect/start",
-        # 팀 그래프는 로컬에 없다. 스토어가 안 열렸다고 막으면, 로컬이 깨진 기기에서
-        # **팀 스페이스까지 같이 죽는다** — 그쪽은 이 스토어와 아무 상관이 없다.
-        "/space/proxy",
-        # 저장 설정은 그래프 밖 파일이다. 폴더를 잘못 골라 스토어가 안 열렸을 때 다시
-        # 고를 길이 이것뿐이다(VIN-130).
-        "/config", "/config/inspect-database",
-        # 안 열린 사이드카도 닫고 다시 띄울 수 있어야 한다(VIN-130).
-        "/shutdown",
-    })
+    def _route_get(self, path: str, p: dict):
+        return routes.route_get(self.app, path, p)
 
     def _route_post(self, path: str, body: dict):
-        """POST 디스패치. **스토어가 안 열렸으면 여기서 503 이다.**
-
-        읽기 경로는 2026-08-16 에 `VincApp._read` 한 곳으로 이 거절을 모았는데 쓰기
-        경로에는 안 붙었다. 그래서 `store=None` 인 채로 핸들러가 그대로 불렸고,
-        `sync.run(self.store, ...)` 이 `'NoneType' object has no attribute 'run'` 로
-        터졌다. 2026-08-30 에 데스크탑에서 실제로 그랬다: WAL 이 깨져 스토어가 안 열린
-        상태였고 `/health` 는 **같은 순간 진짜 사유를 알고 있었는데**("Checksum
-        verification failed, the WAL file is corrupted.") 화면에 닿은 것은 파이썬
-        내부 사정뿐이라 사용자는 원인도 처방도 못 봤다.
-
-        봉투는 새로 만들지 않는다 — `store_unavailable()` 한 벌을 `_read`·`/health` 와
-        같이 쓴다. 사유를 말하는 곳이 하나여야 셋이 같은 말을 한다."""
-        app = self.app
-        table = {
-            "/pin": app.write_pin, "/tag": app.write_tag, "/touch": app.write_touch,
-            "/topic-conversion": app.write_topic_conversion,
-            "/topic-description": app.write_topic_description,
-            "/activate": app.write_activate, "/backup": app.submit_backup,
-            "/community-agent/export": app.render_community_agent,
-            "/community-pack/inspect": app.inspect_community_pack,
-            "/community-agent/import-preview": app.preview_community_agent,
-            "/community-agent/import": app.import_community_agent,
-            "/ingest": app.write_ingest,
-            "/delete": app.write_delete, "/delete-edge": app.write_delete_edge,
-            "/merge-nodes": app.write_merge,
-            # F10-b 병합 후보 기각(가역): 비가역 병합의 안전한 반대편. MCP 에서는
-            # `vinc_merge_reject`(기각·undo)와 `vinc_merge_rejections`(목록)가 부르고,
-            # 구조적으로 뺀 쌍은 `vinc_merge_candidates` 의 `include_structural` 로 되열린다.
-            "/merge-reject": app.write_merge_reject,
-            # 문서 정본(D45 P4) — put(적재/편집) · delete. 단일 writer 직렬화.
-            "/doc/put": app.write_doc_put, "/doc/delete": app.write_doc_delete,
-            # 관례 재생성 — 생성 구역만 스토어 값으로 갈아 끼우고 저장한다.
-            "/conventions/build": app.write_conventions_build,
-            "/doc/put-file": app.write_doc_put_file,   # 파일 바이트 입구(텍스트·PDF)
-            "/doc/extract": app.write_doc_extract,   # 정본→노드 파생(D45-V, 확인 흐름)
-            "/doc/reembed": app.write_doc_reembed,   # 편집 후 벡터 재임베딩(D45-E 후속3)
-            "/evidence/backfill": app.write_evidence_backfill,   # 관계 근거 저작(U2)
-            "/embed/apply": app.write_embed_apply,   # 자체호스팅 임베딩 워커(B, 내부)
-            # 노드 미러 전량 재구축 — 배포 경계에서 엔트리포인트가 한 번 부른다.
-            "/node-mirror/rebuild": app.write_node_mirror_rebuild,
-            "/domain/rename": app.write_domain_rename,   # 도메인 일괄 변경(S2)
-            "/themes": app.write_theme_create, "/themes/activate": app.write_theme_activate,
-            "/types/ratify": app.write_type_ratify, "/types/reject": app.write_type_reject,
-            "/types/rename": app.write_type_rename,
-            # 동기화 데이터플레인(S1) — 사이드카 내부 표면(8787 은 공개 미노출, F4).
-            "/sync/domains": app.write_sync_domains,
-            "/sync/apply-delta": app.write_sync_apply_delta,
-            "/sync/docs-apply": app.write_sync_docs_apply,    # 문서 정본 delta 적용(D45 P3)
-            # 계정 삭제 캐스케이드(§5.9) — owner 전 노드 purge. 원격에선 MCP
-            # /internal/purge-owner 가 계정 서명 검증 후 프록시(owner 위조 불가).
-            "/sync/purge-owner": app.write_sync_purge_owner,
-            # 동기화 세션 트리거(S2) — pull→push 오케스트레이션(202+job_id).
-            "/sync": app.submit_sync,
-            # 모드 전환의 데이터 이동(VIN-130) — 전량, 한 번, 202+job_id.
-            "/sync/push-all": app.submit_sync_push_all,
-            "/sync/pull-all": app.submit_sync_pull_all,
-            # 저장 위치 이동(폴더 ↔ 사용자 데이터베이스, 계정 → 데이터베이스) — 202+job_id.
-            "/config/move": app.submit_config_move,
-            "/config": app.write_config,   # 저장 설정(VIN-130)
-            # 데이터베이스를 고르기 전에 살핀다. 비밀번호가 바디에 오므로 GET 이 아니다.
-            "/config/inspect-database": app.write_config_inspect_database,
-            "/shutdown": app.write_shutdown,   # 셸의 재기동 전 정상 종료(VIN-130)
-            # 계정 연결(디바이스 플로우) — state 발급(인증). callback 은 _dispatch 의
-            # 무인증 예외 경로(여기 표에 없음 — 표는 인증 이후에만 닿는다).
-            "/connect/start": app.write_connect_start,
-            # 팀 스페이스 통과로 — 로컬 스토어가 아니라 계정으로 나간다.
-            "/space/proxy": app.write_space_proxy,
-        }
-        if path in table:
-            if app.store is None and path not in self._POST_WITHOUT_STORE:
-                return 503, {"executed": False, **store_unavailable()}
-            return table[path](body)
-        if path.startswith("/ingest/"):
-            if app.store is None:
-                return 503, {"executed": False, **store_unavailable()}
-            return app.submit_ingest(path[len("/ingest/"):], body)
-        return 404, {"error": f"no such route: POST {path}"}
+        return routes.route_post(self.app, path, body)
 
 
 # ── 서버 구성 · 수명주기(E6) ─────────────────────────────────────────────────
