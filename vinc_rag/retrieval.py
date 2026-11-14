@@ -1326,6 +1326,172 @@ def _title_arm(store, query, *, continuation, owner, mode, historical, known_at,
     return title_hits, patch
 
 
+def _chunk_stage(store, query, query_embedding, *, filters, owner, kinds, top_k, cfg,
+                 _vstats, known_at, mode, _until, _scope,
+                 base) -> tuple[list[dict], bool, int, dict]:
+    """청크 팔(1)(2)과 그 풀: ``(pool, withheld, chunk_known_hidden, patch)`` 를 돌려준다.
+    ``_search`` 에서 그대로 떼어 낸 본문이라 인자 이름도 거기서 쓰던 것(밑줄 포함)과 같다.
+
+    ``base`` 는 **읽기 전용**이다. 앞 단계(제목 팔)가 이미 적은 ``validity_filtered`` 만 읽는다.
+    응답에 얹을 키(``node_window``, ``executed``, ``error``, ``note``, ``arms``, ``keyword_gated``,
+    ``vector_note``, ``vector_rebuilding``, ``partial``, ``temporal_error``, ``validity_filtered``,
+    ``doc_validity_filtered``, ``_current_doc_temporal``, ``total_count``, ``total_count_capped``)는
+    ``patch`` 로만 내보내고, 부르는 쪽이 부른 **바로 뒤에** ``base.update`` 로 얹는다. ``error`` 와
+    ``vector_note`` 는 이 단계 앞에서는 아무도 쓰지 않으므로 이 단계가 쓴 값만 읽는다.
+    ``validity_filtered`` 는 읽은 값에 더해 쓰므로 부르는 쪽이 제목 팔의 patch 를 먼저 얹은 뒤에
+    불러야 마지막에 쓴 값이 같다.
+
+    (1)(2) Chunk 하이브리드 — 실패는 error 로 표면화, 인덱스 부재는 지연 빌드 후 재시도.
+    GM-14: top_k 가 아니라 **후보 풀**(SEARCH_POOL_CAP)을 가져온다 — 페이지는
+    아래에서 안정 정렬 위의 오프셋으로 자른다.
+    🔴 **SEC-1 청크 팔 owner 스코프.** owner 를 여기서 빼면 호스티드에서 `rows[]`
+    가 남의 문서 본문 발췌를 싣는다 — node_hits 가 막혀 있어 눈에 잘 안 띄고
+    회귀 테스트도 노드 폴백만 봤다([[record:the-search-chunk-arm-is-owner-scoped-and-fails-closed]])."""
+    patch: dict = {}
+    chunk_filters = dict(filters or {})
+    patch["node_window"] = {"pagination": "first_page_only", "total_count_scope": "chunks",
+                            "limit": max(1, int(top_k)),
+                            "lexical_candidates": _vstats.get("candidate_count"),
+                            "lexical_candidates_capped": bool(_vstats.get("candidate_count_capped")),
+                            "candidate_limit": NODE_SCAN_CAP}
+    if kinds:
+        patch["node_window"]["kinds"] = list(kinds)
+    scoped_ok = True
+    if owner:
+        chunk_filters["owner_id"] = owner
+        # **fail-closed.** 스코프가 강제된 요청인데 백엔드가 필터를 실제로 적용하는지
+        # 알 수 없으면 청크 팔을 아예 돌리지 않는다. 필터를 무시하는 구현(구 백엔드·
+        # 테스트 더블)에 owner 를 넘기면 "스코프를 걸었다고 믿는 무스코프 조회"가
+        # 되는데, 그건 지금 고치는 결함과 정확히 같은 것이다. 조용히 넓게 답하느니
+        # 답을 줄이고 사유를 남긴다.
+        scoped_ok = bool(flag(store, "scoped_chunk_search"))
+    pool: list[dict] = []
+    vnote = ""
+    ran: list[str] = []          # 실제로 돈 팔 — 예외로 새면 빈 채로 남는다
+    arm_capped = False           # 거르기 전의 팔이 상한에 닿았나(_chunk_arms)
+    kw_gated = False             # 키워드 목록이 관문에 걸려 융합에서 빠졌나(_keyword_gate)
+    try:
+        if not scoped_ok:
+            raise _UnscopedChunkSearch(
+                "owner scope requested but this store does not support "
+                "owner-filtered chunk search")
+        pool, vnote, ran, arm_capped, kw_gated = _chunk_arms(
+            store, query, query_embedding, SEARCH_POOL_CAP, chunk_filters or None)
+        patch["executed"] = True
+    except _UnscopedChunkSearch as exc:
+        # 폴백하지 않는다 — node_hits 는 이미 owner 로 걸러져 있으므로 그것만 답한다.
+        patch["error"] = f"owner_scope_unsupported: {exc}"
+        patch["note"] = patch["error"]
+    except Exception as exc:
+        if _classify_chunk_error(exc) != "index_missing":
+            patch["error"] = f"{_classify_chunk_error(exc)}: {type(exc).__name__}: {exc}"
+            patch["note"] = patch["error"]
+        else:
+            n = _chunk_count(store)
+            builder = operation(store, "ensure_search_indexes")
+            if n == 0:
+                # Chunk 0 — 빌드 시도 없이 조용히 폴백(node_hits 가 답, 무 에러).
+                patch["executed"] = True
+                patch["note"] = "no chunks indexed — node_hits only"
+            elif flag(store, "fts_index_remnant"):
+                # 다시 서지 않는 색인이다(잔해). 빌드를 걸면 검색마다 실패할 잡이 돈다.
+                # 근거: [[record:an-fts-remnant-on-chunk-stops-every-document-write-and-the-heal-moves-chunk-with-its-edges-2026-09-25]]
+                patch["error"] = patch["note"] = f"fts_index_remnant: {_FTS_REMNANT}"
+            elif builder is None:
+                patch["error"] = f"index_missing: {type(exc).__name__}: {exc}"
+                patch["note"] = patch["error"]
+            else:
+                try:
+                    # **벡터 인덱스는 여기서 만들지 않는다.** FTS 만 세워 답하고
+                    # (`dim=None`), HNSW 는 아래에서 예약한다 — 요청 스레드가
+                    # 기다릴 일이 아니다(:func:`_schedule_vector_index`).
+                    builder(dim=None)
+                    pool, vnote, ran, arm_capped, kw_gated = _chunk_arms(
+                        store, query, query_embedding, SEARCH_POOL_CAP,
+                        chunk_filters or None)
+                    patch["executed"] = True
+                    patch["note"] = "search index built on demand"
+                except Exception as exc2:
+                    patch["error"] = (f"index_build_failed: "
+                                      f"{type(exc2).__name__}: {exc2}")
+                    patch["note"] = patch["error"]
+    # 여기서 처음으로 `arms` 를 세운다 — **돈 팔의 이름만** 붙는다.
+    patch["arms"] = "+".join(_ARM_LABEL[a] for a in ran) or "none"
+    # 키워드 팔은 돌았지만 질의를 못 덮어 융합에서 뺐다 — 걸렸을 때만 싣는다(`vector_note`
+    # 처럼). `arms` 는 그대로 두 팔이다: 평가 하네스의 강등 판정이 바뀌지 않게.
+    if kw_gated:
+        patch["keyword_gated"] = True
+    # 벡터 팔을 **요청했는데 안 돌았고 그 이유가 실패**면 사유를 구조화 필드로
+    # 남긴다. 여태 이 자리는 `error` 만 세웠는데, 화면은 영문 문구를 파싱할 수
+    # 없으므로(금지) 반쪽·빈 답을 완전한 답으로 보여 줬다. 청크 팔이 통째로
+    # 죽는 경로(확장 미가용·미프로비저닝·스코프 미지원·빌드 실패)가 전부 여기다.
+    # 청크가 0개라 아무것도 못 찾은 경우는 실패가 아니므로(`error` 없음) 안 선다.
+    if query_embedding is not None and "semantic" not in ran and patch.get("error"):
+        patch.setdefault("vector_note", patch["error"])
+    if vnote and flag(store, "vector_index_remnant"):
+        # 재빌드 창이 아니다 — 다시 서지 않는 색인이다. 양성 표식(`vector_rebuilding`)을
+        # 달면 "곧 돌아온다"는 거짓이 되므로 실패로 싣고, 빌드도 걸지 않는다.
+        # 근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]
+        patch["vector_note"] = _VECTOR_REMNANT
+    elif vnote and vnote != _VECTOR_REBUILDING:
+        patch["vector_note"] = vnote      # 벡터 팔 실패(폭 불일치 등) — 재빌드 창이 아니다
+    elif vnote:
+        # 조용한 강등 금지 — 어느 팔이 돌았는지(`arms`)와 왜 강등됐는지
+        # (`vector_note`)를 둘 다 남긴다.
+        patch["vector_note"] = vnote
+        # 재빌드 창은 **양성 계약**이다(쓰기가 HNSW 를 드롭 → 배경에서 다시 선다).
+        # 화면이 이것을 진짜 실패와 같은 톤으로 그리면 거짓 경보가 되므로 구조화
+        # 표식으로 가른다 — 문구 파싱은 금지다(_VECTOR_REBUILDING 주석과 같은 규칙).
+        patch["vector_rebuilding"] = True
+        _schedule_vector_index(store, cfg.embedding_dim)
+
+    # GM-14 페이지네이션 — 안정 정렬(점수 내림차순, 동점은 id 오름차순). 페이지
+    # 사이에 결과가 흔들리면 안 되므로 정렬 키에 id 를 반드시 묶는다.
+    pool.sort(key=lambda r: (-(float(r.get("rrf_score") or r.get("score") or 0.0)),
+                             str(r.get("id") or "")))
+    _withheld = False            # 시간 메타를 못 읽어 청크를 내지 않았나(fail closed)
+    _chunk_known_hidden = 0
+    if known_at and mode != "current" and pool:
+        try:
+            pool, _chunk_known_hidden = _known_at_pool(store, pool, owner=owner, until=_until)
+        except Exception as exc:
+            pool, _withheld = [], True
+            patch["partial"] = True
+            patch["temporal_error"] = f"{type(exc).__name__}: {exc}"
+    if mode == "current":
+        for r in pool:
+            r["doc_id"] = _row_doc_id(r)
+        try:
+            meta = temporal.doc_sources(store, [r.get("doc_id") for r in pool], owner=owner)
+            for r in pool:
+                temporal.stamp(r, meta.get(r.get("doc_id"), {}), scope=_scope)
+            visible = [r for r in pool if r["temporal"]["validity"] not in ("historical", "future")]
+            patch["validity_filtered"] = int(base.get("validity_filtered") or 0) + len(pool) - len(visible)
+            patch["doc_validity_filtered"] = len(pool) - len(visible)
+            pool = visible
+            before_lineage = len(pool)
+            temporal.finish_docs(store, pool, owner=owner, scope=_scope, current=True, known_at=known_at)
+            patch["validity_filtered"] += before_lineage - len(pool)
+            patch["doc_validity_filtered"] += before_lineage - len(pool)
+        except Exception as exc:
+            # 문서 구간이나 계보를 못 읽으면 어느 청크가 은퇴했는지 모른다. 내지 않는다.
+            pool, _withheld = [], True
+            patch["partial"] = True
+            patch["temporal_error"] = f"{type(exc).__name__}: {exc}"
+        temporal.current_order(pool)
+        # Keep the assessed cohort until the public wrapper reconstructs page rows.
+        # A display limit must not erase a conflict already observed in retrieval.
+        patch["_current_doc_temporal"] = {r["doc_id"]: r["temporal"] for r in pool}
+    patch["total_count"] = len(pool)
+    # 풀은 SEARCH_POOL_CAP 에서 잘린다 — 그 수에 닿았으면 total_count 는 "전부"가
+    # 아니라 "적어도"다. 여태 거의 모든 질의가 200·199 를 읽혀 전체 수처럼 보였다
+    # (감사 §5 #18). 필드 이름은 안 바꾸고, 닿았을 때만 표식을 단다.
+    # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S11
+    if arm_capped or len(pool) >= SEARCH_POOL_CAP:
+        patch["total_count_capped"] = True
+    return pool, _withheld, _chunk_known_hidden, patch
+
+
 def _node_semantic_arm(store, query_embedding, *, continuation, owner, query_model,
                        _wide, _nk, _kw, _scope, historical, mode, known_at, _until,
                        _vstats, base) -> tuple[list[dict], tuple | None, str | None, dict]:
@@ -1607,153 +1773,12 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
             _scope=_scope, _until=_until, _vstats=_vstats, _vnote=_vnote)
         base.update(_title_patch)
 
-        # (1)(2) Chunk 하이브리드 — 실패는 error 로 표면화, 인덱스 부재는 지연 빌드 후 재시도.
-        # GM-14: top_k 가 아니라 **후보 풀**(SEARCH_POOL_CAP)을 가져온다 — 페이지는
-        # 아래에서 안정 정렬 위의 오프셋으로 자른다.
-        # 🔴 **SEC-1 청크 팔 owner 스코프.** owner 를 여기서 빼면 호스티드에서 `rows[]`
-        # 가 남의 문서 본문 발췌를 싣는다 — node_hits 가 막혀 있어 눈에 잘 안 띄고
-        # 회귀 테스트도 노드 폴백만 봤다([[record:the-search-chunk-arm-is-owner-scoped-and-fails-closed]]).
-        chunk_filters = dict(filters or {})
-        base["node_window"] = {"pagination": "first_page_only", "total_count_scope": "chunks",
-                               "limit": max(1, int(top_k)),
-                               "lexical_candidates": _vstats.get("candidate_count"),
-                               "lexical_candidates_capped": bool(_vstats.get("candidate_count_capped")),
-                               "candidate_limit": NODE_SCAN_CAP}
-        if kinds:
-            base["node_window"]["kinds"] = list(kinds)
-        scoped_ok = True
-        if owner:
-            chunk_filters["owner_id"] = owner
-            # **fail-closed.** 스코프가 강제된 요청인데 백엔드가 필터를 실제로 적용하는지
-            # 알 수 없으면 청크 팔을 아예 돌리지 않는다. 필터를 무시하는 구현(구 백엔드·
-            # 테스트 더블)에 owner 를 넘기면 "스코프를 걸었다고 믿는 무스코프 조회"가
-            # 되는데, 그건 지금 고치는 결함과 정확히 같은 것이다. 조용히 넓게 답하느니
-            # 답을 줄이고 사유를 남긴다.
-            scoped_ok = bool(flag(store, "scoped_chunk_search"))
-        pool: list[dict] = []
-        vnote = ""
-        ran: list[str] = []          # 실제로 돈 팔 — 예외로 새면 빈 채로 남는다
-        arm_capped = False           # 거르기 전의 팔이 상한에 닿았나(_chunk_arms)
-        kw_gated = False             # 키워드 목록이 관문에 걸려 융합에서 빠졌나(_keyword_gate)
-        try:
-            if not scoped_ok:
-                raise _UnscopedChunkSearch(
-                    "owner scope requested but this store does not support "
-                    "owner-filtered chunk search")
-            pool, vnote, ran, arm_capped, kw_gated = _chunk_arms(
-                store, query, query_embedding, SEARCH_POOL_CAP, chunk_filters or None)
-            base["executed"] = True
-        except _UnscopedChunkSearch as exc:
-            # 폴백하지 않는다 — node_hits 는 이미 owner 로 걸러져 있으므로 그것만 답한다.
-            base["error"] = f"owner_scope_unsupported: {exc}"
-            base["note"] = base["error"]
-        except Exception as exc:
-            if _classify_chunk_error(exc) != "index_missing":
-                base["error"] = f"{_classify_chunk_error(exc)}: {type(exc).__name__}: {exc}"
-                base["note"] = base["error"]
-            else:
-                n = _chunk_count(store)
-                builder = operation(store, "ensure_search_indexes")
-                if n == 0:
-                    # Chunk 0 — 빌드 시도 없이 조용히 폴백(node_hits 가 답, 무 에러).
-                    base["executed"] = True
-                    base["note"] = "no chunks indexed — node_hits only"
-                elif flag(store, "fts_index_remnant"):
-                    # 다시 서지 않는 색인이다(잔해). 빌드를 걸면 검색마다 실패할 잡이 돈다.
-                    # 근거: [[record:an-fts-remnant-on-chunk-stops-every-document-write-and-the-heal-moves-chunk-with-its-edges-2026-09-25]]
-                    base["error"] = base["note"] = f"fts_index_remnant: {_FTS_REMNANT}"
-                elif builder is None:
-                    base["error"] = f"index_missing: {type(exc).__name__}: {exc}"
-                    base["note"] = base["error"]
-                else:
-                    try:
-                        # **벡터 인덱스는 여기서 만들지 않는다.** FTS 만 세워 답하고
-                        # (`dim=None`), HNSW 는 아래에서 예약한다 — 요청 스레드가
-                        # 기다릴 일이 아니다(:func:`_schedule_vector_index`).
-                        builder(dim=None)
-                        pool, vnote, ran, arm_capped, kw_gated = _chunk_arms(
-                            store, query, query_embedding, SEARCH_POOL_CAP,
-                            chunk_filters or None)
-                        base["executed"] = True
-                        base["note"] = "search index built on demand"
-                    except Exception as exc2:
-                        base["error"] = (f"index_build_failed: "
-                                         f"{type(exc2).__name__}: {exc2}")
-                        base["note"] = base["error"]
-        # 여기서 처음으로 `arms` 를 세운다 — **돈 팔의 이름만** 붙는다.
-        base["arms"] = "+".join(_ARM_LABEL[a] for a in ran) or "none"
-        # 키워드 팔은 돌았지만 질의를 못 덮어 융합에서 뺐다 — 걸렸을 때만 싣는다(`vector_note`
-        # 처럼). `arms` 는 그대로 두 팔이다: 평가 하네스의 강등 판정이 바뀌지 않게.
-        if kw_gated:
-            base["keyword_gated"] = True
-        # 벡터 팔을 **요청했는데 안 돌았고 그 이유가 실패**면 사유를 구조화 필드로
-        # 남긴다. 여태 이 자리는 `error` 만 세웠는데, 화면은 영문 문구를 파싱할 수
-        # 없으므로(금지) 반쪽·빈 답을 완전한 답으로 보여 줬다. 청크 팔이 통째로
-        # 죽는 경로(확장 미가용·미프로비저닝·스코프 미지원·빌드 실패)가 전부 여기다.
-        # 청크가 0개라 아무것도 못 찾은 경우는 실패가 아니므로(`error` 없음) 안 선다.
-        if query_embedding is not None and "semantic" not in ran and base.get("error"):
-            base.setdefault("vector_note", base["error"])
-        if vnote and flag(store, "vector_index_remnant"):
-            # 재빌드 창이 아니다 — 다시 서지 않는 색인이다. 양성 표식(`vector_rebuilding`)을
-            # 달면 "곧 돌아온다"는 거짓이 되므로 실패로 싣고, 빌드도 걸지 않는다.
-            # 근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]
-            base["vector_note"] = _VECTOR_REMNANT
-        elif vnote and vnote != _VECTOR_REBUILDING:
-            base["vector_note"] = vnote      # 벡터 팔 실패(폭 불일치 등) — 재빌드 창이 아니다
-        elif vnote:
-            # 조용한 강등 금지 — 어느 팔이 돌았는지(`arms`)와 왜 강등됐는지
-            # (`vector_note`)를 둘 다 남긴다.
-            base["vector_note"] = vnote
-            # 재빌드 창은 **양성 계약**이다(쓰기가 HNSW 를 드롭 → 배경에서 다시 선다).
-            # 화면이 이것을 진짜 실패와 같은 톤으로 그리면 거짓 경보가 되므로 구조화
-            # 표식으로 가른다 — 문구 파싱은 금지다(_VECTOR_REBUILDING 주석과 같은 규칙).
-            base["vector_rebuilding"] = True
-            _schedule_vector_index(store, cfg.embedding_dim)
-
-        # GM-14 페이지네이션 — 안정 정렬(점수 내림차순, 동점은 id 오름차순). 페이지
-        # 사이에 결과가 흔들리면 안 되므로 정렬 키에 id 를 반드시 묶는다.
-        pool.sort(key=lambda r: (-(float(r.get("rrf_score") or r.get("score") or 0.0)),
-                                 str(r.get("id") or "")))
-        _withheld = False            # 시간 메타를 못 읽어 청크를 내지 않았나(fail closed)
-        _chunk_known_hidden = 0
-        if known_at and mode != "current" and pool:
-            try:
-                pool, _chunk_known_hidden = _known_at_pool(store, pool, owner=owner, until=_until)
-            except Exception as exc:
-                pool, _withheld = [], True
-                base["partial"] = True
-                base["temporal_error"] = f"{type(exc).__name__}: {exc}"
-        if mode == "current":
-            for r in pool:
-                r["doc_id"] = _row_doc_id(r)
-            try:
-                meta = temporal.doc_sources(store, [r.get("doc_id") for r in pool], owner=owner)
-                for r in pool:
-                    temporal.stamp(r, meta.get(r.get("doc_id"), {}), scope=_scope)
-                visible = [r for r in pool if r["temporal"]["validity"] not in ("historical", "future")]
-                base["validity_filtered"] = int(base.get("validity_filtered") or 0) + len(pool) - len(visible)
-                base["doc_validity_filtered"] = len(pool) - len(visible)
-                pool = visible
-                before_lineage = len(pool)
-                temporal.finish_docs(store, pool, owner=owner, scope=_scope, current=True, known_at=known_at)
-                base["validity_filtered"] += before_lineage - len(pool)
-                base["doc_validity_filtered"] += before_lineage - len(pool)
-            except Exception as exc:
-                # 문서 구간이나 계보를 못 읽으면 어느 청크가 은퇴했는지 모른다. 내지 않는다.
-                pool, _withheld = [], True
-                base["partial"] = True
-                base["temporal_error"] = f"{type(exc).__name__}: {exc}"
-            temporal.current_order(pool)
-            # Keep the assessed cohort until the public wrapper reconstructs page rows.
-            # A display limit must not erase a conflict already observed in retrieval.
-            base["_current_doc_temporal"] = {r["doc_id"]: r["temporal"] for r in pool}
-        base["total_count"] = len(pool)
-        # 풀은 SEARCH_POOL_CAP 에서 잘린다 — 그 수에 닿았으면 total_count 는 "전부"가
-        # 아니라 "적어도"다. 여태 거의 모든 질의가 200·199 를 읽혀 전체 수처럼 보였다
-        # (감사 §5 #18). 필드 이름은 안 바꾸고, 닿았을 때만 표식을 단다.
-        # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S11
-        if arm_capped or len(pool) >= SEARCH_POOL_CAP:
-            base["total_count_capped"] = True
+        # (1)(2) 청크 팔과 풀. 응답에 얹을 키는 patch 로 받아 부른 바로 뒤에 얹는다.
+        pool, _withheld, _chunk_known_hidden, _chunk_patch = _chunk_stage(
+            store, query, query_embedding, filters=filters, owner=owner, kinds=kinds,
+            top_k=top_k, cfg=cfg, _vstats=_vstats, known_at=known_at, mode=mode,
+            _until=_until, _scope=_scope, base=base)
+        base.update(_chunk_patch)
         # 청크 팔이 실패했으면 풀이 비어 모든 커서가 낡아 보인다 — 원래 오류를 그대로 둔다.
         # 1페이지와 다른 팔이 돌았으면(벡터 색인이 사이에 드롭) 순서가 다른 풀이다 — eid 가
         # 우연히 맞아도 중복·누락이 난다.
