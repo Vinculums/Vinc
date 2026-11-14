@@ -142,23 +142,11 @@ def _expand_merge(argv: list[str]) -> list[str]:
     return argv
 
 
-def _main(argv: list[str] | None = None) -> int:
-    argv = _expand_merge(list(sys.argv[1:] if argv is None else argv))
-    # Windows 콘솔/파이프 기본 인코딩(cp949)에서 비ASCII 직렬화(ensure_ascii=False,
-    # MCP stdio 포함)가 UnicodeEncodeError 로 죽는 문제 — MCP 규약(UTF-8)에 맞춰
-    # 표준 스트림을 UTF-8 로 재구성한다(재구성 불가 스트림은 그대로 둠).
-    for _s in (sys.stdout, sys.stderr):
-        if hasattr(_s, "reconfigure"):
-            try:
-                _s.reconfigure(encoding="utf-8", errors="backslashreplace")
-            except Exception:
-                pass
-    if hasattr(sys.stdin, "reconfigure"):
-        try:
-            sys.stdin.reconfigure(encoding="utf-8")
-        except Exception:
-            pass
+def build_parser() -> _Parser:
+    """루트 파서와 모든 동사·하위 동사를 조립해 돌려준다. 인자를 해석하거나 동사를 실행하지 않는다.
 
+    데스크톱 바이너리의 `CLI_VERBS`(`app/src-tauri/src/main.rs`)는 이 파서의 최상위 동사를 따라야 하고,
+    `tests/app/test_cli_verbs_match.py` 가 둘을 대조한다."""
     ap = _Parser(description='Vinc command line interface')
     ap.add_argument("--version", "-V", action="version", version=f"vinc {__version__}",
                     help="show the installed version and exit")
@@ -667,6 +655,27 @@ def _main(argv: list[str] | None = None) -> int:
                     help="print a paste-ready stdio entry for hosts without an installer")
 
     _add_output_options(ap, root=True)
+    return ap
+
+
+def _main(argv: list[str] | None = None) -> int:
+    argv = _expand_merge(list(sys.argv[1:] if argv is None else argv))
+    # Windows 콘솔/파이프 기본 인코딩(cp949)에서 비ASCII 직렬화(ensure_ascii=False,
+    # MCP stdio 포함)가 UnicodeEncodeError 로 죽는 문제 — MCP 규약(UTF-8)에 맞춰
+    # 표준 스트림을 UTF-8 로 재구성한다(재구성 불가 스트림은 그대로 둠).
+    for _s in (sys.stdout, sys.stderr):
+        if hasattr(_s, "reconfigure"):
+            try:
+                _s.reconfigure(encoding="utf-8", errors="backslashreplace")
+            except Exception:
+                pass
+    if hasattr(sys.stdin, "reconfigure"):
+        try:
+            sys.stdin.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+
+    ap = build_parser()
     args = ap.parse_args(argv)
     command = args.cmd
     for name in ("doccmd", "gmcmd", "mcpcmd", "nodecmd", "edgecmd", "mergecmd", "refscmd", "rolecmd",
