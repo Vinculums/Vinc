@@ -1,0 +1,82 @@
+/* ── 승인함(surfaces/approvals.ts) ─────────────────────────────────
+   첫 대상은 Android Chrome 폭(360 · 412)이고 iPhone 도 같은 규칙으로 받는다. 누르는 자리는 48px 이상이다.
+   카드 하나가 기다리는 실행 하나다. 행동의 이유는 고정폭 블록에
+   **글자 그대로** 둔다: 줄은 바꾸되 자르지 않고, 긴 낱말(경로 · 명령)도 칸 안에서 꺾는다.
+   그래서 어느 폭에서도 표면에 가로 스크롤이 생기지 않는다. 계획: `vinc.plan.agent-approvals-in-the-vinc-app-2026-11-07` */
+#shell[data-surface="approvals"] #surface { padding: var(--space-6, 1.5rem) 0 0; container-type: inline-size; }
+.approvals {
+  box-sizing: border-box; max-width: calc(40rem + var(--page-inset) * 2); margin: 0 auto;
+  padding: 0 var(--page-inset) var(--space-8, 2rem);
+  /* 한국어 문장은 낱말 안에서 꺾지 않는다. 고정폭 이유 블록은 아래에서 다시 꺾게 둔다. */
+  word-break: keep-all;
+}
+.ap-back {
+  display: inline-flex; align-items: center; min-height: 48px; padding: 0 var(--space-2, .5rem);
+  margin: 0 0 var(--space-2, .5rem) calc(-1 * var(--space-2, .5rem)); font-size: var(--fs-sm);
+}
+.ap-list { display: grid; gap: var(--space-4, 1rem); }
+.ap-empty { margin: 0; }
+.ap-card {
+  min-width: 0; padding: var(--space-4, 1rem);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  background: hsl(var(--card));
+}
+.ap-card[data-state="expired"], .ap-card[data-state="answered"] { background: hsl(var(--surface-2)); }
+.ap-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2, .5rem); flex-wrap: wrap; }
+.ap-title { margin: 0; font-size: var(--fs-lg); line-height: var(--lh-tight, 1.15); min-width: 0; overflow-wrap: anywhere; }
+/* 제목 링크는 줄 높이까지 눌리게 키운다(카드 머리에서 48px). */
+.ap-title a { color: inherit; text-decoration: none; display: inline-block; min-height: 48px; padding: .8rem 0; margin: -.8rem 0; }
+.ap-title a:hover { text-decoration: underline; }
+.ap-kind { flex: 0 0 auto; }
+.ap-meta {
+  margin: var(--space-1, .25rem) 0 0; font-size: var(--fs-sm);
+  color: hsl(var(--muted-foreground)); overflow-wrap: anywhere;
+}
+.ap-question { margin: var(--space-3, .75rem) 0 0; line-height: var(--lh-normal, 1.55); overflow-wrap: anywhere; white-space: pre-wrap; }
+.ap-reqs { display: grid; gap: var(--space-3, .75rem); margin-top: var(--space-3, .75rem); }
+.ap-req { min-width: 0; }
+.ap-act { font-family: var(--font-mono); font-size: var(--fs-sm); color: hsl(var(--point-text)); overflow-wrap: anywhere; }
+.ap-reason {
+  margin: var(--space-1, .25rem) 0 0; padding: var(--space-3, .75rem);
+  font-family: var(--font-mono); font-size: var(--fs-sm); line-height: var(--lh-normal, 1.55);
+  white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word;
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--muted) / .6); color: hsl(var(--foreground));
+}
+.ap-noreason { margin: var(--space-1, .25rem) 0 0; font-size: var(--fs-sm); }
+.ap-replyfield { margin: var(--space-4, 1rem) 0 var(--space-3, .75rem); }
+.ap-replyfield textarea { min-height: 48px; }
+.ap-acts { display: flex; flex-wrap: wrap; gap: var(--space-2, .5rem); }
+/* 버튼은 손가락 크기다(48px, Android 의 최소 터치 대상). 승인 · 거절이 한 줄을 반씩, 답글만 보내기는 아래 한 줄을 쓴다. */
+.ap-acts .btn { flex: 1 1 calc(50% - var(--space-2, .5rem)); min-height: 48px; }
+.ap-acts .btn[data-answer="reply"] { flex-basis: 100%; }
+.ap-hint { margin: var(--space-2, .5rem) 0 0; font-size: var(--fs-sm); }
+.ap-state { margin: var(--space-3, .75rem) 0 0; font-size: var(--fs-sm); line-height: var(--lh-normal, 1.55); }
+.ap-expired strong { color: hsl(var(--danger)); margin-right: var(--space-1, .25rem); }
+.ap-done { color: hsl(var(--success)); }
+.ap-msg { margin: var(--space-2, .5rem) 0 0; font-size: var(--fs-sm); color: hsl(var(--danger)); }
+.ap-msg[hidden] { display: none; }
+/* 좁은 폭(Android 360 · 412)에서는 접힌 레일이 이미 한 칸을 쓴다. 여백을 줄여 이유 블록에 글자 폭을 돌려준다. */
+@media (max-width: 600px) {
+  #shell[data-surface="approvals"] #surface { padding-top: var(--space-3, .75rem); }
+  .approvals { padding: 0 var(--space-2, .5rem) var(--space-6, 1.5rem); }
+  .ap-card { padding: var(--space-3, .75rem); }
+  .ap-reason { padding: var(--space-2, .5rem); }
+}
+/* LNB 바닥의 승인 버튼과 그 수. 수는 설정 뱃지와 같은 자리 · 모양이다. */
+/* 바닥 줄은 승인 · 설정 · 접기 손잡이가 나눠 쓴다. 승인은 손잡이처럼 아이콘과 수만 둔다: 이름을 달면
+   영어("Approvals")에서 설정이 밀려 잘린다. 이름은 툴팁(data-tip)과 aria-label 이 말하고, 설정이 남은 폭을 쓴다. */
+#rail-approvals { position: relative; flex: 0 0 auto; width: var(--ctl-h); padding: 0; justify-content: center; }
+#rail-approvals .rail-name { display: none; }
+#rail-approvals-badge {
+  position: absolute; top: .1rem; left: 1.4rem; min-width: .9rem; height: .9rem;
+  padding: 0 .18rem; border-radius: .5rem; background: hsl(var(--ring));
+  color: hsl(var(--background)); font-size: var(--fs-2xs); line-height: .9rem;
+  font-weight: 650; text-align: center;
+}
+#rail-approvals-badge[hidden] { display: none; }
+#shell[data-lnb="closed"] #rail-approvals { width: var(--ctl-h); }
+/* 손가락으로 누르는 기기에서는 승인 버튼도 48px 이다(승인함으로 가는 문이라 폰에서 가장 자주 누른다). */
+@media (pointer: coarse) {
+  #rail-approvals, #shell[data-lnb="closed"] #rail-approvals { min-width: 48px; min-height: 48px; }
+}

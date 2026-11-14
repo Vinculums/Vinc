@@ -37,9 +37,11 @@ import urllib.parse
 from collections import deque
 from http.cookies import CookieError, SimpleCookie
 
+from store.atomicjson import write_json_0600
 from store.envflag import truthy
 
 from . import selfhost
+from .selfhost_state import state_dir
 
 def _same(a: str, b: str) -> bool:
     """요청에서 온 문자열의 상수 시간 비교. `hmac.compare_digest` 는 ASCII 밖의 str 에서
@@ -80,21 +82,6 @@ def verify_password(password: str, encoded: str) -> bool:
     except (ValueError, TypeError):
         return False
     return hmac.compare_digest(got, want_b)
-
-
-def state_dir() -> str:
-    """세션 파일과 비밀번호 파일이 사는 곳: `VINC_SELFHOST_STATE`, 없으면 OAuth 스냅샷 옆
-    (컨테이너에서는 영속 볼륨), 그것도 없으면 OAuth 작업본 경로."""
-    explicit = os.environ.get("VINC_SELFHOST_STATE")
-    if explicit:
-        root = explicit
-    elif os.environ.get("VINC_MCP_STATE_SNAPSHOT"):
-        root = os.path.dirname(os.environ["VINC_MCP_STATE_SNAPSHOT"])
-    else:
-        from .hub_state import resolve_state_dir
-        root = resolve_state_dir()
-    os.makedirs(root, exist_ok=True)
-    return root
 
 
 def password_hash() -> str | None:
@@ -196,11 +183,7 @@ class SessionStore:
             return {}
 
     def _save(self, data: dict) -> None:
-        tmp = f"{self.path}.{os.getpid()}.tmp"
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(data, fh)
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, self.path)
+        write_json_0600(self.path, data)
 
     def create(self, now: float | None = None, *, user: str | None = None) -> tuple[str, str]:
         """새 세션 → (세션 토큰, CSRF 토큰). 끝난 세션은 이때 같이 걷는다. `user` 는 사람 표의

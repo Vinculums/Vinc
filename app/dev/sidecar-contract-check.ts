@@ -12,7 +12,7 @@
  *    - `app/src` 의 `call`·`localCall`·`accountCall`·`previewDelete`·`applyDelete`·
  *      `viaProxy`·`webFetch`·`fetch` 호출에서 경로 인자(문자열·템플릿·`new URL("…")`)와 메서드.
  *    - `app/src-tauri/src` 의 Rust 셸이 손으로 쓰는 요청 줄(`"POST /shutdown HTTP/1.1`).
- *  경로나 메서드를 글자로 읽을 수 없는 호출은 실패다. 예외는 `api.ts` 의 그 함수들 자신이
+ *  경로나 메서드를 글자로 읽을 수 없는 호출은 실패다. 예외는 `api.ts` · `api-transport.ts` 의 그 함수들 자신이
  *  인자로 받은 경로를 넘기는 자리뿐이다(그 경로는 함수를 부른 쪽에서 이미 읽혔다).
  *
  *  ⚠ CI 의 `app` 잡은 `app/` 이나 `api/contract/` 가 바뀔 때 돈다(`ci.yml` 의 `changes`).
@@ -26,6 +26,8 @@ import ts from "typescript";
 const APP = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CONTRACT = join(APP, "..", "api", "contract", "sidecar.json");
 const API_TS = join(APP, "src", "api.ts");
+// 전송 함수들은 `api-transport.ts` 에 산다. 그 안에서 인자로 받은 경로를 넘기는 자리도 전달로 센다.
+const TRANSPORT_TS = join(APP, "src", "api-transport.ts");
 
 type Method = "GET" | "POST";
 type Call = { method: Method; path: string; at: string };
@@ -120,7 +122,7 @@ for (const file of files(join(APP, "src"), ".ts")) {
         } else method = spec!.method;
 
         if (path && method) calls.push({ method, path, at });
-        else if (file === API_TS && Object.hasOwn(WRAPPERS, enclosingFunction(node) ?? "")) forwarded++;
+        else if ((file === API_TS || file === TRANSPORT_TS) && Object.hasOwn(WRAPPERS, enclosingFunction(node) ?? "")) forwarded++;
         else unreadable.push(`${at} ${node.getText(src).slice(0, 80)}`);
       }
     }

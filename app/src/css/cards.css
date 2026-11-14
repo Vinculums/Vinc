@@ -1,0 +1,147 @@
+/* ── 맥락 카드(D70) — 노드에 딸려 뜨고, 끌어 옮길 수 있고, 닫힌다 ────────────
+   시트가 아니다: 딤도 aria-modal 도 없다(지도를 계속 만질 수 있어야 한다).
+   컨텍스트 메뉴도 아니다: 한 번 고르고 사라지는 것이 아니라 머문다. */
+/* ⚠ 이 정의를 다시 지우지 말 것. 렌즈 패널이 WAAPI(motion.ts)로 옮겨 가면서 이
+   키프레임도 함께 지워졌는데, 쓰는 곳이 **셋**이었다(렌즈 패널·아래 카드·코치마크).
+   CSS 는 없는 애니메이션 이름을 조용히 무시하므로 오류 하나 없이 두 표면이 등장
+   모션을 잃었다. 이 둘은 트리거 지점이 없어(노드 옆·화면 구석) WAAPI 대상이 아니다. */
+@keyframes lensRise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.float-card {
+  position: fixed; z-index: 48; width: 19rem; max-height: 60vh; max-height: 60dvh;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+  border-radius: var(--radius); box-shadow: var(--shadow-float, var(--shadow-elev-3, none));
+  animation: lensRise .16s var(--ease-settle);
+}
+/* 카드가 열린 채 다른 노드를 고르면 등장을 되풀이하지 않는다(float-panel.ts) — 하루 수십 번 하는 일이다. */
+.float-card--swap { animation: none; }
+/* 항목 페이지를 넓게 연 동안은 카드를 숨긴다. 같은 노드를 페이지가 다 보여 주는데 카드가 그
+   제목 위에 떠 있었다. 카드는 body 에 붙어 셸 상태를 못 보므로 body 의 같은 표식을 읽는다
+   (view.ts railChrome). visibility 라서 옆 카드로 돌아오면 자리와 내용이 그대로 돌아온다. */
+body[data-doc-size="full"] .float-card { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) { .float-card { animation: fadeOnly .16s ease; } }
+.float-head {
+  display: flex; align-items: center; gap: .4rem; flex: 0 0 auto;
+  padding: .4rem .4rem .4rem .55rem; cursor: grab; touch-action: none;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.float-head:active { cursor: grabbing; }
+.float-grip { display: inline-flex; color: hsl(var(--caption-foreground)); flex: 0 0 auto; }
+.float-title {
+  flex: 1 1 auto; min-width: 0; font-size: var(--fs-sm); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.float-body { flex: 1 1 auto; overflow: auto; padding: .35rem .5rem .6rem; }
+/* 토픽 카드: 경로·설명·수치·하위 토픽까지 싣는다. 일반 노드 카드보다 넓고, 천장 아래 화면 높이까지 자란다. */
+.float-card--tall { width: 22rem; max-height: calc(100vh - 6rem); max-height: calc(100dvh - 6rem); }
+/* `.card-rows` 의 음수 아래 여백(-.6rem)만큼 내려서 시작하고, 카드 안쪽 여백을 다시 준다. */
+.card-topic-body { padding: .9rem .4rem .2rem; }
+
+/* 레일의 ask 줄 — 카드와 **같은 조각**이라 스타일도 카드 것을 그대로 쓴다.
+   놓이는 자리만 다르다: 제목 위 한 줄이므로 카드 폭 기준의 음수 마진이 필요 없다. */
+#view-detail .ask-row { padding: .35rem 0; margin: 0 0 .2rem; border-bottom: 0; }
+
+/* ── 노드 카드 ─────────────────────────────────────────────────────────────
+   정본: Claude Design 프로젝트 "Vinc 홈페이지" 의 `Vinc Node Card.dc.html` (2a Final).
+   그 파일이 정한 규격 하나를 여기서도 지킨다: **카드의 모든 컨트롤은 높이 28px ·
+   모서리 .5rem · 글자 12px**. 줄은 카드 폭을 꽉 채우고 사이는 실선으로 갈린다.
+
+   ⚠ 디자인 원문은 강조색을 `hsl(234 49% 71%/.07)` 처럼 리터럴로 적는다. 여기서는
+   `--ring` 으로 바꿔 쓴다 — `gate_surface` 가 하드코딩 색을 막고, 그 토큰이 테마
+   전환을 따라가기 때문이다. 같은 자리를 가리키는 값이라 그림은 달라지지 않는다. */
+.card-rows { display: flex; flex-direction: column; margin: -.35rem -.5rem -.6rem; }
+
+/* 한 줄 — 이름 · 수치 · 캐럿. 버튼이어도 버튼처럼 안 생긴다(테두리도 채움도 없다). */
+.card-row {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 9px 12px; border: 0; border-bottom: 1px solid hsl(var(--border) / .6);
+  background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.card-row:hover, .card-row:focus-visible { background: hsl(var(--muted-foreground) / .07); outline: none; }
+/* 컨트롤을 든 줄은 줄 자체가 과녁이 아니다 — 안쪽 손잡이가 과녁이다. */
+.card-row--static { cursor: default; position: relative; }
+.card-row--static:hover { background: none; }
+.row-name { flex: 1; min-width: 0; font-size: var(--fs-sm); font-weight: 500; }
+.row-name--strong { font-weight: 600; }
+.row-meta {
+  flex: none; white-space: nowrap; font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums; color: hsl(var(--caption-foreground));
+}
+/* 캐럿이 목적지를 말한다: 오른쪽 = 카드 밖으로, 아래 = 카드 안에서 펼침. */
+.row-chev { flex: none; display: inline-flex; color: hsl(var(--caption-foreground)); }
+.row-chev--down { transform: rotate(-90deg); }
+.row-chev--right { transform: rotate(180deg); }
+.card-row[aria-expanded="false"] .row-chev--down { transform: rotate(180deg); }
+
+.card-sec { border-bottom: 1px solid hsl(var(--border) / .6); }
+.card-sec > .card-row { border-bottom: 0; padding-bottom: 6px; }
+.card-links { display: flex; flex-direction: column; gap: 2px; padding: 0 6px 8px; }
+.link-row {
+  display: flex; align-items: baseline; gap: 6px; width: 100%;
+  padding: 5px 6px; border: 0; border-radius: .5rem;
+  background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.link-row:hover, .link-row:focus-visible { background: hsl(var(--muted-foreground) / .08); outline: none; }
+.link-dir { flex: none; width: 11px; color: hsl(var(--caption-foreground)); }
+.link-title {
+  flex: 1; min-width: 0; font-size: var(--fs-sm);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.link-tag { flex: none; white-space: nowrap; font-size: var(--fs-xs); color: hsl(var(--caption-foreground)); }
+/* 근거가 있는 관계는 그 이름이 곧 근거로 들어가는 자리다 — 디자인에 별도 버튼이 없다. */
+.link-tag--ev { text-decoration: underline dotted; text-underline-offset: 2px; cursor: pointer; }
+.link-tag--ev:hover { color: hsl(var(--foreground)); }
+.link-more {
+  align-self: flex-start; margin-left: 6px; padding: 2px 0;
+  border: 0; background: none; font: inherit; font-size: var(--fs-xs);
+  color: hsl(var(--caption-foreground)); cursor: pointer;
+}
+.link-more:hover { color: hsl(var(--foreground)); }
+.card-note { margin: 0; padding: 6px 12px; font-size: var(--fs-xs); color: hsl(var(--muted-foreground)); }
+
+/* 컨트롤 규격 한 벌 — 높이 28 · 모서리 .5rem · 글자 12. */
+.card-ctl {
+  display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px;
+  border: 1px solid hsl(var(--border)); border-radius: .5rem; background: none;
+  font: inherit; font-size: var(--fs-xs); color: hsl(var(--muted-foreground)); cursor: pointer;
+}
+.card-ctl:hover, .card-ctl[aria-expanded="true"] {
+  border-color: hsl(var(--muted-foreground) / .45); background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+
+/* 프롬프트 메뉴 — **카드면이지 유리가 아니다.** 지도 위 카드 위에 또 유리를 얹으면
+   글자가 배경을 통과한다(디자인 2b 주석). */
+.card-menu {
+  position: fixed; z-index: 60; width: 246px;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--card));
+  box-shadow: var(--shadow-elev-2, 0 16px 40px -12px hsl(0 0% 2% / .85));
+}
+.card-menu[hidden] { display: none; }
+.menu-item {
+  display: block; width: 100%; padding: 9px 10px;
+  border: 0; border-radius: .55rem; background: none;
+  color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.menu-item:hover, .menu-item:focus-visible { background: hsl(var(--muted-foreground) / .12); outline: none; }
+.menu-name { display: block; font-size: var(--fs-sm); font-weight: 500; }
+.menu-sub { display: block; margin-top: 2px; font-size: var(--fs-xs); color: hsl(var(--caption-foreground)); }
+
+/* 아래 줄은 조용한 유틸리티. 삭제는 되돌릴 수 없으므로 오른쪽 끝, 호버에서만 붉어진다. */
+.card-util { display: flex; align-items: center; gap: 4px; padding: 7px 10px; background: hsl(var(--muted) / .5); }
+.card-util > button {
+  padding: 3px 7px; border: 0; border-radius: .45rem; background: none;
+  font: inherit; font-size: var(--fs-xs); color: hsl(var(--muted-foreground)); cursor: pointer;
+}
+.card-util > button:hover { background: hsl(var(--card)); color: hsl(var(--foreground)); }
+.card-util-del { margin-left: auto; color: hsl(var(--caption-foreground)) !important; }
+.card-util-del:hover { background: hsl(var(--danger) / .14) !important; color: hsl(var(--danger)) !important; }
+
+/* 머리의 표식 — 지도가 그리는 마크 그대로, 색은 그 노드의 주제 색. */
+.float-mark { flex: none; display: inline-flex; align-items: center; }
+/* 조용한 파괴 액션 — 삭제는 눌리되 먼저 눈에 띄지는 않는다(되돌릴 수 없다). */
+.btn-quiet { color: hsl(var(--caption-foreground)); }
+.btn-quiet:hover { color: hsl(var(--danger)); border-color: hsl(var(--danger) / .5); }
+/* 범례(U1) — 접이식. 닫힌 층(형태=타입 · 선=관계 · 초점색)을 화면이 스스로 설명한다.
+   접힌 기본값은 한 줄 요약이라 지도를 가리지 않고, 펼치면 마크 사양이 전부 나온다. */

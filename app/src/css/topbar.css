@@ -1,0 +1,322 @@
+/* ── 공홈 GNB 레이아웃(웹 빌드) ──────────────────────────────────────────
+   GNB 마크업·스타일은 공유 /assets/gnb.js(단일 소스)가 web skin에서 런타임 주입한다.
+   여기선 셸 높이만 GNB 만큼 줄인다 — 데스크탑은 GNB 미주입이라 영향 없음.
+   GNB 는 안쪽 52px 에 아래 테두리 1px 이 더해진 53px 이다(gnb.js 값은 px). 52 만 빼면 문서가
+   1px 넘쳐 창에 세로 스크롤바(10px)가 생기고 한 칸 굴러간다. */
+[data-skin="web"] { --site-gnb-h: 53px; }
+[data-skin="web"] #shell { height: calc(100vh - var(--site-gnb-h)); height: calc(100dvh - var(--site-gnb-h)); }
+/* GNB 는 공홈 어느 페이지에서나 같은 자리에 선다 — 앱 안에서도 사이트 프레임(1540 + 거터)이다.
+   셸에 맞추면 앱으로 넘어올 때마다 로고가 옆으로 튄다. 값은 Vinc-homepage site.css 의
+   `--site-frame`·`--site-gutter`·`--gnb-max` 와 같아야 한다(앱은 site.css 를 부르지 않는다). */
+[data-skin="web"] { --site-gutter: 20px; --gnb-max: calc(1540px + var(--site-gutter) * 2); }
+@media (max-width: 640px) { [data-skin="web"] { --site-gutter: 16px; } }
+/* 셸도 같은 틀에 선다: 사이드바 왼쪽은 GNB 로고와, 내용 카드 오른쪽은 GNB 오른쪽
+   단추와 같은 세로선이다. 틀보다 넓은 창에서는 양옆이 바탕(셸과 같은 면)으로 빈다. */
+[data-skin="web"] body { background: hsl(var(--surface-0)); }
+[data-skin="web"] #shell { max-width: var(--gnb-max); margin: 0 auto; --lnb-pad-l: calc(var(--site-gutter) - var(--pad-card)); padding-left: var(--lnb-pad-l); padding-right: var(--site-gutter); }
+/* 웹 빌드는 index.html 에 빈 `#site-gnb` 를 미리 둔다(vite.config.ts `webShell`). gnb.js 가 갈아
+   끼우기 전까지 그 자리를 같은 높이(52 + 테두리 1)로 잡아, 주입 순간 셸이 밀리지 않게 한다. */
+[data-skin="web"] #site-gnb:empty {
+  display: block; position: sticky; top: 0; z-index: 30; height: var(--site-gnb-h); margin: 0;
+  background: hsl(var(--background)); border-bottom: 1px solid hsl(var(--border) / .7);
+}
+
+/* ── 커스텀 타이틀바 (데스크탑 셸 전용 · tauri decorations:false 프레임리스).
+   웹 빌드·브라우저 dev 는 [data-shell] 미부여로 숨김 → OS/브라우저 크롬 그대로. ── */
+/* 32px — 격자 위의 값. 여태 2.1rem(33.6px)이었다. */
+:root { --titlebar-h: 2rem; }
+#titlebar { display: none; }
+[data-shell] #titlebar {
+  display: flex; align-items: stretch; justify-content: space-between;
+  height: var(--titlebar-h); flex: 0 0 auto;
+  /* 셸 판과 같은 면이다: 카드 없는 사이드바가 타이틀바에서 끊기지 않고 이어진다(dark 에서 muted 는 판보다 밝다). */
+  background: hsl(var(--surface-0));
+  user-select: none; -webkit-user-select: none;
+}
+[data-shell] #shell { height: calc(100vh - var(--titlebar-h)); height: calc(100dvh - var(--titlebar-h)); }
+/* 타이틀바 = 로고 + 이름. 창 좌상단에서 제품을 말하는 자리는 여기 하나다. */
+.tb-title { display: flex; align-items: center; gap: .45rem; padding-left: .75rem; font-size: var(--fs-xs); font-weight: 600; letter-spacing: .03em; color: hsl(var(--caption-foreground)); }
+/* 로고 마크 — 타이틀바·설정 앱 정보가 같이 쓴다. 크기는 쓰는 자리가 준다.
+   모노 마크를 mask 로 깔고 색은 여기서 준다 — 구 마크가 currentColor 를 상속받던
+   것과 같은 동작이고, 파일은 바깥(public/)에 남는다. `<img>` 로 바꾸지 말 것:
+   currentColor 가 img 경계를 못 넘어 검정이 된다.
+   vite 가 CSS url() 에도 base 를 붙인다(실측: 웹 빌드에서 <base>/vinc-mark-mono.svg
+   로 고쳐 쓴다). 그래서 절대경로 그대로 두면 셸·웹 두 빌드가 각자 맞게 나간다. */
+.brand-logo {
+  display: inline-block; flex: 0 0 auto;
+  color: hsl(var(--logo));
+  background-color: currentColor;
+  -webkit-mask: url(/vinc-mark-mono.svg) center / contain no-repeat;
+  mask: url(/vinc-mark-mono.svg) center / contain no-repeat;
+}
+.tb-title .brand-logo { width: .95rem; height: .95rem; }
+.tb-controls { display: flex; }
+.tb-btn { width: 2.9rem; display: grid; place-items: center; border: none; background: none; color: hsl(var(--muted-foreground)); cursor: default; }
+.tb-btn svg { width: 11px; height: 11px; }
+.tb-btn:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+/* 닫기 버튼 호버는 OS 창 제어 관례라 브랜드 danger 와 다른 축이다(모드 불변).
+   토큰 정본은 그래프의 primitive win_close(concept:token.primitive.win-close) — Figma Window 컬렉션과 짝이다. */
+.tb-close:hover { background: hsl(var(--titlebar-close)); color: hsl(var(--titlebar-close-foreground)); }
+.tb-btn:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+/* ── 상단 바 (D56·D57) ─────────────────────────────────────────────────
+   좌→우: **셸 손잡이**(설정·도구·규칙) · 상시 검색 · **지도 손잡이**(보기와 범례 ·
+   관점 세그) · 동기화 점. 왼쪽은 앱을 다루는 일, 오른쪽은 지도를 보는 방식이다 —
+   예전엔 둘이 오른쪽에 함께 몰려 있어 한 무리로 읽혔다.
+   로고는 여기 없다(타이틀바가 들고 있고, 웹은 공홈 GNB 가 들고 있다).
+   높이는 52px 고정 — 캔버스가 나머지를 전부 갖는다. */
+/* 세로줄이 아래 열과 맞는다. `gap: 0` 인 이유가 그것이다 — 묶음 사이 간격을 바가
+   갖고 있으면 검색바의 시작점이 LNB 경계에서 그 간격만큼 밀린다. 간격은 각 묶음이
+   자기 padding 으로 갖는다(어긋나면 경계선이 아니라 여백이 기준이 돼 버린다). */
+/* ── 뷰 머리 ─────────────────────────────────────────────────────────────
+   내용 카드의 **윗줄**이다(떠 있지 않다). 셸 그리드 2열 1행에 서고 내용 카드(`#surface`)는
+   아래 행에 붙어 한 장의 카드가 된다. 높이 54 = 테두리 1 + 8 + 컨트롤 36 + 8 + 아래 선 1 —
+   LNB 맨 위 줄과 같은 식이라 두 카드의 컨트롤이 한 줄에 서고 아래 선이 이어진다.
+   안쪽은 본문과 **한 칼럼**을 나눠 쓴다(`--page-col` · `--page-inset`). 본문 스크롤바만큼
+   오른쪽을 같이 비워(`--sb-w`, topbar.ts) 두 칼럼의 세로선이 갈라지지 않게 한다.
+   근거: [[decision:documents-and-graph-share-one-lnb-tree-2026-11-06]] */
+#topbar {
+  height: var(--head-h); box-sizing: border-box;
+  padding: var(--space-2, .5rem) var(--sb-w, 0px) var(--space-2, .5rem) 0;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--shell-card-r) var(--shell-card-r) 0 0;
+  /* 머리 자신의 폭이 접기 기준이다(아래 @container). 같은 창이라도 트리가 열리면 좁다. */
+  container: topbar / inline-size;
+  /* 펼친 검색의 결과·Ask 판이 표면 위로 내려온다 — 표면 · 문서 열보다 위. */
+  position: relative; z-index: 41;
+}
+/* 머리 안의 가로 규칙: 뒤 묶음(검색 · 문서 | 그래프)은 **늘 카드 안쪽 오른쪽 끝**에
+   선다(`--head-inset`). 창이 늘고 줄어도 카드 끝을 따라가므로 웹에서는 GNB 오른쪽 단추와 같은 세로선이다.
+   앞자리(지금 자리)는 본문을 따른다: 문서 · Agents · 검색은 본문 칼럼의 첫 글자선(`--page-col`), 그래프는
+   본문이 카드 전체를 쓰므로 카드 안쪽 왼쪽 끝. 칼럼 계산의 100cqi 는 머리(`container: topbar`)의 폭이다. */
+.tb-col {
+  height: 100%; box-sizing: border-box;
+  display: flex; align-items: center; gap: var(--space-2, .5rem);
+  padding: 0 var(--head-inset)
+    0 max(var(--page-inset), calc((100cqi - var(--page-col) - var(--page-inset) * 2) / 2 + var(--page-inset)));
+}
+#shell[data-surface="view"] .tb-col { padding-left: var(--head-inset); }
+/* 앞자리 — 지금 자리. 좁으면 자기 폭 안에서 말줄임으로 줄어든다(뒤 묶음은 줄지 않는다). */
+.tb-lead {
+  flex: 1 1 auto; min-width: 0; overflow: hidden;
+  display: flex; align-items: center; gap: var(--space-2, .5rem);
+  white-space: nowrap; font-size: var(--fs-sm); color: hsl(var(--muted-foreground));
+}
+.tb-lead .home-crumbs { flex-wrap: nowrap; min-width: 0; overflow: hidden; }
+/* 첫 글자가 칼럼 시작선에 선다 — 크럼 단추의 안쪽 여백만큼 바깥으로 뺀다(눌림 면은 그대로). */
+.tb-lead .home-crumbs > :first-child { margin-left: -.35rem; }
+.tb-lead-name { color: hsl(var(--foreground)); font-weight: 500; }
+.tb-lead-sep { color: hsl(var(--caption-foreground)); }
+.tb-lead-scope { overflow: hidden; text-overflow: ellipsis; }
+.tb-trail { flex: 0 0 auto; position: relative; display: flex; align-items: center; gap: var(--space-2, .5rem); }
+/* 문서 | 그래프 — 두 칸 세그. 높이 36, 안쪽 4(테두리 1 + 3), 칸 28. 칸의 모서리 6 은
+   바깥 10 에서 안쪽 4 를 뺀 값이다(겹친 둥근 모서리가 평행하게 선다). */
+.tb-switch {
+  display: inline-flex; align-items: center; gap: var(--space-1, .25rem);
+  height: var(--ctl-h); padding: 3px; box-sizing: border-box;
+  border: 1px solid hsl(var(--border)); border-radius: var(--shell-ctl-r);
+  background: hsl(var(--background));
+}
+.tb-seg {
+  display: inline-flex; align-items: center; gap: var(--space-2, .5rem);
+  height: 100%; padding: 0 var(--space-3, .75rem);
+  border: 0; border-radius: var(--radius-xs, .375rem); background: none;
+  color: hsl(var(--muted-foreground)); font: inherit; font-size: var(--fs-sm); font-weight: 500; cursor: pointer;
+}
+.tb-seg:hover { color: hsl(var(--foreground)); }
+.tb-seg[aria-pressed="true"] { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+.tb-seg:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+.tb-seg svg { width: 16px; height: 16px; flex: none; }
+/* 검색 — 접힌 칸(기본)과 펼친 입력(`data-expanded`) 두 모습이다. 접힌 칸의 폭은 읽기 칸과
+   같다(`--aside-w`). 펼치면 뒤 묶음의 오른쪽 끝을 축으로 왼쪽으로 자라 전환 · 보기 설정 ·
+   경로를 덮는다(절대 배치라 줄의 폭은 그대로다). */
+#tb-find { flex: 0 0 auto; min-width: 0; }
+#tb-find[data-expanded] {
+  position: absolute; top: 0; right: 0;
+  width: min(36rem, calc(100cqi - var(--sb-w, 0px) - var(--page-inset) * 2));
+}
+#tb-find:not([data-expanded]) > #tb-search { display: none; }
+#tb-find[data-expanded] > .tb-find-open { display: none; }
+/* 안쪽: 12 / 8, 아이콘 16, 간격 8. Ctrl K 칩은 높이 20 이라 위 · 아래 · 오른쪽이 모두 8 이다. */
+.tb-find-open {
+  display: inline-flex; align-items: center; gap: var(--space-2, .5rem);
+  width: var(--aside-w); height: var(--ctl-h); box-sizing: border-box;
+  padding: 0 var(--space-2, .5rem) 0 var(--space-3, .75rem);
+  border: 1px solid hsl(var(--input)); border-radius: var(--shell-ctl-r);
+  background: hsl(var(--background)); color: hsl(var(--muted-foreground));
+  font: inherit; font-size: var(--fs-sm); cursor: text;
+}
+.tb-find-open:hover { color: hsl(var(--foreground)); border-color: hsl(var(--muted-foreground)); }
+.tb-find-open:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.tb-find-icon { display: inline-flex; color: hsl(var(--caption-foreground)); }
+.tb-find-icon svg { width: 16px; height: 16px; }
+.tb-find-open .tb-kbd {
+  margin-left: auto; display: inline-flex; align-items: center;
+  height: 20px; box-sizing: border-box; padding: 0 .375rem; border-radius: 4px;
+}
+/* 뒤 묶음의 단추 자리 둘. 그래프의 시간 · 범례(`#tb-graph-tools`)는 전환 바로 왼쪽에 서고 나침반이
+   채운다(topbar.ts `setTopbarTools`). 문서 면의 읽기 설정(`#tb-docopts`)은 맨 끝이다(doc-options.ts).
+   빈 자리는 줄의 gap 을 먹지 않게 숨는다. 창은 단추 바로 아래에서 오른쪽 끝을 단추에 맞춰 열린다
+   (view-compass.ts `placePop` · doc-options.ts `place`). */
+#tb-graph-tools, #tb-docopts { display: flex; align-items: center; flex: 0 0 auto; }
+#tb-graph-tools:empty, #tb-docopts:empty, #tb-docopts[hidden] { display: none; }
+/* 머리의 다른 컨트롤(검색 칸 · 전환)과 같은 높이 · 같은 면 · 같은 모서리다. */
+#tb-docopts > .lens-btn { border-radius: var(--shell-ctl-r); background: hsl(var(--background)); }
+#tb-graph-tools .cmp-tools { margin-left: 0; gap: var(--space-2); }
+#tb-graph-tools .cmp-tbtn {
+  height: var(--ctl-h); padding: 0 var(--space-3); background: hsl(var(--background));
+}
+#tb-graph-tools .cmp-tbtn:hover { background: hsl(var(--muted)); }
+/* 숨긴 버튼만 담은 묶음은 자리를 먹지 않는다 — 폭 0 이어도 바의 gap 이 한 칸 붙는다. */
+#tb-right:not(:has(> :not([hidden]))) { display: none; }
+
+/* 상시 검색 — 조회 동선의 제1 진입점(D57). 모드 2종(D73).
+   바가 **주변과 확실히 구분**돼야 한다. 상단 바가 반투명 muted 인데 검색바까지
+   반투명이면 경계가 녹는다. `--input` 과 `--border` 는 두 테마 모두 같은 값이라
+   테두리만 세워서는 안 되고(실측), 대신 **떠 있는 면**으로 만든다:
+     ① 배경 = `--card`  — 라이트 98% / 다크 13% 로 둘 다 muted 상단 바보다 밝다
+                          (두 테마에서 같은 방향으로 떠 보인다)
+     ② 바깥 그림자(elev-1) — 눌린 면이 아니라 올라온 면. 드롭다운·시트가 이미
+                          쓰는 층 언어와 같은 결이다
+     ③ 모드 버튼과 입력 사이 세로 구분선 — 영역이 둘로 나뉜 컨트롤임을 형태로 말한다 */
+/* 검색바는 **LNB 경계에서 --tb-gap 만큼 띄워 시작해 범례 버튼 앞에서 끝난다**.
+   왼쪽 여백이 위 묶음이 양보한 값과 같아서, 그 사이 여백의 정중앙에 LNB 경계선이 선다.
+   상한(max-width)을 두지 않는 이유: 상한이 있으면 넓은 창에서 바가 먼저 멈춰 오른쪽에
+   빈 띠가 생기고, 그러면 "범례 옆까지"라는 규칙이 창 크기에 따라 깨진다. */
+/* 왼쪽 여백이 `--tb-gap * 2` 인 이유: 이 여백은 LNB 경계가 아니라 **손잡이 묶음의
+   오른쪽 끝**(= 경계 − gap)에서부터 재진다. 경계에서 gap 만큼 더 가려면 두 배가
+   필요하다. 실측으로 잡았다 — gap 한 번만 주면 중앙이 4px 왼쪽에 섰다. */
+/* **상한이 없다.** 이 입력은 왼쪽으로 LNB 가 끝나는 지점(= 캔버스 카드의 왼쪽 끝)
+   에서 시작해 오른쪽으로 보기·범례 묶음 앞까지 **꽉** 찬다(발주자 지시 2026-09-09).
+   ⚠ 한때 34rem 상한을 뒀다가 지적받고 되돌렸다. 상한을 두면 남는 자리가 입력과
+   지도 손잡이 사이에 빈 띠로 남고, 그것은 자리를 정돈한 것이 아니라 옮긴 것이다. */
+#tb-search {
+  /* 검색 카드를 꽉 채운다. 좌우 바깥 여백은 카드의 padding 이 한 벌로 갖는다 — 여기에
+     또 주면 왼쪽은 카드의 것, 오른쪽은 이것의 것이 된다. */
+  margin: 0;
+  /* `min-width: 0` 이 없으면 flex 아이템이 **내용보다 못 줄어든다**(기본 auto) —
+     좁은 창에서 바가 열 밖으로 넘치던 것의 두 번째 원인이다. 첫째는 열 자체였다. */
+  position: relative; flex: 1 1 auto; min-width: 0;
+}
+#tb-search > #tb-q,
+#tb-search > .tb-kbd { vertical-align: middle; }
+/* ⚠ 위 ①②③ 의 논거는 **평면 상단 바를 전제로 한 것이다**(바가 muted 반투명이라
+   card 불투명 + 바깥 그림자가 곧 "떠 있음"이었다). 바 자신이 card 카드가 된 뒤에는
+   같은 처방이 정반대로 작동한다 — 같은 색 위에 같은 그림자를 올리면 경계가 녹는다.
+   그래서 방향을 뒤집는다: **바는 올라오고 입력은 눌린다.**
+     ① 배경 = `--background` — 라이트 95% / 다크 6% 로 두 테마 모두 card 보다 어둡다
+     ② 안쪽 그림자 — 홈처럼 파인 면. 컨트롤이 면을 **받는** 자리임을 형태로 말한다
+     ③ 모서리는 바보다 작게(`--radius-sm`) — 카드 안의 컨트롤이 카드와 같은 곡률을
+        가지면 둘이 한 겹으로 읽힌다(동심 모서리 규칙) */
+#tb-search { display: flex; align-items: center; gap: var(--space-2, .5rem);
+  height: var(--ctl-h); padding: 0 var(--pad-row) 0 0;
+  border: 1px solid hsl(var(--input)); border-radius: var(--shell-ctl-r);
+  background: hsl(var(--background));
+  box-shadow: inset 0 1px 2px hsl(var(--foreground) / .06); }
+#tb-search:focus-within {
+  border-color: hsl(var(--ring));
+  box-shadow: inset 0 1px 2px hsl(var(--foreground) / .06), 0 0 0 3px hsl(var(--ring) / .16);
+}
+.tb-sicon { display: inline-flex; color: hsl(var(--caption-foreground)); flex: 0 0 auto; }
+.tb-sicon svg { width: 15px; height: 15px; }
+
+/* 모드 트리거 — 아이콘 자리를 겸한다(아이콘은 그대로, 라벨·캐럿이 붙는다).
+   오른쪽 테두리가 입력과의 구분선이다. */
+.tb-mode {
+  display: inline-flex; align-items: center; gap: .4rem; flex: 0 0 auto;
+  align-self: stretch; margin: 0; padding: 0 .6rem 0 .7rem;
+  border: none; border-right: 1px solid hsl(var(--border));
+  /* **동심 모서리**: 안쪽 = 바깥쪽 − 사이 간격. 바는 `--radius-sm`(10px)에 테두리
+     1px 이고 이 버튼은 그 안쪽에 딱 붙으므로 9px 이다. 한때 `--radius`(14px, 카드용)
+     라 안쪽이 더 둥글어 바의 모서리를 뚫고 나왔다(발주자 지적 2026-09-09) — 위
+     `#tb-search` 주석 ③ 이 "컨트롤은 바보다 작게"라고 적어 둔 그 규칙을 정작 여기서
+     반대로 어기고 있었다. */
+  border-radius: calc(var(--shell-ctl-r) - 1px) 0 0
+                 calc(var(--shell-ctl-r) - 1px);
+  background: hsl(var(--muted) / .5); color: hsl(var(--foreground));
+  font: inherit; font-size: var(--fs-sm); cursor: pointer;
+}
+.tb-mode:hover { background: hsl(var(--muted)); }
+.tb-mode:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+.tb-mode-label { white-space: nowrap; }
+/* 아래를 가리키는 캐럿 — 전용 자산을 늘리지 않고 chevron-left 를 돌려 쓴다. */
+.tb-caret { display: inline-flex; color: hsl(var(--caption-foreground)); flex: 0 0 auto;
+  transform: rotate(-90deg); }
+.tb-caret svg { width: 12px; height: 12px; }
+#tb-search[data-mode="ask"] .tb-mode { background: hsl(var(--ring) / .14); }
+#tb-search[data-mode="ask"] .tb-sicon { color: hsl(var(--ring)); }
+
+/* 모드 메뉴 — 떠 있는 크롬(D37 글래스 층과 같은 등급). */
+.tb-modemenu {
+  position: absolute; top: 2.65rem; left: 0; width: 19rem; max-width: 92vw;
+  border: 1px solid hsl(var(--border) / .6); border-radius: var(--radius);
+  background: hsl(var(--card)); box-shadow: var(--shadow-elev-3, none);
+  padding: .35rem; z-index: 61;
+}
+/* LNB 에 놓인 칸의 모드 메뉴는 화면 고정이다. LNB 는 넘치는 것을 자르므로 absolute 로 두면 힌트가
+   LNB 가장자리에서 잘린다. 자리는 topbar.ts placeFloats 가 모드 단추 아래로 준다(--lnbm-*). 폭은 화면 안에 머문다 */
+.lnb-search .tb-modemenu {
+  position: fixed; top: var(--lnbm-top, 4rem); left: var(--lnbm-left, var(--space-2));
+  max-width: calc(100vw - var(--lnbm-left, var(--space-2)) - var(--space-2)); z-index: 80;
+}
+.tb-mrow {
+  display: grid; grid-template-columns: 1.1rem 1fr auto; gap: .6rem;
+  align-items: center; width: 100%; text-align: left;
+  border: none; background: none; padding: .5rem; border-radius: .5rem;
+  cursor: pointer; font: inherit; color: inherit;
+}
+.tb-mrow:hover, .tb-mrow:focus-visible { background: hsl(var(--muted-foreground) / .1); }
+.tb-mrow .icon { color: hsl(var(--caption-foreground)); }
+.tb-mrow[aria-checked="true"] .icon { color: hsl(var(--ring)); }
+.tb-mname { display: block; font-weight: 600; }
+.tb-mhint { display: block; font-size: var(--fs-sm); color: hsl(var(--caption-foreground)); }
+.tb-mtick { color: hsl(var(--point-text)); font-family: var(--font-mono); }
+
+#tb-q {
+  flex: 1 1 auto; min-width: 0; border: none; outline: none; background: none;
+  color: hsl(var(--foreground)); font: inherit; font-size: var(--fs-base);
+}
+#tb-q::-webkit-search-cancel-button { filter: grayscale(1) opacity(.5); }
+.tb-kbd {
+  font: 400 .625rem/1 var(--font-mono); color: hsl(var(--caption-foreground));
+  border: 1px solid hsl(var(--border)); border-radius: 5px; padding: .2rem .3rem;
+  flex: 0 0 auto;
+}
+/* 결과 드롭다운 — 떠 있는 크롬이라 글래스 층(D37). */
+/* 결과창은 **검색바와 같은 폭**이다. 24rem 고정이던 동안에는 바가 창 폭을 따라
+   늘어나도 결과만 좁은 채 오른쪽에 붙어, 방금 글자를 넣은 자리와 그 답이 나오는
+   자리가 어긋났다(입력은 왼쪽 끝, 결과는 오른쪽 끝). 바가 기준을 갖는다. */
+#tb-results {
+  position: absolute; top: 2.3rem; left: 0; right: 0;
+  border: 1px solid hsl(var(--border) / .6); border-radius: var(--radius);
+  background: hsl(var(--card)); box-shadow: var(--shadow-elev-3, none);
+  padding: .5rem; z-index: 60; max-height: 60vh; max-height: 60dvh; overflow: auto;
+}
+.tb-rhead { display: flex; justify-content: space-between; align-items: baseline; padding: .25rem .5rem .5rem; }
+.tb-rhead .hint { font-size: var(--fs-xs); letter-spacing: .06em; text-transform: uppercase; }
+.tb-rhead .hint:last-child { text-transform: none; letter-spacing: 0; }
+.tb-rnote { margin: .3rem .5rem .4rem; font-size: var(--fs-sm); line-height: 1.5; }
+.tb-row {
+  display: grid; grid-template-columns: 1.2rem 1fr auto; gap: .6rem;
+  align-items: baseline; width: 100%; text-align: left;
+  border: none; background: none; padding: .5rem; border-radius: .5rem;
+  cursor: pointer; font: inherit; color: inherit;
+}
+.tb-row:hover, .tb-row:focus-visible { background: hsl(var(--muted-foreground) / .1); }
+.tb-mark { font-family: var(--font-mono); color: hsl(var(--point-text)); font-size: var(--fs-sm); }
+.tb-rmain { min-width: 0; }
+.tb-rtitle { display: block; font-weight: 600; }
+.tb-rsnip { display: block; font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-rmeta { font-size: var(--fs-sm); white-space: nowrap; }
+.tb-all {
+  display: block; width: 100%; text-align: left; margin-top: .25rem;
+  padding: .45rem .5rem; border: none; border-top: 1px solid hsl(var(--border) / .7);
+  background: none; font: inherit; font-size: var(--fs-sm); cursor: pointer;
+  color: hsl(var(--link)); border-radius: 0 0 .5rem .5rem;
+}
+.tb-all:hover { background: hsl(var(--muted-foreground) / .1); }
+/* 아래 두 길(모든 문서 · 문서 안에서 찾기)은 한 줄에 나란히 선다(VIN-257). 구분선은 줄이 한 번 긋는다. */
+.tb-foot { display: flex; margin-top: .25rem; border-top: 1px solid hsl(var(--border) / .7); }
+.tb-foot .tb-all { flex: 1; margin-top: 0; border-top: none; border-radius: 0 0 0 .5rem; }
+.tb-foot .tb-all + .tb-all { text-align: right; border-radius: 0 0 .5rem 0; }
+
