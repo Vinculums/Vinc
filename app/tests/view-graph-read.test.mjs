@@ -30,33 +30,33 @@ const withStorage=(body)=>{
 };
 const KEY='vinc.view.prefs';
 test('no stored value and an unreadable one give the defaults',()=>withStorage(saved=>{
-  assert.deepEqual(loadPrefs(),{view:'compass',railW:20});
+  assert.deepEqual(loadPrefs(),{railW:20});
   for (const bad of ['{not json','null','5','[]']) {
     saved.set(KEY,bad);
-    assert.deepEqual(loadPrefs(),{view:'compass',railW:20},bad);
+    assert.deepEqual(loadPrefs(),{railW:20},bad);
   }
 }));
-// 이전 판(판 없음 · 2 · 3 · 4)의 저장값은 보기 설정 열일곱 칸을 들고 있다. 어느 판이든 읽히고,
-// 남은 두 칸만 나온다: 보기는 무엇이든 나침반, 문서 패널 폭은 그 사람이 끌어 둔 값(범위 안으로).
+// 이전 판의 저장값은 `view` 와 보기 설정 여러 칸을 들고 있다. 어느 판이든 읽히고, 남은 한 칸만 나온다:
+// 문서 패널 폭은 그 사람이 끌어 둔 값(범위 안으로).
 test('a stored value of every earlier version still loads',()=>withStorage(saved=>{
   const v4={view:'3d',size:'links',nodeScale:0.7,cone:0.7,edgeScale:1,labels:'hover',arrows:true,edges:'always',
     spread:1,unlinked:'show',layout:'temporalRoots',railW:33,timeBasis:'recorded',when:1,edgeOff:[],pv:4};
   for (const [stored,want] of [
-    [v4,{view:'compass',railW:33}],
-    [{...v4,view:'compass',railW:31.5,pv:3,layout:'hub'},{view:'compass',railW:31.5}],
-    [{view:'2d',layout:'hub',edges:'focus',edgeOff:['directed'],railW:500,pv:2},{view:'compass',railW:120}],
-    [{view:'3d',nodeScale:1,cone:1,edges:'bring',layout:'rank',railW:27,timelineBasis:'content'},{view:'compass',railW:27}],
-    [{view:'timeline',railW:4},{view:'compass',railW:16}],
-    [{view:'bundle',railW:'wide'},{view:'compass',railW:20}],
-    [{railW:0,pv:4},{view:'compass',railW:20}],
+    [v4,{railW:33}],
+    [{...v4,view:'compass',railW:31.5,pv:5,layout:'hub'},{railW:31.5}],
+    [{view:'2d',layout:'hub',edges:'focus',edgeOff:['directed'],railW:500,pv:2},{railW:120}],
+    [{view:'3d',nodeScale:1,cone:1,edges:'bring',layout:'rank',railW:27,timelineBasis:'content'},{railW:27}],
+    [{view:'timeline',railW:4},{railW:16}],
+    [{view:'bundle',railW:'wide'},{railW:20}],
+    [{railW:0,pv:4},{railW:20}],
   ]) {
     saved.set(KEY,JSON.stringify(stored));
     assert.deepEqual(loadPrefs(),want,JSON.stringify(stored));
   }
 }));
-test('a saved value carries its version and only the two fields, and loads back unchanged',()=>withStorage(saved=>{
+test('a saved value carries its version and only the one field, and loads back unchanged',()=>withStorage(saved=>{
   saved.set(KEY,JSON.stringify({view:'3d',railW:33,edges:'always',edgeOff:[],nodeScale:0.7,pv:4}));
   savePrefs({...loadPrefs(),railW:42});
-  assert.deepEqual(JSON.parse(saved.get(KEY)),{view:'compass',railW:42,pv:5});
-  assert.deepEqual(loadPrefs(),{view:'compass',railW:42});
+  assert.deepEqual(JSON.parse(saved.get(KEY)),{railW:42,pv:6});
+  assert.deepEqual(loadPrefs(),{railW:42});
 }));

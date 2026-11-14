@@ -1,14 +1,10 @@
 /** 그래프 보기의 기기별 설정과 보기가 함께 쓰는 작은 판단들(연결선 갈래, 날짜 머리).
  *
- *  설정은 localStorage 에 기기마다 남고 사이드카 계약은 없다. 남은 칸은 둘이다: 보기(`view`,
- *  나침반 하나)와 오른쪽 문서 패널의 폭(`railW`). 나침반의 펼침·기간·종류·고정은 나침반이
- *  스스로 든다(view-compass.ts).
+ *  설정은 localStorage 에 기기마다 남고 사이드카 계약은 없다. 남은 칸은 오른쪽 문서 패널의 폭(`railW`)
+ *  하나다. 그래프 보기는 나침반 하나라서 보기를 고르는 칸은 없다. 나침반의 펼침·기간·종류·고정은
+ *  나침반이 스스로 든다(view-compass.ts). 주소 문법의 `/as/` 칸은 MCP 서버의 파서와 나눠 쓰는 계약이라
+ *  그대로 둔다(`view-url.ts`).
  *  근거: [[decision:the-graph-is-one-2d-compass-lens-2026-11-06]] */
-
-/** 그래프 보기는 나침반(`compass`) 하나다: 가운데가 지금 보는 것인 렌즈(view-compass.ts). 저장값의 다른 이름(`3d` 등)도 여기로 읽는다.
- *  주소 문법의 `/as/` 칸은 MCP 서버의 파서와 나눠 쓰는 계약이라 그대로 둔다(`view-url.ts`). */
-export type Viewpoint = "compass";
-export const VIEWPOINTS: Viewpoint[] = ["compass"];
 
 /** 연결선 갈래(D74) — **범례가 곧 필터**다(발주자 지시 2026-08-02).
  *
@@ -30,7 +26,6 @@ export function edgeKindOf(e: { type: string; cross_domain?: boolean }): EdgeKin
 }
 
 export type ViewPrefs = {
-  view: Viewpoint;             // 보기는 나침반 하나다(위 `VIEWPOINTS`)
   railW: number;               // D70 — 우측 문서 패널 폭(rem). 끌어서 조절, 기기별 지속
 };
 
@@ -59,30 +54,24 @@ export const RAIL_MAX = 120;   // rem — 사실상 화면 폭(CSS 가 100% 로 
 
 const KEY = "vinc.view.prefs";
 /** 저장값의 판. 저장은 늘 이 판(`pv`)을 싣는다: 다음에 값을 옮겨 읽을 일이 생기면 이 판과 견준다.
- *  판 4 까지의 저장값은 보기 설정 열일곱 칸을 들고 있고, loadPrefs 는 그중 `view`·`railW` 만 읽는다.
- *  5 = 저장하는 칸이 `view`·`railW` 둘이 된 뒤. */
-const PREFS_VERSION = 5;
+ *  판 5 까지의 저장값은 `view` 를 포함해 여러 칸을 들고 있고, loadPrefs 는 그중 `railW` 만 읽는다.
+ *  6 = 저장하는 칸이 `railW` 하나가 된 뒤. */
+const PREFS_VERSION = 6;
 const DEFAULTS: ViewPrefs = {
-  view: "compass",
   //: 읽는 면의 기본 폭(rem). `app.css` 의 `#docpane` 폴백과 같은 값이다.
   //: ⚠ 한때 21 이었다 — 왼쪽 끝을 범례 버튼의 시작점에 맞추려고 상단 바 손잡이의
   //: 폭에서 계산한 값이었는데, 그 규율은 철회됐다(발주자 지시 2026-09-09).
   railW: 20,
 };
 
-/** 저장값을 읽는다. 어느 판의 저장값이든 읽힌다: 판마다의 옮겨 읽기(판 2 의 크기·밀도 기본,
- *  판 4 의 첫 그림 넷)는 지금 남은 두 칸에 닿지 않는다. `view` 는 판과 무관하게 나침반으로 읽고,
- *  `railW` 는 어느 판에서도 옮긴 적이 없다. 읽지 않는 칸(이전 판의 열다섯 칸)은 무해하고, 다음
- *  저장에서 빠진다. 못 읽는 값은 기본으로 간다. */
+/** 저장값을 읽는다. 어느 판의 저장값이든 읽힌다: 읽는 칸은 `railW` 하나이고 어느 판에서도 옮긴 적이
+ *  없다. 읽지 않는 칸(이전 판의 `view` 등)은 무해하고 다음 저장에서 빠진다. 못 읽는 값은 기본으로 간다. */
 export function loadPrefs(): ViewPrefs {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return { ...DEFAULTS };
     const p = JSON.parse(raw);
-    return {
-      view: VIEWPOINTS.includes(p.view) ? p.view : "compass",
-      railW: Math.min(RAIL_MAX, Math.max(RAIL_MIN, Number(p.railW) || DEFAULTS.railW)),
-    };
+    return { railW: Math.min(RAIL_MAX, Math.max(RAIL_MIN, Number(p.railW) || DEFAULTS.railW)) };
   } catch {
     return { ...DEFAULTS };
   }
