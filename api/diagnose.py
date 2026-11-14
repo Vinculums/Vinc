@@ -25,11 +25,11 @@ import re
 from store import pkns
 from store.backend import open_store
 from store.config import load_config
-from store.querybase import _classify_chunk_error, _props_to_obj
+from store.querybase import _classify_chunk_error, _props_to_obj, mirror_id
 
 from .graph_layout import _domain_path
 from .node_read import node_context
-from .query_base import _DOC_CONCEPT_PREFIX, _store_scope, domains
+from .query_base import _store_scope, domains
 
 
 # ── 구조 진단 (E-G3) — 약연결 성분 · Leiden 커뮤니티 · 조회 전용 ─────────────────
@@ -71,7 +71,7 @@ def _topic_description_mirrors(store, owner: str | None) -> set[str]:
         params["owner"] = owner
     rows = store.run("MATCH (d:_DocMeta) WHERE d.origin = $origin " + where
                      + "RETURN d.doc_id AS doc_id", params) or []
-    return {_DOC_CONCEPT_PREFIX + str(r["doc_id"]) for r in rows if r.get("doc_id")}
+    return {mirror_id(str(r["doc_id"])) for r in rows if r.get("doc_id")}
 
 
 #: 알고리즘 결과가 **두 스페이스의 노드를 같은 id 로** 물고 온 것들.

@@ -16,6 +16,7 @@ import json
 import re
 
 from store import pkns, run_state
+from store.querybase import mirror_id
 
 from . import query as q, readkit, role_contract
 
@@ -312,7 +313,7 @@ def _citations(store, owner, recs, decs, docs, emit) -> None:
     for r in docs:
         vu, sb = str(r.get("valid_until") or ""), str(r.get("superseded_by") or "")
         if vu or sb:
-            for alias in ("concept:doc." + r["id"], "doc:" + r["id"]):
+            for alias in (mirror_id(r["id"]), "doc:" + r["id"]):
                 retired[alias] = (r, vu, sb, "d")
     if not retired:
         return

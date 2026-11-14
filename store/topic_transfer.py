@@ -14,7 +14,7 @@ from . import canon, pkns
 from .embedded_schema import (
     SCHEMA_VERSION, meta_table_specs, node_table_specs, rel_table_specs,
 )
-from .querybase import is_conventions_doc_id
+from .querybase import DOC_MIRROR_PREFIX, doc_id_of, is_conventions_doc_id
 
 
 class TransferRefused(ValueError):
@@ -365,9 +365,9 @@ def _derived_topic_documents(snapshot, owner, within):
     from .document_topic import ranked_topics
     concepts = {row["concept_id"]: row for row in snapshot["nodes"]["Concept"]
                 if row["owner_id"] == owner}
-    authored = {pkns.strip(key)[len("concept:doc."):]: row["domain"].strip()
+    authored = {doc_id_of(pkns.strip(key)): row["domain"].strip()
                 for key, row in concepts.items()
-                if pkns.strip(key).startswith("concept:doc.") and row.get("domain")}
+                if pkns.strip(key).startswith(DOC_MIRROR_PREFIX) and row.get("domain")}
     owned = {row["doc_id"] for row in snapshot["meta"]["_DocMeta"] if row["owner_id"] == owner}
     chunks = {row["chunk_id"]: row["doc_id"] for row in snapshot["nodes"]["Chunk"]
               if row["owner_id"] in (owner, "") and row["doc_id"] in owned}
@@ -460,8 +460,8 @@ def plan_transfer(snapshot: dict, *, source: str, target: str, topic: str,
             blocks.add("target_has_metadata")
     if any(r["owner_id"] == source for r in snapshot["nodes"]["Entity"]):
         blocks.add("entity_topic_membership_not_supported")
-    docs = {pkns.strip(nid)[len("concept:doc."):] for label, nid in selected
-            if label == "Concept" and pkns.strip(nid).startswith("concept:doc.")}
+    docs = {doc_id_of(pkns.strip(nid)) for label, nid in selected
+            if label == "Concept" and pkns.strip(nid).startswith(DOC_MIRROR_PREFIX)}
     docs.update(_derived_topic_documents(snapshot, source, within))
     metas = {r["doc_id"]: r for r in snapshot["meta"]["_DocMeta"]}
     for doc in docs:

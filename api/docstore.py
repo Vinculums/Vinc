@@ -50,7 +50,7 @@ from store import pkns
 from store.backend import flag, operation
 from store.embedded_backend import DDL_GUARD, keep_vector_index
 from store.lexical import lex_text
-from store.querybase import now_iso, validity_state
+from store.querybase import DOC_MIRROR_PREFIX, doc_id_of, mirror_id, now_iso, validity_state
 from store.topic_conversion_guard import guard_active
 # 청킹은 순수 함수라 아래 층에 있다. 임베딩 워커와 리랭커(vinc_rag)도 같은 경계를 쓴다.
 from store.chunking import (DEFAULT_MAX_CHARS, _HEADING_RE, _section_title,  # noqa: F401
@@ -80,14 +80,6 @@ from .docembed import (  # noqa: F401
     _MIGRATION_GATE_MIN, _MIGRATION_GATE_RATIO, _apply_embeddings, _fair_pending_docs, _vec_width,
     apply_embeddings, embed_model_state, pending_embed_chunks, reembed_doc, stale_docs,
     stored_embed_model, switch_embed_model)
-
-#: `concept:doc.<doc_id>` — 문서의 개념 그래프 쪽 자리(미러). 그 `domain` 은 **사람이
-#: 적은 주제**이고, 본문 매칭에서 나오는 파생 주제보다 우선한다.
-#: ⚠ `api.query._DOC_CONCEPT_PREFIX` 와 같은 문자열이어야 한다 — 두 모듈이 서로를
-#: 모듈 수준에서 임포트하지 않으므로 사본이 둘이고, 테스트가 바이트로 고정한다
-#: (`_ALLOWED_PAIRS_HINT` 와 같은 처방).
-_DOC_MIRROR_PREFIX = "concept:doc."
-
 
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -261,17 +253,18 @@ def _no_mirror_warnings(store, text: str, doc_id: str, *, owner: str) -> list[st
     rels = [k for k in _FM_RELATION_KEYS if re.search(rf"^{k}\s*:", block, re.M)]
     if not declared and not rels:
         return []
-    mid = pkns.key(owner, _DOC_MIRROR_PREFIX + doc_id)
+    logical = mirror_id(doc_id)
+    mid = pkns.key(owner, logical)
     if store.run("MATCH (n:Concept) WHERE n.concept_id = $id RETURN n.concept_id AS id",
                  {"id": mid}):
         return []
-    parts = [f"concept:doc.{doc_id} does not exist, so this document has no topic and "
+    parts = [f"{logical} does not exist, so this document has no topic and "
              f"no relations: pass topic to create it"]
     if declared:
         parts.append(f"the front matter's domain: {declared} is text and was not applied")
     if rels:
         parts.append(f"the front matter's {', '.join(rels)} lines are text, not edges; "
-                     f"send them with vinc_ingest from concept:doc.{doc_id}")
+                     f"send them with vinc_ingest from {logical}")
     return ["; ".join(parts)]
 
 
@@ -862,7 +855,7 @@ def _set_authored_topic(store, doc_id: str, topic: str, *, owner: str,
         return ""
     # 물리 키로 바인딩한다(`extract_doc` 과 같은 규약) — 논리 id 로 쓰면 네임스페이싱이
     # 켜진 스토어에서 남의 스코프에 걸리거나 조회에서 안 잡힌다.
-    mid = pkns.key(owner, _DOC_MIRROR_PREFIX + doc_id)
+    mid = pkns.key(owner, mirror_id(doc_id))
     st = _node_stamp(store, owner)
     rows = store.run("MATCH (n:Concept) WHERE n.concept_id = $id RETURN n.concept_id AS id",
                      {"id": mid}) or []
@@ -896,7 +889,7 @@ def _follow_title(store, doc_id: str, *, owner: str, old: str, new: str) -> bool
     if not new or new == old:
         return False
     inherited = [t for t in {old, doc_id} if t]
-    mid = pkns.key(owner, _DOC_MIRROR_PREFIX + doc_id)
+    mid = pkns.key(owner, mirror_id(doc_id))
     try:
         rows = store.run(
             "MATCH (n:Concept) WHERE n.concept_id = $id RETURN n.title AS title",
@@ -1279,9 +1272,9 @@ def _load_authored_topics(store, tally: MentionTally, *, owner: str | None) -> N
     for r in rows:
         cid = r.get("cid") or ""
         logical = pkns.strip(cid)
-        if not logical.startswith(_DOC_MIRROR_PREFIX):
+        if not logical.startswith(DOC_MIRROR_PREFIX):
             continue
-        did = logical[len(_DOC_MIRROR_PREFIX):]
+        did = doc_id_of(logical)
         if did:
             tally.authored[did] = ((r.get("domain") or "").strip(), cid,
                                    r.get("title") or "")

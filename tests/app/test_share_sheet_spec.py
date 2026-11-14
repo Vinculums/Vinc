@@ -77,8 +77,8 @@ class ShareSheetSpecTests(unittest.TestCase):
     def test_미러_접두가_서버와_같은_값이다(self):
         """접두가 한쪽만 바뀌면 앱은 아무 문서도 못 빼고 조용히 넘긴다 — 두 층 대조."""
         self.assertIn('export const DOC_MIRROR = "concept:doc."', read("share-docs"))
-        self.assertIn('_DOC_MIRROR_PREFIX = "concept:doc."',
-                      (ROOT / "api" / "docstore.py").read_text(encoding="utf-8"))
+        self.assertIn('DOC_MIRROR_PREFIX = "concept:doc."',
+                      (ROOT / "store" / "querybase.py").read_text(encoding="utf-8"))
 
     def test_원문은_남은_노드가_붙잡을_때만_나간다(self):
         """미러 행이 없는 스토어(원문이 전부 본문 언급으로 실림)에서 행을 전부 끄고

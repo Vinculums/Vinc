@@ -7,6 +7,7 @@ from unittest.mock import patch
 from api import docstore as ds, share, packfile
 from store.backend import open_store
 from store.config import load_config
+from store.querybase import mirror_id
 from store.embedded_backend import import_driver
 
 
@@ -66,7 +67,7 @@ class EverythingDocumentsTests(unittest.TestCase):
     def test_explicit_scopes_do_not_gain_unlinked_documents(self):
         plain = self.put("Outside a topic.")
         linked = self.put("Scoped text.", title="Alpha", topic="alpha")
-        mirror = ds._DOC_MIRROR_PREFIX + linked
+        mirror = mirror_id(linked)
         for scope in ({"domain": "alpha"}, {"tags": ["doc"]}, {"ids": [mirror]},
                       {"ids": []}, {"seed": mirror, "depth": 1}, {"include_records": False}):
             with self.subTest(scope=scope):

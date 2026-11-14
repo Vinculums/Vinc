@@ -23,9 +23,9 @@ from __future__ import annotations
 import re
 
 from store.backend import open_store
-from store.querybase import QueryPlan, execute
+from store.querybase import DOC_MIRROR_PREFIX, QueryPlan, execute
 
-from .query_base import _DOC_CONCEPT_PREFIX, _store_scope
+from .query_base import _store_scope
 
 
 # ── ER 병합 후보 제안 (E-G4) — 조회 전용, 자동 병합 금지(THESIS T1) ────────────
@@ -69,7 +69,7 @@ def _norm_title(title: str) -> tuple[str, frozenset]:
 # `MATCH (c:Concept)` 이라 애초에 안 긁어온다(타입이 생기면 관례는 물러난다).
 def _structural_role(cid: str) -> str:
     """개념 id 의 구조 역할 — ``"doc"`` | ``""``(보통)."""
-    return "doc" if cid.startswith(_DOC_CONCEPT_PREFIX) else ""
+    return "doc" if cid.startswith(DOC_MIRROR_PREFIX) else ""
 
 
 def _is_structural_nonduplicate(a_id: str, b_id: str) -> bool:

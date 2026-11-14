@@ -110,7 +110,6 @@ from .query_base import (  # noqa: E402,F401  (재수출)
     _CC_RELS,
     _CONCEPT_READ_PATTERN,
     _DIRECTED_RELS,
-    _DOC_CONCEPT_PREFIX,
     _FRAGMENT_EDGE_TO_REL,
     _GRAPH_READ_PAIRS,
     _OWNER_SCOPED_LABELS,
