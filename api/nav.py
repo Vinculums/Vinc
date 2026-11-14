@@ -10,6 +10,10 @@
 그대로다. 두 이름은 같은 객체다. 여기 함수가 부르는 이름(`execute`·`open_store`·`_ledger_classify` 등)은 이
 모듈에서 찾으므로, 그 호출을 바꾸려면 `api.query` 가 아니라 이 모듈의 이름을 패치한다.
 
+스토어를 안 받으면 `_store_scope`(`api/query_base.py`)가 열고 닫는다. 열 수 없을 때의 규칙: 읽기는 `executed:False`
+에 `note` 만 싣는다. `_ledger_by_concept` 와 `ledger_drilldown` 의 꼬리는 None 검사가 없다. 앞 단계
+`_ledger_classify` 가 먼저 강등 응답을 돌려주므로 공개 경로는 거기에 닿지 않는다.
+
 이 모듈은 `api.query` 를 import 하지 않는다(`tests/core/test_nav_module.py` 가 본다).
 """
 from __future__ import annotations
@@ -21,7 +25,14 @@ from store.querybase import QueryPlan, domain_subtree_where, execute
 from vinc_rag import excerpt as _excerpt
 
 from .graph_read import _ledger_ego_ids, ledger_link_plan, ledger_origin_plan
-from .query_base import BASIS_CONTENT, BASIS_RECORDED, _GRAPH_READ_PAIRS, _SEMANTIC_PK, normalize_domains
+from .query_base import (
+    BASIS_CONTENT,
+    BASIS_RECORDED,
+    _GRAPH_READ_PAIRS,
+    _SEMANTIC_PK,
+    _store_scope,
+    normalize_domains,
+)
 
 
 #: 주제 아래 설 수 있는 종 **전부**. `_SEMANTIC_PK` 보다 넓다 — 좌측 트리의 종 레일이
@@ -64,69 +75,64 @@ def edge_context(*, owner: str, src: str, dst: str, etype: str,
     if etype not in _EDGE_CTX_TYPES:
         base["error"] = f"unsupported edge type: {etype}"
         return base
-    owns = store is None
-    if owns:
-        store = open_store(cfg)
-    if store is None:
-        base["note"] = "no reachable store"
-        return base
-    try:
-        arrow = "-" if etype == "RELATED_TO" else "->"
-        arms = []
-        # 스키마 파생 끝점 계약을 공유한다. Decision에는 one_liner 열이 없다.
-        for (sl, sp, dl, dp), rels in _GRAPH_READ_PAIRS.items():
-            if etype not in rels:
-                continue
-            def detail(alias: str, label: str) -> str:
-                column = {"Concept": "one_liner", "Episode": "summary"}.get(label)
-                return f"{alias}.{column}" if column else "''"
-            arms.append(
-                f"MATCH (a:{sl})-[r:{etype}]{arrow}(b:{dl}) "
-                f"WHERE a.{sp} = $s AND b.{dp} = $d "
-                "AND a.owner_id = $owner AND b.owner_id = $owner "
-                "RETURN r.evidence AS ev, r.confidence AS cf, "
-                f"a.title AS at, {detail('a', sl)} AS ad, "
-                f"b.title AS bt, {detail('b', dl)} AS bd, "
-                f"'{sl}' AS src_label, '{dl}' AS dst_label")
-        rows = store.run(" UNION ALL ".join(arms),
-                         {"s": pkns.key(owner, src), "d": pkns.key(owner, dst),
-                          "owner": owner}) or []
-        if not rows:
-            base["note"] = "unknown edge (또는 소유 스코프 밖)"
+    with _store_scope(store, cfg, open_store) as store:
+        if store is None:
+            base["note"] = "no reachable store"
             return base
-        r = rows[0]
-        def _mention_excerpt(cid: str, label: str, title: str, detail: str) -> dict | None:
-            if label not in _SEMANTIC_PK:
-                return None
-            m = store.run(
-                f"MATCH (ch:Chunk)-[m:MENTIONS]->(c:{label}) "
-                f"WHERE c.{_SEMANTIC_PK[label]} = $id AND c.owner_id = $owner "
-                "AND (ch.owner_id = $owner OR ch.owner_id = '') "
-                "RETURN ch.doc_id AS doc_id, ch.text AS text "
-                "ORDER BY CASE m.method WHEN 'title' THEN 0 WHEN 'stem' THEN 1 ELSE 2 END, "
-                "ch.doc_id, ch.chunk_index LIMIT 1",
-                {"id": pkns.key(owner, cid), "owner": owner}) or []
-            if not m:
-                return None
-            return {"doc_id": m[0].get("doc_id") or "",
-                    "excerpt": _excerpt.excerpt(m[0].get("text") or "", title, detail)}
-        base.update(
-            executed=True,
-            evidence=r.get("ev") or "",
-            confidence=float(r.get("cf") or 0.0),
-            src={"id": src, "title": r.get("at") or src, "one_liner": r.get("ad") or "",
-                 "excerpt": _mention_excerpt(src, r["src_label"], r.get("at") or "",
-                                             r.get("ad") or "")},
-            dst={"id": dst, "title": r.get("bt") or dst, "one_liner": r.get("bd") or "",
-                 "excerpt": _mention_excerpt(dst, r["dst_label"], r.get("bt") or "",
-                                             r.get("bd") or "")})
-        return base
-    except Exception as exc:
-        base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
-        return base
-    finally:
-        if owns:
-            store.close()
+        try:
+            arrow = "-" if etype == "RELATED_TO" else "->"
+            arms = []
+            # 스키마 파생 끝점 계약을 공유한다. Decision에는 one_liner 열이 없다.
+            for (sl, sp, dl, dp), rels in _GRAPH_READ_PAIRS.items():
+                if etype not in rels:
+                    continue
+                def detail(alias: str, label: str) -> str:
+                    column = {"Concept": "one_liner", "Episode": "summary"}.get(label)
+                    return f"{alias}.{column}" if column else "''"
+                arms.append(
+                    f"MATCH (a:{sl})-[r:{etype}]{arrow}(b:{dl}) "
+                    f"WHERE a.{sp} = $s AND b.{dp} = $d "
+                    "AND a.owner_id = $owner AND b.owner_id = $owner "
+                    "RETURN r.evidence AS ev, r.confidence AS cf, "
+                    f"a.title AS at, {detail('a', sl)} AS ad, "
+                    f"b.title AS bt, {detail('b', dl)} AS bd, "
+                    f"'{sl}' AS src_label, '{dl}' AS dst_label")
+            rows = store.run(" UNION ALL ".join(arms),
+                             {"s": pkns.key(owner, src), "d": pkns.key(owner, dst),
+                              "owner": owner}) or []
+            if not rows:
+                base["note"] = "unknown edge (또는 소유 스코프 밖)"
+                return base
+            r = rows[0]
+            def _mention_excerpt(cid: str, label: str, title: str, detail: str) -> dict | None:
+                if label not in _SEMANTIC_PK:
+                    return None
+                m = store.run(
+                    f"MATCH (ch:Chunk)-[m:MENTIONS]->(c:{label}) "
+                    f"WHERE c.{_SEMANTIC_PK[label]} = $id AND c.owner_id = $owner "
+                    "AND (ch.owner_id = $owner OR ch.owner_id = '') "
+                    "RETURN ch.doc_id AS doc_id, ch.text AS text "
+                    "ORDER BY CASE m.method WHEN 'title' THEN 0 WHEN 'stem' THEN 1 ELSE 2 END, "
+                    "ch.doc_id, ch.chunk_index LIMIT 1",
+                    {"id": pkns.key(owner, cid), "owner": owner}) or []
+                if not m:
+                    return None
+                return {"doc_id": m[0].get("doc_id") or "",
+                        "excerpt": _excerpt.excerpt(m[0].get("text") or "", title, detail)}
+            base.update(
+                executed=True,
+                evidence=r.get("ev") or "",
+                confidence=float(r.get("cf") or 0.0),
+                src={"id": src, "title": r.get("at") or src, "one_liner": r.get("ad") or "",
+                     "excerpt": _mention_excerpt(src, r["src_label"], r.get("at") or "",
+                                                 r.get("ad") or "")},
+                dst={"id": dst, "title": r.get("bt") or dst, "one_liner": r.get("bd") or "",
+                     "excerpt": _mention_excerpt(dst, r["dst_label"], r.get("bt") or "",
+                                                 r.get("bd") or "")})
+            return base
+        except Exception as exc:
+            base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
+            return base
 
 
 # ── 좌측 문서 트리(D69) ──────────────────────────────────────────────────────
@@ -234,148 +240,143 @@ def nav_tree(*, owner: str, nodes: bool = False, kind: str | None = None,
 
     cfg = cfg or load_config()
     base: dict = {"kind": "nav-tree", "executed": False, "domains": [], "unfiled": []}
-    owns = store is None
-    if owns:
-        store = open_store(cfg)
-    if store is None:
-        base["note"] = "no reachable store"
-        return base
-    want = _TREE_KIND_LABEL.get((kind or "").strip().lower()) if kind else None
-    if kind and not want:
-        base["note"] = f"unknown kind: {kind}"
-        return base
-    # 주제 스코프 — 목록·개수·문서가 모두 이 한 벌을 지난다.
-    scope = normalize_domains(domain, domains)
-    dom_params: dict = {"owner": owner}
-    dom_where = ""
-    if scope:
-        dom_where = " AND " + domain_subtree_where(["c.domain"], scope, dom_params)
-
-    def _in_scope(dom: str) -> bool:
-        """문서 주제가 스코프 안인가. Cypher 쪽 `domain_subtree_where` 와 같은 판정."""
-        return not scope or any(dom == d or dom.startswith(d.rstrip("/") + "/")
-                                for d in scope)
-    try:
-        # v12 — 결정도 주제 아래 선다. 빼면 좌측 트리에서 결정이 통째로 안 보이고,
-        # 그 주제의 개수도 실제보다 작게 나온다(빠진 것이 있다는 표시조차 없다).
-        # 제목은 노드 갈래를 요청했을 때만 싣는다 — 안 그러면 기본 호출이 그래프
-        # 전체의 제목을 끌고 온다(이 응답이 웹에서는 허브를 건넌다).
-        title_col = ", c.title AS title" if nodes else ""
-        # 모집단 — 기본은 종전(Concept + Decision), `kind` 를 주면 그 하나뿐이다.
-        # 넷을 한꺼번에 싣는 분기는 두지 않는다(위 계약: 목록은 한 종씩).
-        pop = {want: _TREE_PK[want]} if want else dict(_SEMANTIC_PK)
-        crows = store.run(
-            " UNION ALL ".join(
-                f"MATCH (c:{lbl}) WHERE c.owner_id = $owner AND c.domain IS NOT NULL "
-                f"AND c.domain <> ''{dom_where} "
-                f"RETURN c.{pk} AS id, c.domain AS domain{title_col}, "
-                f"'{lbl.lower()}' AS kind"
-                for lbl, pk in pop.items()),
-            dom_params) or []
-        # 레일의 개수 — 제목을 싣지 않는 집계 하나. 종을 고르는 손잡이가 "없는 것"과
-        # "아직 안 가져온 것"을 구별할 수 있어야 하므로 0 도 키로 남긴다.
-        kind_counts: dict[str, int] = {}
-        for lbl, pk in _TREE_PK.items():
-            rows = store.run(
-                f"MATCH (c:{lbl}) WHERE c.owner_id = $owner AND c.domain IS NOT NULL "
-                f"AND c.domain <> ''{dom_where} RETURN count(c.{pk}) AS n",
-                dom_params) or []
-            kind_counts[lbl.lower()] = int((rows[0] or {}).get("n") or 0) if rows else 0
-        by_domain: dict[str, dict[str, str]] = {}
-        cdom: dict[str, str] = {}
-        cmeta: dict[str, tuple[str, str]] = {}     # id → (title, kind), nodes=True 일 때만
-        for r in crows:
-            cid, dom = r.get("id") or "", (r.get("domain") or "").strip()
-            if not cid or not dom:
-                continue
-            cdom[cid] = dom
-            by_domain.setdefault(dom, {})[cid] = dom
-            if nodes:
-                cmeta[cid] = (r.get("title") or "", r.get("kind") or "concept")
-
-        # 방향 엣지 2종을 한 번에. 양 끝 owner 가드(SEC-1).
-        erows = store.run(
-            "MATCH (a:Concept)-[:PREREQUISITE_OF]->(b:Concept) "
-            "WHERE a.owner_id = $owner AND b.owner_id = $owner "
-            "RETURN a.concept_id AS shallow, b.concept_id AS deep "
-            "UNION ALL "
-            "MATCH (a:Concept)-[:DERIVES_FROM]->(b:Concept) "
-            "WHERE a.owner_id = $owner AND b.owner_id = $owner "
-            "RETURN b.concept_id AS shallow, a.concept_id AS deep",   # ← 뒤집기
-            {"owner": owner}) or []
-        edges_by_domain: dict[str, list[tuple[str, str]]] = {}
-        for r in erows:
-            s, d = r.get("shallow") or "", r.get("deep") or ""
-            dom = cdom.get(s, "")
-            if not s or not d or not dom or cdom.get(d) != dom:
-                continue        # 교차 주제 엣지는 그 주제의 계층이 아니다
-            edges_by_domain.setdefault(dom, []).append((s, d))
-
-        depths: dict[str, int] = {}
-        for dom, members in by_domain.items():
-            depths.update(_domain_depths(members, edges_by_domain.get(dom, [])))
-
-        docs = _ds.list_docs(store, owner=owner).get("docs", [])
-        groups: dict[str, list[dict]] = {dom: [] for dom in by_domain}
-        unfiled: list[dict] = []
-        for d in docs:
-            topic = d.get("topic") or ""
-            node = d.get("primary_concept_id") or ""
-            row = {"doc_id": d.get("doc_id") or "", "title": d.get("title") or "",
-                   "updated_at": d.get("updated_at") or ""}
-            # 유효기간이 닫힌 문서는 행에 그 날을 싣는다(없으면 키도 없다). 트리는 거르지 않는다:
-            # 숨길지는 화면이 정한다(커뮤니티 스페이스는 내린 페이지를 숨긴다).
-            if d.get("valid_until"):
-                row["valid_until"] = d["valid_until"]
-            if not topic or not node:
-                # 스코프가 걸렸으면 주제 없는 문서는 그 스코프에 들지 않는다.
-                if not scope:
-                    unfiled.append(row)
-                continue
-            if not _in_scope(topic):
-                continue
-            groups.setdefault(topic, []).append(
-                {**row, "node_id": node, "node_title": d.get("primary_concept_title") or "",
-                 "depth": int(depths.get(node, 0))})
-
-        out = []
-        for dom in sorted(groups):
-            rows = sorted(groups[dom],
-                          key=lambda r: (r["depth"], r["title"], r["doc_id"]))
-            g = {"domain": dom, "concepts": len(by_domain.get(dom, {})),
-                 "docs": rows}
-            # `kind` 로 물었을 때의 주제 머리 숫자. `concepts` 와 이름을 나눈 이유는
-            # 그 열의 뜻(Concept + Decision)을 바꾸지 않으려는 것이다.
-            if want:
-                g["count"] = len(by_domain.get(dom, {}))
-            if nodes:
-                # 문서와 **같은 정렬 규칙**(깊이 → 제목 → id). 두 갈래를 오갈 때
-                # 줄 순서의 뜻이 달라지면 토글이 목록을 뒤섞는 것으로 읽힌다.
-                g["nodes"] = sorted(
-                    ({"id": cid, "title": cmeta.get(cid, ("", ""))[0],
-                      "kind": cmeta.get(cid, ("", "concept"))[1],
-                      "depth": int(depths.get(cid, 0))}
-                     for cid in by_domain.get(dom, {})),
-                    key=lambda r: (r["depth"], r["title"], r["id"]))
-            out.append(g)
-        out.sort(key=lambda g: (-len(g["docs"]), -g["concepts"], g["domain"]))
-        # 스코프가 걸리면 문서 수도 **실은 줄**만 센다 — 머리의 숫자와 갈래의 줄
-        # 수가 어긋나면 화면이 스스로를 반박한다.
-        counts = {"domains": len(out),
-                  "docs": sum(len(g["docs"]) for g in out) if scope else len(docs),
-                  "unfiled": len(unfiled), "kinds": kind_counts}
-        if want:
-            counts["kind"] = want.lower()
+    with _store_scope(store, cfg, open_store) as store:
+        if store is None:
+            base["note"] = "no reachable store"
+            return base
+        want = _TREE_KIND_LABEL.get((kind or "").strip().lower()) if kind else None
+        if kind and not want:
+            base["note"] = f"unknown kind: {kind}"
+            return base
+        # 주제 스코프 — 목록·개수·문서가 모두 이 한 벌을 지난다.
+        scope = normalize_domains(domain, domains)
+        dom_params: dict = {"owner": owner}
+        dom_where = ""
         if scope:
-            counts["scope"] = list(scope)
-        base.update(executed=True, domains=out, unfiled=unfiled, counts=counts)
-        return base
-    except Exception as exc:
-        base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
-        return base
-    finally:
-        if owns:
-            store.close()
+            dom_where = " AND " + domain_subtree_where(["c.domain"], scope, dom_params)
+
+        def _in_scope(dom: str) -> bool:
+            """문서 주제가 스코프 안인가. Cypher 쪽 `domain_subtree_where` 와 같은 판정."""
+            return not scope or any(dom == d or dom.startswith(d.rstrip("/") + "/")
+                                    for d in scope)
+        try:
+            # v12 — 결정도 주제 아래 선다. 빼면 좌측 트리에서 결정이 통째로 안 보이고,
+            # 그 주제의 개수도 실제보다 작게 나온다(빠진 것이 있다는 표시조차 없다).
+            # 제목은 노드 갈래를 요청했을 때만 싣는다 — 안 그러면 기본 호출이 그래프
+            # 전체의 제목을 끌고 온다(이 응답이 웹에서는 허브를 건넌다).
+            title_col = ", c.title AS title" if nodes else ""
+            # 모집단 — 기본은 종전(Concept + Decision), `kind` 를 주면 그 하나뿐이다.
+            # 넷을 한꺼번에 싣는 분기는 두지 않는다(위 계약: 목록은 한 종씩).
+            pop = {want: _TREE_PK[want]} if want else dict(_SEMANTIC_PK)
+            crows = store.run(
+                " UNION ALL ".join(
+                    f"MATCH (c:{lbl}) WHERE c.owner_id = $owner AND c.domain IS NOT NULL "
+                    f"AND c.domain <> ''{dom_where} "
+                    f"RETURN c.{pk} AS id, c.domain AS domain{title_col}, "
+                    f"'{lbl.lower()}' AS kind"
+                    for lbl, pk in pop.items()),
+                dom_params) or []
+            # 레일의 개수 — 제목을 싣지 않는 집계 하나. 종을 고르는 손잡이가 "없는 것"과
+            # "아직 안 가져온 것"을 구별할 수 있어야 하므로 0 도 키로 남긴다.
+            kind_counts: dict[str, int] = {}
+            for lbl, pk in _TREE_PK.items():
+                rows = store.run(
+                    f"MATCH (c:{lbl}) WHERE c.owner_id = $owner AND c.domain IS NOT NULL "
+                    f"AND c.domain <> ''{dom_where} RETURN count(c.{pk}) AS n",
+                    dom_params) or []
+                kind_counts[lbl.lower()] = int((rows[0] or {}).get("n") or 0) if rows else 0
+            by_domain: dict[str, dict[str, str]] = {}
+            cdom: dict[str, str] = {}
+            cmeta: dict[str, tuple[str, str]] = {}     # id → (title, kind), nodes=True 일 때만
+            for r in crows:
+                cid, dom = r.get("id") or "", (r.get("domain") or "").strip()
+                if not cid or not dom:
+                    continue
+                cdom[cid] = dom
+                by_domain.setdefault(dom, {})[cid] = dom
+                if nodes:
+                    cmeta[cid] = (r.get("title") or "", r.get("kind") or "concept")
+
+            # 방향 엣지 2종을 한 번에. 양 끝 owner 가드(SEC-1).
+            erows = store.run(
+                "MATCH (a:Concept)-[:PREREQUISITE_OF]->(b:Concept) "
+                "WHERE a.owner_id = $owner AND b.owner_id = $owner "
+                "RETURN a.concept_id AS shallow, b.concept_id AS deep "
+                "UNION ALL "
+                "MATCH (a:Concept)-[:DERIVES_FROM]->(b:Concept) "
+                "WHERE a.owner_id = $owner AND b.owner_id = $owner "
+                "RETURN b.concept_id AS shallow, a.concept_id AS deep",   # ← 뒤집기
+                {"owner": owner}) or []
+            edges_by_domain: dict[str, list[tuple[str, str]]] = {}
+            for r in erows:
+                s, d = r.get("shallow") or "", r.get("deep") or ""
+                dom = cdom.get(s, "")
+                if not s or not d or not dom or cdom.get(d) != dom:
+                    continue        # 교차 주제 엣지는 그 주제의 계층이 아니다
+                edges_by_domain.setdefault(dom, []).append((s, d))
+
+            depths: dict[str, int] = {}
+            for dom, members in by_domain.items():
+                depths.update(_domain_depths(members, edges_by_domain.get(dom, [])))
+
+            docs = _ds.list_docs(store, owner=owner).get("docs", [])
+            groups: dict[str, list[dict]] = {dom: [] for dom in by_domain}
+            unfiled: list[dict] = []
+            for d in docs:
+                topic = d.get("topic") or ""
+                node = d.get("primary_concept_id") or ""
+                row = {"doc_id": d.get("doc_id") or "", "title": d.get("title") or "",
+                       "updated_at": d.get("updated_at") or ""}
+                # 유효기간이 닫힌 문서는 행에 그 날을 싣는다(없으면 키도 없다). 트리는 거르지 않는다:
+                # 숨길지는 화면이 정한다(커뮤니티 스페이스는 내린 페이지를 숨긴다).
+                if d.get("valid_until"):
+                    row["valid_until"] = d["valid_until"]
+                if not topic or not node:
+                    # 스코프가 걸렸으면 주제 없는 문서는 그 스코프에 들지 않는다.
+                    if not scope:
+                        unfiled.append(row)
+                    continue
+                if not _in_scope(topic):
+                    continue
+                groups.setdefault(topic, []).append(
+                    {**row, "node_id": node, "node_title": d.get("primary_concept_title") or "",
+                     "depth": int(depths.get(node, 0))})
+
+            out = []
+            for dom in sorted(groups):
+                rows = sorted(groups[dom],
+                              key=lambda r: (r["depth"], r["title"], r["doc_id"]))
+                g = {"domain": dom, "concepts": len(by_domain.get(dom, {})),
+                     "docs": rows}
+                # `kind` 로 물었을 때의 주제 머리 숫자. `concepts` 와 이름을 나눈 이유는
+                # 그 열의 뜻(Concept + Decision)을 바꾸지 않으려는 것이다.
+                if want:
+                    g["count"] = len(by_domain.get(dom, {}))
+                if nodes:
+                    # 문서와 **같은 정렬 규칙**(깊이 → 제목 → id). 두 갈래를 오갈 때
+                    # 줄 순서의 뜻이 달라지면 토글이 목록을 뒤섞는 것으로 읽힌다.
+                    g["nodes"] = sorted(
+                        ({"id": cid, "title": cmeta.get(cid, ("", ""))[0],
+                          "kind": cmeta.get(cid, ("", "concept"))[1],
+                          "depth": int(depths.get(cid, 0))}
+                         for cid in by_domain.get(dom, {})),
+                        key=lambda r: (r["depth"], r["title"], r["id"]))
+                out.append(g)
+            out.sort(key=lambda g: (-len(g["docs"]), -g["concepts"], g["domain"]))
+            # 스코프가 걸리면 문서 수도 **실은 줄**만 센다 — 머리의 숫자와 갈래의 줄
+            # 수가 어긋나면 화면이 스스로를 반박한다.
+            counts = {"domains": len(out),
+                      "docs": sum(len(g["docs"]) for g in out) if scope else len(docs),
+                      "unfiled": len(unfiled), "kinds": kind_counts}
+            if want:
+                counts["kind"] = want.lower()
+            if scope:
+                counts["scope"] = list(scope)
+            base.update(executed=True, domains=out, unfiled=unfiled, counts=counts)
+            return base
+        except Exception as exc:
+            base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
+            return base
 
 
 def docs_in_range(*, owner: str, start: str, end: str, domain: str | None = None,
@@ -409,62 +410,57 @@ def docs_in_range(*, owner: str, start: str, end: str, domain: str | None = None
     base: dict = {"kind": "docs-in-range", "executed": False,
                   "start": start, "end": end, "items": [],
                   "basis": BASIS_CONTENT if on_content else "authored-or-updated"}
-    owns = store is None
-    if owns:
-        store = open_store(cfg)
-    if store is None:
-        base["note"] = "no reachable store"
-        return base
-    try:
-        lim = max(1, min(int(limit), 1000))
-        dclause = " AND e.domain = $domain" if domain else ""
-        cclause = " AND c.domain = $domain" if domain else ""
-        params = {"owner": owner, "s": start, "e": end}
-        if domain:
-            params["domain"] = domain
-        rclause = " AND rc.domain = $domain" if domain else ""
-        if on_content:
-            # 내용 축 — 열을 가진 라벨만(Concept·Record). 빈 값은 `'' >= $s` 가 거짓이라
-            # 자동으로 빠진다: 내용 시점을 안 적은 노드를 0 이나 오늘로 채우지 않는다.
-            cypher = (
-                "MATCH (c:Concept) WHERE c.owner_id = $owner "
-                "AND coalesce(c.content_time, '') >= $s "
-                f"AND coalesce(c.content_time, '') < $e{cclause} "
-                "RETURN c.concept_id AS id, 'concept' AS kind, c.title AS title, "
-                "coalesce(c.content_time, '') AS ts, c.domain AS domain "
-                "UNION ALL "
-                "MATCH (rc:Record) WHERE rc.owner_id = $owner "
-                "AND coalesce(rc.content_time, '') >= $s "
-                f"AND coalesce(rc.content_time, '') < $e{rclause} "
-                "RETURN rc.record_id AS id, 'record' AS kind, rc.title AS title, "
-                "coalesce(rc.content_time, '') AS ts, rc.domain AS domain")
-        else:
-            cypher = (
-                "MATCH (e:Episode) WHERE e.owner_id = $owner "
-                "AND coalesce(e.date, e.updated_at, '') >= $s "
-                f"AND coalesce(e.date, e.updated_at, '') < $e{dclause} "
-                "RETURN e.episode_id AS id, 'episode' AS kind, e.title AS title, "
-                "coalesce(e.date, e.updated_at, '') AS ts, e.domain AS domain "
-                "UNION ALL "
-                "MATCH (c:Concept) WHERE c.owner_id = $owner "
-                "AND coalesce(c.created, c.updated_at, '') >= $s "
-                f"AND coalesce(c.created, c.updated_at, '') < $e{cclause} "
-                "RETURN c.concept_id AS id, 'concept' AS kind, c.title AS title, "
-                "coalesce(c.created, c.updated_at, '') AS ts, c.domain AS domain")
-        rows = store.run(cypher, params) or []
-        rows.sort(key=lambda r: (r.get("ts") or "", r.get("id") or ""))
-        items = [{"id": r["id"], "kind": r.get("kind") or "", "title": r.get("title") or r["id"],
-                  "ts": r.get("ts") or "", "domain": r.get("domain") or ""}
-                 for r in rows[:lim]]
-        base.update(executed=True, items=items, total=len(items),
-                    truncated=len(rows) > lim)
-        return base
-    except Exception as exc:
-        base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
-        return base
-    finally:
-        if owns:
-            store.close()
+    with _store_scope(store, cfg, open_store) as store:
+        if store is None:
+            base["note"] = "no reachable store"
+            return base
+        try:
+            lim = max(1, min(int(limit), 1000))
+            dclause = " AND e.domain = $domain" if domain else ""
+            cclause = " AND c.domain = $domain" if domain else ""
+            params = {"owner": owner, "s": start, "e": end}
+            if domain:
+                params["domain"] = domain
+            rclause = " AND rc.domain = $domain" if domain else ""
+            if on_content:
+                # 내용 축 — 열을 가진 라벨만(Concept·Record). 빈 값은 `'' >= $s` 가 거짓이라
+                # 자동으로 빠진다: 내용 시점을 안 적은 노드를 0 이나 오늘로 채우지 않는다.
+                cypher = (
+                    "MATCH (c:Concept) WHERE c.owner_id = $owner "
+                    "AND coalesce(c.content_time, '') >= $s "
+                    f"AND coalesce(c.content_time, '') < $e{cclause} "
+                    "RETURN c.concept_id AS id, 'concept' AS kind, c.title AS title, "
+                    "coalesce(c.content_time, '') AS ts, c.domain AS domain "
+                    "UNION ALL "
+                    "MATCH (rc:Record) WHERE rc.owner_id = $owner "
+                    "AND coalesce(rc.content_time, '') >= $s "
+                    f"AND coalesce(rc.content_time, '') < $e{rclause} "
+                    "RETURN rc.record_id AS id, 'record' AS kind, rc.title AS title, "
+                    "coalesce(rc.content_time, '') AS ts, rc.domain AS domain")
+            else:
+                cypher = (
+                    "MATCH (e:Episode) WHERE e.owner_id = $owner "
+                    "AND coalesce(e.date, e.updated_at, '') >= $s "
+                    f"AND coalesce(e.date, e.updated_at, '') < $e{dclause} "
+                    "RETURN e.episode_id AS id, 'episode' AS kind, e.title AS title, "
+                    "coalesce(e.date, e.updated_at, '') AS ts, e.domain AS domain "
+                    "UNION ALL "
+                    "MATCH (c:Concept) WHERE c.owner_id = $owner "
+                    "AND coalesce(c.created, c.updated_at, '') >= $s "
+                    f"AND coalesce(c.created, c.updated_at, '') < $e{cclause} "
+                    "RETURN c.concept_id AS id, 'concept' AS kind, c.title AS title, "
+                    "coalesce(c.created, c.updated_at, '') AS ts, c.domain AS domain")
+            rows = store.run(cypher, params) or []
+            rows.sort(key=lambda r: (r.get("ts") or "", r.get("id") or ""))
+            items = [{"id": r["id"], "kind": r.get("kind") or "", "title": r.get("title") or r["id"],
+                      "ts": r.get("ts") or "", "domain": r.get("domain") or ""}
+                     for r in rows[:lim]]
+            base.update(executed=True, items=items, total=len(items),
+                        truncated=len(rows) > lim)
+            return base
+        except Exception as exc:
+            base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
+            return base
 
 
 def ledger(*, owner: str, domain: str | None = None, seed: str | None = None,
@@ -552,18 +548,12 @@ def _ledger_by_concept(by_id: dict, *, owner: str, scope: str, cfg, store) -> di
     if not ids:
         return {"executed": True, "rows": [], "scope": scope, "population": 0,
                 "by": "concept"}
-    owns = store is None
-    if owns:
-        store = open_store(cfg or load_config())
-    try:
+    with _store_scope(store, cfg, open_store) as store:
         got = store.run(
             "MATCH (c:Concept) WHERE c.concept_id IN $ids AND c.owner_id = $owner "
             "RETURN c.concept_id AS id, c.title AS title",
             {"ids": pkns.keys(owner, ids), "owner": owner}) or []
         title = {r["id"]: (r.get("title") or r["id"]) for r in got}
-    finally:
-        if owns and store is not None:
-            store.close()
     rows = []
     for cid in ids:
         b = by_id[cid]
@@ -674,10 +664,7 @@ def ledger_drilldown(*, owner: str, domain: str, mark: str, seed: str | None = N
         base["executed"] = True
         base["total"] = 0
         return base
-    owns = store is None
-    if owns:
-        store = open_store(cfg)
-    try:
+    with _store_scope(store, cfg, open_store) as store:
         rows = store.run(
             "MATCH (c:Concept) WHERE c.concept_id IN $ids AND c.owner_id = $owner "
             "RETURN c.concept_id AS id, c.title AS title, c.one_liner AS ol",
@@ -688,6 +675,3 @@ def ledger_drilldown(*, owner: str, domain: str, mark: str, seed: str | None = N
                  for cid in sorted(ids)]
         base.update(executed=True, items=items, total=len(items))
         return base
-    finally:
-        if owns and store is not None:
-            store.close()
