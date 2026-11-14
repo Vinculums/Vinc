@@ -29,7 +29,7 @@ from vinc_mcp import edverify as ev            # noqa: E402
 from vinc_mcp import http_server as hs         # noqa: E402
 from vinc_mcp.bridge import Bridge             # noqa: E402
 from vinc_mcp.http_server import MCPHTTPApp    # noqa: E402
-from vinc_mcp.store import Store               # noqa: E402
+from vinc_mcp.hub_state import Store               # noqa: E402
 
 ACCT_SEED = bytes((i * 11 + 5) & 0xFF for i in range(32))
 BODY = b"{}"                                    # 계정이 보내는 본문

@@ -10,7 +10,7 @@ import pytest
 
 from vinc_mcp import rest_routes, tools
 from vinc_mcp.http_server import MCPHTTPApp, make_server
-from vinc_mcp.store import Store
+from vinc_mcp.hub_state import Store
 
 
 TEAM = "0198c0de-1111-7222-8333-444455556666"
