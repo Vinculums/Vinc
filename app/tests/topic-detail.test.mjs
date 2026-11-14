@@ -51,3 +51,50 @@ test('membership drift is visible and every continuation page has a way back', (
   assert.ok(html.includes('data-topic-more="0"'));
   assert.ok(html.includes('data-topic-more="48"'));
 });
+
+// 데이터 호출의 실패 모양(api-error.ts): 오류 봉투를 읽는 곳 하나와, 사이드카 · 웹 경로가 실패 응답에서 짓는 ApiError.
+// 레일의 상세 상태(detailFailure)는 그 실패의 status 만 읽는다.
+const E = await import(`data:text/javascript;base64,${Buffer.from(await transpile('api-error.ts')).toString('base64')}`);
+
+test('the envelope parser reads the account and the sidecar shapes and nothing else', () => {
+  assert.deepEqual(E.parseEnvelope({ error: { code: 'not_authenticated', message: 'Key rejected', extra: { reason: 'invalid_key' }, reason: 'later' } }),
+    { code: 'not_authenticated', detail: 'Key rejected', reason: 'invalid_key' });
+  assert.deepEqual(E.parseEnvelope({ error: { code: 'forbidden', reason: 'team_role_required' } }),
+    { code: 'forbidden', detail: 'forbidden', reason: 'team_role_required' });
+  assert.deepEqual(E.parseEnvelope({ error: 'write_conflict' }), { code: 'write_conflict', detail: 'write_conflict', reason: '' });
+  for (const b of [{}, null, undefined, 'text', 7, { error: null }, { error: '' }])
+    assert.deepEqual(E.parseEnvelope(b), { code: '', detail: '', reason: '' }, JSON.stringify(b));
+});
+
+test('a store that cannot open (503) says so with its reason, apart from every other failure', () => {
+  const e = E.localFailure(503, JSON.stringify({ executed: false, error: 'no reachable store', open_error: 'lock held by pid 42' }));
+  assert.ok(e instanceof E.ApiError && e instanceof Error);
+  assert.equal(e.message, 'lock held by pid 42');
+  assert.deepEqual([e.status, e.storeDown, e.reason, e.code, e.body], [503, true, 'lock held by pid 42', 'no reachable store', undefined]);
+  const bare = E.localFailure(503, 'Service Unavailable');
+  assert.deepEqual([bare.message, bare.storeDown, bare.reason, bare.code], ['no reachable store', true, '', undefined]);
+  const env = E.localFailure(503, JSON.stringify({ error: { code: 'store_closed' } }));
+  assert.deepEqual([env.message, env.code], ['[object Object]', 'store_closed']);
+  assert.equal(E.localFailure(500, '{}').storeDown, undefined);
+});
+
+test('other failures keep the status and the raw body in the message, and the code and body when it is JSON', () => {
+  const conflict = E.localFailure(409, '{"error":"write_conflict"}');
+  assert.deepEqual([conflict.message, conflict.status, conflict.code, conflict.body],
+    ['409 {"error":"write_conflict"}', 409, 'write_conflict', { error: 'write_conflict' }]);
+  const notFound = E.localFailure(404, '{"error":{"code":"not_found","reason":"gone"}}');
+  assert.deepEqual([notFound.code, notFound.body.error.reason], ['not_found', 'gone']);
+  const html = E.localFailure(502, '<html><style>p { margin: 0 }</style>Bad gateway</html>');
+  assert.deepEqual([html.message.slice(0, 10), html.status, html.code, html.body], ['502 <html>', 502, undefined, undefined]);
+  const big = E.localFailure(413, 'Payload Too Large');
+  assert.deepEqual([big.message, big.code, big.account, big.storeDown], ['413 Payload Too Large', undefined, undefined, undefined]);
+  for (const status of [401, 403, 404]) assert.equal(detailFailure(E.localFailure(status, '{"error":"x"}')), 'unavailable');
+  for (const status of [409, 413, 500, 502, 503, 504]) assert.equal(detailFailure(E.localFailure(status, 'x')), 'failed');
+});
+
+test('an account failure carries its kind, and the body only when the envelope had no code or message', () => {
+  const e = new E.ApiError('401 Key rejected', { status: 401, code: 'not_authenticated', account: 'signIn' });
+  assert.deepEqual([e.status, e.code, e.account, e.body, e.storeDown], [401, 'not_authenticated', 'signIn', undefined, undefined]);
+  const bare = new E.ApiError('500 {}', { status: 500, code: '', account: 'other', body: {} });
+  assert.deepEqual(bare.body, {});
+});

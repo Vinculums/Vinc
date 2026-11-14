@@ -6,6 +6,8 @@ import type { LayoutAnswer } from "./view-layout-wire";
 import { chunkPack, type StageCounts } from "./packchunks";
 import { noteMe, SELF_HOSTED_BUILD } from "./self-hosted";
 import { communityFromAddress } from "./space-picker";
+import { ApiError, parseEnvelope, localFailure, type AccountFailureKind } from "./api-error";
+export { ApiError } from "./api-error";
 
 const BASE_KEY = "vinc.sidecar.base";
 const TOKEN_KEY = "vinc.sidecar.token";
@@ -299,13 +301,10 @@ export function forgetMemberKey(): void { viewSessionCache.purge(); credentials.
 
 /** 계정 모드의 실패 종류. 화면은 이것으로 가르고 영어 서버 문자열을 읽지 않는다.
  *  `signIn` = 키가 더는 통하지 않는다(로그인 시트) · `unreachable` = 계정·허브에 못
- *  닿았다(조용히 빈 결과로 떨어지지 않고 그 상태를 말한다). */
-function accountFailure(message: string, kind: "signIn" | "teamKey" | "unreachable" | "other",
-                        status = 0, code = "unknown"): Error {
-  const err: any = new Error(message);
-  err.account = kind;
-  err.status = status;
-  err.code = code;
+ *  닿았다(조용히 빈 결과로 떨어지지 않고 그 상태를 말한다). `body` 는 문구가 본문을 싣는 실패에만 넘긴다. */
+function accountFailure(message: string, kind: AccountFailureKind,
+                        status = 0, code = "unknown", body?: unknown): ApiError {
+  const err = new ApiError(message, { status, code, account: kind, body });
   if (kind === "signIn") dispatchEvent(new CustomEvent("vinc:signin-required"));
   if (kind === "teamKey") dispatchEvent(new CustomEvent("vinc:team-key-required"));
   return err;
@@ -403,9 +402,8 @@ async function accountCall(path: string, params: Record<string, string | number 
     return res.json();
   }
   const b: any = await res.json().catch(() => ({}));
-  // 계정의 오류 봉투는 `{error:{code,message}}`, 사이드카와 통과로는 `{error:"..."}`.
-  const code = typeof b?.error === "object" ? String(b.error?.code || "") : String(b?.error || "");
-  const detail = typeof b?.error === "object" ? String(b.error?.message || code) : code;
+  // 계정의 오류 봉투는 `{error:{code,message}}`, 사이드카와 통과로는 `{error:"..."}`(api-error.ts).
+  const { code, detail, reason } = parseEnvelope(b);
   if (res.status === 401 && code === "unauthorized") {
     // 사이드카 세션 토큰이 틀렸다(셸이 준 값). 로그인과는 무관하다.
     throw accountFailure("engine session rejected", "other", res.status, code);
@@ -416,7 +414,6 @@ async function accountCall(path: string, params: Record<string, string | number 
     throw accountFailure(detail || "account unreachable", "unreachable", res.status, code);
   }
   if (res.status === 401 && code === "not_authenticated") {
-    const reason = b?.error?.extra?.reason || b?.error?.reason;
     // 팀 키가 거절됐거나, 계정이 개인 키로 팀을 여는 것을 막았다(엄격 모드): 팀 키를 받는다.
     // 개인 키 자체가 거절된 것이면 아래에서 로그인을 다시 받을지 가린다.
     if (team && (reason === "key_graph_scope_mismatch" || (bound && reason === "invalid_key"))) {
@@ -433,7 +430,7 @@ async function accountCall(path: string, params: Record<string, string | number 
     }
     throw accountFailure(detail, "other", 401, code);
   }
-  throw accountFailure(`${res.status} ${detail || JSON.stringify(b)}`, "other", res.status, code);
+  throw accountFailure(`${res.status} ${detail || JSON.stringify(b)}`, "other", res.status, code, detail ? undefined : b);
 }
 
 async function call(path: string, params?: Record<string, string | number | undefined>,
@@ -517,23 +514,8 @@ async function localCall(path: string, params?: Record<string, string | number |
     // 오독되기 쉬운 유일한 상태이고, 그 오독이 곧 데이터 유실처럼 보인다.
     // 사이드카가 사유(open_error)를 바디에 실어 주므로 여기서 꺼내 얹는다 —
     // 안 그러면 호출부는 `503 {…json…}` 문자열만 받아 사람에게 못 보여 준다.
-    if (res.status === 503) {
-      const b = await res.json().catch(() => ({} as any));
-      const err: any = new Error(b?.open_error || b?.error || "no reachable store");
-      err.storeDown = true;
-      err.reason = String(b?.open_error || "");
-      err.status = res.status;
-      err.code = typeof b?.error === "object" ? b.error?.code : b?.error;
-      throw err;
-    }
-    const text = await res.text();
-    const err: any = new Error(`${res.status} ${text}`);
-    err.status = res.status;
-    try {
-      const b = JSON.parse(text);
-      err.code = typeof b?.error === "object" ? b.error?.code : b?.error;
-    } catch { /* JSON 오류 봉투가 아니면 상태만 남긴다. */ }
-    throw err;
+    // 실패의 모양(503 의 storeDown · reason 과 그 밖의 code · body)은 api-error.ts 가 한곳에서 짓는다.
+    throw localFailure(res.status, await res.text());
   }
   if (isWrite) announceWrite(path, body);
   return res.json();
@@ -697,7 +679,7 @@ export async function restartSidecar(): Promise<boolean> {
 /** 이 실패가 "스토어를 못 읽는다"인가. 화면은 이 경우에만 다른 말을 해야 한다 —
  *  나머지 실패는 다시 시도하면 되지만, 이건 **빈 결과와 구분되지 않아서** 위험하다. */
 export function storeDownReason(e: unknown): string | null {
-  const err = e as any;
+  const err = e as Partial<ApiError> | null | undefined;
   return err?.storeDown ? (err.reason || "") : null;
 }
 
