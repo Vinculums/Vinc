@@ -226,7 +226,7 @@ class PromoteOnTheEngine(unittest.TestCase):
         self._env = {}
         for k, v in {"MEMORY_STORE_BACKEND": "embedded",
                      "MEMORY_DATA_DIR": os.path.join(self._tmp, "store"),
-                     FLAG: None, "VINC_BRIEF_ANSWERABILITY": None,
+                     FLAG: None,
                      "VINC_NODE_SEMANTIC_ARM": None, "VINC_NODE_SEM_RANK": None}.items():
             self._env[k] = os.environ.get(k)
             if v is None:
@@ -418,16 +418,6 @@ class PromoteOnTheEngine(unittest.TestCase):
         self.assertFalse(clear(rows, {"validity_best_dropped_distance": 0.12}))   # 우위 안쪽
         self.assertFalse(clear(rows[:1], {}))                                   # 단독·이름 확정
         self.assertFalse(clear([dict(rows[0], distance=None), rows[1]], {}))    # 거리를 모르면 옛 비교
-
-    def test_the_answerability_gate_still_demotes_a_promotion(self):
-        """주제는 맞는데 질문의 나머지가 아무 데도 없으면 확정하지 않는다. 같은 플래그로
-        그 나머지가 없는 질문은 승격되므로, 강등은 게이트가 한 것이다."""
-        self._mirror(0.15)
-        both = {FLAG: "on", "VINC_BRIEF_ANSWERABILITY": "on"}
-        self.assertEqual(self._brief(**both)["status"], "resolved")
-        out = self._brief("cache policy zebra walrus quantum", **both)
-        self.assertEqual(out["status"], "choose", out.get("node"))
-        self.assertIn("answerability_note", out)
 
 
 if __name__ == "__main__":

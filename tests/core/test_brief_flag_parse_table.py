@@ -45,9 +45,9 @@ def test_table_shape_and_required_values():
         assert len(col) == len(VALUES), fn
     for v in REQUIRED:
         assert v in VALUES, repr(v)
-    # 여덟 플래그 모두 표에 있다
+    # 일곱 플래그 모두 표에 있다
     assert set(ENV.values()) == {"VINC_BRIEF_" + n for n in (
-        "STRICT", "SEM_PROMOTE", "SECTION", "QUOTES", "ANSWERABILITY", "LIST_RESOLVED", "RULE", "EXPOSE")}
+        "STRICT", "SEM_PROMOTE", "SECTION", "QUOTES", "LIST_RESOLVED", "RULE", "EXPOSE")}
 
 
 @pytest.mark.parametrize("fn,i", CASES, ids=[f"{fn}[{i}]" for fn, i in CASES])
