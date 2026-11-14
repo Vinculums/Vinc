@@ -12,7 +12,7 @@ import { edgeKindOf } from "../view-prefs";
 import { palette as signal, hexStr } from "../theme";
 import { planColour } from "../view-tint";
 import { layoutMap, mapHeight, policySlug, type MapAgent, type MapPolicy, type MapProcedure, type Props } from "../agent-ontology";
-import type { AgentRole } from "../lnb";
+import type { AgentRole } from "../agent-roster";
 import { announceRolesChanged } from "../role-composer";
 
 export interface MapData {

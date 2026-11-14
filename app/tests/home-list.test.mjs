@@ -35,9 +35,10 @@ const stubs = {
   '../icons': `export const icon = () => '';`,
   '../view-prefs': `export const dayOf = (ts) => ts.slice(0, 10);`,
   '../topbar': `export const setTopbarLead = () => null; export const setViewHooks = () => {};`,
-  '../lnb': `export const agentRoleCount = () => 0; export const lnbTopicTint = () => ''; export const setLnbActive = () => {};
+  '../lnb': `export const lnbTopicTint = () => ''; export const setLnbActive = () => {};
     export const setLnbDocOpener = () => {}; export const setLnbTopicPicker = () => {};
     export const setLnbScopeClearer = () => {}; export const refreshLnb = async () => {};`,
+  '../agent-roster': `export const agentRoleCount = () => 0;`,
   '../doc-graph': `export const namedDecisions = () => []; export const docMirrorId = (id) => 'concept:doc.' + id;`,
   '../live': `export const setLiveRefresher = () => {};`,
   '../vinc-loaders.js': `export const loaderRows = () => '';`,

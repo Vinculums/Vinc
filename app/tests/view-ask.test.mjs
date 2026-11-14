@@ -47,7 +47,7 @@ globalThis.__layers = layers;
 const ROW_STUBS = {
   '../api': `export const spaceName = () => 'personal';`,
   '../icons': `export const icon = (name, size) => '<i data-icon="' + name + ':' + size + '"></i>';`,
-  '../lnb': `export const isAgentRoleId = (id) => id.startsWith('concept:agent-');`,
+  '../agent-roster': `export const isAgentRoleId = (id) => id.startsWith('concept:agent-');`,
   '../view-url': `export const absoluteViewUrl = (sel, opts, space) => JSON.stringify([sel, opts, space]);`,
 };
 

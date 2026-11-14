@@ -18,7 +18,8 @@ import { disposeEditorsIn, docEditorOpen } from "../doc-editor";
 import { dayOf, localStamp } from "../view-prefs";
 import { setViewHooks, refreshTopbar, setSearchFilter, setTopbarTools } from "../topbar";
 import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbScopeClearer, setLnbGraphSource, repaintLnbGraph, setLnbGraphActive,
-         refreshLnb, isAgentRoleId, stripRolePrefix } from "../lnb";
+         refreshLnb } from "../lnb";
+import { isAgentRoleId, stripRolePrefix } from "../agent-roster";
 import { createPropsCard } from "./view-props-card";
 import { createRail } from "./view-rail";
 import { createCards, detailErrorHTML } from "./view-cards";
