@@ -67,7 +67,7 @@ def test_push_advances_cursor_only_with_content(monkeypatch):
     monkeypatch.setattr(sync, "export_delta",
                         lambda **k: {"executed": True, "next_cursor": 12,
                                      "nodes": [{"id": "concept:a", "_seq": 12}], "edges": []})
-    monkeypatch.setattr(sync, "chunk_bundle", lambda b: [b])
+    monkeypatch.setattr(sync, "chunk_bundle", lambda b, **_: [b])
     remote2 = type("R", (), {"push": lambda self, c: {"applied": 1}})()
     r2 = sync.push_local(s, None, owner="user:local", remote=remote2)
     assert r2["sent"] == 1 and sync.get_cursor(s, "push") == 12
