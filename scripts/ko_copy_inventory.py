@@ -186,7 +186,7 @@ SERVER_CODE_TABLES = frozenset({
     ("ui", "intakeUi", "docError"),                      # 문서 추출 거부 사유 코드
     ("ui", "settingsUi", "folderBad"),                   # 저장 폴더 검사 사유 코드
     ("ui", "settingsUi", "conversionDocumentEvidence"),  # 주제 이전 점검의 문서 집계 키
-    ("ui", "viewx", "seg"),                              # 원장 구간 키(api/query.py _LEDGER_MARKS)
+    ("ui", "viewx", "seg"),                              # 원장 구간 키(api/nav.py _LEDGER_MARKS)
 })
 
 

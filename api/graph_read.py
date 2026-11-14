@@ -4,7 +4,7 @@
 
 순서: 계획 함수(`graph_plan`·`subgraph_ids_plan`·축 계획들·`seed_lookup_plan`)가 Cypher 를 만들고,
 `shape_graph` 가 행을 노드·엣지로 접고, `graph()` 가 `graph_layout`(좌표)과 `graph_rank`(ppr·상금
-선택)를 부른다. 원장 계획 셋은 `api/query.py` 의 원장 분류(`_ledger_classify`)가 읽는다.
+선택)를 부른다. 원장 계획 셋은 `api/nav.py` 의 원장 분류(`_ledger_classify`)가 읽는다.
 
 `api/query.py` 가 여기 이름을 모두 다시 내보내므로 `q.X` 와 `from api.query import X` 는 그대로다.
 두 이름은 같은 객체다. 여기 함수가 부르는 이름(`execute`·`_order_graph_result`·계획 함수 등)은 이
