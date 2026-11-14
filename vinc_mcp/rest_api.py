@@ -314,7 +314,7 @@ def _handle(handler, method: str) -> bool:
     authenticated = False
 
     def send(status: int, value: dict, extra: dict | None = None):
-        from .roles import serialize_result
+        from .encoding import serialize_result
         raw = serialize_result(value).encode("utf-8")
         handler.send_response(status)
         handler.send_header("Content-Type", "application/json")
@@ -472,7 +472,7 @@ def _handle(handler, method: str) -> bool:
              extra={**quota_headers, **({"Retry-After": "1"}
                                         if result.get("error") == "store_busy" else {})})
         return True
-    from .roles import serialize_result
+    from .encoding import serialize_result
     size = len(serialize_result(result).encode("utf-8"))
     if size > MAX_RESULT_BYTES:
         # 도구는 이미 실행됐다. 쓰기라면 적용됐으므로 "바뀐 것 없음" 이라고 말하지 않는다.
