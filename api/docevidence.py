@@ -9,6 +9,8 @@ from __future__ import annotations
 from typing import Any
 
 from store import pkns
+# 커서 코덱은 검색과 한 벌이다. `api.query` 를 거치지 않고 검색 코어에서 바로 읽는다.
+from vinc_rag.retrieval import _query_fingerprint, cursor_decode, cursor_encode
 
 
 # 근거 문장 상한 — 툴팁·패널 한 문단 분량. 더 길면 읽히지 않고 저장만 부푼다.
@@ -58,8 +60,6 @@ def backfill_evidence(store, *, owner: str, doc_id: str | None = None,
     owner·문서의 커서나 깨진 커서는 ``invalid_cursor`` 로 거절한다(검색 커서와 같은 규약)."""
     out: dict[str, Any] = {"kind": "evidence.backfill", "executed": False,
                            "filled": 0, "scanned": 0, "has_more": False, "next_cursor": None}
-    # 순환 임포트 회피 — query 가 이 모듈을 쓴다. 커서 코덱은 검색과 한 벌이다.
-    from .query import _query_fingerprint, cursor_decode, cursor_encode
     qh = _query_fingerprint("evidence.backfill", owner, {"doc": doc_id or ""}, "")
     lim = max(1, int(limit))
     try:
@@ -119,9 +119,9 @@ def backfill_evidence(store, *, owner: str, doc_id: str | None = None,
             continue
         # ② 완화 판정용 제목 토큰 — mentions_link 의 어휘·상한을 그대로 재사용한다
         #    (규칙 분기 금지). 토큰셋이 같으면 아무 문장이나 잡히므로 완화는 건너뛴다.
-        from engines.mentions_link import _MAX_TITLE_TOKENS, _tokens as _ml_tokens
-        ta = set(_ml_tokens(at)[:_MAX_TITLE_TOKENS])
-        tb = set(_ml_tokens(bt)[:_MAX_TITLE_TOKENS])
+        from engines.mentions_link import MAX_TITLE_TOKENS, tokens as _ml_tokens
+        ta = set(_ml_tokens(at)[:MAX_TITLE_TOKENS])
+        tb = set(_ml_tokens(bt)[:MAX_TITLE_TOKENS])
         relaxable = bool(ta) and bool(tb) and ta != tb
         found: tuple[str, float] | None = None
         for ch in chunks:

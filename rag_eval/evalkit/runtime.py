@@ -14,6 +14,7 @@ import importlib.metadata as md
 import json
 import pathlib
 import platform
+import subprocess
 import sys
 
 from store import canon
@@ -41,6 +42,16 @@ def fingerprint() -> dict:
 
 
 file_sha256 = canon.file_sha256
+
+
+def git_head(root: pathlib.Path) -> str:
+    """`root` 트리의 `git rev-parse --short HEAD`. git 이 없거나 10초 안에 답이 없거나 리포가
+    아니면 빈 문자열이다 — 결과 헤더의 commit 칸은 비어도 실행을 막지 않는다."""
+    try:
+        return subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=root,
+                              capture_output=True, text=True, timeout=10).stdout.strip()
+    except Exception:                                   # noqa: BLE001
+        return ""
 
 
 def lock_entry(key: str) -> dict:

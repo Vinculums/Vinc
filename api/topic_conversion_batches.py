@@ -15,6 +15,7 @@ from uuid import UUID
 
 from store import durable_generation as dg
 from store import topic_batch_manifest as manifest
+from store import topic_conversion_guard
 from store.embedded_backend import DDL_GUARD, import_driver
 from store.embedded_schema import rel_table_specs
 from store.canon import canonical_json_ascii_v1 as canonical
@@ -142,7 +143,7 @@ class Batches:
         return path, header
 
     def _forget_terminal(self, journal):
-        getattr(self.store,'_topic_conversion_terminals',set()).discard(canonical(journal))
+        topic_conversion_guard.terminals(self.store).discard(canonical(journal))
 
     def initialize(self, sealed, sha, expected, *, conventions_policy="retain"):
         """Caller has revalidated a fenced complete inventory against expected."""
@@ -257,9 +258,7 @@ class Batches:
     def _confirm_terminal(self, journal):
         self._artifact(journal)
         self._receipt(journal)
-        if not hasattr(self.store, '_topic_conversion_terminals'):
-            self.store._topic_conversion_terminals=set()
-        self.store._topic_conversion_terminals.add(canonical(journal))
+        topic_conversion_guard.add_terminal(self.store, canonical(journal))
 
     def _commit_journal(self, journal):
         self.store.run('BEGIN TRANSACTION',raw=True)

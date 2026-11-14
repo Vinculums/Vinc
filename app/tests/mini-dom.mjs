@@ -74,6 +74,16 @@ export class El {
   append(n) { if (n.parent) n.parent.children.splice(n.parent.children.indexOf(n), 1); n.parent = this; this.children.push(n); return n; }
   appendChild(n) { return this.append(n); }
   remove() { if (this.parent) { this.parent.children.splice(this.parent.children.indexOf(this), 1); this.parent = null; } }
+  after(n) {
+    const p = this.parent; if (!p) return;
+    if (n.parent) n.parent.children.splice(n.parent.children.indexOf(n), 1);
+    p.children.splice(p.children.indexOf(this) + 1, 0, n); n.parent = p;
+  }
+  replaceWith(n) {
+    const p = this.parent; if (!p) return;
+    if (n.parent) n.parent.children.splice(n.parent.children.indexOf(n), 1);
+    p.children.splice(p.children.indexOf(this), 1, n); n.parent = p; this.parent = null;
+  }
   insertAdjacentHTML(where, s) {
     const nodes = parse(String(s));
     if (where === 'beforeend') nodes.forEach((n) => this.append(n));

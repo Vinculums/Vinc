@@ -37,6 +37,8 @@ from . import revstamp
 from . import role_contract
 from store import pkns, write_batch
 from store import querybase as _qb
+from store.querybase import _props_to_obj, domain_names
+from store.topic_conversion_guard import guard_active
 # 근거 열을 가진 rel 의 정본 — 스키마가 표를 갖고 여기서는 읽기만 한다.
 from store.embedded_schema import EDGE_EVIDENCE_RELS, wiki_pairs_open
 
@@ -51,6 +53,10 @@ _OWNER_SCOPED_LABELS = node_schema.OWNER_SCOPED_LABELS
 _KEPT_FIELDS = node_schema.KEPT_FIELDS
 _CONTRACT_FIELDS = node_schema.CONTRACT_FIELDS
 _INTERVAL_FIELDS = node_schema.INTERVAL_FIELDS
+# 주제 경로를 접는 두 함수의 정본도 `api/node_schema.py` 다. 읽는 쪽(`decide_read`·`diagnose`·`cli_gate`)은
+# 이 모듈을 거치지 않고 거기서 바로 부른다.
+_split_subject = node_schema.split_subject
+_norm_subject_path = node_schema.normalize_subject_path
 
 # 끝점 (라벨, PK) 두 쌍 — 엣지 경로가 해석한 결과를 들고 다니는 형태.
 _Ends = tuple[tuple[str, str], tuple[str, str]]
@@ -183,7 +189,6 @@ def _decision_interval(props: dict, stored_raw, nid: str, warnings: list[str]) -
                 out = {**out, key: norm}
             continue
         if stored is None:
-            from store.querybase import _props_to_obj
             stored = _props_to_obj(stored_raw)
         out = dict(out)
         if stored.get(key) is not None:
@@ -288,38 +293,6 @@ def _known_repos(store, owner: str) -> set[str]:
     return repos
 
 
-def _split_subject(v: str) -> tuple[str, str]:
-    """`repo:path` → (repo, path). 한정자가 없으면 repo 는 빈 문자열.
-
-    윈도 드라이브 문자(`D:/x`)를 한정자로 오인하지 않는다 — 한 글자짜리는 리포가 아니다."""
-    head, sep, tail = v.partition(":")
-    if not sep or len(head) < 2 or "/" in head:
-        return "", v
-    return head.lower(), tail
-
-
-def _norm_subject_path(v) -> str:
-    r"""`subject_path` 정규화 — 이 값은 **조인 키**다.
-
-    `api\sync.py` · `./api/sync.py` · `/api/sync.py` 가 서로 다른 주제로 남으면
-    "같은 파일을 두고 어긋난 두 주장"을 찾는 질의가 조용히 0건을 낸다. 필드를 두는
-    것만으로 R4 는 성립하지 않는다 — **값이 비교 가능해야** 성립한다. 그래서 여기서
-    한 번 접는다(쓰기 시점 정규화는 `domain` 이 이미 쓰는 처방이다).
-
-    형식은 `repo:path` 다. **경로만으로는 부족하다** — 이 그래프는 리포 셋에 대한
-    기록을 갖는데 `subject_path` 가 리포를 안 담으면 동명 파일 둘이 한 키에 묶여
-    **짝이 아닌 것이 짝으로** 제시된다. 닻이 빠진 것보다 비싼 고장이다
-    ([[record:subject-path-carries-no-repository-so-two-repos-can-collide]]).
-
-    한정자가 없으면 **지어내지 않는다.** 어느 리포인지는 값이 말해야 하고, 서버는
-    모른다. 없는 채로 두고 경고한다."""
-    repo, path = _split_subject(str(v or "").strip().replace("\\", "/"))
-    while path.startswith("./"):
-        path = path[2:]
-    path = path.strip().lstrip("/")
-    return f"{repo}:{path}" if repo and path else path
-
-
 def _subject_repo_warnings(norm: str, nid: str, warnings: list[str], known_repos=None) -> None:
     """접은 `subject_path` 가 리포를 안 담았으면, 또는 그래프가 처음 보는 리포면 경고한다(지우지 않는다).
 
@@ -398,7 +371,6 @@ def _stored_nodes(store, types: dict[str, str], owner: str,
 
     엣지는 아직 안 싣는다: 관계 테이블 9종에 걸쳐 열이 다르고, 노드에서와 달리
     엣지 필드가 조용히 사라진 실측이 아직 없다. 재는 것이 먼저다."""
-    from .query import _props_to_obj      # 국소 사용 — 쓰기 경로를 읽기 모듈에 매달지 않는다
     groups: dict[tuple[str, str], list[str]] = {}
     for nid, ntype in types.items():
         label, pk = (_ENTITY_LABEL, _ENTITY_ID) if _is_open(ntype) else _NODE_MAP[ntype]
@@ -864,7 +836,7 @@ def merge_node(store, node: dict, owner: str, warnings: list[str],
     Entity 의 주제를 바꾼다."""
     ntype = (node.get("type") or "").strip()
     nid = (node.get("id") or "").strip()
-    if getattr(store, "_topic_conversion_guard", False):
+    if guard_active(store):
         from .topic_conversion import check_write
         check_write(store, owner, node)
     skip = _screen_node(node)
@@ -1234,69 +1206,43 @@ def _resolve_endpoint_type(store, nid: str, *, owner: str | None,
         return ""
 
 
-def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
-                *, owner: str | None = None, owner_explicit: bool = False,
-                stamp_edges: bool = True,
-                rollup: dict[str, list[str]] | None = None,
-                declared: set[str] | None = None,
-                born=None, changed: list | None = None) -> str | None:
-    """단일 엣지 MERGE. 반환 = 'created' | 'skipped_duplicate' | None(스킵).
+class _EdgeCall:
+    """엣지 하나를 쓰는 동안의 값: 원문 엣지, 끝점 키, owner 관문, 출생·근거 계획.
 
-    ``changed``: 주면 이 MERGE 가 새로 만들었거나 근거·신뢰도를 바꾼 엣지의 양 끝을 담는다(`_edge_changed`).
+    각 단계 함수(`_merge_*_edge`)가 이것을 받아 같은 이름의 지역 변수로 풀어 쓴다."""
 
-    SEC-3: owner_explicit(강제 owner 경로)면 owner-스코프 끝점(Concept/Record/Bridge/
-    Episode/Entity)을 owner_id 로 스코프한다 — 내 fragment 가 남의 노드 ID 를
-    참조해도 그 노드로 향한 엣지는 MATCH 되지 않아 no-op(남의 서브그래프에 엣지
-    주입 차단). Bridge 는 v2 에서 owner_id 를 얻어 스코프에 편입(구 'Concept 쪽만'
-    주석 폐기). 로컬(owner_explicit=False)은 현행.
+    def __init__(self, store, edge: dict, warnings: list[str], etype: str, src: str, dst: str, *,
+                 owner: str | None, owner_explicit: bool, stamp_edges: bool,
+                 changed: list | None, born):
+        self.store, self.edge, self.warnings = store, edge, warnings
+        self.etype, self.src, self.dst = etype, src, dst
+        self.owner, self.stamp_edges, self.changed = owner, stamp_edges, changed
+        self.osc = osc = bool(owner_explicit and owner)
+        # PK 네임스페이싱(design A) — 스토어 바인딩용 물리 끝점 키. 논리 `src`/`dst` 는
+        # 경고·`types` 조회·툼스톤 키에 그대로 남는다. 엣지 끝점이 될 수 있는 라벨은
+        # 전부 owner-스코프다(Domain 타입은 어느 쌍 규칙에도 안 들어 아래 미지원으로
+        # 떨어진다) — 그래서 `_merge_node` 처럼 라벨을 가릴 필요가 없다.
+        #
+        # owner 를 `DEFAULT_OWNER` 로 메우는 이유: 아래 `_stamp_edge_endpoints` 가 이미
+        # 같은 코얼레스로 owner 를 받아 툼스톤 `ekey` 를 합성한다. 여기서 안 메우면
+        # owner 없이 직접 부른 경로에서 노드 키는 논리인데 ekey 만 합성돼 삭제 표식이
+        # 상쇄되지 않는다. 근거: [[vinc.plan.node-pk-namespacing]] §7
+        self.eowner = eowner = owner or DEFAULT_OWNER
+        self.ksrc, self.kdst = _key(eowner, src), _key(eowner, dst)
+        #: 배치 하나의 엣지들은 **같은 순간에** 태어난다. 엣지마다 HLC 를 새로 뽑으면
+        #: 메타 읽기·쓰기가 엣지 수만큼 늘고, 한 번의 적재가 시간축에 흩어져 보인다.
+        self.born = born or (lambda: revstamp.hlc_now(store))
+        self.op = {"owner": owner} if osc else {}
 
-    개방층(F1): 양 끝이 모두 개방 타입(레거시 6종 밖)이면 엣지 타입 무관하게
-    TYPED{type} 캐리어로 exact (from,type,to) MERGE — rel 속성이 매칭 키에 참여해
-    같은 쌍에 type 이 다른 엣지가 공존한다. 미지 타입 skip 은 레거시 끝점 조합에만
-    남는다(선언된 FROM/TO 쌍 밖 — 스킵이 아니라 토폴로지 한계)."""
-    etype = (edge.get("type") or "").strip()
-    src, dst = (edge.get("from") or "").strip(), (edge.get("to") or "").strip()
-    if pkns.has_sep(edge):
-        # 노드와 같은 이유(_merge_node 주석) — U+001F 는 물리 키 판별자라 엣지
-        # 끝점/타입에 섞이면 안 된다. 근거: [[vinc.plan.node-pk-namespacing]] §7
-        warnings.append(
-            f"edge contains U+001F (reserved for PK namespacing) — skipped ({src}→{dst})")
-        return None
-    st, dt = types.get(src, ""), types.get(dst, "")
-    osc = bool(owner_explicit and owner)
-    # PK 네임스페이싱(design A) — 스토어 바인딩용 물리 끝점 키. 논리 `src`/`dst` 는
-    # 경고·`types` 조회·툼스톤 키에 그대로 남는다. 엣지 끝점이 될 수 있는 라벨은
-    # 전부 owner-스코프다(Domain 타입은 어느 쌍 규칙에도 안 들어 아래 미지원으로
-    # 떨어진다) — 그래서 `_merge_node` 처럼 라벨을 가릴 필요가 없다.
-    #
-    # owner 를 `DEFAULT_OWNER` 로 메우는 이유: 아래 `_stamp_edge_endpoints` 가 이미
-    # 같은 코얼레스로 owner 를 받아 툼스톤 `ekey` 를 합성한다. 여기서 안 메우면
-    # owner 없이 직접 부른 경로에서 노드 키는 논리인데 ekey 만 합성돼 삭제 표식이
-    # 상쇄되지 않는다. 근거: [[vinc.plan.node-pk-namespacing]] §7
-    eowner = owner or DEFAULT_OWNER
-    ksrc, kdst = _key(eowner, src), _key(eowner, dst)
-    # axis2 item1 — 페이로드에 안 실린 끝점은 **스토어에 물어본다**. `declared` 에
-    # 있는 것은 묻지 않는다: 그 노드는 방금 이 호출에서 스킵된 것이고(제목 없음·
-    # 남의 id 등) 스토어의 옛 행으로 되살리면 저작자가 고쳐야 할 고장이 숨는다.
-    # ``types`` 는 **건드리지 않는다** — 그 표는 "이 호출이 실제로 MERGE 한 노드"라는
-    # 뜻이고 `_warn_orphan_decisions` 가 그 뜻에 기대고 있다.
-    if src and not st and not (declared and src in declared):
-        st = _resolve_endpoint_type(store, src, owner=eowner, osc=osc)
-    if dst and not dt and not (declared and dst in declared):
-        dt = _resolve_endpoint_type(store, dst, owner=eowner, osc=osc)
-    #: 배치 하나의 엣지들은 **같은 순간에** 태어난다. 엣지마다 HLC 를 새로 뽑으면
-    #: 메타 읽기·쓰기가 엣지 수만큼 늘고, 한 번의 적재가 시간축에 흩어져 보인다.
-    born = born or (lambda: revstamp.hlc_now(store))
-    def _o(var: str) -> str:
-        return f" AND {var}.owner_id = $owner" if osc else ""
-    op = {"owner": owner} if osc else {}
+    def o(self, var: str) -> str:
+        return f" AND {var}.owner_id = $owner" if self.osc else ""
 
     # v14 — **엣지 출생**. `ON CREATE SET` 이라 재-MERGE 는 안 덮는다. 상류가 실은
     # 값이 있으면 그것을, 없으면 이 배치의 시각을 쓴다. ⚠ 구 엣지는 ON CREATE 가 안
     # 뛰어 '' 로 남고 **그것이 맞다**([[record:edge-birth-v14]]).
-    def _birth_set(rel_var: str) -> tuple[str, dict]:
+    def birth_set(self, rel_var: str) -> tuple[str, dict]:
         return (f" ON CREATE SET {rel_var}.created = $ecreated",
-                {"ecreated": str(edge.get("created") or "") or born()})
+                {"ecreated": str(self.edge.get("created") or "") or self.born()})
 
     # E-G6 — 선택 증거·신뢰도. 있으면 MERGE 뒤 SET 절로 부여. 열을 가진 rel 은
     # `EDGE_EVIDENCE_RELS`(스키마에서 파생 — CC 4종·ABOUT·v16 부터 ATTACHES_TO)이고,
@@ -1310,7 +1256,8 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
     # [[record:attaches-to-carries-evidence-since-v16]]
     # (record 엣지는 v16 이 열을 줘서 경고 대상에서 저장 대상으로 옮겨 갔다 —
     # 남는 무열 rel 은 CONNECTS·TYPED 둘이다.)
-    def _ev_set(rel_var: str, rel: str) -> tuple[str, dict]:
+    def ev_set(self, rel_var: str, rel: str) -> tuple[str, dict]:
+        edge, warnings, src, dst = self.edge, self.warnings, self.src, self.dst
         ev, conf = edge.get("evidence"), edge.get("confidence")
         if rel not in EDGE_EVIDENCE_RELS:
             unkept = [n for n, v in (("evidence", ev), ("confidence", conf))
@@ -1331,21 +1278,67 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
                 warnings.append(f"edge confidence not a number — ignored ({src}→{dst})")
         return ((" SET " + ", ".join(sets)) if sets else ""), p
 
-    # 개방층 우선(F1): 양 끝이 Entity 라우팅이면 알려진 타입명(relates_to 등)이어도
-    # TYPED 로 간다 — Entity 테이블 간에는 레거시 rel 테이블이 존재하지 않는다.
-    if _is_open(st) and _is_open(dt):
-        if not etype:
-            warnings.append(f"edge without type — skipped ({src}→{dst})")
-            return None
-        _ev_set("r", "TYPED")          # 열 없음 — 경고만 남기고 절은 버린다
-        b_set, b_p = _birth_set("r")
-        store.run(
-            f"MATCH (a:{_ENTITY_LABEL}), (b:{_ENTITY_LABEL}) "
-            f"WHERE a.{_ENTITY_ID} = $s AND b.{_ENTITY_ID} = $d{_o('a')}{_o('b')} "
-            f"MERGE (a)-[r:{_TYPED_REL} {{type: $t}}]->(b){b_set}",
-            {"s": ksrc, "d": kdst, "t": etype, **op, **b_p})
-        return "created"
 
+# v12 — 끝점 라벨·PK 를 타입에서 꺼낸다. 아래 분기들이 라벨을 문자열로 박고
+# 있었는데, 결정이 개념과 같은 자리에 서면서 조합이 늘어 그대로는 분기가
+# 배로 불어난다. 자리(어느 층인가)만 보고 라벨은 표에서 꺼내면 분기는 그대로다.
+def _edge_end(ntype: str) -> tuple[str, str]:
+    return _NODE_MAP[ntype]
+
+
+def _edge_screen(edge: dict, warnings: list[str]) -> tuple[str, str, str] | None:
+    """형태 검사. 통과하면 `(타입, from, to)`, U+001F 가 섞였으면 경고하고 None."""
+    etype = (edge.get("type") or "").strip()
+    src, dst = (edge.get("from") or "").strip(), (edge.get("to") or "").strip()
+    if pkns.has_sep(edge):
+        # 노드와 같은 이유(_merge_node 주석) — U+001F 는 물리 키 판별자라 엣지
+        # 끝점/타입에 섞이면 안 된다. 근거: [[vinc.plan.node-pk-namespacing]] §7
+        warnings.append(
+            f"edge contains U+001F (reserved for PK namespacing) — skipped ({src}→{dst})")
+        return None
+    return etype, src, dst
+
+
+def _edge_endpoint_types(c: _EdgeCall, types: dict[str, str],
+                         declared: set[str] | None) -> tuple[str, str]:
+    """끝점 타입. 이 호출의 노드 표에 없으면 스토어에 묻는다(선언됐다가 건너뛴 끝점은 묻지 않는다)."""
+    store, src, dst, eowner, osc = c.store, c.src, c.dst, c.eowner, c.osc
+    st, dt = types.get(src, ""), types.get(dst, "")
+    # axis2 item1 — 페이로드에 안 실린 끝점은 **스토어에 물어본다**. `declared` 에
+    # 있는 것은 묻지 않는다: 그 노드는 방금 이 호출에서 스킵된 것이고(제목 없음·
+    # 남의 id 등) 스토어의 옛 행으로 되살리면 저작자가 고쳐야 할 고장이 숨는다.
+    # ``types`` 는 **건드리지 않는다** — 그 표는 "이 호출이 실제로 MERGE 한 노드"라는
+    # 뜻이고 `_warn_orphan_decisions` 가 그 뜻에 기대고 있다.
+    if src and not st and not (declared and src in declared):
+        st = _resolve_endpoint_type(store, src, owner=eowner, osc=osc)
+    if dst and not dt and not (declared and dst in declared):
+        dt = _resolve_endpoint_type(store, dst, owner=eowner, osc=osc)
+    return st, dt
+
+
+def _merge_typed_edge(c: _EdgeCall) -> str | None:
+    """개방층(Entity 끼리)의 TYPED{type} 엣지."""
+    store, edge, warnings, etype, src, dst = c.store, c.edge, c.warnings, c.etype, c.src, c.dst
+    owner, eowner, osc, ksrc, kdst, op = c.owner, c.eowner, c.osc, c.ksrc, c.kdst, c.op
+    stamp_edges, changed = c.stamp_edges, c.changed
+    _o, _birth_set, _ev_set, _end = c.o, c.birth_set, c.ev_set, _edge_end
+    if not etype:
+        warnings.append(f"edge without type — skipped ({src}→{dst})")
+        return None
+    _ev_set("r", "TYPED")          # 열 없음 — 경고만 남기고 절은 버린다
+    b_set, b_p = _birth_set("r")
+    store.run(
+        f"MATCH (a:{_ENTITY_LABEL}), (b:{_ENTITY_LABEL}) "
+        f"WHERE a.{_ENTITY_ID} = $s AND b.{_ENTITY_ID} = $d{_o('a')}{_o('b')} "
+        f"MERGE (a)-[r:{_TYPED_REL} {{type: $t}}]->(b){b_set}",
+        {"s": ksrc, "d": kdst, "t": etype, **op, **b_p})
+    return "created"
+
+
+def _edge_refused(c: _EdgeCall, st: str, dt: str, declared: set[str] | None,
+                  rollup: dict[str, list[str]] | None) -> bool:
+    """끝점이 안 풀렸거나, 모르는 타입이거나, 반려 경로의 조건이 안 맞으면 경고하고 True."""
+    edge, warnings, etype, src, dst = c.edge, c.warnings, c.etype, c.src, c.dst
     # T4 — **대상 미선언**과 **타입 불일치**를 구분한다. 해석기는 이 호출의 `nodes`
     # 배열에서만 타입을 찾으므로(스토어 조회 없음), 이미 있는 노드로 향하는 엣지도
     # id 를 함께 싣지 않으면 타입이 '' 이 되어 쌍 검사가 전부 빗나간다. 둘을 뭉개면
@@ -1359,13 +1352,13 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
         _warn_edge(warnings, rollup, reason, ", ".join(unresolved),
                    f"edge '{etype}' skipped — {', '.join(unresolved)} "
                    f"({st or '?'}→{dt or '?'}): {_EDGE_WARN_REASONS[reason]}")
-        return None
+        return True
 
     if etype not in _EDGE_TYPES:
         _warn_edge(warnings, rollup, "unsupported_type", f"{src}→{dst} ({etype})",
                    f"unsupported edge type '{etype}' — skipped ({src}→{dst}); "
                    f"{_ALLOWED_PAIRS_HINT}")
-        return None
+        return True
 
     # 반려 경로는 역할 사이에 저작하며 근거가 있어야 한다. Record/Decision
     # 경로로 접거나 일반 개념에 붙이면 검토 대상 역할이 바뀐다.
@@ -1375,180 +1368,256 @@ def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
             or not isinstance(edge.get("evidence"), str) or not edge["evidence"].strip()):
         warnings.append("returns_to expects distinct role concepts and nonempty evidence; "
                         f"skipped ({src}→{dst})")
+        return True
+    return False
+
+
+def _merge_connects_edge(c: _EdgeCall, st: str, dt: str) -> str | None:
+    """다리 → 개념|결정의 CONNECTS(선택 role 이 MERGE 패턴에 든다)."""
+    store, edge, warnings, etype, src, dst = c.store, c.edge, c.warnings, c.etype, c.src, c.dst
+    owner, eowner, osc, ksrc, kdst, op = c.owner, c.eowner, c.osc, c.ksrc, c.kdst, c.op
+    stamp_edges, changed = c.stamp_edges, c.changed
+    _o, _birth_set, _ev_set, _end = c.o, c.birth_set, c.ev_set, _edge_end
+    if st != "bridge" or dt not in _SEMANTIC_TYPES:
+        warnings.append(
+            f"{_ERR_DISALLOWED_PAIR}: connects_via expects bridge→concept|decision — "
+            f"skipped ({st or '?'}→{dt or '?'}); {_ALLOWED_PAIRS_HINT}")
         return None
+    (dl, dp) = _end(dt)
+    # F9: 선택 role — 있으면 MERGE 패턴에 참여(bridges_ingest 의미론 동형: 같은
+    # role 멱등, 다른 role 병렬 엣지). 없으면 bare MERGE(기존 role 엣지에 no-op).
+    # role 기본값 조작 금지 — `{dom}_input` 관례는 bridges_ingest 전속.
+    role = (edge.get("role") or "").strip()
+    _ev_set("r", "CONNECTS")       # 열 없음 — 경고만
+    b_set, b_p = _birth_set("r")
+    if role:
+        store.run(
+            f"MATCH (a:Bridge), (b:{dl}) "
+            f"WHERE a.bridge_id = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
+            f"MERGE (a)-[r:CONNECTS {{role: $role}}]->(b){b_set}",
+            {"s": ksrc, "d": kdst, "role": role, **op, **b_p})
+    else:
+        store.run(
+            f"MATCH (a:Bridge), (b:{dl}) "
+            f"WHERE a.bridge_id = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
+            f"MERGE (a)-[r:CONNECTS]->(b){b_set}",
+            {"s": ksrc, "d": kdst, **op, **b_p})
+    return "created"
 
-    # v12 — 끝점 라벨·PK 를 타입에서 꺼낸다. 아래 분기들이 라벨을 문자열로 박고
-    # 있었는데, 결정이 개념과 같은 자리에 서면서 조합이 늘어 그대로는 분기가
-    # 배로 불어난다. 자리(어느 층인가)만 보고 라벨은 표에서 꺼내면 분기는 그대로다.
-    def _end(ntype: str) -> tuple[str, str]:
-        return _NODE_MAP[ntype]
 
+def _merge_supersedes_edge(c: _EdgeCall, st: str, dt: str) -> str | None:
+    """대체 엣지: 같은 종류에서 새 주장이 대체한 주장을 가리킨다. 근거 필수이고 구간은 경고만 한다."""
+    store, edge, warnings, etype, src, dst = c.store, c.edge, c.warnings, c.etype, c.src, c.dst
+    owner, eowner, osc, ksrc, kdst, op = c.owner, c.eowner, c.osc, c.ksrc, c.kdst, c.op
+    stamp_edges, changed = c.stamp_edges, c.changed
+    _o, _birth_set, _ev_set, _end = c.o, c.birth_set, c.ev_set, _edge_end
+    ok = (st == dt and st in _SUPERSEDES_KINDS and src != dst
+          and (st != "concept" or (src.startswith(_qb.DOC_MIRROR_PREFIX)
+                                   and dst.startswith(_qb.DOC_MIRROR_PREFIX)))
+          and isinstance(edge.get("evidence"), str) and edge["evidence"].strip())
+    if not ok:
+        warnings.append(
+            f"{_ERR_DISALLOWED_PAIR}: supersedes expects two distinct nodes of the same "
+            "kind (record, decision, or concept:doc.* document mirrors) and nonempty "
+            f"evidence — skipped ({st or '?'}→{dt or '?'})")
+        return None
+    ends = (_end(st), _end(dt))
+    (sl, sp), (dl, dp) = ends
+    was = _edge_values(store, _SUPERSEDES_REL, ends, ksrc, kdst, owner=owner, osc=osc)
+    ev_set, ev_p = _ev_set("r", _SUPERSEDES_REL)
+    b_set, b_p = _birth_set("r")
+    store.run(
+        f"MATCH (a:{sl}), (b:{dl}) "
+        f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
+        f"MERGE (a)-[r:{_SUPERSEDES_REL}]->(b){b_set}{ev_set}",
+        {"s": ksrc, "d": kdst, **op, **ev_p, **b_p})
+    if _edge_values_change(was, ev_p):
+        _edge_changed(store, _SUPERSEDES_REL, ends, ksrc, kdst, eowner, osc=osc,
+                      warnings=warnings, stamp=stamp_edges, changed=changed)
+    _warn_supersede_interval(store, st, ends, ksrc, kdst, src, dst, warnings)
+    return "created"
+
+
+def _merge_about_edge(c: _EdgeCall, st: str, dt: str) -> str | None:
+    """사건·결정 → 대상의 ABOUT."""
+    store, edge, warnings, etype, src, dst = c.store, c.edge, c.warnings, c.etype, c.src, c.dst
+    owner, eowner, osc, ksrc, kdst, op = c.owner, c.eowner, c.osc, c.ksrc, c.kdst, c.op
+    stamp_edges, changed = c.stamp_edges, c.changed
+    _o, _birth_set, _ev_set, _end = c.o, c.birth_set, c.ev_set, _edge_end
+    # F4 — episodic↔semantic 다리. 비대칭 쌍이라 역방향 dedupe 불요(ATTACHES_TO
+    # 동형). 삭제 전파는 엣지 툼스톤(S4 확장 — graph_edit.delete_edge)이 담당한다.
+    #
+    # v12 — 출발점에 decision 이 붙는다. `about` 은 "X 는 Y 에 관한 것"이고,
+    # 결정이 어떤 개념을 두고 내려졌다는 말이 정확히 그 형태다.
+    targets = _PAGE_TYPES if wiki_pairs_open(owner) else _SEMANTIC_TYPES
+    if st not in ("episode", "decision") or dt not in targets:
+        warnings.append(
+            f"{_ERR_DISALLOWED_PAIR}: about expects episode|decision→concept|decision — "
+            f"skipped ({st or '?'}→{dt or '?'}); {_ALLOWED_PAIRS_HINT}")
+        return None
+    rel = _EC_EDGES[etype]
+    (sl, sp), (dl, dp) = ends = (_end(st), _end(dt))
+    was = _edge_values(store, rel, ends, ksrc, kdst, owner=owner, osc=osc)
+    ev_set, ev_p = _ev_set("r", rel)
+    b_set, b_p = _birth_set("r")
+    store.run(
+        f"MATCH (a:{sl}), (b:{dl}) "
+        f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
+        f"MERGE (a)-[r:{rel}]->(b){b_set}{ev_set}",
+        {"s": ksrc, "d": kdst, **op, **ev_p, **b_p})
+    if _edge_values_change(was, ev_p):
+        _edge_changed(store, rel, ends, ksrc, kdst, eowner, osc=osc,
+                      warnings=warnings, stamp=stamp_edges, changed=changed)
+    return "created"
+
+
+def _merge_semantic_edge(c: _EdgeCall, st: str, dt: str, wiki: bool) -> str | None:
+    """의미층(개념·결정) 사이 엣지와 커뮤니티 위키 관계. relates_to 는 역방향 중복을 잇지 않는다."""
+    store, edge, warnings, etype, src, dst = c.store, c.edge, c.warnings, c.etype, c.src, c.dst
+    owner, eowner, osc, ksrc, kdst, op = c.owner, c.eowner, c.osc, c.ksrc, c.kdst, c.op
+    stamp_edges, changed = c.stamp_edges, c.changed
+    _o, _birth_set, _ev_set, _end = c.o, c.birth_set, c.ev_set, _edge_end
+    if etype == "relates_to" and "decision" in (st, dt) and not wiki:
+        # relates_to 만 개념↔개념에 남는다(embedded_schema._LOUVAIN_PROJECTED_REL).
+        # 엔진 제약이자 의미상 옳은 자리다 — 결정은 개념에 **관한** 것이고
+        # (about), 결정끼리는 **계보**(derives_from · prerequisite_of)다.
+        # 조용히 다른 타입으로 바꿔 쓰지 않는다: 사용자가 적은 관계를 서버가
+        # 재해석하면 그래프가 사용자가 믿는 것과 달라진다.
+        warnings.append(
+            f"{_ERR_DISALLOWED_PAIR}: relates_to is concept→concept only — skipped "
+            f"({st}→{dt}); for a decision use `about` (decision→concept) or "
+            "`derives_from`/`prerequisite_of` (decision lineage)")
+        return None
+    (sl, sp), (dl, dp) = ends = (_end(st), _end(dt))
+    if etype == "relates_to":
+        # RELATED_TO 는 의미상 무방향 — 역방향 (b)-[:RELATED_TO]->(a) 가 이미
+        # 있으면 신규 생성을 skip(양방향 재적재로 degree 2배 부풀림 방지).
+        rev = store.run(
+            f"MATCH (b:{dl})-[:RELATED_TO]->(a:{sl}) "
+            f"WHERE b.{dp} = $d AND a.{sp} = $s{_o('b')}{_o('a')} "
+            "RETURN count(*) AS c",
+            {"s": ksrc, "d": kdst, **op})
+        if rev and rev[0].get("c"):
+            # 새 엣지는 만들지 않지만 실어 온 근거·신뢰도는 저장된 방향의 엣지에
+            # 쓴다. 정방향 재전송과 같은 결과여야 한다(무방향 MATCH 로 SET 하지 않는다).
+            ev_set, ev_p = _ev_set("r", "RELATED_TO")
+            if ev_set:
+                # 저장된 방향의 끝점 순서로 읽고 스탬프한다(값이 바뀔 때만).
+                rends = ((dl, dp), (sl, sp))
+                held = _edge_values(store, "RELATED_TO", rends, kdst, ksrc,
+                                    owner=owner, osc=osc)
+                store.run(
+                    f"MATCH (b:{dl})-[r:RELATED_TO]->(a:{sl}) "
+                    f"WHERE b.{dp} = $d AND a.{sp} = $s{_o('b')}{_o('a')}{ev_set}",
+                    {"s": ksrc, "d": kdst, **op, **ev_p})
+                if _edge_values_change(held, ev_p):
+                    _edge_changed(store, "RELATED_TO", rends, kdst, ksrc, eowner, osc=osc,
+                                  warnings=warnings, stamp=stamp_edges, changed=changed)
+            return "skipped_duplicate"
+    rel = _CC_EDGES[etype]
+    was = _edge_values(store, rel, ends, ksrc, kdst, owner=owner, osc=osc)
+    ev_set, ev_p = _ev_set("r", rel)
+    b_set, b_p = _birth_set("r")
+    store.run(
+        f"MATCH (a:{sl}), (b:{dl}) "
+        f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
+        f"MERGE (a)-[r:{rel}]->(b){b_set}{ev_set}",
+        {"s": ksrc, "d": kdst, **op, **ev_p, **b_p})
+    if _edge_values_change(was, ev_p):
+        _edge_changed(store, rel, ends, ksrc, kdst, eowner, osc=osc,
+                      warnings=warnings, stamp=stamp_edges, changed=changed)
+    return "created"
+
+
+def _merge_record_edge(c: _EdgeCall, dt: str) -> str | None:
+    """기록 → 개념|결정의 ATTACHES_TO{type}."""
+    store, edge, warnings, etype, src, dst = c.store, c.edge, c.warnings, c.etype, c.src, c.dst
+    owner, eowner, osc, ksrc, kdst, op = c.owner, c.eowner, c.osc, c.ksrc, c.kdst, c.op
+    stamp_edges, changed = c.stamp_edges, c.changed
+    _o, _birth_set, _ev_set, _end = c.o, c.birth_set, c.ev_set, _edge_end
+    # Record 참여 엣지 — ATTACHES_TO{type}로 원 타입 보존(스키마 §5-2 주석).
+    # (from=Record만 허용되는 비대칭 rel 테이블이라 역방향 MERGE 자체가 불가능
+    # — RELATED_TO 같은 무방향 dedupe 는 이 경로에 해당 없음.)
+    (dl, dp) = _end(dt)
+    # v16 — 근거·신뢰도 저장(GRAPH.md 가 record 엣지에 요구하는 그 필드).
+    # 원 타입은 MERGE 패턴에 넣는다(TYPED·CONNECTS 와 같다). 패턴 밖에서 SET 하면
+    # 같은 쌍의 다른 타입 부착이 한 엣지로 접혀 앞의 타입·근거를 덮는다.
+    ev_set, ev_p = _ev_set("r", "ATTACHES_TO")
+    b_set, b_p = _birth_set("r")
+    held = None
+    if changed is not None:
+        # 같은 타입의 부착만 본다(다른 타입은 다른 엣지다). 목록을 받을 때만 읽는다.
+        rows = store.run(
+            f"MATCH (a:Record)-[r:ATTACHES_TO]->(b:{dl}) "
+            f"WHERE a.record_id = $s AND b.{dp} = $d AND r.type = $t{_o('a')}{_o('b')} "
+            "RETURN r.evidence AS ev, r.confidence AS conf",
+            {"s": ksrc, "d": kdst, "t": etype, **op})
+        held = {"evid": rows[0].get("ev"), "conf": rows[0].get("conf")} if rows else None
+    store.run(
+        f"MATCH (a:Record), (b:{dl}) "
+        f"WHERE a.record_id = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
+        f"MERGE (a)-[r:ATTACHES_TO {{type: $t}}]->(b){b_set}{ev_set}",
+        {"s": ksrc, "d": kdst, "t": etype, **op, **ev_p, **b_p})
+    if changed is not None and _edge_values_change(held, ev_p):
+        _edge_changed(store, "ATTACHES_TO", (("Record", "record_id"), (dl, dp)), ksrc, kdst,
+                      eowner, osc=osc, warnings=warnings, stamp=False, changed=changed)
+    if stamp_edges:
+        _stamp_edge_endpoints(store, "ATTACHES_TO", (("Record", "record_id"), (dl, dp)),
+                              ksrc, kdst, eowner, osc=osc, warnings=warnings)
+        _drop_edge_tombstone(store, pkns.ekey(eowner, ksrc, "ATTACHES_TO:" + etype, kdst),
+                             osc=osc, op=op)
+    return "created"
+
+
+def _merge_edge(store, edge: dict, types: dict[str, str], warnings: list[str],
+                *, owner: str | None = None, owner_explicit: bool = False,
+                stamp_edges: bool = True,
+                rollup: dict[str, list[str]] | None = None,
+                declared: set[str] | None = None,
+                born=None, changed: list | None = None) -> str | None:
+    """단일 엣지 MERGE. 반환 = 'created' | 'skipped_duplicate' | None(스킵).
+
+    ``changed``: 주면 이 MERGE 가 새로 만들었거나 근거·신뢰도를 바꾼 엣지의 양 끝을 담는다(`_edge_changed`).
+
+    SEC-3: owner_explicit(강제 owner 경로)면 owner-스코프 끝점(Concept/Record/Bridge/
+    Episode/Entity)을 owner_id 로 스코프한다 — 내 fragment 가 남의 노드 ID 를
+    참조해도 그 노드로 향한 엣지는 MATCH 되지 않아 no-op(남의 서브그래프에 엣지
+    주입 차단). Bridge 는 v2 에서 owner_id 를 얻어 스코프에 편입(구 'Concept 쪽만'
+    주석 폐기). 로컬(owner_explicit=False)은 현행.
+
+    개방층(F1): 양 끝이 모두 개방 타입(레거시 6종 밖)이면 엣지 타입 무관하게
+    TYPED{type} 캐리어로 exact (from,type,to) MERGE — rel 속성이 매칭 키에 참여해
+    같은 쌍에 type 이 다른 엣지가 공존한다. 미지 타입 skip 은 레거시 끝점 조합에만
+    남는다(선언된 FROM/TO 쌍 밖 — 스킵이 아니라 토폴로지 한계)."""
+    screened = _edge_screen(edge, warnings)
+    if screened is None:
+        return None
+    etype, src, dst = screened
+    c = _EdgeCall(store, edge, warnings, etype, src, dst, owner=owner,
+                  owner_explicit=owner_explicit, stamp_edges=stamp_edges, changed=changed,
+                  born=born)
+    st, dt = _edge_endpoint_types(c, types, declared)
+    # 개방층 우선(F1): 양 끝이 Entity 라우팅이면 알려진 타입명(relates_to 등)이어도
+    # TYPED 로 간다 — Entity 테이블 간에는 레거시 rel 테이블이 존재하지 않는다.
+    if _is_open(st) and _is_open(dt):
+        return _merge_typed_edge(c)
+
+    if _edge_refused(c, st, dt, declared, rollup):
+        return None
     if etype == "connects_via":
-        if st != "bridge" or dt not in _SEMANTIC_TYPES:
-            warnings.append(
-                f"{_ERR_DISALLOWED_PAIR}: connects_via expects bridge→concept|decision — "
-                f"skipped ({st or '?'}→{dt or '?'}); {_ALLOWED_PAIRS_HINT}")
-            return None
-        (dl, dp) = _end(dt)
-        # F9: 선택 role — 있으면 MERGE 패턴에 참여(bridges_ingest 의미론 동형: 같은
-        # role 멱등, 다른 role 병렬 엣지). 없으면 bare MERGE(기존 role 엣지에 no-op).
-        # role 기본값 조작 금지 — `{dom}_input` 관례는 bridges_ingest 전속.
-        role = (edge.get("role") or "").strip()
-        _ev_set("r", "CONNECTS")       # 열 없음 — 경고만
-        b_set, b_p = _birth_set("r")
-        if role:
-            store.run(
-                f"MATCH (a:Bridge), (b:{dl}) "
-                f"WHERE a.bridge_id = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
-                f"MERGE (a)-[r:CONNECTS {{role: $role}}]->(b){b_set}",
-                {"s": ksrc, "d": kdst, "role": role, **op, **b_p})
-        else:
-            store.run(
-                f"MATCH (a:Bridge), (b:{dl}) "
-                f"WHERE a.bridge_id = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
-                f"MERGE (a)-[r:CONNECTS]->(b){b_set}",
-                {"s": ksrc, "d": kdst, **op, **b_p})
-        return "created"
+        return _merge_connects_edge(c, st, dt)
     if etype == _SUPERSEDES_EDGE:
-        ok = (st == dt and st in _SUPERSEDES_KINDS and src != dst
-              and (st != "concept" or (src.startswith("concept:doc.")
-                                       and dst.startswith("concept:doc.")))
-              and isinstance(edge.get("evidence"), str) and edge["evidence"].strip())
-        if not ok:
-            warnings.append(
-                f"{_ERR_DISALLOWED_PAIR}: supersedes expects two distinct nodes of the same "
-                "kind (record, decision, or concept:doc.* document mirrors) and nonempty "
-                f"evidence — skipped ({st or '?'}→{dt or '?'})")
-            return None
-        ends = (_end(st), _end(dt))
-        (sl, sp), (dl, dp) = ends
-        was = _edge_values(store, _SUPERSEDES_REL, ends, ksrc, kdst, owner=owner, osc=osc)
-        ev_set, ev_p = _ev_set("r", _SUPERSEDES_REL)
-        b_set, b_p = _birth_set("r")
-        store.run(
-            f"MATCH (a:{sl}), (b:{dl}) "
-            f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
-            f"MERGE (a)-[r:{_SUPERSEDES_REL}]->(b){b_set}{ev_set}",
-            {"s": ksrc, "d": kdst, **op, **ev_p, **b_p})
-        if _edge_values_change(was, ev_p):
-            _edge_changed(store, _SUPERSEDES_REL, ends, ksrc, kdst, eowner, osc=osc,
-                          warnings=warnings, stamp=stamp_edges, changed=changed)
-        _warn_supersede_interval(store, st, ends, ksrc, kdst, src, dst, warnings)
-        return "created"
+        return _merge_supersedes_edge(c, st, dt)
     if etype in _EC_EDGES:
-        # F4 — episodic↔semantic 다리. 비대칭 쌍이라 역방향 dedupe 불요(ATTACHES_TO
-        # 동형). 삭제 전파는 엣지 툼스톤(S4 확장 — graph_edit.delete_edge)이 담당한다.
-        #
-        # v12 — 출발점에 decision 이 붙는다. `about` 은 "X 는 Y 에 관한 것"이고,
-        # 결정이 어떤 개념을 두고 내려졌다는 말이 정확히 그 형태다.
-        targets = _PAGE_TYPES if wiki_pairs_open(owner) else _SEMANTIC_TYPES
-        if st not in ("episode", "decision") or dt not in targets:
-            warnings.append(
-                f"{_ERR_DISALLOWED_PAIR}: about expects episode|decision→concept|decision — "
-                f"skipped ({st or '?'}→{dt or '?'}); {_ALLOWED_PAIRS_HINT}")
-            return None
-        rel = _EC_EDGES[etype]
-        (sl, sp), (dl, dp) = ends = (_end(st), _end(dt))
-        was = _edge_values(store, rel, ends, ksrc, kdst, owner=owner, osc=osc)
-        ev_set, ev_p = _ev_set("r", rel)
-        b_set, b_p = _birth_set("r")
-        store.run(
-            f"MATCH (a:{sl}), (b:{dl}) "
-            f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
-            f"MERGE (a)-[r:{rel}]->(b){b_set}{ev_set}",
-            {"s": ksrc, "d": kdst, **op, **ev_p, **b_p})
-        if _edge_values_change(was, ev_p):
-            _edge_changed(store, rel, ends, ksrc, kdst, eowner, osc=osc,
-                          warnings=warnings, stamp=stamp_edges, changed=changed)
-        return "created"
+        return _merge_about_edge(c, st, dt)
     # 커뮤니티 위키의 관계는 종류와 무관하게 이 표로 간다. 기록 출발도 ATTACHES_TO 가 아니다:
     # 반영기가 그래프를 rel 이름으로 읽어 지난 관계를 지우기 때문이다.
     wiki = (etype in _WIKI_EDGES and st in _PAGE_TYPES and dt in _PAGE_TYPES
             and wiki_pairs_open(owner))
     if wiki or (st in _SEMANTIC_TYPES and dt in _SEMANTIC_TYPES):
-        if etype == "relates_to" and "decision" in (st, dt) and not wiki:
-            # relates_to 만 개념↔개념에 남는다(embedded_schema._LOUVAIN_PROJECTED_REL).
-            # 엔진 제약이자 의미상 옳은 자리다 — 결정은 개념에 **관한** 것이고
-            # (about), 결정끼리는 **계보**(derives_from · prerequisite_of)다.
-            # 조용히 다른 타입으로 바꿔 쓰지 않는다: 사용자가 적은 관계를 서버가
-            # 재해석하면 그래프가 사용자가 믿는 것과 달라진다.
-            warnings.append(
-                f"{_ERR_DISALLOWED_PAIR}: relates_to is concept→concept only — skipped "
-                f"({st}→{dt}); for a decision use `about` (decision→concept) or "
-                "`derives_from`/`prerequisite_of` (decision lineage)")
-            return None
-        (sl, sp), (dl, dp) = ends = (_end(st), _end(dt))
-        if etype == "relates_to":
-            # RELATED_TO 는 의미상 무방향 — 역방향 (b)-[:RELATED_TO]->(a) 가 이미
-            # 있으면 신규 생성을 skip(양방향 재적재로 degree 2배 부풀림 방지).
-            rev = store.run(
-                f"MATCH (b:{dl})-[:RELATED_TO]->(a:{sl}) "
-                f"WHERE b.{dp} = $d AND a.{sp} = $s{_o('b')}{_o('a')} "
-                "RETURN count(*) AS c",
-                {"s": ksrc, "d": kdst, **op})
-            if rev and rev[0].get("c"):
-                # 새 엣지는 만들지 않지만 실어 온 근거·신뢰도는 저장된 방향의 엣지에
-                # 쓴다. 정방향 재전송과 같은 결과여야 한다(무방향 MATCH 로 SET 하지 않는다).
-                ev_set, ev_p = _ev_set("r", "RELATED_TO")
-                if ev_set:
-                    # 저장된 방향의 끝점 순서로 읽고 스탬프한다(값이 바뀔 때만).
-                    rends = ((dl, dp), (sl, sp))
-                    held = _edge_values(store, "RELATED_TO", rends, kdst, ksrc,
-                                        owner=owner, osc=osc)
-                    store.run(
-                        f"MATCH (b:{dl})-[r:RELATED_TO]->(a:{sl}) "
-                        f"WHERE b.{dp} = $d AND a.{sp} = $s{_o('b')}{_o('a')}{ev_set}",
-                        {"s": ksrc, "d": kdst, **op, **ev_p})
-                    if _edge_values_change(held, ev_p):
-                        _edge_changed(store, "RELATED_TO", rends, kdst, ksrc, eowner, osc=osc,
-                                      warnings=warnings, stamp=stamp_edges, changed=changed)
-                return "skipped_duplicate"
-        rel = _CC_EDGES[etype]
-        was = _edge_values(store, rel, ends, ksrc, kdst, owner=owner, osc=osc)
-        ev_set, ev_p = _ev_set("r", rel)
-        b_set, b_p = _birth_set("r")
-        store.run(
-            f"MATCH (a:{sl}), (b:{dl}) "
-            f"WHERE a.{sp} = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
-            f"MERGE (a)-[r:{rel}]->(b){b_set}{ev_set}",
-            {"s": ksrc, "d": kdst, **op, **ev_p, **b_p})
-        if _edge_values_change(was, ev_p):
-            _edge_changed(store, rel, ends, ksrc, kdst, eowner, osc=osc,
-                          warnings=warnings, stamp=stamp_edges, changed=changed)
-        return "created"
+        return _merge_semantic_edge(c, st, dt, wiki)
     if st == "record" and dt in _SEMANTIC_TYPES:
-        # Record 참여 엣지 — ATTACHES_TO{type}로 원 타입 보존(스키마 §5-2 주석).
-        # (from=Record만 허용되는 비대칭 rel 테이블이라 역방향 MERGE 자체가 불가능
-        # — RELATED_TO 같은 무방향 dedupe 는 이 경로에 해당 없음.)
-        (dl, dp) = _end(dt)
-        # v16 — 근거·신뢰도 저장(GRAPH.md 가 record 엣지에 요구하는 그 필드).
-        # 원 타입은 MERGE 패턴에 넣는다(TYPED·CONNECTS 와 같다). 패턴 밖에서 SET 하면
-        # 같은 쌍의 다른 타입 부착이 한 엣지로 접혀 앞의 타입·근거를 덮는다.
-        ev_set, ev_p = _ev_set("r", "ATTACHES_TO")
-        b_set, b_p = _birth_set("r")
-        held = None
-        if changed is not None:
-            # 같은 타입의 부착만 본다(다른 타입은 다른 엣지다). 목록을 받을 때만 읽는다.
-            rows = store.run(
-                f"MATCH (a:Record)-[r:ATTACHES_TO]->(b:{dl}) "
-                f"WHERE a.record_id = $s AND b.{dp} = $d AND r.type = $t{_o('a')}{_o('b')} "
-                "RETURN r.evidence AS ev, r.confidence AS conf",
-                {"s": ksrc, "d": kdst, "t": etype, **op})
-            held = {"evid": rows[0].get("ev"), "conf": rows[0].get("conf")} if rows else None
-        store.run(
-            f"MATCH (a:Record), (b:{dl}) "
-            f"WHERE a.record_id = $s AND b.{dp} = $d{_o('a')}{_o('b')} "
-            f"MERGE (a)-[r:ATTACHES_TO {{type: $t}}]->(b){b_set}{ev_set}",
-            {"s": ksrc, "d": kdst, "t": etype, **op, **ev_p, **b_p})
-        if changed is not None and _edge_values_change(held, ev_p):
-            _edge_changed(store, "ATTACHES_TO", (("Record", "record_id"), (dl, dp)), ksrc, kdst,
-                          eowner, osc=osc, warnings=warnings, stamp=False, changed=changed)
-        if stamp_edges:
-            _stamp_edge_endpoints(store, "ATTACHES_TO", (("Record", "record_id"), (dl, dp)),
-                                  ksrc, kdst, eowner, osc=osc, warnings=warnings)
-            _drop_edge_tombstone(store, pkns.ekey(eowner, ksrc, "ATTACHES_TO:" + etype, kdst),
-                                 osc=osc, op=op)
-        return "created"
+        return _merge_record_edge(c, dt)
     # 여기 도달 = 양 끝 타입이 **선언돼 있고** 쌍이 rel 테이블 밖(진짜 토폴로지 한계).
     warnings.append(
         f"{_ERR_DISALLOWED_PAIR}: edge '{etype}' between {st}→{dt} 미지원 — skipped; "
@@ -1657,8 +1726,7 @@ def _domain_gate(fragment_nodes: list[dict], *, store, owner: str,
     incoming = {d for d in incoming if not domain_hierarchy.is_reserved(d)}
     if not incoming:
         return None                       # 주제 없는 적재는 상한과 무관
-    from . import query                    # 국소 import — 상한이 꺼져 있으면 비용 0
-    existing = query.domain_names(owner=owner, store=store)
+    existing = domain_names(owner=owner, store=store)
     if existing is None:
         return None                       # 스토어 미도달 = 판정 불가 → 막지 않는다
     existing = {d for d in existing if not domain_hierarchy.is_reserved(d)}
@@ -1796,7 +1864,7 @@ def _merge_fragment_once(fragment: dict, *, store, themes=None,
         edges = list(fragment.get("edges") or [])
     except MutationConflict as exc:
         return _finalize({"merged": None, **exc.result}, [exc.result["error"]])
-    if getattr(store, "_topic_conversion_guard", False):
+    if guard_active(store):
         from .topic_conversion import check_write
         check_write(store, owner, fragment)
     beliefs = []

@@ -422,7 +422,7 @@ def _serve_http_kwargs(args) -> dict:
     static = args.auth_token or os.environ.get("VINC_MCP_TOKEN") or None
     gate = None
     if args.oauth:
-        from vinc_mcp.store import Store, resolve_state_dir
+        from vinc_mcp.hub_state import Store, resolve_state_dir
         issuer = args.issuer or f"http://{args.host}:{args.port}"
         # 상태는 디스크 SQLite 로 영속(재기동에도 커넥터 유지). 작업본은
         # **로컬이어야 하고**(SMB 위 SQLite 는 `database is locked`), 영속은

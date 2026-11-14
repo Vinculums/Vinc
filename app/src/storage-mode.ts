@@ -82,7 +82,7 @@ export function hostOf(uri: string): string {
 }
 
 /** 키링 항목의 기본 이름. `vinc storage connect` 와 같은 규칙이다(`api/cli_storage.py` `_location`). */
-export function secretRefFor(uri: string, database: string): string {
+function secretRefFor(uri: string, database: string): string {
   const host = hostOf(uri).replace(/^\[([^\]]*)\](?::\d+)?$/, "$1").replace(/:\d+$/, "").toLowerCase();
   return `vinc-database:${host || "database"}/${database}`;
 }

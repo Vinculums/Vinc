@@ -19,7 +19,7 @@ from vinc_mcp import tools                          # noqa: E402
 from vinc_mcp.bridge import Bridge                  # noqa: E402
 from vinc_mcp.http_server import MCPHTTPApp, make_server  # noqa: E402
 from vinc_mcp.oauth import OAuthGate                # noqa: E402
-from vinc_mcp.store import Store                    # noqa: E402
+from vinc_mcp.hub_state import Store                    # noqa: E402
 
 
 class _StubBridge(Bridge):

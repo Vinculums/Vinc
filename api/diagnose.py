@@ -12,6 +12,9 @@
 그대로다. 두 이름은 같은 객체다. 여기 함수가 부르는 이름(`_run_algo`·`_algo_graph`·`open_store`·`node_context` 등)은
 이 모듈에서 찾으므로, 그 호출을 바꾸려면 `api.query` 가 아니라 이 모듈의 이름을 패치한다.
 
+스토어를 안 받으면 `_store_scope`(`api/query_base.py`)가 열고 닫는다. 열 수 없을 때의 규칙: 읽기는 `executed:False`
+에 `note` 만 싣는다.
+
 이 모듈은 `api.query` 를 import 하지 않는다(`tests/core/test_diagnose_module.py` 가 본다).
 """
 from __future__ import annotations
@@ -22,11 +25,12 @@ import re
 from store import pkns
 from store.backend import open_store
 from store.config import load_config
-from store.querybase import _classify_chunk_error, _props_to_obj
+from store.querybase import _classify_chunk_error, _props_to_obj, mirror_id
 
 from .graph_layout import _domain_path
 from .node_read import node_context
-from .query_base import _DOC_CONCEPT_PREFIX, domains
+from .node_schema import normalize_subject_path, normalize_time
+from .query_base import _store_scope, domains
 
 
 # ── 구조 진단 (E-G3) — 약연결 성분 · Leiden 커뮤니티 · 조회 전용 ─────────────────
@@ -68,7 +72,7 @@ def _topic_description_mirrors(store, owner: str | None) -> set[str]:
         params["owner"] = owner
     rows = store.run("MATCH (d:_DocMeta) WHERE d.origin = $origin " + where
                      + "RETURN d.doc_id AS doc_id", params) or []
-    return {_DOC_CONCEPT_PREFIX + str(r["doc_id"]) for r in rows if r.get("doc_id")}
+    return {mirror_id(str(r["doc_id"])) for r in rows if r.get("doc_id")}
 
 
 #: 알고리즘 결과가 **두 스페이스의 노드를 같은 id 로** 물고 온 것들.
@@ -250,15 +254,12 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
     쉬웠다(F6). 이제 자르면 `members_truncated:true` 로 말한다 — 전체 수는 `size` 가
     이미 나른다."""
     cfg = cfg or load_config()
-    owns = store is None
-    if owns:
-        store = open_store(cfg)
-    base = {"kind": "component_diagnosis", "executed": False,
-            "components": [], "orphans": [], "component_count": 0, "orphan_count": 0}
-    if store is None:
-        base["note"] = "no reachable store"
-        return base
-    try:
+    with _store_scope(store, cfg, open_store) as store:
+        base = {"kind": "component_diagnosis", "executed": False,
+                "components": [], "orphans": [], "component_count": 0, "orphan_count": 0}
+        if store is None:
+            base["note"] = "no reachable store"
+            return base
         rows, note = _run_algo(store, "weakly_connected_components", owner=owner)
         if rows is None:
             base["note"] = note
@@ -305,9 +306,6 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
             base["ambiguous_note"] = (
                 "these ids exist in more than one space, so this diagnosis cannot tell "
                 "which node is yours and leaves them out of components and orphans")
-    finally:
-        if owns:
-            store.close()
     return base
 
 
@@ -370,18 +368,15 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
     읽는다. 같은 문이지만 이웃한 코드가 아니라서 `component_diagnosis` 를 넓히지 않고
     따로 둔다."""
     cfg = cfg or load_config()
-    owns = store is None
-    if owns:
-        store = open_store(cfg)
-    base = {"kind": "claim_diagnosis", "executed": False, "conflicts": [],
-            "stale": [], "stale_count": 0,
-            "conflict_count": 0, "unanchored": [], "unanchored_count": 0,
-            "unanchored_truncated": False, "anchored_count": 0,
-            "results_excluded": 0, "scanned": 0}
-    if store is None:
-        base["note"] = "no reachable store"
-        return base
-    try:
+    with _store_scope(store, cfg, open_store) as store:
+        base = {"kind": "claim_diagnosis", "executed": False, "conflicts": [],
+                "stale": [], "stale_count": 0,
+                "conflict_count": 0, "unanchored": [], "unanchored_count": 0,
+                "unanchored_truncated": False, "anchored_count": 0,
+                "results_excluded": 0, "scanned": 0}
+        if store is None:
+            base["note"] = "no reachable store"
+            return base
         where = "WHERE r.owner_id = $owner " if owner else ""
         rows = store.run(
             f"MATCH (r:Record) {where}"
@@ -441,9 +436,6 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
                     stale=stale[:lim], stale_count=len(stale),
                     stale_truncated=len(stale) > lim,
                     scanned=len(rows))
-    finally:
-        if owns:
-            store.close()
     return base
 
 
@@ -478,8 +470,6 @@ def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[
     `measured_at` 없는 기록을 대상으로 끌어들이지는 않는다.
     근거: [[vinc.plan.temporal-edges-point-in-time-document-validity-2026-09-28]] 를 잇는
     그래프 문서 vinc.plan.spec-drift-graphiti-0-9-8-2026-10-11 §3."""
-    from .fragment import _norm_subject_path
-    from .node_schema import normalize_time
     where = "WHERE e.owner_id = $owner " if owner else ""
     changes = []
     for e in store.run(f"MATCH (e:Episode) {where}"
@@ -492,7 +482,7 @@ def _stale_claims(store, record_rows: list[dict], *, owner: str | None) -> list[
             continue
         changes.append({"id": pkns.strip(e.get("id") or ""), "title": e.get("title") or "",
                         "date": date, "head_sha": str(props.get("head_sha") or ""),
-                        "files": [_norm_subject_path(f) for f in files if isinstance(f, str)]})
+                        "files": [normalize_subject_path(f) for f in files if isinstance(f, str)]})
     if not changes:
         return []
     today = _dt.date.today().isoformat()
@@ -550,15 +540,12 @@ def communities(*, owner: str | None = None, cfg=None, store=None,
     와 같다(기본 50 · 상한 1000 · 자르면 말한다 — F6). 미배정(-1, 고립)은 별도 집계에서 제외. 스토어를 못 읽으면
     executed=False + note."""
     cfg = cfg or load_config()
-    owns = store is None
-    if owns:
-        store = open_store(cfg)
-    base = {"kind": "communities", "executed": False,
-            "communities": [], "community_count": 0}
-    if store is None:
-        base["note"] = "no reachable store"
-        return base
-    try:
+    with _store_scope(store, cfg, open_store) as store:
+        base = {"kind": "communities", "executed": False,
+                "communities": [], "community_count": 0}
+        if store is None:
+            base["note"] = "no reachable store"
+            return base
         # RELATED_TO 단일 투영(개념 관계의 주축: wikilink 추론이 전부 RELATED_TO 로
         # 강등돼 밀도 최고). 엔진 Louvain 이 단일 엣지 표만 받던 시절의 선택인데, 방향
         # 관계를 섞지 않는 '실측 군집'이라는 뜻이 있어 계산을 옮긴 뒤에도 잇는다.
@@ -615,9 +602,6 @@ def communities(*, owner: str | None = None, cfg=None, store=None,
             base["ambiguous_note"] = (
                 "these ids exist in more than one space, so this diagnosis cannot tell "
                 "which node is yours and leaves them out of the communities")
-    finally:
-        if owns:
-            store.close()
     return base
 
 
@@ -648,16 +632,13 @@ def community_context(*, owner: str | None = None, node: str, cfg=None, store=No
     members:[{id, title}], members_truncated}. 시드가 없거나 고립(-1)이면
     executed=False + note. 스토어를 못 읽을 때도 마찬가지."""
     cfg = cfg or load_config()
-    owns = store is None
-    if owns:
-        store = open_store(cfg)
-    base = {"kind": "community-context", "executed": False, "node": node,
-            "community": None, "size": 0, "dominant_domain": "",
-            "representatives": [], "members": [], "members_truncated": False}
-    if store is None:
-        base["note"] = "no reachable store"
-        return base
-    try:
+    with _store_scope(store, cfg, open_store) as store:
+        base = {"kind": "community-context", "executed": False, "node": node,
+                "community": None, "size": 0, "dominant_domain": "",
+                "representatives": [], "members": [], "members_truncated": False}
+        if store is None:
+            base["note"] = "no reachable store"
+            return base
         _g: dict = {}
         rows, note = _run_algo(store, "leiden", rel_tables=("RELATED_TO",), owner=owner,
                                labels=_LOUVAIN_LABELS,
@@ -736,7 +717,4 @@ def community_context(*, owner: str | None = None, node: str, cfg=None, store=No
                     dominant_domain=dominant, representatives=reps,
                     members=member_list,
                     members_truncated=len(members) > len(reps) + len(member_list))
-    finally:
-        if owns:
-            store.close()
     return base

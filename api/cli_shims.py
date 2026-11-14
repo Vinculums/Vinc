@@ -9,7 +9,7 @@ from __future__ import annotations
 import datetime as _dt
 from contextlib import ExitStack
 
-from vinc_mcp import tools
+from vinc_mcp import toolcall, tools
 
 from . import shim_registry as reg
 from .cli_output import usage_error
@@ -59,7 +59,7 @@ def _caller(args, *, target: str, space: str, owner: str | None):
 
     def call(name, data):
         data = {k: v for k, v in {**common, **data}.items() if v is not None}
-        result = tools.call(name, data, bridge)
+        result = toolcall.call(name, data, bridge)
         if isinstance(result, dict) and (result.get("error") or result.get("executed") is False):
             error = result.get("error")
             raise _Failed(result if isinstance(error, dict) else {

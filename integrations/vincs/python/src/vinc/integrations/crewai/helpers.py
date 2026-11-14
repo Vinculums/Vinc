@@ -1,69 +1,59 @@
 """Reads before a run and the explicit writes after one. None of these writes on its own.
 
-The parameters are the LangGraph adapter's, so the same call sends the same body.
+Each helper passes the keyword arguments it does not name to the client method of the same
+purpose, so the parameters are the client's and the LangGraph adapter's, and the same call
+sends the same body.
 """
 from __future__ import annotations
 
 from typing import Any, Iterable
 
 from vinc.sdk import AsyncVincClient, VincClient
-from vinc.sdk.package import DEFAULT_PACKAGE_MAX_CHARS
-from vinc.sdk.prefetch import DEFAULT_PREFETCH_MAX_CHARS
 
 
-def prefetch(client: VincClient, role_id: str, task: str, *, space: str | None = None,
-             max_chars: int = DEFAULT_PREFETCH_MAX_CHARS, pin: str | None = None) -> str:
+def prefetch(client: VincClient, role_id: str, task: str, **fields: Any) -> str:
     """The role's required reading and task evidence, read before a model call; never writes.
 
-    With ``pin`` a role that changed raises ``VincRoleChanged`` instead.
+    ``fields`` are ``VincClient.prefetch``'s keyword arguments (``space``, ``max_chars``,
+    ``pin``). With ``pin`` a role that changed raises ``VincRoleChanged`` instead.
     """
-    return client.prefetch(role_id, task, space=space, max_chars=max_chars, pin=pin)
+    return client.prefetch(role_id, task, **fields)
 
 
-async def aprefetch(client: AsyncVincClient, role_id: str, task: str, *, space: str | None = None,
-                    max_chars: int = DEFAULT_PREFETCH_MAX_CHARS, pin: str | None = None) -> str:
+async def aprefetch(client: AsyncVincClient, role_id: str, task: str, **fields: Any) -> str:
     """Async :func:`prefetch`."""
-    return await client.prefetch(role_id, task, space=space, max_chars=max_chars, pin=pin)
+    return await client.prefetch(role_id, task, **fields)
 
 
 def get_vinc_package_context(client: VincClient, package_id: str, *, space: str,
-                             max_chars: int = DEFAULT_PACKAGE_MAX_CHARS) -> str:
-    """Read one handoff package, checking each source as this key on every call."""
-    return client.get_package_context(package_id, space=space, max_chars=max_chars)
+                             **fields: Any) -> str:
+    """Read one handoff package, checking each source as this key on every call.
+
+    ``fields`` are ``VincClient.get_package_context``'s other keyword arguments (``max_chars``).
+    """
+    return client.get_package_context(package_id, space=space, **fields)
 
 
 async def aget_vinc_package_context(client: AsyncVincClient, package_id: str, *, space: str,
-                                   max_chars: int = DEFAULT_PACKAGE_MAX_CHARS) -> str:
+                                    **fields: Any) -> str:
     """Async :func:`get_vinc_package_context`; a missing package fails explicitly."""
-    return await client.get_package_context(package_id, space=space, max_chars=max_chars)
+    return await client.get_package_context(package_id, space=space, **fields)
 
 
-def record_episode(client: VincClient, title: str, *, summary: str = "",
-                   about: Iterable[str] = (), date: str | None = None,
-                   domain: str | None = None, tags: Iterable[str] | None = None,
-                   space: str | None = None, episode_id: str | None = None,
-                   create_only: bool | None = None,
-                   operation_id: str | None = None) -> dict[str, Any]:
+def record_episode(client: VincClient, title: str, **fields: Any) -> dict[str, Any]:
     """Write one Episode about existing concepts or decisions (needs a ``vinc_sk_`` key).
 
+    ``fields`` are ``VincClient.record_episode``'s keyword arguments (``summary``, ``about``,
+    ``date``, ``domain``, ``tags``, ``space``, ``episode_id``, ``create_only``, ``operation_id``).
     Call it after a person approved what the crew did. Save ``episode_id`` and
     ``operation_id`` in host state first and reuse them only for this event's retries.
     """
-    return client.record_episode(title, summary=summary, about=about, date=date,
-                                 domain=domain, tags=tags, space=space, episode_id=episode_id,
-                                 create_only=create_only, operation_id=operation_id)
+    return client.record_episode(title, **fields)
 
 
-async def arecord_episode(client: AsyncVincClient, title: str, *, summary: str = "",
-                          about: Iterable[str] = (), date: str | None = None,
-                          domain: str | None = None, tags: Iterable[str] | None = None,
-                          space: str | None = None, episode_id: str | None = None,
-                          create_only: bool | None = None,
-                          operation_id: str | None = None) -> dict[str, Any]:
+async def arecord_episode(client: AsyncVincClient, title: str, **fields: Any) -> dict[str, Any]:
     """Async :func:`record_episode`."""
-    return await client.record_episode(title, summary=summary, about=about, date=date,
-                                       domain=domain, tags=tags, space=space, episode_id=episode_id,
-                                       create_only=create_only, operation_id=operation_id)
+    return await client.record_episode(title, **fields)
 
 
 def record_run(client: VincClient, run_id: str, *, role: str, outcome: str,
@@ -85,23 +75,19 @@ async def arecord_run(client: AsyncVincClient, run_id: str, *, role: str, outcom
 
 def write_package(client: VincClient, question: str, conclusion: str, *,
                   claims: Iterable[dict[str, Any]], produced_by: str, run_id: str,
-                  space: str, package_id: str | None = None,
-                  create_only: bool | None = None,
-                  operation_id: str | None = None) -> dict[str, Any]:
-    """Explicit producer write of one handoff package; call it after review."""
-    return client.write_package(question, conclusion, claims=claims,
-                                produced_by=produced_by, run_id=run_id,
-                                space=space, package_id=package_id,
-                                create_only=create_only, operation_id=operation_id)
+                  space: str, **fields: Any) -> dict[str, Any]:
+    """Explicit producer write of one handoff package; call it after review.
+
+    ``fields`` are ``VincClient.write_package``'s other keyword arguments (``title``,
+    ``package_id``, ``create_only``, ``operation_id``).
+    """
+    return client.write_package(question, conclusion, claims=claims, produced_by=produced_by,
+                                run_id=run_id, space=space, **fields)
 
 
 async def awrite_package(client: AsyncVincClient, question: str, conclusion: str, *,
                          claims: Iterable[dict[str, Any]], produced_by: str, run_id: str,
-                         space: str, package_id: str | None = None,
-                         create_only: bool | None = None,
-                         operation_id: str | None = None) -> dict[str, Any]:
+                         space: str, **fields: Any) -> dict[str, Any]:
     """Async :func:`write_package`."""
-    return await client.write_package(question, conclusion, claims=claims,
-                                      produced_by=produced_by, run_id=run_id,
-                                      space=space, package_id=package_id,
-                                      create_only=create_only, operation_id=operation_id)
+    return await client.write_package(question, conclusion, claims=claims, produced_by=produced_by,
+                                      run_id=run_id, space=space, **fields)

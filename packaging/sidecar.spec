@@ -119,11 +119,11 @@ a = Analysis(
         # v0.1.9/v0.2.0 — 호출 시점 지연 임포트라 정적 분석이 놓칠 수 있다:
         #   remote      : api/refs.py(인용 대조)를 거쳐서만
         #   entitlement : cli 의 serve-http 분기 안에서만
-        # store/edverify 는 oauth·http_server 가 최상위로 끌지만 명시해 못 박는다.
+        # hub_state/edverify 는 oauth·http_server 가 최상위로 끌지만 명시해 못 박는다.
         "vinc_mcp.remote", "vinc_mcp.hubhttp", "vinc_mcp.entitlement",
-        "vinc_mcp.store", "vinc_mcp.edverify",
+        "vinc_mcp.hub_state", "vinc_mcp.edverify",
         # W2 — 역할 렌더러 + prompts. rpc 가 최상위로 끄므로 정적 분석이 잡지만,
-        # store/edverify 와 같은 이유로 명시해 못 박는다. 이 모듈이 빠지면 rpc 임포트
+        # hub_state/edverify 와 같은 이유로 명시해 못 박는다. 이 모듈이 빠지면 rpc 임포트
         # 자체가 죽어 MCP 표면이 통째로 사라진다. 렌더러가 `scripts/` 가 아니라 여기
         # 있는 이유이기도 하다 — 동결 바이너리는 `scripts/` 를 싣지 않는다.
         "vinc_mcp.roles",

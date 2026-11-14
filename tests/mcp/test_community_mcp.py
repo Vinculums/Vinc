@@ -15,7 +15,7 @@ import pytest
 from vinc_mcp import community, edverify, entitlement, http_server as H, tools
 from vinc_mcp.bridge import Bridge
 from vinc_mcp.oauth import OAuthGate
-from vinc_mcp.store import Store
+from vinc_mcp.hub_state import Store
 
 A = "community:0191f0aa-1111-7abc-8def-0123456789ab"
 B = "community:0191f0aa-2222-7abc-8def-0123456789ab"

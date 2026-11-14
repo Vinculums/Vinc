@@ -103,11 +103,16 @@ def request(url: str, *, method: str = "POST", token: str | None = None,
     return Response(status, got, raw.decode("utf-8"))
 
 
+def encode_json(payload: Any) -> bytes:
+    """`post_json` 이 요청 본문으로 싣는 바이트. 본문 크기를 미리 재는 호출부도 이것을 쓴다."""
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+
 def post_json(url: str, *, token: str | None, payload: Any, timeout: float = 60.0,
               accept: str | None = "application/json",
               headers: Mapping[str, str] | None = None) -> Any:
     """JSON 을 POST 하고 JSON 답을 돌려준다."""
-    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    body = encode_json(payload)
     return request(url, token=token, data=body, timeout=timeout, accept=accept,
                    headers=headers).json()
 

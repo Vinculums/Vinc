@@ -26,6 +26,7 @@ from . import node_schema
 from . import packfile
 from . import query as q
 from store import pkns
+from store.querybase import DOC_MIRROR_PREFIX, doc_id_of
 from store.embedded_schema import _NODE_TABLES, _REL_TABLES
 from . import docstore as ds
 
@@ -276,12 +277,12 @@ def _docs_for_concepts(store, *, owner: str, concept_ids: list[str],
         # 주제를 손으로 적기만 한 문서는 자기 미러(`concept:doc.<doc_id>`)가 팩에 실려도
         # 따라오지 않는다. 받는 쪽은 가리키는 문서가 없는 개념을 오류 없이 얻는다.
         # 그래서 미러 id 에서 접두를 벗겨 문서 집합에 더한다(MENTIONS 와 합집합 — 중복 없음).
-        # 접두 상수는 docstore 의 것을 그대로 쓴다(사본을 세 벌로 늘리지 않는다).
+        # 접두 상수와 풀기는 `store.querybase` 의 것을 쓴다.
         # `pkns.strip` 은 SEP 없으면 항등이라 네임스페이싱 on/off 양쪽에서 같은 코드가 돈다.
         for cid in concept_ids:
             logical = pkns.strip(cid)
-            if logical.startswith(ds._DOC_MIRROR_PREFIX):
-                did = logical[len(ds._DOC_MIRROR_PREFIX):]
+            if logical.startswith(DOC_MIRROR_PREFIX):
+                did = doc_id_of(logical)
                 if did:
                     by_doc.setdefault(did, set()).add(cid)
         docs: list[dict] = []

@@ -28,21 +28,36 @@ const { mountCompass, compassDataFrom } = await loadCompass();
 // 문서 트리: 지금 스페이스와 받을 문서 주제를 테스트가 정한다.
 const hub = { space: 'me|', docTopics: [] };
 const none = 'export {};';
-const lnb = await loadTs('lnb.ts', {
-  './api': `export const cfg = { get owner() { return 'me'; }, get team() { return globalThis.__hub.space.split('|')[1]; } };
+const apiStub = `export const cfg = { get owner() { return 'me'; }, get team() { return globalThis.__hub.space.split('|')[1]; } };
     export const spaceKey = () => globalThis.__hub.space;
     export const isCommunitySpace = () => false; export const remote = () => true;
     export const api = { navTree: async () => ({ executed: true, unfiled: [],
-      domains: globalThis.__hub.docTopics.map((d) => ({ domain: d, concepts: 0, docs: [{ doc_id: 'doc:' + d, title: d, updated_at: '2026-11-01' }] })) }) };`,
+      domains: globalThis.__hub.docTopics.map((d) => ({ domain: d, concepts: 0, docs: [{ doc_id: 'doc:' + d, title: d, updated_at: '2026-11-01' }] })) }) };`;
+// 트리 파일 다섯(상태 · 문서 · 그래프 · Agent · 입구)은 상태 하나와 로스터 하나를 함께 읽으므로 각각 한 번만 올린다.
+const treeUrl = await tsUrl('lnb-tree.ts');
+const idsUrl = await tsUrl('agent-ids.ts');
+const rosterUrl = await tsUrl('agent-roster.ts', { './agent-ids': idsUrl });
+const stateUrl = await tsUrl('lnb-state.ts', { './topic-tint-table': tableUrl });
+const docsUrl = await tsUrl('lnb-docs.ts', {
+  './api': apiStub, './components': COMPONENTS_STUB, './copy': COPY_STUB, './doc-title': `export const docTitle = (t) => t || '';`,
+  './lnb-tree': treeUrl, './lnb-state': stateUrl, './view-tint': tintUrl,
+});
+const graphUrl = await tsUrl('lnb-graph.ts', {
+  './copy': COPY_STUB, './components': COMPONENTS_STUB, './lnb-docs': docsUrl, './lnb-state': stateUrl, './lnb-tree': treeUrl,
+});
+const agentsUrl = await tsUrl('lnb-agents.ts', {
+  './agent-roster': rosterUrl, './components': COMPONENTS_STUB, './copy': COPY_STUB, './lnb-state': stateUrl, './lnb-tree': treeUrl,
+});
+const lnb = await loadTs('lnb.ts', {
+  './api': apiStub,
   './copy': COPY_STUB,
-  './doc-title': `export const docTitle = (t) => t || '';`,
   './icons': `export const icon = () => '';`,
-  './lnb-tree': await tsUrl('lnb-tree.ts'),
-  './agent-roster': await tsUrl('agent-roster.ts'),
-  './view-tint': tintUrl,
+  './lnb-tree': treeUrl,
+  './agent-roster': rosterUrl,
   './topic-tint-table': tableUrl,
   './components': COMPONENTS_STUB,
   './vinc-loaders.js': `export const loaderRows = () => '';`,
+  './lnb-state': stateUrl, './lnb-docs': docsUrl, './lnb-graph': graphUrl, './lnb-agents': agentsUrl,
   './surfaces/agent-map': none, './conventions': none, './doc-editor': none, './role-composer': none,
   './authoring': none, './surfaces/settings': none,
 });

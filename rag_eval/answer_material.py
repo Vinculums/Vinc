@@ -58,6 +58,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from rag_eval.evalkit.stats import boot_means, mean4   # noqa: E402
+
 PROMPTS = ROOT / "rag_eval" / "fixtures" / "answer_material"
 GOLD = ROOT / "rag_eval" / "fixtures" / "brief_gold.jsonl"
 #: 이 크기 아래 층에는 구간을 내지 않는다(파일럿에서 미리 정한 값).
@@ -121,22 +123,19 @@ def strip_vectors(row: dict) -> dict:
 # ---------------------------------------------------------------- build
 def cmd_build(a):
     from api import query as q                      # noqa: PLC0415
-    from store.backend import open_store            # noqa: PLC0415
-    from store.config import load_config            # noqa: PLC0415
-    from vinc_rag.embed.encoder import Encoder                     # noqa: PLC0415
     from rag_eval import brief_resolution as n1              # noqa: PLC0415
+    from rag_eval.evalkit.transports import InProcess, TransportError   # noqa: PLC0415
 
     # 답가능성 게이트는 꺼진 채 나간다 — 켠 채로 잰 팔은 다른 제품을 잰다.
     gate = os.environ.get("VINC_BRIEF_ANSWERABILITY", "") or "unset (ships off)"
-    name, path = a.encoder.split("=", 1)
-    enc = Encoder(name, path)
-    enc.encode(["warmup"], kind="query")
-    emb = lambda t: enc.encode([t], kind="query")[0]   # noqa: E731
+    # 스토어 지문은 **열기 전에** 잰다 — 여는 것만으로 바이트가 바뀔 수 있다.
     commit, store_sha = tree_ref(), file_sha(pathlib.Path(a.data))
-
-    store = open_store(load_config({"data_dir": a.data}))
-    if store is None:
-        raise SystemExit(f"스토어에 도달할 수 없다: {a.data}")
+    try:
+        ip = InProcess(a.data, a.owner, a.encoder)       # 스토어 열기 · 인코더 적재 · 워밍업
+    except TransportError as exc:
+        raise SystemExit(str(exc)) from exc
+    store, enc = ip.store, ip.enc
+    emb = lambda t: enc.encode([t], kind="query")[0]   # noqa: E731
     rows = n1.load_gold([a.gold])
     out, excluded = [], 0
     for i, r in enumerate(rows):
@@ -195,7 +194,7 @@ def cmd_build(a):
                            "excerpts": [e.get("excerpt") for e in ref.get("excerpts") or []]}
                           if ref else None),
         })
-    store.close()
+    ip.close()
     jl_write(a.out, out)
     print("kept", len(out), "excluded_answerable", excluded, "commit", commit)
     print(Counter(x["stratum"] for x in out), Counter(x["path_b"] for x in out),
@@ -322,15 +321,14 @@ def cited_bytes(r, arm, cited: set[str]) -> int:
 
 def boot(d: list[float], n=10000, seed=0) -> list[float]:
     """짝지은 부트스트랩 95 퍼센트(집 규칙 8). [평균, 하한, 상한]."""
-    rng, m = random.Random(seed), len(d)
-    means = sorted(sum(d[rng.randrange(m)] for _ in range(m)) / m for _ in range(n))
+    m = len(d)
+    means = boot_means(d, n, random.Random(seed))
     return [round(sum(d) / m, 4), round(means[int(0.025 * n)], 4),
             round(means[int(0.975 * n) - 1], 4)]
 
 
 def mean(xs):
-    xs = [x for x in xs if x is not None]
-    return round(statistics.fmean(xs), 4) if xs else None
+    return mean4([x for x in xs if x is not None])
 
 
 def med(xs):

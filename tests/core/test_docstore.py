@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from api import docstore as ds  # noqa: E402
 from store import pkns  # noqa: E402
 from store.embedded_backend import import_driver  # noqa: E402
+from store.querybase import mirror_id  # noqa: E402
 
 
 def _pk(nid: str, owner: str = "user:a") -> str:
@@ -1077,7 +1078,7 @@ class DocstoreE2E(unittest.TestCase):
         did = ds.put_doc(self.store, owner="user:a", text="# Note\n\n## Candidate\n\nAstronomy Seed.")["doc_id"]
         # Force the derived path, rather than relying on put_doc's authored mirror.
         self.store.run("MATCH (n:Concept) WHERE n.concept_id=$id SET n.domain=''",
-                       {"id": _pk(ds._DOC_MIRROR_PREFIX + did)})
+                       {"id": _pk(mirror_id(did))})
         self.store.run("MATCH (ch:Chunk), (n:Concept) WHERE ch.doc_id=$d AND n.concept_id=$id "
                        "MERGE (ch)-[:MENTIONS]->(n)", {"d": did, "id": _pk("concept:seed")})
         preview = ds.extract_doc(self.store, did, owner="user:a")
@@ -1385,12 +1386,6 @@ class DocstoreE2E(unittest.TestCase):
         # 여기 `_pk(...)` 를 쓰면 플래그가 **켜진** 모드에서만 깨진다 — 실제로 깨졌다.
         self.assertEqual(doc["primary_concept_id"], "concept:doc." + did)
         self.assertEqual(doc["primary_concept_title"], "언급")
-
-    def test_doc_mirror_prefix_matches_the_query_copy(self):
-        """두 모듈이 서로를 모듈 수준에서 임포트하지 않아 사본이 둘이다. 갈라지면
-        문서 미러가 한쪽에서만 미러로 보인다(`_ALLOWED_PAIRS_HINT` 와 같은 처방)."""
-        from api import query as _q
-        self.assertEqual(ds._DOC_MIRROR_PREFIX, _q._DOC_CONCEPT_PREFIX)
 
     def test_mention_tally_owner_isolated(self):
         # SEC-1 — 남의 개념이 내 문서의 대표 주제·대표 개념을 흔들지 못한다.

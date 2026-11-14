@@ -5,7 +5,7 @@
 - `api.diagnose` 의 최상위 이름은 전부 `api.query` 에 **같은 객체**로 있다. 그래야 `q.component_diagnosis`·
   `q.communities` 를 부르는 사이드카 경로와 MCP 도구, `from api.query import ...` 가 그대로 돈다.
 - `api.diagnose` 는 `api.query` 를 import 하지 않는다(함수 안의 지연 import 포함).
-- 가져온 이름은 제 것과 같은 객체다(`node_context` 는 `node_read`, `domains`·`_DOC_CONCEPT_PREFIX` 는 `query_base`,
+- 가져온 이름은 제 것과 같은 객체다(`node_context` 는 `node_read`, `domains` 는 `query_base`,
   `_domain_path` 는 `graph_layout`, `_props_to_obj`·`_classify_chunk_error` 는 `store.querybase`, `pkns` 는 `store.pkns`).
 - 옮긴 함수가 전역에서 찾는 이름은 모두 이 모듈에 묶여 있다(빠진 import 는 부를 때에야 `NameError` 로 드러난다).
 """
@@ -75,7 +75,7 @@ def test_diagnose_does_not_import_api_query():
 
 def test_imported_names_are_their_home_modules_objects():
     assert diagnose.pkns is pkns and query.pkns is pkns
-    for name, home in (("node_context", node_read), ("domains", query_base), ("_DOC_CONCEPT_PREFIX", query_base),
+    for name, home in (("node_context", node_read), ("domains", query_base),
                        ("_domain_path", graph_layout), ("_props_to_obj", querybase),
                        ("_classify_chunk_error", querybase), ("open_store", backend), ("load_config", config)):
         assert getattr(diagnose, name) is getattr(home, name), name

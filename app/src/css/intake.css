@@ -1,0 +1,130 @@
+/* ── Intake — Signal 재스타일 (Figma 42:3 Empty / 42:5 Ingesting / 42:7 Success).
+      3-state 공통: 무대(stage)는 넓은 다크 캔버스 중앙에 카드 하나. 글로우 금지
+      (그래프 노드 전용) — 크롬은 플랫 + 검정 depth 그림자만. ── */
+.intake-stage {
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-4, 1rem);
+  max-width: 40rem; margin: clamp(1rem, 6vh, 4rem) auto 0;
+}
+
+/* 42:3 — 대시 드롭존 */
+.dropzone {
+  width: 100%;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: var(--space-2, .5rem);
+  padding: var(--space-8, 2.5rem) var(--space-6, 1.5rem);
+  border: 1px dashed hsl(var(--border)); border-radius: .9rem;
+  background: hsl(var(--card) / .35); cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.dropzone:hover, .dropzone.drag { border-color: hsl(var(--primary) / .7); background: hsl(var(--card) / .6); }
+.dropzone:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; }
+.dropzone .dz-mark { display: grid; place-items: center; color: hsl(var(--muted-foreground)); margin-bottom: var(--space-2, .5rem); }
+.dropzone h2 { margin: 0; font-size: var(--fs-lg); color: hsl(var(--foreground)); }
+.dropzone .dz-body { margin: 0; color: hsl(var(--muted-foreground)); font-size: var(--fs-base); }
+.dropzone .dz-sov { margin: .1rem 0 0; font-size: var(--fs-sm); }
+.dz-actions { display: flex; gap: var(--space-3, .75rem); margin-top: var(--space-3, .75rem); flex-wrap: wrap; justify-content: center; }
+
+/* 본인문서 = MCP 안내 (Signal 카드) */
+.mcp-note {
+  width: 100%;
+  border: 1px solid hsl(var(--border)); border-radius: .75rem;
+  padding: var(--space-4, 1rem); background: hsl(var(--card) / .5);
+}
+.mcp-note h3 { font-size: var(--fs-base); margin: 0 0 var(--space-2, .5rem); color: hsl(var(--foreground)); }
+.mcp-note p { color: hsl(var(--muted-foreground)); margin: 0; font-size: var(--fs-sm); }
+
+/* 42:5 — Ingesting 처리 패널 */
+.proc-panel {
+  width: 100%;
+  border: 1px solid hsl(var(--border)); border-radius: .9rem;
+  background: hsl(var(--card)); padding: var(--space-5, 1.25rem) var(--space-6, 1.5rem);
+  box-shadow: var(--shadow-elev-2, 0 8px 24px hsl(0 0% 0% / .28));
+}
+.proc-head h2 { margin: 0; font-size: var(--fs-lg); color: hsl(var(--foreground)); }
+.proc-head .proc-meta { margin: .2rem 0 0; font-size: var(--fs-sm); }
+.proc-rows { margin-top: var(--space-4, 1rem); display: flex; flex-direction: column; }
+.proc-row {
+  display: grid; grid-template-columns: auto 1fr minmax(6rem, 10rem) auto;
+  align-items: center; gap: var(--space-3, .75rem);
+  padding: var(--space-3, .75rem) 0; border-top: 1px solid hsl(var(--border) / .6);
+}
+.proc-row:first-child { border-top: none; }
+.proc-mark { display: inline-flex; color: hsl(var(--muted-foreground)); }
+.proc-row[data-state="active"] .proc-mark { color: hsl(var(--primary)); }
+.proc-row[data-state="done"] .proc-mark { color: hsl(var(--foreground)); }
+.proc-row[data-state="failed"] .proc-mark { color: hsl(var(--danger)); }
+.proc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: hsl(var(--foreground)); font-size: var(--fs-base); }
+.proc-bar { position: relative; height: 4px; border-radius: 2px; background: hsl(var(--muted)); overflow: hidden; }
+.proc-bar > i {
+  position: absolute; inset: 0; border-radius: 2px;
+  transform-origin: left; transform: scaleX(0);          /* right 를 움직이면 매 프레임 레이아웃이다 */
+  background: hsl(var(--primary)); transition: transform .3s var(--ease-out);
+}
+.proc-row[data-state="active"] .proc-bar > i { transform: scaleX(.55); }
+.proc-row[data-state="done"] .proc-bar > i { transform: scaleX(1); }
+.proc-row[data-state="failed"] .proc-bar > i { transform: scaleX(.45); background: hsl(var(--danger)); }
+.proc-status { font-size: var(--fs-sm); color: hsl(var(--muted-foreground)); text-align: right; white-space: nowrap; }
+.proc-row[data-state="failed"] .proc-status { color: hsl(var(--danger)); }
+.proc-slim { text-align: center; }
+
+/* 42:7 — Success */
+.success-stage {
+  width: 100%;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: var(--space-2, .5rem); padding: var(--space-6, 1.5rem) 0;
+}
+.success-check { display: grid; place-items: center; color: hsl(var(--primary)); margin-bottom: var(--space-1, .25rem); }
+/* 드물게 오는 순간(가져오기 성공 · 첫 실행)에만 쓰는 등장 — 체크가 안착하고 칩이 차례로 선다. */
+@media (prefers-reduced-motion: no-preference) {
+  .success-check { animation: success-pop .32s var(--ease-settle) backwards; }
+  .concept-chips .chip, .fr-why li { animation: chip-rise .24s var(--ease-out) backwards; }
+  .concept-chips .chip:nth-child(2), .fr-why li:nth-child(2) { animation-delay: 45ms; }
+  .concept-chips .chip:nth-child(3), .fr-why li:nth-child(3) { animation-delay: 90ms; }
+  .concept-chips .chip:nth-child(4) { animation-delay: 135ms; }
+  .concept-chips .chip:nth-child(5) { animation-delay: 180ms; }
+  .concept-chips .chip:nth-child(n+6) { animation-delay: 225ms; }
+}
+@keyframes success-pop { from { opacity: 0; transform: scale(.8); } }
+@keyframes chip-rise { from { opacity: 0; transform: translateY(6px); } }
+.success-stage h2 { margin: 0; font-size: var(--fs-lg); color: hsl(var(--foreground)); }
+.success-body { margin: 0; font-size: var(--fs-base); }
+.success-failed { margin: .1rem 0 0; font-size: var(--fs-sm); }
+.concept-chips { display: flex; gap: var(--space-2, .5rem); flex-wrap: wrap; justify-content: center; margin-top: var(--space-2, .5rem); }
+.chip.chip-static { cursor: default; color: hsl(var(--muted-foreground)); }
+.success-actions { display: flex; gap: var(--space-3, .75rem); margin-top: var(--space-4, 1rem); flex-wrap: wrap; justify-content: center; }
+.success-stage .diag { font-size: var(--fs-xs); word-break: break-all; opacity: .75; margin-top: .4rem; }
+
+/* ── 팩 — 표면이 사라지고 남은 것(P15). 섹션 카드 규칙 일곱(`.pack-card`·`.pack-h`·
+      `.pack-desc`·`.pack-note`·`.pack-arealink`·`.pack-row`·`#pack-import`)은 그 표면
+      말고 쓰는 데가 없어 함께 지웠다. 여기 남은 둘은 Tools 공유 탭의 백업 링크다. ── */
+/* Tools 가져오기 탭 안의 드롭존: 시트 안이므로 무대 상단 여백·최대폭 제거
+   (구 Packs 의 `#pack-import-host` 자리에 있던 같은 규칙이다 — P15 로 자리만 옮겼다) */
+#settings-tools .intake-stage { margin-top: 0; max-width: none; }
+.pack-backup { max-width: none; display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; margin: var(--space-2, .5rem) 0 0; }
+.pack-linkbtn {
+  font: inherit; background: none; border: none; cursor: pointer; padding: 0;
+  color: hsl(var(--primary)); text-decoration: underline; flex: 0 0 auto;
+}
+.pack-linkbtn:hover { color: hsl(var(--foreground)); }
+.pack-backup .hint { font-size: var(--fs-sm); }
+
+.list-row {
+  display: flex; align-items: baseline; gap: var(--space-3, .75rem);
+  padding: var(--space-2, .5rem) 0;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.list-row .title { flex: 1; }
+.list-row .meta { color: hsl(var(--muted-foreground)); font-size: var(--fs-base); }
+.list-row .actions { visibility: hidden; display: flex; gap: var(--space-2, .5rem); }
+.list-row:hover .actions { visibility: visible; }
+.list-row .actions button { background: none; border: none; cursor: pointer; font: inherit; color: hsl(var(--primary)); padding: 0; }
+
+.chip {
+  display: inline-block; border: 1px solid hsl(var(--border)); border-radius: 999px;
+  padding: 0 var(--space-3, .75rem); cursor: pointer; background: none; font: inherit;
+  color: hsl(var(--muted-foreground));
+}
+.chip.active { color: hsl(var(--foreground)); font-weight: 700; background: hsl(var(--card)); }
+
+/* View */
+#view-canvas { position: absolute; inset: 0; overflow: hidden; }

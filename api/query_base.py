@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """`api.query` 를 나눈 모듈들이 같이 읽는 바닥: 스키마에서 온 관계·seed 표, 정확한 노드 읽기,
-주제 수, 작은 보조 함수.
+주제 수, 스토어 수명(`_store_scope`), 작은 보조 함수.
 
 `api/query.py` 가 여기 이름을 모두 다시 내보내므로 `q.X` 와 `from api.query import X` 는 그대로다.
 두 이름은 같은 객체다: `q._SEED_TABLES` 를 고치면 이 모듈이 읽는 표가 바뀐다. 함수는 다르다:
@@ -12,12 +12,18 @@
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 from store import pkns
+from store.config import load_config
 from store.querybase import (
+    DOC_MIRROR_PREFIX,
     QueryPlan,
     _props_to_obj,
+    doc_id_of,
     domains as _domain_rows,
     execute,
+    mirror_id,
     validity_state,
 )
 from vinc_rag.retrieval import _node_fallback_search
@@ -211,6 +217,31 @@ BASIS_RECORDED = "recorded"
 BASIS_CONTENT = "content"
 
 
+# ── 스토어 수명 ──────────────────────────────────────────────────────────────
+
+@contextmanager
+def _store_scope(store, cfg, opener):
+    """스토어를 받았으면 그대로 넘기고, 못 받았으면 ``opener(cfg or load_config())`` 로 열어
+    넘긴다. 블록이 끝나면(예외 포함) **자기가 연 스토어만** 닫는다. 받은 스토어는 열지도
+    닫지도 않는다: 수명은 호출부 소유다.
+
+    열 수 없으면(``opener`` 가 None) None 을 그대로 넘기고 아무것도 닫지 않는다. 그때 무엇을
+    답할지는 이 함수가 정하지 않고 호출부가 정한다. 읽기는 ``executed:False`` 와 ``note``
+    로 강등해 답하고, 쓰기는 ``note`` 와 ``error`` 를 같이 싣는다(``rename_domain`` 만
+    ``error`` 하나). 이 함수는 그 모양을 건드리지 않는다.
+
+    ``opener`` 는 호출 모듈이 자기 이름공간의 ``open_store`` 를 넘긴다. 이 모듈의 이름을
+    직접 부르면 모듈별 ``open_store`` 패치(시험이 모듈마다 갈아 끼운다)가 닿지 않는다."""
+    owns = store is None
+    if owns:
+        store = opener(cfg or load_config())
+    try:
+        yield store
+    finally:
+        if owns and store is not None:
+            store.close()
+
+
 # ── seed 표와 정확한 노드 읽기 ───────────────────────────────────────────────
 
 def _seed_table(seed: str) -> tuple[str, str]:
@@ -246,7 +277,7 @@ def node_plan(node_id: str, *, owner: str) -> QueryPlan:
     # 근거: [[vinc.spec.dataplane §2.2]]
     columns = node_table_specs()[label]["cols"]
     fields = ", ".join(f"n.{col} AS {'id' if col == pk else col}" for col in columns)
-    if node_id.startswith("concept:doc."):
+    if node_id.startswith(DOC_MIRROR_PREFIX):
         from store.search_temporal import FIELDS
         dates = ", ".join(f"d.{key} AS _doc_{key}" for key in FIELDS)
         return QueryPlan("node", f"MATCH (n:{label}) WHERE n.{pk} = $node "
@@ -254,7 +285,7 @@ def node_plan(node_id: str, *, owner: str) -> QueryPlan:
                          "WHERE d.doc_id = $doc AND d.owner_id = $owner "
                          f"RETURN {fields}, d.doc_id AS _doc_id, {dates}",
                          {"node": pkns.key(owner, node_id), "owner": owner,
-                          "doc": node_id[len("concept:doc."):]})
+                          "doc": doc_id_of(node_id)})
     return QueryPlan("node", f"MATCH (n:{label}) WHERE n.{pk} = $node "
                      f"AND n.owner_id = $owner RETURN {fields}",
                      {"node": pkns.key(owner, node_id), "owner": owner})
@@ -298,10 +329,6 @@ def node(node_id: str, *, owner: str, cfg=None, store=None) -> dict:
 
 # ── 주제 수와 주제 설명 미러 ─────────────────────────────────────────────────
 
-#: 문서 미러 개념의 id 접두사(`concept:doc.<doc_id>`). `api/docstore.py` 의 `_DOC_MIRROR_PREFIX`
-#: 와 같은 문자열이어야 한다.
-_DOC_CONCEPT_PREFIX = "concept:doc."
-
 
 def _topic_description_mirrors_by_domain(owner: str | None, cfg=None, store=None) -> dict[str, str] | None:
     """주제 설명 문서 미러의 논리 id → 그 미러가 선 주제. 설명은 주제(Domain)가 글을 못 담아 문서로 두고
@@ -317,7 +344,7 @@ def _topic_description_mirrors_by_domain(owner: str | None, cfg=None, store=None
         note="topic description mirrors"), cfg, store=store)
     if not res.get("executed"):
         return None
-    ids = [_DOC_CONCEPT_PREFIX + str(r["doc_id"]) for r in res.get("rows", []) if r.get("doc_id")]
+    ids = [mirror_id(str(r["doc_id"])) for r in res.get("rows", []) if r.get("doc_id")]
     if not ids:
         return {}
     got = execute(QueryPlan("topic_description_mirror_domains",

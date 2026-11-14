@@ -5,6 +5,7 @@ import hashlib
 
 from api import docstore, query
 from store import canon, pkns
+from store.querybase import DOC_MIRROR_PREFIX, doc_id_of, mirror_id
 from store.embedded_schema import node_table_specs, rel_table_specs
 
 MAX_ROWS = 200
@@ -174,8 +175,8 @@ def _preview_body(store, *, owner, operation, arguments):
             details.update(node=1, edges=[{"from": e["source"], "to": e["target"], "type": e["type"],
                 "props": e["props"]} for e in details["deleted_edges"]],
                 edge_count=len(details["deleted_edges"]), complete=True)
-            if ident.startswith("concept:doc."):
-                retained = docstore.get_doc(store, ident[len("concept:doc."):], owner=owner)
+            if ident.startswith(DOC_MIRROR_PREFIX):
+                retained = docstore.get_doc(store, doc_id_of(ident), owner=owner)
                 if retained.get("executed"):
                     details["retained_documents"] = [{"doc_id": retained["doc_id"],
                         "content_hash": retained.get("content_hash"), "chunks": retained.get("chunks")}]
@@ -203,7 +204,7 @@ def _preview_body(store, *, owner, operation, arguments):
                     "vectors": _fingerprint(vectors),
                 },
                 "retained_mirror": None}
-            mirror = query.execute(query.node_plan("concept:doc." + ident, owner=owner), store=store)
+            mirror = query.execute(query.node_plan(mirror_id(ident), owner=owner), store=store)
             if not mirror.get("executed") or mirror.get("rows") is None:
                 raise PreviewRefused("preview_read_unavailable")
             details["retained_mirror"] = mirror["rows"][0] if mirror["rows"] else None

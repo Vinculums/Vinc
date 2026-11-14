@@ -17,9 +17,10 @@ from store.embedded_schema import (
     SCHEMA_VERSION, meta_table_specs, node_table_specs, render_embedded_ddl,
 )
 from store.topic_transfer import (
-    TransferRefused, _apply_rehearsal, fingerprint, plan_transfer,
+    TransferRefused, fingerprint, plan_transfer,
     read_snapshot, transformed_snapshot,
 )
+from topic_rehearsal import apply_rehearsal  # noqa: E402
 
 SOURCE = "user:synthetic-person"
 TARGET = "team:00000000-0000-4000-8000-000000000001"
@@ -330,11 +331,11 @@ def test_native_commit_preserves_exact_payload_and_idempotency(native):
     p = plan(before)
     assert p.ready, p.blockers
     expected = transformed_snapshot(before, p, stamp=STAMP)
-    assert _apply_rehearsal(native, p, run_id="synthetic-1", stamp=STAMP) == "committed"
+    assert apply_rehearsal(native, p, run_id="synthetic-1", stamp=STAMP) == "committed"
     actual = read_snapshot(native)
     actual["meta"]["_SyncMeta"] = [r for r in actual["meta"]["_SyncMeta"] if not r["key"].startswith("topic-transfer:run:")]
     assert fingerprint(actual) == fingerprint(expected)
-    assert _apply_rehearsal(native, p, run_id="synthetic-1", stamp=STAMP) == "already_committed"
+    assert apply_rehearsal(native, p, run_id="synthetic-1", stamp=STAMP) == "already_committed"
 
 
 @pytest.mark.parametrize("phase", ["nodes", "edges", "delete", "journal"])
@@ -342,9 +343,9 @@ def test_native_failure_rolls_back_source_and_all_metadata(native, phase):
     before = read_snapshot(native)
     p = plan(before)
     with pytest.raises(RuntimeError, match="injected"):
-        _apply_rehearsal(native, p, run_id="synthetic-failure", stamp=STAMP, fail_at=phase)
+        apply_rehearsal(native, p, run_id="synthetic-failure", stamp=STAMP, fail_at=phase)
     assert fingerprint(read_snapshot(native)) == fingerprint(before)
-    assert _apply_rehearsal(native, p, run_id="synthetic-failure", stamp=STAMP) == "committed"
+    assert apply_rehearsal(native, p, run_id="synthetic-failure", stamp=STAMP) == "committed"
 
 
 def test_native_target_provision_race_rejected(native):
@@ -353,7 +354,7 @@ def test_native_target_provision_race_rejected(native):
                {"id": TARGET + SEP + "concept:agent", "owner": TARGET})
     before = fingerprint(read_snapshot(native))
     with pytest.raises(TransferRefused, match="plan_stale"):
-        _apply_rehearsal(native, p, run_id="synthetic-race", stamp=STAMP)
+        apply_rehearsal(native, p, run_id="synthetic-race", stamp=STAMP)
     assert fingerprint(read_snapshot(native)) == before
 
 
@@ -366,7 +367,7 @@ def test_native_target_provision_race_rejected(native):
 def test_native_offline_node_reupload_is_refused_before_any_write(native, payload):
     from api.sync import apply_delta
     p = plan(read_snapshot(native))
-    _apply_rehearsal(native, p, run_id="offline", stamp=STAMP)
+    apply_rehearsal(native, p, run_id="offline", stamp=STAMP)
     before = fingerprint(read_snapshot(native))
     res = apply_delta(owner=SOURCE, bundle=payload, store=native)
     assert res["executed"] is False and res["error"] == "ownership_moved"
@@ -380,7 +381,7 @@ def test_native_offline_node_reupload_is_refused_before_any_write(native, payloa
 def test_native_offline_document_upload_and_delete_refused(native, payload):
     from api.docsync import import_docs
     p = plan(read_snapshot(native))
-    _apply_rehearsal(native, p, run_id="offline-doc", stamp=STAMP)
+    apply_rehearsal(native, p, run_id="offline-doc", stamp=STAMP)
     before = fingerprint(read_snapshot(native))
     res = import_docs(native, owner=SOURCE, payload=payload)
     assert res["executed"] is False and res["error"] == "ownership_moved"
@@ -390,7 +391,7 @@ def test_native_offline_document_upload_and_delete_refused(native, payload):
 def test_native_marker_does_not_grant_target_access_or_alias_other_owners(native):
     from store.ownership_moves import blocked_sync_references
     p = plan(read_snapshot(native))
-    _apply_rehearsal(native, p, run_id="isolation", stamp=STAMP)
+    apply_rehearsal(native, p, run_id="isolation", stamp=STAMP)
     payload = {"nodes": [{"id": "concept:a"}], "docs": [{"doc_id": "doc1"}]}
     assert blocked_sync_references(native, owner=SOURCE, payload=payload) == ["concept:a", "doc1"]
     assert blocked_sync_references(native, owner=TARGET, payload=payload) == []
@@ -399,10 +400,10 @@ def test_native_marker_does_not_grant_target_access_or_alias_other_owners(native
 
 def test_native_resume_verifies_committed_payload(native):
     p = plan(read_snapshot(native))
-    _apply_rehearsal(native, p, run_id="verify-resume", stamp=STAMP)
+    apply_rehearsal(native, p, run_id="verify-resume", stamp=STAMP)
     native.run("MATCH (c:Concept) WHERE c.owner_id=$owner SET c.title='corrupted'", {"owner": TARGET})
     with pytest.raises(TransferRefused, match="committed_payload_changed"):
-        _apply_rehearsal(native, p, run_id="verify-resume", stamp=STAMP)
+        apply_rehearsal(native, p, run_id="verify-resume", stamp=STAMP)
 
 
 def test_native_unknown_columns_refused_instead_of_dropped(native):
@@ -416,7 +417,7 @@ def test_native_executor_refuses_a_store_without_synthetic_marker(native):
     native.run("MATCH (m:_SyncMeta) WHERE m.key='topic-transfer:synthetic' DELETE m")
     before = fingerprint(read_snapshot(native))
     with pytest.raises(TransferRefused, match="synthetic_store_required"):
-        _apply_rehearsal(native, p, run_id="must-not-write", stamp=STAMP)
+        apply_rehearsal(native, p, run_id="must-not-write", stamp=STAMP)
     assert fingerprint(read_snapshot(native)) == before
 
 
@@ -425,7 +426,7 @@ def test_native_rekey_physical_chunk_and_vectors(native):
     # 오래된 물리 청크 키 형식도 새 소유자의 물리 키로 함께 옮긴다.
     original = read_snapshot(native)
     p = plan(original)
-    _apply_rehearsal(native, p, run_id="physical-chunks", stamp=STAMP)
+    apply_rehearsal(native, p, run_id="physical-chunks", stamp=STAMP)
     after = read_snapshot(native)
     assert after["nodes"]["Chunk"][0]["chunk_id"] == TARGET + SEP + "doc1#000"
     assert after["nodes"]["ChunkVec"][0]["chunk_id"] == TARGET + SEP + "doc1#000"
@@ -446,9 +447,9 @@ def test_native_process_interrupt_and_resume(native, mode):
     assert result.returncode == 87, (result.stdout, result.stderr)
     if mode == "uncommitted":
         assert fingerprint(read_snapshot(native)) == fingerprint(before)
-        assert _apply_rehearsal(native, p, run_id="crash-test", stamp=STAMP) == "committed"
+        assert apply_rehearsal(native, p, run_id="crash-test", stamp=STAMP) == "committed"
     else:
-        assert _apply_rehearsal(native, p, run_id="crash-test", stamp=STAMP) == "already_committed"
+        assert apply_rehearsal(native, p, run_id="crash-test", stamp=STAMP) == "already_committed"
 
 
 class SyntheticAccount:
@@ -489,12 +490,12 @@ def test_synthetic_account_prepare_verify_activate_and_resume(native, tmp_path):
         account.advance("saga", SOURCE, "active")
     with pytest.raises(TransferRefused, match="actor_not_owner"):
         account.advance("saga", "user:someone-else", "graph_committed")
-    _apply_rehearsal(native, p, run_id="saga", stamp=STAMP)
+    apply_rehearsal(native, p, run_id="saga", stamp=STAMP)
     # 그래프 커밋 뒤 계정 단계 기록 전 중단을 재현한다.
     account.db.close()
     account = SyntheticAccount(tmp_path / "synthetic-account.sqlite")
     account.reserve("saga", SOURCE, TARGET)
-    assert _apply_rehearsal(native, p, run_id="saga", stamp=STAMP) == "already_committed"
+    assert apply_rehearsal(native, p, run_id="saga", stamp=STAMP) == "already_committed"
     assert not account.visible("saga")
     account.advance("saga", SOURCE, "graph_committed")
     # index/cache 검증 실패는 활성화하지 않고 재개할 상태로 남긴다.
@@ -521,5 +522,5 @@ if __name__ == "__main__":
             return original_run(query, params, raw=raw)
 
         crash_store.run = crash_before_commit
-    _apply_rehearsal(crash_store, crash_plan, run_id="crash-test", stamp=STAMP)
+    apply_rehearsal(crash_store, crash_plan, run_id="crash-test", stamp=STAMP)
     os._exit(87)

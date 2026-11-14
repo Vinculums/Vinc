@@ -58,11 +58,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from api import query as q                                   # noqa: E402
 from store.backend import open_store                         # noqa: E402
 from store.config import load_config                         # noqa: E402
-from store.querybase import is_conventions_chunk_id           # noqa: E402
+from store.querybase import QUERY_SPLIT_RE, is_conventions_chunk_id  # noqa: E402
 
 from rag_eval import search as es                                     # noqa: E402
 from vinc_rag.rerank import (Reranker, gate, parse_model_spec, peak_rss_mb,  # noqa: E402
                              pick_piece, rerank_rows)
+from vinc_rag.retrieval import rrf_fuse                          # noqa: E402
 
 _FIXTURES = Path(__file__).resolve().parent / "fixtures"
 _DEFAULT_EVALSETS = [str(_FIXTURES / n) for n in
@@ -74,33 +75,14 @@ PAGE = 10
 # ── 순수 함수 ──────────────────────────────────────────────────────────────
 def weighted_rrf(ranked_lists: list[list[dict]], weights: list[float], *, k: int = 60,
                  id_key: str = "id") -> list[dict]:
-    """`api.query.rrf_fuse` 의 가중 판. 팔 i 의 기여 = w_i/(k+rank). w 가 전부 1 이면
+    """`vinc_rag.retrieval.rrf_fuse` 의 가중 판. 팔 i 의 기여 = w_i/(k+rank). w 가 전부 1 이면
     원본과 같은 순서다(정렬 키는 `search()` 와 같은 (점수 내림차순, id 오름차순)).
-    리랭커 없이 융합만 손봤을 때 얼마나 회복되는지를 보는 **대조군**용이다."""
-    if len(ranked_lists) != len(weights):
-        raise ValueError("lists and weights differ in length")
-    scores: dict = {}
-    rows_by_id: dict = {}
-    for rows, w in zip(ranked_lists, weights):
-        for rank, row in enumerate(rows):
-            rid = row.get(id_key)
-            if rid is None:
-                continue
-            scores[rid] = scores.get(rid, 0.0) + float(w) / (k + rank + 1)
-            rows_by_id.setdefault(rid, row)
-    fused = sorted(rows_by_id.values(),
-                   key=lambda r: (-scores[r[id_key]], str(r[id_key])))
-    out = []
-    for r in fused:
-        row = dict(r)
-        row["rrf_score"] = scores[r[id_key]]
-        out.append(row)
-    return out
+    리랭커 없이 융합만 손봤을 때 얼마나 회복되는지를 보는 **대조군**용이다.
 
-
-#: 한국어 조사를 벗길 때 쓰는 낱말 경계. `api.query.normalize_query_tokens` 가 쓰는 것과
-#: 같은 집합이다 — 색인 쪽과 질의 쪽이 다르게 자르면 그 자체가 결과를 바꾼다.
-_KO_SPLIT = re.compile(r"[\s,./?!;:()\[\]{}\"'`~]+")
+    입력 행은 건드리지 않는다: 제품 함수는 행 위에 `rrf_score` 를 쓰므로 복사본을 넘긴다.
+    같은 팔 목록으로 조건을 여럿 돌리는 스윕에서 앞 조건의 결과가 뒤 조건에 덮이지 않아야 한다."""
+    return rrf_fuse([[dict(r) for r in rows] for rows in ranked_lists], weights=weights, k=k,
+                    id_key=id_key, tie_by_id=True)
 
 
 def ko_stripped_text(text: str) -> str:
@@ -114,7 +96,7 @@ def ko_stripped_text(text: str) -> str:
     여기서는 성립하지 않는다 — 과잉 절단의 손해는 재보는 수밖에 없고, 그것이 이
     실험이 재는 것의 절반이다. 근거: [[vinc.plan.retrieval-research-2026-09-08]]"""
     from api.query import _strip_ko_suffix
-    return " ".join(_strip_ko_suffix(t) for t in _KO_SPLIT.split(text or "") if t)
+    return " ".join(_strip_ko_suffix(t) for t in QUERY_SPLIT_RE.split(text or "") if t)
 
 
 #: 가중 RRF 대조군의 기본값. `api.query.rrf_fuse` 의 k 와 같은 수이고, 프로덕션에서는

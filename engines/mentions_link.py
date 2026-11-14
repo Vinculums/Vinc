@@ -67,7 +67,8 @@ from store.config import load_config  # noqa: E402
 # 토큰: 소문자 영숫자/한글 낱말(길이≥2). 불용어는 두지 않는다 — title 은 이미
 # 유의어 밀도가 높고, "전부 포함" AND 규칙이 노이즈를 걸러낸다.
 _TOKEN_RE = re.compile(r"[0-9a-z가-힣]+")
-_MAX_TITLE_TOKENS = 6
+MAX_TITLE_TOKENS = 6
+_MAX_TITLE_TOKENS = MAX_TITLE_TOKENS  # 비공개 이름으로 읽는 호출부용 별칭
 #: 여러 토큰짜리 제목이 한 청크에 "함께" 나왔다고 치는 연속 토큰 창. 제목 상한(6)의
 #: 두 배 — "namespacing node primary keys by owner" 같은 어순 바꾼 인용은 들어오고,
 #: 문단마다 한 단어씩 흩어진 우연은 빠진다. 값의 근거는 위 decision 노드.
@@ -101,8 +102,11 @@ _PHRASE_MAX_TOKENS = 2
 _QUOTE_FOLD = str.maketrans({"\u2019": "'", "\u2018": "'"})
 
 
-def _tokens(text: str) -> list[str]:
+def tokens(text: str) -> list[str]:
     return [t for t in _TOKEN_RE.findall((text or "").lower()) if len(t) >= 2]
+
+
+_tokens = tokens  # 비공개 이름으로 읽는 호출부용 별칭
 
 
 def _title_phrase(title: str) -> tuple[bool, re.Pattern | None]:
@@ -117,7 +121,7 @@ def _title_phrase(title: str) -> tuple[bool, re.Pattern | None]:
     pieces = [p.strip(_EDGE_PUNCT) for p in _SEP_RE.split(low)]
     pieces = [p for p in pieces if p]
     lossy = any(_WORD_CHAR_RE.search(p) and not _CLEAN_RE.fullmatch(p) for p in pieces)
-    if not lossy or len(_tokens(low)) > _PHRASE_MAX_TOKENS:
+    if not lossy or len(tokens(low)) > _PHRASE_MAX_TOKENS:
         return False, None
     if sum(len(p) for p in pieces) < _MIN_PHRASE:
         return True, None
@@ -167,7 +171,7 @@ def compute_links(chunks: list[dict], concepts: list[dict]) -> list[dict]:
         cid = c.get("concept_id")
         if not cid:
             continue
-        title_toks = _tokens(c.get("title") or "")[:_MAX_TITLE_TOKENS]
+        title_toks = tokens(c.get("title") or "")[:MAX_TITLE_TOKENS]
         guarded, phrase = _title_phrase(c.get("title") or "")
         prepped.append({
             "id": cid,
@@ -188,7 +192,7 @@ def compute_links(chunks: list[dict], concepts: list[dict]) -> list[dict]:
         ch_base = _basename(ch.get("source_file") or "")
         # 토큰 → 등장 위치. 집합 포함 검사는 키로, 창 검사는 위치로 — 한 번 토큰화.
         positions: dict[str, list[int]] = {}
-        for i, tok in enumerate(_tokens(ch.get("text") or "")):
+        for i, tok in enumerate(tokens(ch.get("text") or "")):
             positions.setdefault(tok, []).append(i)
         ch_tokset = set(positions)
         # 어구 비교용 소문자 본문 — 손실 제목이 하나라도 있을 때만 만든다.
@@ -258,20 +262,23 @@ def _chunk_owners(store) -> list[str]:
 #: 안 넣으면 `Chunk→Decision` MENTIONS 가 **재생성되지 않는다**: 이 링커가 유일한
 #: 생성 경로라, 결정이 Concept 을 떠나는 순간 "이 값이 왜 이런가 → 문서 → 결정" 의
 #: 마지막 한 칸이 조용히 끊긴다(기존 엣지는 남아 있어 한동안 티도 안 난다).
-_LINK_TARGETS: tuple[tuple[str, str, bool], ...] = (
+#: 문서 조회(`api/docreader.py` 의 `doc_context`)도 이 표를 그대로 읽는다 — 사본이 없으니 의미층이
+#: 늘 때 여기 한 곳만 고친다: [[record:mention-targets-must-include-every-semantic-label]].
+LINK_TARGETS: tuple[tuple[str, str, bool], ...] = (
     ("Concept", "concept_id", True),
     ("Decision", "decision_id", False),   # Decision 에는 stem·source_file 열이 없다
 )
+_LINK_TARGETS = LINK_TARGETS  # 비공개 이름으로 읽는 호출부용 별칭
 
 
-def _fetch_concepts(store, owner: str | None) -> list[dict]:
+def fetch_concepts(store, owner: str | None) -> list[dict]:
     """링크 대상 노드(개념·결정)를 한 목록으로. 키 이름은 `concept_id` 를 유지한다 —
     순수 계산부(compute_links)와 MERGE 가 그 키로 짜여 있고, 여기서 이름을 바꾸면
     링크 규칙까지 손대야 한다. 실제 라벨은 `label` 로 함께 나른다."""
     where = "WHERE c.owner_id = $owner " if owner else ""
     params = {"owner": owner} if owner else None
     rows: list[dict] = []
-    for label, pk, has_stem in _LINK_TARGETS:
+    for label, pk, has_stem in LINK_TARGETS:
         proj = f"c.{pk} AS concept_id, c.title AS title, "
         proj += ("c.stem AS stem, c.source_file AS source_file"
                  if has_stem else "'' AS stem, '' AS source_file")
@@ -279,6 +286,9 @@ def _fetch_concepts(store, owner: str | None) -> list[dict]:
         for r in got or []:
             rows.append({**r, "label": label})
     return rows
+
+
+_fetch_concepts = fetch_concepts  # 비공개 이름으로 읽는 호출부용 별칭
 
 
 def merge_links(store, links: list[dict], concepts: list[dict],
@@ -290,7 +300,7 @@ def merge_links(store, links: list[dict], concepts: list[dict],
     링크가 **오류 없이 0건**이 된다(그 함수는 예외를 삼키기까지 한다). 규칙만이
     아니라 쓰기도 SSoT 하나여야 그 형태가 안 생긴다."""
     label_of = {c["concept_id"]: (c.get("label") or "Concept") for c in concepts}
-    pk_of = {lbl: pk for lbl, pk, _ in _LINK_TARGETS}
+    pk_of = {lbl: pk for lbl, pk, _ in LINK_TARGETS}
     # (청크, 라벨, method) 로 묶어 한 청크의 링크를 쿼리 하나로 MERGE 한다. 링크마다
     # 쿼리 하나였을 때 전량 재링크(ensure_rule)가 473청크·3086링크에 19.7초였고, 묶으면
     # 470쿼리·3.1초다(2026-09-05 실측, 같은 링크 집합). 허브에서는 그 시간만큼 뒤의
@@ -325,7 +335,7 @@ def link_mentions(store, *, owner: str | None = None, dry_run: bool = False,
     owner_id 가 빈 값이라 좁히면 통째로 빠진다. 호스티드 전량 재링크(relink_all)만
     켠다."""
     chunks = _fetch_chunks(store, owner if scope_chunks else None)
-    concepts = _fetch_concepts(store, owner)
+    concepts = fetch_concepts(store, owner)
     links = compute_links(chunks, concepts)
     by_method: dict[str, int] = {}
     for lk in links:
@@ -397,7 +407,7 @@ def link_fields(store, owner: str, ids: list[str]) -> dict[str, tuple]:
     out: dict[str, tuple] = {}
     if not ids:
         return out
-    for label, pk, has_stem in _LINK_TARGETS:
+    for label, pk, has_stem in LINK_TARGETS:
         proj = "c.stem AS stem, c.source_file AS source_file" if has_stem else \
             "'' AS stem, '' AS source_file"
         rows = store.run(
@@ -420,7 +430,7 @@ def link_nodes(store, *, owner: str, ids: list[str]) -> int:
     fields = link_fields(store, owner, ids)
     if not fields:
         return 0
-    pk_of = {lbl: pk for lbl, pk, _ in _LINK_TARGETS}
+    pk_of = {lbl: pk for lbl, pk, _ in LINK_TARGETS}
     by_label: dict[str, list[str]] = {}
     for nid, got in fields.items():
         by_label.setdefault(got[0], []).append(pkns.key(owner, nid))
@@ -457,7 +467,7 @@ def ensure_late_links(store) -> dict:
     if len(owners) > 1:
         for o in owners:
             ids: list[str] = []
-            for label, pk, _ in _LINK_TARGETS:
+            for label, pk, _ in LINK_TARGETS:
                 every = store.run(f"MATCH (c:{label}) WHERE c.owner_id = $o RETURN c.{pk} AS id",
                                   {"o": o}) or []
                 linked = store.run(
