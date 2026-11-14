@@ -5,8 +5,8 @@
 넘기고, 없으면 창을 연다. 그래서 파이썬에 동사가 늘었는데 이 배열이 그대로면, 앱 바이너리로
 부른 그 동사만 조용히 창을 띄운다.
 
-이 시험은 파이썬 쪽을 소스 문자열이 아니라 **실제로 조립한 파서**에서 읽는다. `_main` 이
-파서를 다 만든 뒤 `parse_args` 를 부르는 순간 멈추게 하므로, 동사를 실행하지 않는다.
+이 시험은 파이썬 쪽을 소스 문자열이 아니라 **실제로 조립한 파서**(`api.cli.build_parser()`)에서
+읽는다. `_main` 이 해석하고 실행하는 그 파서이고, 조립만 하므로 동사를 실행하지 않는다.
 
 `HUB_ONLY_BY_DECISION` 은 파이썬에는 있고 Rust 목록에는 일부러 없는 동사다. 허브나 오프라인
 스토어 사본에서 운영자가 부르는 유지보수 동사라 앱 바이너리로는 넘기지 않는다. 동사마다 이유를
@@ -16,12 +16,9 @@
 from __future__ import annotations
 
 import argparse
-import io
 import os
 import re
-import sys
 import unittest
-from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MAIN_RS = os.path.join(ROOT, "app", "src-tauri", "src", "main.rs")
@@ -36,29 +33,9 @@ HUB_ONLY_BY_DECISION: dict[str, str] = {
 }
 
 
-class _Built(Exception):
-    def __init__(self, parser: argparse.ArgumentParser) -> None:
-        super().__init__("parser built")
-        self.parser = parser
-
-
-def _stop_before_parse(self, *args, **kwargs):
-    # 파서가 다 조립된 지점: 인자를 해석하거나 동사를 실행하기 전에 빠져나온다.
-    raise _Built(self)
-
-
 def python_parser() -> argparse.ArgumentParser:
     from api import cli
-    # `_main` 은 표준 스트림을 UTF-8 로 재구성한다. 시험 프로세스의 스트림은 건드리지 않는다.
-    with mock.patch.object(cli._Parser, "parse_args", _stop_before_parse), \
-            mock.patch.object(sys, "stdout", io.StringIO()), \
-            mock.patch.object(sys, "stderr", io.StringIO()), \
-            mock.patch.object(sys, "stdin", io.StringIO()):
-        try:
-            cli._main([])
-        except _Built as built:
-            return built.parser
-    raise AssertionError("api.cli._main returned without reaching parse_args")
+    return cli.build_parser()
 
 
 def python_verbs(parser: argparse.ArgumentParser) -> set[str]:
