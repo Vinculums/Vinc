@@ -730,12 +730,14 @@ jobs:
             fi
             echo "::endgroup::"
           done
-          "$RUNNER_TEMP/vincs-all/$bin/python" -m pip install -q "$wheel[all,test]"
+          "$RUNNER_TEMP/vincs-all/$bin/python" -m pip install -q "$wheel[all,test]" "hatchling>=1.25"
           # 휠 안에만 있는 어댑터(CrewAI·Hermes)의 시험과, CrewAI 를 다른 두 어댑터와 맞대는 패리티는 여기서 돈다.
           # 셋이 한 설치의 vinc.sdk 를 나눠 쓰는 곳이 이 환경뿐이다. 소스 트리 밖에서 돌려 설치본을 본다.
           test_dir="$RUNNER_TEMP/vincs-installed-tests"
           mkdir -p "$test_dir/parity" "$test_dir/fixtures/output_gate"
           cp integrations/vincs/python/tests/*.py "$test_dir/"
+          # test_hatch_build.py 는 휠을 짓는 훅(hatch_build.py)의 재작성을 이 파일을 불러 직접 시험한다.
+          cp integrations/vincs/python/hatch_build.py "$test_dir/"
           cp integrations/parity/test_crewai_parity.py "$test_dir/parity/"
           cp integrations/fixtures/output_gate/hand-labelled.json \
              integrations/fixtures/output_gate/proposed-role-checks.json "$test_dir/fixtures/output_gate/"
