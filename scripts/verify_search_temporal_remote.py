@@ -3,12 +3,22 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
+from pathlib import Path
 from urllib.parse import urlencode
 import urllib.error
 import urllib.request
 
-from verify_layout_remote import BASE, VerificationError, urlopen
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from vinc_mcp.hubhttp import urlopen  # noqa: E402  리다이렉트를 따르지 않는 한 자리
+
+BASE = "https://vincs.io/api/graph"
+
+
+class VerificationError(RuntimeError):
+    pass
+
 
 FIELDS = {"created_at", "updated_at", "content_time", "valid_from", "valid_until",
           "superseded_by", "validity", "supersession", "supersedes", "claim_status", "conflicts"}

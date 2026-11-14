@@ -174,37 +174,5 @@
         "storageType": "AzureFile"
       }
     ]
-  },
-  "vinc-layout": {
-    "auth": null,
-    "containers": [
-      "vinc-layout"
-    ],
-    "env_names": [
-      "VINC_LAYOUT_TOKEN"
-    ],
-    "ingress": {
-      "allowInsecure": false,
-      "customDomains": [],
-      "external": false,
-      "targetPort": 8080,
-      "transport": "Http"
-    },
-    "mounts": [],
-    "resources": {
-      "cpu": 1.0,
-      "ephemeralStorage": "4Gi",
-      "memory": "2Gi"
-    },
-    "scale": {
-      "cooldownPeriod": 300,
-      "maxReplicas": 1,
-      "minReplicas": 0
-    },
-    "secret_names": [
-      "layout-token",
-      "vincacrazurecrio-vincacr"
-    ],
-    "volumes": []
   }
 }

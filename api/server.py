@@ -277,10 +277,6 @@ class VincApp:
         self.changes = changes.ChangeMarker()
         # 같은 소유자·인자·변경 표식의 전체 그래프 읽기를 다시 계산하지 않는다(`api.graph_cache`).
         self._graph_results = GraphResultCache()
-        # 시간 가지 배치를 배치 컨테이너에 맡기고 결과를 들고 있는다(`api.layout_remote`).
-        # `VINC_LAYOUT_REMOTE` 가 없으면 꺼져 있고 화면이 직접 배치한다.
-        from . import layout_remote
-        self.roots = layout_remote.from_env(read_graph=self._roots_graph, marker=self.changes.read)
         # 주제·타입 어휘 스토어(그래프 밖 메타 — <data_dir>.themes.json, DB 파일 형제).
         # D11-R2. 그래프(store)와 분리 — 어휘는 사용자 저작, 그래프는 인스턴스.
         from store.theme_store import ThemeStore
@@ -805,7 +801,6 @@ class VincApp:
         if hasattr(self, "_conversion_jobs"):
             self._conversion_jobs.close()
         self._graph_reads.close()
-        self.roots.close()
         self.jobs.shutdown(drain=True)
         if self.store is not None:
             state = self._maybe_snapshot(force=True)
@@ -879,15 +874,10 @@ class VincApp:
         return self._read(lambda r: self._query_graph(p, r))
 
     def read_graph_roots(self, p):
-        """들고 있는 시간 가지 배치. 범위는 전체 그래프 하나다(주제를 고른 읽기는 화면이 직접 배치한다)."""
-        # `have`: 화면이 이미 그린 답의 digest. 같으면 본문 없이 상태만 간다(`api.layout_remote`).
-        return self.roots.get(_req(p, "owner"), p.get("basis") or "recorded",
-                              str(p.get("have") or "")[:64] or None)
-
-    def _roots_graph(self, owner):
-        # 화면의 시간 가지 읽기와 같은 인구다: hub 배치, 주제 선택 없음, 원뿔 1.
-        code, result = self._read(lambda r: self._query_graph({"owner": owner, "layout": "hub"}, r))
-        return result if code == 200 else None
+        """시간 가지 배치 라우트의 자리. 배치를 맡아 줄 곳이 없으므로 늘 꺼진 답이고, 화면이 직접 배치한다.
+        소유자는 그대로 요구한다. 이 라우트를 부르는 클라이언트가 있어 경로는 남긴다."""
+        _req(p, "owner")
+        return 200, {"executed": True, "state": "off"}
 
     def _query_graph(self, p, r):
         # 표식은 **계산 전에** 잡는다: 계산 중 끝난 쓰기는 옛 표식 아래로 들어가 다시 읽히지
@@ -1433,10 +1423,8 @@ class VincApp:
         if code == 202 and isinstance(obj, dict) and obj.get("job_id"):
             pred = changes.sync_brought_something if path == "/sync" else None
             self.changes.bump_when_done(owner, self.jobs.get(str(obj["job_id"])), pred)
-            self.roots.note_write(owner)
             return
         self.changes.bump(owner)
-        self.roots.note_write(owner)
 
     def read_conventions(self, p):
         """관례(GRAPH.md) 조회 — 어시스턴트가 **쓰기 전에** 읽는 채널([[vinc.canon.graph-conventions]] §6.2).
