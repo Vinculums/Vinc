@@ -1,0 +1,657 @@
+{
+ "namespaced": {
+ },
+ "plain": {
+  "같은 본문: 건너뜀": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "Graph", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": false, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "needs_embed": true, "owner": "user:alice", "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": true, "superseded_by": "", "title": "Graph", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "같은 본문: 기대 해시가 맞다": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": false, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "needs_embed": true, "owner": "user:alice", "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": true, "superseded_by": "", "title": "", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "같은 본문: 내용 시점 형식 위반": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "2026", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": false, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "needs_embed": true, "owner": "user:alice", "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": true, "superseded_by": "", "title": "", "valid_from": "", "valid_until": ""},
+   "tombstones": [],
+   "warnings": [
+    "content_time 'later' is not YYYY[-MM[-DD]] — kept the stored value"
+   ]
+  },
+  "같은 본문: 내용 시점만 바뀜": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "2025", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 2, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": false, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 2, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "같은 본문: 새 제목은 다시 쓴다": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [
+    {"chunk": "doc-a#00000", "concept": "concept:graph-store", "method": "title"},
+    {"chunk": "doc-a#00000", "concept": "concept:vector-index", "method": "title"}
+   ],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 2, "title": "Store", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": false, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 2, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 1, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 2, "title": "Store", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "같은 본문: 유효구간 생략은 보존": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "2026-01", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": false, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "needs_embed": true, "owner": "user:alice", "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": true, "superseded_by": "", "title": "", "valid_from": "2026-01", "valid_until": ""},
+   "tombstones": []
+  },
+  "같은 본문: 유효구간만 바뀜": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 2, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": "2026-06"}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": false, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 2, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": "2026-06"},
+   "tombstones": []
+  },
+  "같은 본문: 제목 비움은 다시 쓴다": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 2, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": false, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 1, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 2, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "같은 본문: 제목 생략은 보존하고 건너뜀": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "Graph", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": false, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "needs_embed": true, "owner": "user:alice", "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": true, "superseded_by": "", "title": "Graph", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "같은 본문: 주제만": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "Graph", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [
+    {"domain": "vinc/test", "id": "concept:doc.doc-a", "owner": "user:alice", "title": "Graph"}
+   ],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": false, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "needs_embed": true, "owner": "user:alice", "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": true, "superseded_by": "", "title": "Graph", "topic": "vinc/test", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "같은 본문: 출처만 바뀜": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "notes/new.md", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [
+    {"chunk": "doc-a#00000", "concept": "concept:graph-store", "method": "title"},
+    {"chunk": "doc-a#00000", "concept": "concept:vector-index", "method": "title"}
+   ],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "notes/new.md", "owner": "user:alice", "superseded_by": "", "sync_seq": 2, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": false, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 2, "needs_embed": true, "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 2, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "거절: create_only 인데 이미 있다": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"doc_id": "doc-a", "error": "write_conflict", "executed": false, "hint": "<str 165>", "kind": "doc.put", "owner": "user:alice", "status": "conflict"},
+   "tombstones": []
+  },
+  "거절: doc_id 에 U+001F": {
+   "chunks": [],
+   "mentions": [],
+   "meta": [],
+   "mirrors": [],
+   "result": {"error": "owner/doc_id/title/origin must not contain U+001F (reserved for PK namespacing)", "executed": false, "kind": "doc.put", "owner": "user:alice"},
+   "tombstones": []
+  },
+  "거절: owner 가 문자열이 아니다": {
+   "chunks": [],
+   "mentions": [],
+   "meta": [],
+   "mirrors": [],
+   "result": {"error": "owner is required — 정본(SSoT)은 무소유로 두지 않는다(SEC-1)", "executed": false, "kind": "doc.put", "owner": 5},
+   "tombstones": []
+  },
+  "거절: owner 없음": {
+   "chunks": [],
+   "mentions": [],
+   "meta": [],
+   "mirrors": [],
+   "result": {"error": "owner is required — 정본(SSoT)은 무소유로 두지 않는다(SEC-1)", "executed": false, "kind": "doc.put", "owner": ""},
+   "tombstones": []
+  },
+  "거절: superseded_by 가 자기 자신": {
+   "chunks": [],
+   "mentions": [],
+   "meta": [],
+   "mirrors": [],
+   "result": {"doc_id": "doc-a", "error": "superseded_by must name a different document", "executed": false, "kind": "doc.put", "owner": "user:alice"},
+   "tombstones": []
+  },
+  "거절: text 가 문자열이 아니다": {
+   "chunks": [],
+   "mentions": [],
+   "meta": [],
+   "mirrors": [],
+   "result": {"error": "text must be a string", "executed": false, "kind": "doc.put", "owner": "user:alice"},
+   "tombstones": []
+  },
+  "거절: valid_from 형식": {
+   "chunks": [],
+   "mentions": [],
+   "meta": [],
+   "mirrors": [],
+   "result": {"doc_id": "doc-a", "error": "invalid valid_from '2026/01/01': use YYYY, YYYY-MM or YYYY-MM-DD", "executed": false, "kind": "doc.put", "owner": "user:alice"},
+   "tombstones": []
+  },
+  "거절: valid_until 형식": {
+   "chunks": [],
+   "mentions": [],
+   "meta": [],
+   "mirrors": [],
+   "result": {"doc_id": "doc-a", "error": "invalid valid_until 'soon': use YYYY, YYYY-MM or YYYY-MM-DD", "executed": false, "kind": "doc.put", "owner": "user:alice"},
+   "tombstones": []
+  },
+  "거절: 기대 해시가 다르다": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"current_content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "doc_id": "doc-a", "error": "write_conflict", "executed": false, "hint": "<str 165>", "kind": "doc.put", "owner": "user:alice", "status": "conflict"},
+   "tombstones": []
+  },
+  "거절: 남의 문서": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:bob", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:bob", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"doc_id": "doc-a", "error": "doc_id unavailable: this id cannot be written from this account; choose a different doc_id", "executed": false, "kind": "doc.put", "owner": "user:alice"},
+   "tombstones": []
+  },
+  "거절: 옛 관례 id 남이 점유하고 조건부": {
+   "chunks": [
+    {"cc": 140, "ce": 140, "cs": 0, "doc": "graph.md", "id": "graph.md#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:bob", "sec": "Graph Store", "text": "<str 140>"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "graph.md", "hash": "162f6b7a48fa8d5bb63e055bc3e6c3947d7c5c99c894ff6095a738920aca9263", "needs_embed": 1, "origin": "", "owner": "user:bob", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"error": "document_unavailable", "executed": false, "kind": "doc.put", "owner": "user:alice", "status": "unavailable"},
+   "tombstones": []
+  },
+  "거절: 제목에 U+001F": {
+   "chunks": [],
+   "mentions": [],
+   "meta": [],
+   "mirrors": [],
+   "result": {"error": "owner/doc_id/title/origin must not contain U+001F (reserved for PK namespacing)", "executed": false, "kind": "doc.put", "owner": "user:alice"},
+   "tombstones": []
+  },
+  "신규: create_only": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": true, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "신규: id 지정": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "Graph", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": true, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 1, "title": "Graph", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "신규: id 파생": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "da91c076fec80b244", "id": "da91c076fec80b244#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "da91c076fec80b244", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "Graph", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": true, "doc_id": "da91c076fec80b244", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 1, "title": "Graph", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "신규: 고친 시각 지정": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "2026-01-02T03:04:05.000Z", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "2026-01-02T03:04:05.000Z", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": true, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "2026-01-02T03:04:05.000Z", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "신규: 내용 시점": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "2026-03", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": true, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "신규: 내용 시점 형식 위반": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": true, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": [],
+   "warnings": [
+    "content_time 'March' is not YYYY[-MM[-DD]] — kept the stored value"
+   ]
+  },
+  "신규: 레이어": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "reference", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": true, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "신규: 링크 끔": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "Graph", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": true, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 1, "title": "Graph", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "신규: 만든 시각 지정": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "2026-01-02T03:04:05.000Z", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": true, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "신규: 본문이 다른 doc_id 를 선언": {
+   "chunks": [
+    {"cc": 69, "ce": 69, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Declared", "text": "---\ndoc_id: vinc.other.name\n---\n# Declared\n\nBody with a declared id.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "d2573b550744836cec63346d86555d44c829472a4b9a4cf6f43032036611ce63", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "d2573b550744836cec63346d86555d44c829472a4b9a4cf6f43032036611ce63", "created": true, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": [],
+   "warnings": [
+    "the body declares doc_id 'vinc.other.name' but this write targets 'doc-a' — the body's declaration is not the store id, and using it as one creates a second document"
+   ]
+  },
+  "신규: 언급 링크": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [
+    {"chunk": "doc-a#00000", "concept": "concept:graph-store", "method": "title"},
+    {"chunk": "doc-a#00000", "concept": "concept:vector-index", "method": "title"}
+   ],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "Graph", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": true, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 2, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 1, "title": "Graph", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "신규: 여러 청크": {
+   "chunks": [
+    {"cc": 60, "ce": 426, "cs": 366, "doc": "doc-a", "id": "doc-a#00005", "idx": 5, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "", "text": "Graph Store paragraph 5 with enough words to fill a chunk.\n\n"},
+    {"cc": 71, "ce": 153, "cs": 82, "doc": "doc-a", "id": "doc-a#00001", "idx": 1, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Part 2", "text": "Graph Store paragraph 1 with enough words to fill a chunk.\n\n## Part 2\n\n"},
+    {"cc": 71, "ce": 224, "cs": 153, "doc": "doc-a", "id": "doc-a#00002", "idx": 2, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Part 3", "text": "Graph Store paragraph 2 with enough words to fill a chunk.\n\n## Part 3\n\n"},
+    {"cc": 71, "ce": 295, "cs": 224, "doc": "doc-a", "id": "doc-a#00003", "idx": 3, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Part 4", "text": "Graph Store paragraph 3 with enough words to fill a chunk.\n\n## Part 4\n\n"},
+    {"cc": 71, "ce": 366, "cs": 295, "doc": "doc-a", "id": "doc-a#00004", "idx": 4, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Part 5", "text": "Graph Store paragraph 4 with enough words to fill a chunk.\n\n## Part 5\n\n"},
+    {"cc": 82, "ce": 82, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Part 0", "text": "## Part 0\n\nGraph Store paragraph 0 with enough words to fill a chunk.\n\n## Part 1\n\n"}
+   ],
+   "mentions": [
+    {"chunk": "doc-a#00000", "concept": "concept:graph-store", "method": "title"},
+    {"chunk": "doc-a#00001", "concept": "concept:graph-store", "method": "title"},
+    {"chunk": "doc-a#00002", "concept": "concept:graph-store", "method": "title"},
+    {"chunk": "doc-a#00003", "concept": "concept:graph-store", "method": "title"},
+    {"chunk": "doc-a#00004", "concept": "concept:graph-store", "method": "title"},
+    {"chunk": "doc-a#00005", "concept": "concept:graph-store", "method": "title"}
+   ],
+   "meta": [
+    {"chunks": 6, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "44e80fe9244a84f18deecc1ce0ac1b57f9327ddcc99588b2223b9f7c3f6b36d0", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 6, "content_hash": "44e80fe9244a84f18deecc1ce0ac1b57f9327ddcc99588b2223b9f7c3f6b36d0", "created": true, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 6, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "신규: 옛 관례 id 남이 점유": {
+   "chunks": [
+    {"cc": 140, "ce": 140, "cs": 0, "doc": "graph.md", "id": "graph.md#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:bob", "sec": "Graph Store", "text": "<str 140>"},
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "graph.md~dabd1db8d35ab131", "id": "graph.md~dabd1db8d35ab131#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "graph.md", "hash": "162f6b7a48fa8d5bb63e055bc3e6c3947d7c5c99c894ff6095a738920aca9263", "needs_embed": 1, "origin": "", "owner": "user:bob", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "graph.md~dabd1db8d35ab131", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": true, "doc_id": "graph.md~dabd1db8d35ab131", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "신규: 옛 관례 id 빈 자리": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "graph.md", "id": "graph.md#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "graph.md", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": true, "doc_id": "graph.md", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "신규: 외부 경계": {
+   "chunks": [
+    {"cc": 110, "ce": 140, "cs": 30, "doc": "doc-a", "id": "doc-a#00001", "idx": 1, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Write Path", "text": "ps nodes. The Vector Index ranks chunks.\n\n## Write Path\n\nThe Write Path commits once and Graph Store answers.\n"},
+    {"cc": 30, "ce": 30, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store kee"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 2, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "162f6b7a48fa8d5bb63e055bc3e6c3947d7c5c99c894ff6095a738920aca9263", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 2, "content_hash": "162f6b7a48fa8d5bb63e055bc3e6c3947d7c5c99c894ff6095a738920aca9263", "created": true, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "신규: 유효구간": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "doc-b", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "2026-01", "valid_until": "2026-12-31"}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": true, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "doc-b", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "2026-01", "valid_until": "2026-12-31"},
+   "tombstones": []
+  },
+  "신규: 제목 없음": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": true, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "신규: 주제": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [
+    {"chunk": "doc-a#00000", "concept": "concept:doc.doc-a", "method": "title"},
+    {"chunk": "doc-a#00000", "concept": "concept:graph-store", "method": "title"},
+    {"chunk": "doc-a#00000", "concept": "concept:vector-index", "method": "title"}
+   ],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "Graph", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [
+    {"domain": "vinc/test", "id": "concept:doc.doc-a", "owner": "user:alice", "title": "Graph"}
+   ],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": true, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 3, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 1, "title": "Graph", "topic": "vinc/test", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "신규: 출처": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "notes/graph.md", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "notes/graph.md", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": true, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "신규: 프런트매터 주제·관계에 미러 없음": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Front", "text": "---\ndomain: vinc/test\nrelated: [doc:x]\n---\n# Front\n\nFront matter body.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "40c2352905e3c6a1111eb99cdcef1e09f6d812f7af995fbe4d6466e516fe207e", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "40c2352905e3c6a1111eb99cdcef1e09f6d812f7af995fbe4d6466e516fe207e", "created": true, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": [],
+   "warnings": [
+    "concept:doc.doc-a does not exist, so this document has no topic and no relations: pass topic to create it; the front matter's domain: vinc/test is text and was not applied; the front matter's related lines are text, not edges; send them with vinc_ingest from concept:doc.doc-a"
+   ]
+  },
+  "신규: 프런트매터 주제·관계에 미러 있음": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Front", "text": "---\ndomain: vinc/test\nrelated: [doc:x]\n---\n# Front\n\nFront matter body.\n"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "40c2352905e3c6a1111eb99cdcef1e09f6d812f7af995fbe4d6466e516fe207e", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 1, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [
+    {"domain": "vinc/test", "id": "concept:doc.doc-a", "owner": "user:alice", "title": "doc-a"}
+   ],
+   "result": {"chunks": 1, "content_hash": "40c2352905e3c6a1111eb99cdcef1e09f6d812f7af995fbe4d6466e516fe207e", "created": true, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 0, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 1, "title": "", "topic": "vinc/test", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "편집: 기대 해시가 맞다": {
+   "chunks": [
+    {"cc": 140, "ce": 140, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "<str 140>"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "162f6b7a48fa8d5bb63e055bc3e6c3947d7c5c99c894ff6095a738920aca9263", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 2, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "162f6b7a48fa8d5bb63e055bc3e6c3947d7c5c99c894ff6095a738920aca9263", "created": false, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 1, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 2, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "편집: 만든 시각은 보존": {
+   "chunks": [
+    {"cc": 140, "ce": 140, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "<str 140>"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "2026-01-02T03:04:05.000Z", "doc_id": "doc-a", "hash": "162f6b7a48fa8d5bb63e055bc3e6c3947d7c5c99c894ff6095a738920aca9263", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 2, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "162f6b7a48fa8d5bb63e055bc3e6c3947d7c5c99c894ff6095a738920aca9263", "created": false, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 1, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 2, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "편집: 본문이 길어진다": {
+   "chunks": [
+    {"cc": 140, "ce": 140, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "<str 140>"}
+   ],
+   "mentions": [
+    {"chunk": "doc-a#00000", "concept": "concept:graph-store", "method": "title"},
+    {"chunk": "doc-a#00000", "concept": "concept:vector-index", "method": "title"},
+    {"chunk": "doc-a#00000", "concept": "concept:write-path", "method": "title"}
+   ],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "162f6b7a48fa8d5bb63e055bc3e6c3947d7c5c99c894ff6095a738920aca9263", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 2, "title": "Graph", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "162f6b7a48fa8d5bb63e055bc3e6c3947d7c5c99c894ff6095a738920aca9263", "created": false, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 3, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 1, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 2, "title": "Graph", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "편집: 제목 생략은 보존": {
+   "chunks": [
+    {"cc": 140, "ce": 140, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "<str 140>"}
+   ],
+   "mentions": [],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "162f6b7a48fa8d5bb63e055bc3e6c3947d7c5c99c894ff6095a738920aca9263", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 2, "title": "Graph", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "162f6b7a48fa8d5bb63e055bc3e6c3947d7c5c99c894ff6095a738920aca9263", "created": false, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 0, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 1, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 2, "title": "Graph", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "편집: 주제와 함께": {
+   "chunks": [
+    {"cc": 140, "ce": 140, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "<str 140>"}
+   ],
+   "mentions": [
+    {"chunk": "doc-a#00000", "concept": "concept:graph-store", "method": "title"},
+    {"chunk": "doc-a#00000", "concept": "concept:vector-index", "method": "title"},
+    {"chunk": "doc-a#00000", "concept": "concept:write-path", "method": "title"}
+   ],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "162f6b7a48fa8d5bb63e055bc3e6c3947d7c5c99c894ff6095a738920aca9263", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 2, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [
+    {"domain": "vinc/other", "id": "concept:doc.doc-a", "owner": "user:alice", "title": "doc-a"}
+   ],
+   "result": {"chunks": 1, "content_hash": "162f6b7a48fa8d5bb63e055bc3e6c3947d7c5c99c894ff6095a738920aca9263", "created": false, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 3, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 1, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 2, "title": "", "topic": "vinc/other", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "편집: 청크가 는다": {
+   "chunks": [
+    {"cc": 60, "ce": 426, "cs": 366, "doc": "doc-a", "id": "doc-a#00005", "idx": 5, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "", "text": "Graph Store paragraph 5 with enough words to fill a chunk.\n\n"},
+    {"cc": 71, "ce": 153, "cs": 82, "doc": "doc-a", "id": "doc-a#00001", "idx": 1, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Part 2", "text": "Graph Store paragraph 1 with enough words to fill a chunk.\n\n## Part 2\n\n"},
+    {"cc": 71, "ce": 224, "cs": 153, "doc": "doc-a", "id": "doc-a#00002", "idx": 2, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Part 3", "text": "Graph Store paragraph 2 with enough words to fill a chunk.\n\n## Part 3\n\n"},
+    {"cc": 71, "ce": 295, "cs": 224, "doc": "doc-a", "id": "doc-a#00003", "idx": 3, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Part 4", "text": "Graph Store paragraph 3 with enough words to fill a chunk.\n\n## Part 4\n\n"},
+    {"cc": 71, "ce": 366, "cs": 295, "doc": "doc-a", "id": "doc-a#00004", "idx": 4, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Part 5", "text": "Graph Store paragraph 4 with enough words to fill a chunk.\n\n## Part 5\n\n"},
+    {"cc": 82, "ce": 82, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Part 0", "text": "## Part 0\n\nGraph Store paragraph 0 with enough words to fill a chunk.\n\n## Part 1\n\n"}
+   ],
+   "mentions": [
+    {"chunk": "doc-a#00000", "concept": "concept:graph-store", "method": "title"},
+    {"chunk": "doc-a#00001", "concept": "concept:graph-store", "method": "title"},
+    {"chunk": "doc-a#00002", "concept": "concept:graph-store", "method": "title"},
+    {"chunk": "doc-a#00003", "concept": "concept:graph-store", "method": "title"},
+    {"chunk": "doc-a#00004", "concept": "concept:graph-store", "method": "title"},
+    {"chunk": "doc-a#00005", "concept": "concept:graph-store", "method": "title"}
+   ],
+   "meta": [
+    {"chunks": 6, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "44e80fe9244a84f18deecc1ce0ac1b57f9327ddcc99588b2223b9f7c3f6b36d0", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 2, "title": "Graph", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 6, "content_hash": "44e80fe9244a84f18deecc1ce0ac1b57f9327ddcc99588b2223b9f7c3f6b36d0", "created": false, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 6, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 1, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 2, "title": "Graph", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  },
+  "편집: 청크가 준다": {
+   "chunks": [
+    {"cc": 71, "ce": 71, "cs": 0, "doc": "doc-a", "id": "doc-a#00000", "idx": 0, "layer": "ssot", "origin": "", "owner": "user:alice", "sec": "Graph Store", "text": "# Graph Store\n\nGraph Store keeps nodes. The Vector Index ranks chunks.\n"}
+   ],
+   "mentions": [
+    {"chunk": "doc-a#00000", "concept": "concept:graph-store", "method": "title"},
+    {"chunk": "doc-a#00000", "concept": "concept:vector-index", "method": "title"}
+   ],
+   "meta": [
+    {"chunks": 1, "content_time": "", "created_at": "<hlc>", "doc_id": "doc-a", "hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "needs_embed": 1, "origin": "", "owner": "user:alice", "superseded_by": "", "sync_seq": 2, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""}
+   ],
+   "mirrors": [],
+   "result": {"chunks": 1, "content_hash": "982da1c34f5463a89be38fa4032f532c9b2ae2f99098794fb46d052c813a4225", "created": false, "doc_id": "doc-a", "executed": true, "kind": "doc.put", "mentions": 2, "needs_embed": true, "note": "search indexes dropped — 검색 경로가 지연 재빌드(T3b)", "owner": "user:alice", "replaced": 6, "retrieval": {"document_vectors": "pending", "keyword_text": "stored", "query_index": "not_checked"}, "skipped": false, "superseded_by": "", "sync_seq": 2, "title": "", "updated_at": "<hlc>", "valid_from": "", "valid_until": ""},
+   "tombstones": []
+  }
+ }
+}
