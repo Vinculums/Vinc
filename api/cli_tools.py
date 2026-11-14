@@ -24,15 +24,14 @@ class _InProcessBridge:
         self.owner = os.environ.get("VINC_OWNER") or DEFAULT_OWNER
 
     def request(self, method, path, params=None, body=None, **_kw):
-        from .server import _Handler
+        from . import routes
 
-        # HTTP 셸과 같은 디스패치 표를 쓴다. 소켓과 두 번째 스토어는 만들지 않는다.
+        # HTTP 셸과 같은 디스패치(`api.routes`)를 쓴다. 소켓과 두 번째 스토어는 만들지 않는다.
         started = time.perf_counter()
         if method == "GET":
-            _status, result = _Handler._route_get(self, path, params or {})
+            _status, result = routes.dispatch(self.app, method, path, params or {})
         elif method == "POST":
-            self._POST_WITHOUT_STORE = _Handler._POST_WITHOUT_STORE
-            _status, result = _Handler._route_post(self, path, body or {})
+            _status, result = routes.dispatch(self.app, method, path, body or {})
         else:
             raise ValueError(f"unsupported local method: {method}")
         route = path + ("?" + urlencode(params) if params else "")
