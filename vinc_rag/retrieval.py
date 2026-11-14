@@ -366,11 +366,73 @@ def _attach_doc_titles(store, rows: list[dict], *, owner: str | None = None,
             for g in got}
 
 
-def _drop_retired_doc_rows(base: dict, validity: dict, *, historical: bool, scope) -> None:
+#: 구간 거르기 셈이 응답에 싣는 키. 값은 :class:`Validity` 만 만든다.
+_VALIDITY_KEYS = ("validity_filtered", "doc_validity_filtered", "validity_best_dropped",
+                  "validity_note", "validity_best_dropped_distance")
+
+
+class Validity:
+    """검색 응답의 구간 거르기 셈(``validity_filtered``, ``doc_validity_filtered``,
+    ``validity_best_dropped``, ``validity_note``, ``validity_best_dropped_distance``)을 쥔다.
+
+    단계는 이 키들을 응답 dict 에 직접 쓰지 않고 여기에 쌓는다. 한 키를 여러 단계가 쓰고, 쓰는
+    방식이 셋이라 **단계의 순서가 곧 값이다**:
+
+    - :meth:`set` 은 덮어쓴다. 마지막에 쓴 값이 이긴다.
+    - :meth:`add` 는 지금 값에 더한다(없으면 0 에서 시작하고 정수로 맞춘다).
+    - :meth:`default` 는 키가 아직 없을 때만 쓴다.
+
+    쓰는 자리를 실행 순서로 적는다(키: 방식):
+
+    1. 제목 팔, current 에서 가린 노드: ``validity_filtered``: set.
+    2. 제목 팔, 기간 밖이라 지운 노드: ``validity_filtered``, ``validity_best_dropped``,
+       ``validity_note``: 모두 set.
+    3. 청크 풀, current 에서 가린 문서의 청크: ``validity_filtered``: add, ``doc_validity_filtered``:
+       set. 이어 계보로 지운 행: 둘 다 add.
+    4. 페이지, 은퇴한 문서의 행(current 가 아닐 때): ``validity_filtered``: add,
+       ``doc_validity_filtered``: set, ``validity_note``: default.
+    5. 의미 팔 뒤 갱신: ``validity_filtered``: set(``doc_validity_filtered`` 를 읽는다),
+       ``validity_best_dropped``: default, ``validity_note``: default,
+       ``validity_best_dropped_distance``: set.
+    6. 시간 마감(:func:`_finish_search_temporal`): ``validity_filtered``: add, ``validity_note``: default.
+
+    :meth:`flush` 는 지난 flush 뒤에 바뀐 키만 바뀐 순서대로 목적지 dict 에 쓴다. 응답의 키 순서는
+    바이트 계약이라(``validity_*`` 가 다른 키 사이에 끼는 자리까지 정해져 있다) 각 키는 지금까지
+    처음 들어가던 단계의 patch 에 그대로 들어간다. 값은 이 객체가 정하므로 응답 쪽에서 읽어 더하는
+    자리는 없다. ``seed`` 가 있으면 그 dict 에 이미 실린 키로 시작한다(바뀐 키로 치지 않는다)."""
+
+    __slots__ = ("_vals", "_dirty")
+
+    def __init__(self, seed: dict | None = None) -> None:
+        self._vals: dict = {k: seed[k] for k in _VALIDITY_KEYS if k in seed} if seed else {}
+        self._dirty: dict = {}
+
+    def get(self, key: str):
+        return self._vals.get(key)
+
+    def set(self, key: str, value) -> None:
+        self._vals[key] = value
+        self._dirty[key] = None
+
+    def add(self, key: str, n: int) -> None:
+        self.set(key, int(self._vals.get(key) or 0) + n)
+
+    def default(self, key: str, value) -> None:
+        if key not in self._vals:
+            self.set(key, value)
+
+    def flush(self, dest) -> None:
+        for key in self._dirty:
+            dest[key] = self._vals[key]
+        self._dirty.clear()
+
+
+def _drop_retired_doc_rows(base: dict, validity: dict, *, historical: bool, scope, acc: Validity) -> None:
     """청크 행을 **문서의** 유효구간으로 거른다(v22). 기본은 은퇴한 문서를 감추고,
     `historical` 이면 그대로, `as_of` 기간이면 그 기간에 성립한 문서만 남긴다. 감춘 수는
-    `validity_filtered` 에 더하고 `doc_validity_filtered` 로도 센다. 순위와 커서는 그대로라
-    이 페이지가 `limit` 보다 짧아질 수 있다.
+    `acc` 의 `validity_filtered` 에 더하고 `doc_validity_filtered` 로도 센다(응답에 싣는 것은
+    부르는 쪽이 `acc.flush` 로 한다). 순위와 커서는 그대로라 이 페이지가 `limit` 보다 짧아질
+    수 있다.
     근거: [[vinc.plan.temporal-edges-point-in-time-document-validity-2026-09-28]] §3"""
     if (historical and scope is None) or not validity:
         return
@@ -385,10 +447,10 @@ def _drop_retired_doc_rows(base: dict, validity: dict, *, historical: bool, scop
             hidden += 1
     if hidden:
         base["rows"] = kept
-        base["validity_filtered"] = int(base.get("validity_filtered") or 0) + hidden
-        base["doc_validity_filtered"] = hidden
-        base.setdefault("validity_note", "hid chunks of documents whose validity ended; "
-                                         "pass historical=true to include them")
+        acc.add("validity_filtered", hidden)
+        acc.set("doc_validity_filtered", hidden)
+        acc.default("validity_note", "hid chunks of documents whose validity ended; "
+                                     "pass historical=true to include them")
 
 
 def recall(query: str = "", *, owner: str | None = None, tenant: str | None = None,
@@ -1288,16 +1350,18 @@ def _node_model_mismatch(store, owner: str | None, query_model: str | None) -> d
 
 
 def _title_arm(store, query, *, continuation, owner, mode, historical, known_at,
-               _wide, _nk, _kw, _scope, _until, _vstats, _vnote) -> tuple[list[dict], dict]:
+               _wide, _nk, _kw, _scope, _until, _vstats, _vnote,
+               _validity) -> tuple[list[dict], dict]:
     """노드 제목 팔(3): ``(title_hits, patch)`` 를 돌려준다.
     ``_search`` 에서 그대로 떼어 낸 본문이라 인자 이름도 거기서 쓰던 것(밑줄 포함)과 같다.
 
     응답 dict 를 받지 않는다. 응답에 얹을 키(``validity_filtered``, ``known_at_filtered``,
     ``known_at_unknown``, ``node_error``, ``validity_best_dropped``, ``validity_note``,
     ``node_hits``)는 ``patch`` 로만 내보내고, 부르는 쪽이 부른 **바로 뒤에** ``base.update`` 로
-    얹는다 — 키가 들어가는 순서가 응답 키 순서다. ``validity_filtered`` 는 이 팔 안에서
-    두 군데에서 쓰고 뒤에 쓴 값이 이긴다(patch 에서도 같은 순서). ``_vstats`` 는 제자리에서
-    고친다(뒤의 청크 팔과 그래프 팔이 읽는다).
+    얹는다 — 키가 들어가는 순서가 응답 키 순서다. ``validity_*`` 는 ``_validity`` (:class:`Validity`)
+    에 쌓고 쓴 자리에서 ``patch`` 로 flush 한다. ``validity_filtered`` 는 이 팔 안에서 두 군데에서
+    쓰고 뒤에 쓴 값이 이긴다. ``_vstats`` 와 ``_validity`` 는 제자리에서 고친다(뒤의 청크 팔과
+    그래프 팔이 읽는다).
 
     (3) 노드 폴백(title) — FTS/벡터와 무관하게 항상. 실패해도 Chunk 경로 무영향.
     E-G1: 여기서는 title 폴백만 담고, Chunk 하이브리드 뒤 그래프 암과 융합한다."""
@@ -1315,7 +1379,8 @@ def _title_arm(store, query, *, continuation, owner, mode, historical, known_at,
                 temporal.finish_nodes(store, title_hits, owner=owner, scope=_scope, current=True, known_at=known_at, stats=_vstats,
                                       window=0)
                 if _vstats.get("current_hidden"):
-                    patch["validity_filtered"] = len(_vstats["current_hidden"])
+                    _validity.set("validity_filtered", len(_vstats["current_hidden"]))
+                    _validity.flush(patch)
                 if known_at:
                     patch["known_at_filtered"] = len(_vstats.get("known_hidden", ()))
                     patch["known_at_unknown"] = len(_vstats.get("known_unknown", ()))
@@ -1330,27 +1395,28 @@ def _title_arm(store, query, *, continuation, owner, mode, historical, known_at,
     # 걸러 냈으면 **말한다**. 조용히 줄어든 결과는 "그래프에 이것뿐"으로 읽히고,
     # 그건 이 필터가 막으려는 고장과 같은 종이다(`vector_note` 와 같은 태도).
     if _vstats.get("dropped_not_current"):
-        patch["validity_filtered"] = _vstats["dropped_not_current"] + len(_vstats.get("current_hidden", ()))
-        patch["validity_best_dropped"] = list(_vstats.get("best_dropped_score") or (0, 0))
-        patch["validity_note"] = _vnote
+        _validity.set("validity_filtered", _vstats["dropped_not_current"] + len(_vstats.get("current_hidden", ())))
+        _validity.set("validity_best_dropped", list(_vstats.get("best_dropped_score") or (0, 0)))
+        _validity.set("validity_note", _vnote)
+        _validity.flush(patch)
     patch["node_hits"] = title_hits   # 그래프 암 실패해도 최소 title 폴백은 보장
     return title_hits, patch
 
 
 def _chunk_stage(store, query, query_embedding, *, filters, owner, kinds, top_k, cfg,
                  _vstats, known_at, mode, _until, _scope,
-                 base) -> tuple[list[dict], bool, int, dict]:
+                 _validity) -> tuple[list[dict], bool, int, dict]:
     """청크 팔(1)(2)과 그 풀: ``(pool, withheld, chunk_known_hidden, patch)`` 를 돌려준다.
     ``_search`` 에서 그대로 떼어 낸 본문이라 인자 이름도 거기서 쓰던 것(밑줄 포함)과 같다.
 
-    ``base`` 는 **읽기 전용**이다. 앞 단계(제목 팔)가 이미 적은 ``validity_filtered`` 만 읽는다.
-    응답에 얹을 키(``node_window``, ``executed``, ``error``, ``note``, ``arms``, ``keyword_gated``,
-    ``vector_note``, ``vector_rebuilding``, ``partial``, ``temporal_error``, ``validity_filtered``,
-    ``doc_validity_filtered``, ``_current_doc_temporal``, ``total_count``, ``total_count_capped``)는
+    응답 dict 를 받지 않는다. 응답에 얹을 키(``node_window``, ``executed``, ``error``, ``note``,
+    ``arms``, ``keyword_gated``, ``vector_note``, ``vector_rebuilding``, ``partial``,
+    ``temporal_error``, ``validity_filtered``, ``doc_validity_filtered``, ``_current_doc_temporal``,
+    ``total_count``, ``total_count_capped``)는
     ``patch`` 로만 내보내고, 부르는 쪽이 부른 **바로 뒤에** ``base.update`` 로 얹는다. ``error`` 와
     ``vector_note`` 는 이 단계 앞에서는 아무도 쓰지 않으므로 이 단계가 쓴 값만 읽는다.
-    ``validity_filtered`` 는 읽은 값에 더해 쓰므로 부르는 쪽이 제목 팔의 patch 를 먼저 얹은 뒤에
-    불러야 마지막에 쓴 값이 같다.
+    ``validity_filtered`` 와 ``doc_validity_filtered`` 는 ``_validity`` (:class:`Validity`)에 더하고
+    쓴 자리에서 ``patch`` 로 flush 한다. 앞 단계(제목 팔)가 쌓은 값은 ``_validity`` 가 쥐고 있다.
 
     (1)(2) Chunk 하이브리드 — 실패는 error 로 표면화, 인덱스 부재는 지연 빌드 후 재시도.
     GM-14: top_k 가 아니라 **후보 풀**(SEARCH_POOL_CAP)을 가져온다 — 페이지는
@@ -1477,13 +1543,15 @@ def _chunk_stage(store, query, query_embedding, *, filters, owner, kinds, top_k,
             for r in pool:
                 temporal.stamp(r, meta.get(r.get("doc_id"), {}), scope=_scope)
             visible = [r for r in pool if r["temporal"]["validity"] not in ("historical", "future")]
-            patch["validity_filtered"] = int(base.get("validity_filtered") or 0) + len(pool) - len(visible)
-            patch["doc_validity_filtered"] = len(pool) - len(visible)
+            _validity.add("validity_filtered", len(pool) - len(visible))
+            _validity.set("doc_validity_filtered", len(pool) - len(visible))
+            _validity.flush(patch)
             pool = visible
             before_lineage = len(pool)
             temporal.finish_docs(store, pool, owner=owner, scope=_scope, current=True, known_at=known_at)
-            patch["validity_filtered"] += before_lineage - len(pool)
-            patch["doc_validity_filtered"] += before_lineage - len(pool)
+            _validity.add("validity_filtered", before_lineage - len(pool))
+            _validity.add("doc_validity_filtered", before_lineage - len(pool))
+            _validity.flush(patch)
         except Exception as exc:
             # 문서 구간이나 계보를 못 읽으면 어느 청크가 은퇴했는지 모른다. 내지 않는다.
             pool, _withheld = [], True
@@ -1504,18 +1572,19 @@ def _chunk_stage(store, query, query_embedding, *, filters, owner, kinds, top_k,
 
 
 def _paginate(store, query, pool, *, cursor, off, want_eid, want_arms, qh, top_k, detail,
-              owner, mode, historical, _scope, _withheld, base) -> tuple[bool, dict]:
+              owner, mode, historical, _scope, _withheld, base,
+              _validity) -> tuple[bool, dict]:
     """페이지 자르기(GM-14): ``(stale, patch)`` 를 돌려준다. 커서가 낡았으면 ``stale`` 이 참이고
     ``patch`` 에 ``note``·``error``·``executed=False`` 가 실려 있다 — 부르는 쪽이 얹고 끝낸다.
     ``_search`` 에서 그대로 떼어 낸 본문이라 인자 이름도 거기서 쓰던 것과 같다.
 
     ``base`` 는 **읽기 전용**이다. 앞 단계(청크 팔)가 적은 ``error`` 와 ``arms`` 만 읽는다.
     응답에 얹을 키(``note``, ``error``, ``executed``, ``has_more``, ``next_cursor``, ``rows``,
-    ``partial``, ``temporal_error``, ``page``, 그리고 :func:`_drop_retired_doc_rows` 가 쓰는
+    ``partial``, ``temporal_error``, ``page``, 그리고 :func:`_drop_retired_doc_rows` 가 쌓는
     ``validity_filtered``·``doc_validity_filtered``·``validity_note``)는 ``patch`` 로만 내보낸다.
-    그 도우미는 응답 dict 를 직접 고치므로 ``view``(``patch`` 를 먼저, 없으면 ``base`` 를 읽고
-    쓰기는 ``patch`` 로 가는 ChainMap)를 넘긴다 — 도우미는 한 글자도 바뀌지 않는다.
-    ``validity_filtered`` 에 더하는 값은 앞 단계 patch 가 얹힌 ``base`` 에서 읽는다."""
+    그 도우미는 ``rows`` 를 응답 dict 에서 직접 고치므로 ``view``(``patch`` 를 먼저, 없으면 ``base``
+    를 읽고 쓰기는 ``patch`` 로 가는 ChainMap)를 넘기고, ``validity_*`` 는 ``_validity``
+    (:class:`Validity`)에 쌓게 한 뒤 도우미 바로 뒤에 ``patch`` 로 flush 한다."""
     patch: dict = {}
     # 청크 팔이 실패했으면 풀이 비어 모든 커서가 낡아 보인다 — 원래 오류를 그대로 둔다.
     # 1페이지와 다른 팔이 돌았으면(벡터 색인이 사이에 드롭) 순서가 다른 풀이다 — eid 가
@@ -1554,7 +1623,8 @@ def _paginate(store, query, pool, *, cursor, off, want_eid, want_arms, qh, top_k
         _drop_retired_doc_rows(view, _attach_doc_titles(
             store, patch["rows"], owner=owner, include_titles=detail != "full"),
             historical=True if mode == "current" else historical,
-            scope=None if mode == "current" else _scope)
+            scope=None if mode == "current" else _scope, acc=_validity)
+        _validity.flush(patch)
     except Exception as exc:
         patch["partial"] = True
         patch["temporal_error"] = f"{type(exc).__name__}: {exc}"
@@ -1565,7 +1635,7 @@ def _paginate(store, query, pool, *, cursor, off, want_eid, want_arms, qh, top_k
     # MCP 봉투의 크기 안전망(shrinker)이 이어받을 좌표 — 꼬리 행을 덜어낸 뒤
     # 같은 지문으로 next_cursor 를 다시 쓸 수 있게 한다.
     patch["page"] = {"offset": off, "limit": max(1, int(top_k)), "fingerprint": qh}
-    if patch["rows"] and (view.get("doc_validity_filtered") or len(patch["rows"]) < len(page)):
+    if patch["rows"] and (_validity.get("doc_validity_filtered") or len(patch["rows"]) < len(page)):
         # 축소기는 필터 뒤 행 수가 아니라 덜어낸 행의 원본 풀 위치로 이어 읽는다.
         visible_ids = {str(r.get("id") or "") for r in patch["rows"]}
         patch["page"]["row_offsets"] = {
@@ -1879,6 +1949,7 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
     continuation = bool(cursor)
     try:
         _vstats: dict = {}
+        _validity = Validity()
         # 시점 읽기(as_of). 기간이 없으면 오늘 규칙 그대로다 — 기본값에서는 한 바이트도
         # 안 바뀐다. 무엇으로 읽었는지는 응답에 싣는다(`time_scope`): 과거를 읽은 답이
         # 오늘의 답처럼 읽히면 이 기능이 막으려는 고장과 같은 종이다.
@@ -1899,20 +1970,21 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
         title_hits, _title_patch = _title_arm(
             store, query, continuation=continuation, owner=owner, mode=mode,
             historical=historical, known_at=known_at, _wide=_wide, _nk=_nk, _kw=_kw,
-            _scope=_scope, _until=_until, _vstats=_vstats, _vnote=_vnote)
+            _scope=_scope, _until=_until, _vstats=_vstats, _vnote=_vnote, _validity=_validity)
         base.update(_title_patch)
 
         # (1)(2) 청크 팔과 풀. 응답에 얹을 키는 patch 로 받아 부른 바로 뒤에 얹는다.
         pool, _withheld, _chunk_known_hidden, _chunk_patch = _chunk_stage(
             store, query, query_embedding, filters=filters, owner=owner, kinds=kinds,
             top_k=top_k, cfg=cfg, _vstats=_vstats, known_at=known_at, mode=mode,
-            _until=_until, _scope=_scope, base=base)
+            _until=_until, _scope=_scope, _validity=_validity)
         base.update(_chunk_patch)
         # GM-14 페이지네이션. 커서가 낡았으면 patch 에 답이 실려 오고 여기서 끝낸다.
         _stale, _page_patch = _paginate(
             store, query, pool, cursor=cursor, off=off, want_eid=want_eid,
             want_arms=want_arms, qh=qh, top_k=top_k, detail=detail, owner=owner, mode=mode,
-            historical=historical, _scope=_scope, _withheld=_withheld, base=base)
+            historical=historical, _scope=_scope, _withheld=_withheld, base=base,
+            _validity=_validity)
         base.update(_page_patch)
         if _stale:
             return base
@@ -1927,14 +1999,15 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
         # 의미 팔이 더 걸러 냈으면 (3) 에서 적은 공개를 갱신한다 — 셈은 두 팔이 지운 id 의
         # 합집합이다(두 팔이 같은 노드를 지우면 한 번).
         if _vstats.get("dropped_not_current"):
-            base["validity_filtered"] = (_vstats["dropped_not_current"]
-                                         + int(base.get("doc_validity_filtered") or 0)
-                                         + len(_vstats.get("current_hidden", ())))
-            base.setdefault("validity_best_dropped",
-                            list(_vstats.get("best_dropped_score") or (0, 0)))
-            base.setdefault("validity_note", _vnote)
+            _validity.set("validity_filtered", (_vstats["dropped_not_current"]
+                                                + int(_validity.get("doc_validity_filtered") or 0)
+                                                + len(_vstats.get("current_hidden", ()))))
+            _validity.default("validity_best_dropped",
+                              list(_vstats.get("best_dropped_score") or (0, 0)))
+            _validity.default("validity_note", _vnote)
         if "best_dropped_distance" in _vstats:
-            base["validity_best_dropped_distance"] = round(_vstats["best_dropped_distance"], 6)
+            _validity.set("validity_best_dropped_distance", round(_vstats["best_dropped_distance"], 6))
+        _validity.flush(base)
 
         # 이어 읽기에서도 벡터 팔은 다시 돈다. 첫 페이지와 같은 런타임 경고를
         # 반환하기 전에 계산해 두어야 한다.
@@ -1994,6 +2067,7 @@ def _finish_search_temporal(res: dict, store, query: str, *, mode, known_at, kwa
     owner = kwargs.get("owner")
     _, scope, _ = temporal.mode_scope(mode, kwargs.get("historical", False), kwargs.get("as_of"), query)
     stats: dict = {}
+    _validity = Validity(res)
     hits = res.get("node_hits") or []
     try:
         # current 는 넓은 후보를 받는다. 구간 먼저 세우기는 내보낼 노드 창 안에서만 한다.
@@ -2005,7 +2079,8 @@ def _finish_search_temporal(res: dict, store, query: str, *, mode, known_at, kwa
             res["_old_ends"] = stats.get("old_ends") or set()
         hidden = len(stats.get("current_hidden", ()))
         if hidden:
-            res["validity_filtered"] = int(res.get("validity_filtered") or 0) + hidden
+            _validity.add("validity_filtered", hidden)
+            _validity.flush(res)
     except Exception as exc:
         err = _temporal_failed(res, exc)
         if mode == "current" or known_at:
@@ -2053,8 +2128,9 @@ def _finish_search_temporal(res: dict, store, query: str, *, mode, known_at, kwa
         res["known_at_filtered"], res["known_at_unknown"] = hidden, len(unknown)
         res.setdefault("time_scope", {})["known_at"] = {"value": known_at,
             "from": temporal.time_scope(known_at)[0], "until": temporal.time_scope(known_at)[1]}
-    if res.get("validity_filtered"):
-        res.setdefault("validity_note", "some claims are outside the selected time scope; use historical mode to include them")
+    if _validity.get("validity_filtered"):
+        _validity.default("validity_note", "some claims are outside the selected time scope; use historical mode to include them")
+        _validity.flush(res)
 
 
 def _colbert_rescore_on() -> bool:
