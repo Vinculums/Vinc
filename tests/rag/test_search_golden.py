@@ -19,6 +19,11 @@
 
 정규화: HLC 시각은 `<hlc>`, 오늘과 내일 날짜(UTC)는 `<today>`·`<tomorrow>`, 스토어 경로는 `<store>`. 순서는 그대로 둔다
 (순위가 계약이다). 키 순서는 정렬해서 적는다.
+
+비교: 벡터 엔진이 돌려주는 거리(`distance`·`sem_lead`·`validity_best_dropped_distance`)만 절대 오차
+`_ENGINE_FLOAT_TOL` 안이면 같다고 본다. 엔진은 float32 SIMD 라서 CPU 마다 일곱째 자리 근처가 흔들리고, 6자리로
+반올림하면 경계에 걸린 값이 한 칸 달라진다. 점수·순위·구조·나머지 값은 정확히 같아야 한다. 기록 파일은 기록한
+기계의 끝자리를 그대로 담아도 된다.
 """
 from __future__ import annotations
 
@@ -293,6 +298,33 @@ def _expected(name: str):
     return golden.get(_mode(), {}).get(name, golden["plain"][name])
 
 
+#: 벡터 엔진의 거리에서 나오는 키. 이 키의 실수만 허용 오차로 비교한다(모듈 머리말의 "비교").
+_ENGINE_FLOAT_KEYS = frozenset({"distance", "sem_lead", "validity_best_dropped_distance"})
+_ENGINE_FLOAT_TOL = 1e-5
+
+
+def _tolerant(want, key: str = ""):
+    """기대값 트리에서 엔진 거리 키의 실수만 허용 오차 비교자로 바꾼다. 구조·순서·나머지 값은 그대로다."""
+    if isinstance(want, dict):
+        return {k: _tolerant(x, k) for k, x in want.items()}
+    if isinstance(want, list):
+        return [_tolerant(x, key) for x in want]
+    if isinstance(want, float) and key in _ENGINE_FLOAT_KEYS:
+        return pytest.approx(want, abs=_ENGINE_FLOAT_TOL)
+    return want
+
+
+def _shift(tree, delta: float, keys, key: str = ""):
+    """`keys` 에 달린 실수에 `delta` 를 더한 사본. 허용 오차 비교가 어디까지 받는지 재는 데 쓴다."""
+    if isinstance(tree, dict):
+        return {k: _shift(x, delta, keys, k) for k, x in tree.items()}
+    if isinstance(tree, list):
+        return [_shift(x, delta, keys, key) for x in tree]
+    if isinstance(tree, float) and key in keys:
+        return tree + delta
+    return tree
+
+
 def test_케이스_이름이_겹치지_않고_기록과_맞는다():
     names = [c.name for c in CASES]
     assert len(names) == len(set(names))
@@ -309,7 +341,28 @@ def test_응답이_기록과_같다(case, stores):
     finally:
         if own:
             st.close()
-    assert got == _expected(case.name)
+    assert got == _tolerant(_expected(case.name))
+
+
+def test_엔진_거리의_끝자리_차이는_받고_그_밖의_변화는_잡는다():
+    want = json.loads(_golden_text())["plain"]["general, with embedding"]
+    tolerant = _tolerant(want)
+    assert copy.deepcopy(want) == tolerant
+    # 거리 계열의 끝자리 차이(CPU 마다 생기는 크기)는 받는다.
+    for delta in (1e-6, -1e-6):
+        shifted = _shift(want, delta, _ENGINE_FLOAT_KEYS)
+        assert shifted != want
+        assert shifted == tolerant
+    # 허용 오차를 넘는 거리 변화는 잡는다.
+    assert _shift(want, 1e-3, _ENGINE_FLOAT_KEYS) != tolerant
+    # 거리 계열이 아닌 실수는 끝자리 한 칸도 잡는다.
+    for key in ("rrf_score", "score"):
+        assert _shift(want, 1e-6, {key}) != tolerant
+    # 순위(순서)가 바뀌면 잡는다.
+    assert len(want["node_hits"]) > 1
+    reordered = copy.deepcopy(want)
+    reordered["node_hits"].reverse()
+    assert reordered != tolerant
 
 
 def _dump(golden: dict) -> str:
