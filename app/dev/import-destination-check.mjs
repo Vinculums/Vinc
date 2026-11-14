@@ -14,7 +14,8 @@ const { JSDOM } = require("jsdom"); const esbuild = require("esbuild");
 const output = await mkdtemp(join(tmpdir(), "vin351-import-"));
 globalThis.fixtureInvoke = async command => command === "secret_available" ? true
   : command === "secret_get" ? "synthetic-member-key" : null;
-await esbuild.build({ stdin: { contents: 'export * from "./surfaces/intake"; export { cfg, dataMode } from "./api";',
+// 번들 안의 import.meta.env 는 빈 객체로 둔다: vite 밖에서도 빌드 상수(VITE_*)를 읽는 모듈이 떠야 한다.
+await esbuild.build({ define: { "import.meta.env": "{}" }, stdin: { contents: 'export * from "./surfaces/intake"; export { cfg, dataMode } from "./api";',
     resolveDir: join(root, "src"), loader: "ts" },
   bundle: true, format: "esm", platform: "browser", outfile: join(output, "intake.mjs"),
   loader: { ".css": "empty", ".svg": "text" }, logLevel: "silent",

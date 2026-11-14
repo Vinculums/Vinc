@@ -786,11 +786,28 @@ jobs:
             echo "── $f"
             node --experimental-strip-types --disable-warning=ExperimentalWarning "$f"
           done
+      # `app/dev/*-check.mjs` 중 jsdom 위에서 도는 컴포넌트 검사다. 실제 모듈을 esbuild 로 묶고
+      # 가짜 전송로를 붙여 화면 상태를 본다(브라우저·사이드카 없음). jsdom 과 esbuild 는 앱의
+      # 의존성이 아니라서 임시 폴더에 설치하고 `VINC_TEST_MODULES` 로 알려 준다(각 파일 머리와
+      # 같은 방법). 파일을 하나씩 적는 이유: 같은 폴더의 `self-hosted-hub-check.mjs` 는 허브와
+      # 비밀번호가 있어야 돌고, 손으로 쓰는 측정 도구는 이 잡의 일이 아니다.
+      - name: Component checks (jsdom)
+        working-directory: app
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dev-modules"
+          npm install --prefix "$RUNNER_TEMP/dev-modules" --no-audit --no-fund jsdom@26.1.0 esbuild@0.25.12
+          export VINC_TEST_MODULES="$RUNNER_TEMP/dev-modules/package.json"
+          for f in conventions-save import-destination sidebar-startup signin-pending storage-switch; do
+            echo "── dev/$f-check.mjs"
+            node "dev/$f-check.mjs"
+          done
 
   # ── 앱 브라우저 스모크 ─────────────────────────────────────────────────────
-  # 빌드한 앱을 리포의 사이드카(빈 임베디드 스토어에 문서 하나를 심는다)에 붙여 헤드리스
-  # Chromium 으로 다섯 걸음을 본다: 셸 마운트 · 문서 홈 목록 · 문서 열기 · 그래프 나침반 ·
-  # 검색. 걸음마다 잡히지 않은 예외와 콘솔 오류가 없어야 한다. 무엇을 보는지는
+  # 빌드한 앱을 리포의 사이드카(빈 임베디드 스토어에 문서 둘 · 개념 셋 · 역할 하나를 심는다)에 붙여
+  # 헤드리스 Chromium 으로 화면을 열두 걸음 본다: 셸 마운트 · 문서 홈 목록 · 문서 열기 · 그래프
+  # 나침반 · 검색 · 노드 카드와 오른쪽 면 · 문서 리더 · 공유 시트 · 설정 · 승인함 · 에이전트 보드.
+  # 걸음마다 잡히지 않은 예외와 콘솔 오류가 없어야 한다. 무엇을 보는지는
   # `app/dev/browser-smoke.mjs` 머리에 있고, 로컬에서는 `cd app && npm run smoke` 한 줄이다.
   #
   # ⚠ 아직 필수 체크가 아니다(룰셋에 없다). 실패하면 빨갛게 보이지만 머지를 막지 않는다.
@@ -802,7 +819,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.app_smoke == 'true' && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    # 평소 3분 안팎이다. 행(hang)을 잡는 상한이다.
+    # 평소 3분 안팎이다(스모크 자체는 30초 안팎, 나머지는 설치). 행(hang)을 잡는 상한이다.
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
