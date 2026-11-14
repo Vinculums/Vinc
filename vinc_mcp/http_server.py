@@ -820,6 +820,8 @@ class _Handler(BaseHTTPRequestHandler):
             # 커넥션이 닫히기 때문이다.
             # ⚠ `protocol_version = "HTTP/1.1"` 로 올리면 keep-alive 가 살아나 이 잔여물이
             # 다음 요청으로 파싱된다(요청 밀수). 그때는 여기서 `close_connection = True`.
+            # 정수가 아니거나 음수인 길이(`httpbody.BadContentLength`)는 강등하지 않고 올린다:
+            # `do_POST` 가 400 으로 답한다.
             return {}
         # 지문 대조는 **받은 바이트**로 한다(감사 M2). 파싱된 dict 를 다시 직렬화하면
         # 키 순서·공백이 달라져 보낸 쪽과 다른 값이 나온다.
@@ -1010,6 +1012,15 @@ class _Handler(BaseHTTPRequestHandler):
         return self._json(404, {"error": f"no such route: GET {url.path}"})
 
     def do_POST(self):  # noqa: N802
+        # 정수가 아니거나 음수인 `Content-Length` 는 어느 라우트에서든 400 이다. 라우트는 응답을 쓰기
+        # 전에 본문을 읽으므로(`_body`, `_internal_graph` 의 상한 검사) 이 자리에서는 아직 아무것도
+        # 보내지 않았다. `/v1` 은 자기 봉투로 먼저 답한다(`rest_api`).
+        try:
+            self._post()
+        except httpbody.BadContentLength as exc:
+            self._json(400, {"error": str(exc)})
+
+    def _post(self):
         if self._held():
             return
         # 셀프호스트의 같은 출처 평면(/login·/api/*). 꺼져 있으면 아무것도 안 하고 지나간다.
@@ -1193,7 +1204,7 @@ class _Handler(BaseHTTPRequestHandler):
         # 상한을 넘으면 `_body()` 가 빈 본문을 돌려주고, 그러면 서명 지문이 어긋나 401 이
         # 됐다. 계정은 그것을 "세션 만료"로 옮겨 로그인된 사람을 로그인 화면으로 보냈다.
         # 근거: [[record:a-space-transfer-over-4mb-surfaced-as-a-logout-2026-09-18]]
-        if int(self.headers.get("Content-Length") or 0) > MAX_BODY:
+        if httpbody.content_length(self.headers) > MAX_BODY:
             return self._json(413, {"error": "request body is too large"})
         assertion = self.headers.get("X-Vinc-Assertion") or ""
         args = self._body()
