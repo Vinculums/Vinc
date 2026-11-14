@@ -34,6 +34,8 @@ const api = await read('src/api.ts');
 const config = await read('src/api-config.ts');
 // 전송(검색 실패 기록 · 쿠키 라우트의 문 · 그래프 평면의 주소)은 `api-transport.ts` 에 있다.
 const transport = await read('src/api-transport.ts');
+// 팀 목록(`/api/teams`)은 스페이스 쪽(`api-space.ts`)이 부른다.
+const space = await read('src/api-space.ts');
 
 test('a failed search is logged with status and duration only', async () => {
   const fn = slice(transport, 'async function logSearchFailure', '\n}\n') + '\n}\n';
@@ -89,7 +91,7 @@ test('outbound addresses are the graph and the site pages only', async () => {
   }
   assert.ok(fetches >= 5);
   // 계정 쿠키 라우트는 `webFetch` 로 같은 오리진에 간다. 경로는 부르는 자리의 글자 그대로다(같은 오리진의 절대 경로).
-  const doors = [...api.matchAll(/\bwebFetch\(([^)]*?)[,)]/g)].map((m) => m[1]).filter((a) => !a.startsWith('path: string'));
+  const doors = [...(api + space).matchAll(/\bwebFetch\(([^)]*?)[,)]/g)].map((m) => m[1]).filter((a) => !a.startsWith('path: string'));
   assert.ok(doors.length >= 9 && doors.every((a) => /^"\/[^"]+"$/.test(a)), doors.join(' | '));
   assert.match(transport, /const url = new URL\(WEB \? "\/api\/graph" \+ path : path, cfg\.base\);/);
 });
@@ -206,9 +208,9 @@ test('the account-cookie routes go through one door: the cookie always, the CSRF
 test('api.ts and its transport send the account cookie only through webFetch and the graph transport', () => {
   // `credentials: "include"` 는 두 자리뿐이다: 계정 쿠키 라우트의 문과, 웹의 그래프 평면(localCall).
   assert.equal([...transport.matchAll(/credentials: "include"/g)].length, 2);
-  assert.equal([...api.matchAll(/credentials: "include"/g)].length, 0);
+  assert.equal([...(api + space).matchAll(/credentials: "include"/g)].length, 0);
   for (const route of ['/api/me', '/api/teams', '/api/push/devices', '/api/push/subscribe', '/api/push/unsubscribe',
     '/api/push/test', '/api/community/agents/destinations', '/logout', '/api/selfhost/seats'])
-    assert.match(api, new RegExp(`webFetch\\("${route.replace(/\//g, '\\/')}"`), route);
-  assert.doesNotMatch(api, /fetch\(new URL\("\/api\/(?!graph)/, 'no raw fetch to an account route');
+    assert.match(api + space, new RegExp(`webFetch\\("${route.replace(/\//g, '\\/')}"`), route);
+  assert.doesNotMatch(api + space, /fetch\(new URL\("\/api\/(?!graph)/, 'no raw fetch to an account route');
 });

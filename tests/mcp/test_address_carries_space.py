@@ -259,7 +259,7 @@ class AppSourceTests(unittest.TestCase):
                          "absoluteViewUrl 호출마다 spaceName() 을 넘겨야 한다")
 
     def test_스페이스_이름은_셋이다(self):
-        src = (APP / "api.ts").read_text(encoding="utf-8")
+        src = (APP / "api-space.ts").read_text(encoding="utf-8")
         body = src[src.index("export function spaceName"):]
         body = body[:body.index("\n}\n")]
         for word in ('"local"', '"personal"', "cfg.team"):
@@ -274,7 +274,7 @@ class AppSourceTests(unittest.TestCase):
 
     def test_우리가_쓴_스페이스는_밖에서_온_링크로_읽지_않는다(self):
         """스페이스 전환 뒤 새로고침에서 주소창의 옛 값이 방금 고른 것을 되돌리면 안 된다."""
-        src = (APP / "api.ts").read_text(encoding="utf-8")
+        src = (APP / "api-space.ts").read_text(encoding="utf-8")
         body = src[src.index("export async function adoptSpaceFromAddress"):]
         self.assertIn("raw !== mark", body)
         self.assertIn("sessionStorage", src[src.index("export function writeSpaceToAddress"):])
