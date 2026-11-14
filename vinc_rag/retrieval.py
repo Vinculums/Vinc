@@ -1698,6 +1698,53 @@ def _node_semantic_arm(store, query_embedding, *, continuation, owner, query_mod
     return vec_hits, _sem_lead, _sem_decisive, patch
 
 
+def _fuse_graph_arm(store, base, title_hits, vec_hits, *, owner, kinds, known_at, mode, _nk,
+                    _until, _vstats, _chunk_known_hidden, _sem_lead, _sem_decisive) -> dict:
+    """그래프 팔(4-b) 융합: ``patch`` 를 돌려준다. 상위 Chunk 의 :MENTIONS 이웃 개념을 title 폴백
+    (그리고 의미 팔의 ``vec_hits``)과 융합한다. 실패는 검색을 막지 않는다(그래프 암은 증강 —
+    부재 시 title 만, 하위호환).
+    ``_search`` 에서 그대로 떼어 낸 본문이라 인자 이름도 거기서 쓰던 것(밑줄 포함)과 같다.
+
+    ``base`` 는 **읽기 전용**이다. 앞 단계(페이지 자르기)가 적은 ``rows`` 만 읽는다. 응답에 얹을
+    키(``known_at_filtered``, ``node_hits``, ``node_error``)는 ``patch`` 로만 내보내고, 부르는 쪽이
+    부른 **바로 뒤에** ``base.update`` 로 얹는다. ``node_error`` 는 앞 단계가 먼저 적었으면 덮지
+    않는다. ``_vstats`` 는 제자리에서 고친다."""
+    patch: dict = {}
+    try:
+        chunk_ids = [r.get("id") for r in base.get("rows", []) if r.get("id")
+                     and r.get("relevance", {}).get("level") != "weak"]
+        if kinds and "concept" not in kinds:
+            graph_hits = []      # 그래프 팔은 개념만 낸다
+        elif known_at and mode != "current":
+            graph_hits = _known_at_nodes(
+                store, _graph_arm_search(store, chunk_ids, owner=owner, limit=NODE_SCAN_CAP),
+                owner=owner, until=_until, stats=_vstats)[:_nk]
+            patch["known_at_filtered"] = _chunk_known_hidden + len(_vstats.get("known_hidden", ()))
+        else:
+            graph_hits = _graph_arm_search(store, chunk_ids, owner=owner, limit=_nk)
+        patch["node_hits"] = _fuse_node_hits(title_hits, graph_hits, top_k=NODE_SCAN_CAP if mode == "current" else _nk,
+                                             vec_hits=vec_hits)
+        # 융합은 id 당 행 하나만 남기므로(제목 행이 이기면 의미 행의 표가 사라진다)
+        # 융합 **뒤에** id 로 찾아 단다. 거리도 같다 — 안 달면 제목 팔도 찾은 노드는
+        # 의미 거리를 잃는다. 다는 값은 순위에 쓰이지 않는다.
+        # 근거: [[record:brief-promotes-on-the-semantic-lead-only-in-the-ranking-branch-and-reads-it-from-the-raw-list-2026-09-30]]
+        _dist = {h["id"]: h.get("distance") for h in vec_hits if h.get("id")}
+        for _r in patch["node_hits"]:
+            _rid = _r.get("id")
+            if _rid in _dist:
+                _r["distance"] = _dist[_rid]
+            if _sem_lead and _rid == _sem_lead[0]:
+                _r["sem_lead"] = _sem_lead[1]
+            if _sem_decisive and _rid == _sem_decisive:
+                _r["sem_decisive"] = True
+    except Exception as exc:
+        if "node_error" not in base:
+            patch["node_error"] = f"{type(exc).__name__}: {exc}"
+        patch["node_hits"] = _fuse_node_hits(title_hits, [], top_k=NODE_SCAN_CAP if mode == "current" else _nk,
+                                             vec_hits=vec_hits)
+    return patch
+
+
 def _search(query: str, *, query_embedding: list[float] | None = None,
            top_k: int = 5, filters: dict | None = None, owner: str | None = None,
            cursor: str | None = None, detail: str = "summary",
@@ -1908,37 +1955,12 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
             base["node_hits"] = []
             base["node_hits_omitted"] = "first_page_only"
             return base
-        try:
-            chunk_ids = [r.get("id") for r in base.get("rows", []) if r.get("id")
-                         and r.get("relevance", {}).get("level") != "weak"]
-            if kinds and "concept" not in kinds:
-                graph_hits = []      # 그래프 팔은 개념만 낸다
-            elif known_at and mode != "current":
-                graph_hits = _known_at_nodes(
-                    store, _graph_arm_search(store, chunk_ids, owner=owner, limit=NODE_SCAN_CAP),
-                    owner=owner, until=_until, stats=_vstats)[:_nk]
-                base["known_at_filtered"] = _chunk_known_hidden + len(_vstats.get("known_hidden", ()))
-            else:
-                graph_hits = _graph_arm_search(store, chunk_ids, owner=owner, limit=_nk)
-            base["node_hits"] = _fuse_node_hits(title_hits, graph_hits, top_k=NODE_SCAN_CAP if mode == "current" else _nk,
-                                                vec_hits=vec_hits)
-            # 융합은 id 당 행 하나만 남기므로(제목 행이 이기면 의미 행의 표가 사라진다)
-            # 융합 **뒤에** id 로 찾아 단다. 거리도 같다 — 안 달면 제목 팔도 찾은 노드는
-            # 의미 거리를 잃는다. 다는 값은 순위에 쓰이지 않는다.
-            # 근거: [[record:brief-promotes-on-the-semantic-lead-only-in-the-ranking-branch-and-reads-it-from-the-raw-list-2026-09-30]]
-            _dist = {h["id"]: h.get("distance") for h in vec_hits if h.get("id")}
-            for _r in base["node_hits"]:
-                _rid = _r.get("id")
-                if _rid in _dist:
-                    _r["distance"] = _dist[_rid]
-                if _sem_lead and _rid == _sem_lead[0]:
-                    _r["sem_lead"] = _sem_lead[1]
-                if _sem_decisive and _rid == _sem_decisive:
-                    _r["sem_decisive"] = True
-        except Exception as exc:
-            base.setdefault("node_error", f"{type(exc).__name__}: {exc}")
-            base["node_hits"] = _fuse_node_hits(title_hits, [], top_k=NODE_SCAN_CAP if mode == "current" else _nk,
-                                                vec_hits=vec_hits)
+        _graph_patch = _fuse_graph_arm(
+            store, base, title_hits, vec_hits, owner=owner, kinds=kinds, known_at=known_at,
+            mode=mode, _nk=_nk, _until=_until, _vstats=_vstats,
+            _chunk_known_hidden=_chunk_known_hidden, _sem_lead=_sem_lead,
+            _sem_decisive=_sem_decisive)
+        base.update(_graph_patch)
     finally:
         if owns:
             store.close()
