@@ -551,6 +551,7 @@ def test_write_helpers_send_the_same_bodies_in_three_adapters():
                "operation_id": op}
     package = {"claims": [{"claim": "Holds.", "evidence_ids": ["decision:policy"]}],
                "produced_by": "agent:writer", "run_id": "run-1", "package_id": "record:handoff",
+               "title": "Handoff of the policy review",
                "space": SPACE, "create_only": True, "operation_id": op}
     run_fields = {"role": ROLE, "outcome": "success", "steps": 2, "tool_calls": 3,
                   "cited_ids": ["record:rule"], "date": "2026-10-25"}
@@ -571,6 +572,8 @@ def test_write_helpers_send_the_same_bodies_in_three_adapters():
     asyncio.run(run())
     assert lg_seen == ma_seen == cr_seen
     assert len([row for row in cr_seen if row[0] == "POST"]) == 3
+    # 세 어댑터가 같은 제목을 같은 본문에 싣는다(위 비교가 같음을 보이고, 여기서는 실렸음을 본다).
+    assert "Handoff of the policy review" in json.dumps(cr_seen[1][3])
 
 
 @pytest.mark.parametrize("on_interrupt", ["deliver", "stop"])

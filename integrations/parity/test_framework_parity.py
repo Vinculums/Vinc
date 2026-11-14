@@ -393,14 +393,13 @@ def test_write_helpers_share_the_retry_contract_in_both_frameworks():
         return [p for p in inspect.signature(fn).parameters if p != "client"]
     assert params(maf_episode) == params(lg_episode) == params(lg_aepisode)
     assert params(maf_package) == params(lg_package) == params(lg_apackage)
-    for name in ("create_only", "operation_id"):
-        assert name in params(maf_episode) and name in params(maf_package)
 
     op = "00000000-0000-4000-8000-000000000601"
     episode = {"episode_id": "episode:run-one", "date": "2026-10-16",
                "create_only": True, "operation_id": op}
     package = {"claims": [{"claim": "Holds.", "evidence_ids": ["decision:policy"]}],
                "produced_by": "agent:writer", "run_id": "run-1", "package_id": "record:handoff",
+               "title": "Handoff of the policy review",
                "space": SPACE, "create_only": True, "operation_id": op}
     sk = "vinc_sk_" + "b" * 32
     sync_seen, ma_seen, lg_seen = [], [], []
@@ -419,6 +418,8 @@ def test_write_helpers_share_the_retry_contract_in_both_frameworks():
     asyncio.run(run())
     assert sync_seen == ma_seen == lg_seen and len(ma_seen) == 2
     assert all((row[3]["create_only"], row[3]["operation_id"]) == (True, op) for row in ma_seen)
+    # 패키지 제목은 클라이언트의 title 로 가서 본문에 실린다.
+    assert "Handoff of the policy review" in json.dumps(ma_seen[1][3])
 
 
 def test_same_disallowed_tools_are_hidden_and_refused_in_both_frameworks(caplog):
