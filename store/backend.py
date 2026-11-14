@@ -54,7 +54,7 @@ class GraphStore(Protocol):
 OPTIONAL_OPERATIONS = frozenset({
     "current_batch", "write_batch", "in_manual_transaction",          # 쓰기 묶음
     "drop_vector_index", "drop_search_indexes", "ensure_search_indexes",
-    "is_fts_inconsistent", "rebuild_fts_index",                       # 색인 수명
+    "schedule_search_indexes", "is_fts_inconsistent", "rebuild_fts_index",  # 색인 수명
     "heal_fts_index", "heal_vector_index", "heal_node_vector_index",  # 기동 수리
     "migrate_lex_index", "table_columns", "snapshot",
 })
