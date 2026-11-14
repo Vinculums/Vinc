@@ -311,7 +311,7 @@ async function renderSettings(
         o.classList.toggle("active", on);
         o.setAttribute("aria-pressed", String(on));
       });
-      const { applyTheme } = await import("../main");
+      const { applyTheme } = await import("../theme-apply");
       applyTheme();
     }));
   }
