@@ -351,7 +351,7 @@ def _claim_props(props, label: str, nid: str, warnings: list[str], known_repos=N
     if label != "Record":
         for k in _CLAIM_PROPS:
             if k in props:
-                # 결정의 subject_path 는 결정 문(`query.decide_paths`)이 읽는다(읽을 때 접는다,
+                # 결정의 subject_path 는 결정 문(`decide_read.decide_paths`)이 읽는다(읽을 때 접는다,
                 # 저장값은 보낸 그대로). 그래서 그 하나는 리포 경고만 받는다. 진단(claims)은
                 # 여전히 기록만 본다.
                 if label == "Decision" and k == "subject_path":

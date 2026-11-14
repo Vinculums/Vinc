@@ -1377,7 +1377,7 @@ TOOLS.append({"name": "vinc_operation_status",
     "historical summaries, so read the targets to verify. Read-only.",
     "inputSchema": {"type": "object", "properties": {"operation_id": _OPERATION_ID_PROP},
                     "required": ["operation_id"]}, "run": _t_operation_status})
-# 결정 문(`api.query.decide_paths`). 목록 끝에 붙인다(순서를 바꾸는 작업과 겹치지 않게).
+# 결정 문(`api.decide_read.decide_paths`). 목록 끝에 붙인다(순서를 바꾸는 작업과 겹치지 않게).
 TOOLS.append({"name": "vinc_decide_paths",
     "summary": (
         "List the current records and decisions that govern the files a change touches, given "
