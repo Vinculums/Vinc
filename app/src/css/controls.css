@@ -1,0 +1,109 @@
+/* ── D41 — macOS 컨트롤 문법: 세그먼티드 컨트롤(패널 선택지) + 버튼 폴리시.
+      홈 파인 트랙 위에 활성 세그먼트가 "떠오른 썸"으로 — 색이 아닌 높이가 상태. */
+/* ── 슬라이더 ────────────────────────────────────────────────────────────
+   UA 기본 range 를 그대로 쓰던 동안에는 트랙이 실선 한 줄이고 손잡이가 작아, 끄는
+   물건으로 보이지 않았다(값도 안 보였다 — 그래서 "클릭만 먹는다"로 읽혔다).
+   손이 닿는 높이를 키우고, 손잡이를 잡을 수 있는 크기로 만들고, 값을 라벨 옆에 적는다. */
+.slider-row {
+  display: grid; grid-template-columns: 1fr auto; align-items: baseline;
+  column-gap: .5rem; margin: .45rem 0 .1rem;
+}
+.slider-row .slider { grid-column: 1 / -1; width: 100%; }
+.slider-val {
+  font-size: var(--fs-xs); font-variant-numeric: tabular-nums;   /* 자릿수가 흔들리지 않게 */
+  color: hsl(var(--foreground));
+}
+input.slider {
+  -webkit-appearance: none; appearance: none;
+  height: 1.15rem;                     /* 손이 닿는 높이(보이는 트랙은 4px) */
+  background: none; cursor: pointer;
+}
+input.slider::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 999px;
+  background: hsl(var(--border));
+}
+input.slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: .85rem; height: .85rem; margin-top: -.28rem;
+  border-radius: 50%; border: none;
+  background: hsl(var(--ring));
+  box-shadow: 0 1px 3px hsl(0 0% 0% / .35);
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+@media (hover: hover) and (pointer: fine) { input.slider:hover::-webkit-slider-thumb { transform: scale(1.12); } }
+input.slider:active::-webkit-slider-thumb {
+  transform: scale(1.22); box-shadow: 0 1px 5px hsl(0 0% 0% / .45);
+}
+input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  input.slider::-webkit-slider-thumb { transition: none; }
+}
+
+/* ── 행 이름 ─────────────────────────────────────────────────────────────
+   "이름 하나 + 그것에 대한 동작들"이 한 줄인 자리의 이름 칸(공간 메뉴 등). 설정의 줄은
+   `.set-row` 다. 독립 동작을 `.seg` 에 담지 말 것 — 그건 여럿 중 **하나를 고르는** 컨트롤이다. */
+.row-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 작은 보조 문구·긴 문자열 처리 — 인라인 style 로 매번 적던 것들을 클래스로. */
+.hint-sm { font-size: var(--fs-sm); margin-top: .35rem; }
+.break-all { word-break: break-all; }
+
+/* 여럿 중 하나 고르기. **통(trough)도 미끄러지는 알약도 없다** — 고른 칸이 알약을
+   직접 갖는다(발주자 지시 2026-09-09: "렌즈가 쓰는 컴포넌트 … 다른 거 쓸 수 없나 …
+   선택된 것과 칸의 높낮이도 안 맞아서 바꾸는 게 맞음").
+   두 가지가 함께 해결된다:
+   ① **어긋남이 구조적으로 불가능해진다.** 떠 있던 알약은 자리를 JS 가 `offset*`(정수
+      반올림)로 잡았는데 세그 테두리가 0.8px 라 **1px 위에 섰다**(실측 2026-09-09:
+      알약 top 1.8 / 칩 top 2.8). 이제 배경이 곧 칩이라 잴 것이 없다.
+   ② **카드 안에 상자를 하나 덜 만든다.** 이 컨트롤이 사는 곳은 이미 카드 안이고
+      (LNB · 시트 · 렌즈 패널), 통은 그 안의 또 한 겹이었다. 묶음이라는 사실은 통이
+      아니라 **옆의 라벨**이 이미 말한다(설정은 `<label>`, 렌즈 행은 캡션, 관점 세그는
+      그 줄에 그것뿐이다).
+   알약 값(`--ring` 10%/14%)은 지어낸 것이 아니라 **바로 아래 트리의 것과 같다**
+   (`.lnb-group.on` · `.lnb-doc:hover`) — 같은 화면에서 같은 뜻이면 같은 그림이어야 한다.
+   높이는 `--row-h` 라 트리 한 줄과도 같은 줄에 선다.
+   ⚠ 함께 사라진 것: `.seg-thumb` · `initSegMotion` · `document.body` 전역
+      MutationObserver(무관한 변화마다 문서 전체를 강제 측정하던 것). */
+.seg {
+  display: inline-flex; gap: var(--space-1, .25rem); vertical-align: middle;
+  flex-wrap: wrap; max-width: 100%;   /* 5지선다(Layout)는 두 줄로 접힘 */
+}
+.seg .chip {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: var(--row-h);
+  border: none; border-radius: var(--radius-sm, .625rem); background: none;
+  padding: 0 var(--pad-row); color: hsl(var(--muted-foreground));
+}
+.seg .chip:hover { background: hsl(var(--muted-foreground) / .1); color: hsl(var(--foreground)); }
+.seg .chip.active {
+  background: hsl(var(--ring) / .14); color: hsl(var(--foreground)); font-weight: 600;
+}
+
+.btn {
+  border-radius: .55rem;
+  background: linear-gradient(hsl(var(--card)), hsl(var(--muted)));
+  box-shadow: 0 1px 1.5px hsl(var(--foreground) / .16), inset 0 1px 0 hsl(0 0% 100% / .3);
+}
+.btn:active { transform: scale(.97); filter: brightness(.97); }
+/* 누르면 눌린다 — 버튼꼴만. 목록 행(.lnb-*, .palette-row, .card-row)은 크기를 건드리면 글줄이
+   흔들리므로 색만 전이한다(위 규칙). 전이는 여기서 transform 을 더해 앞선 선언을 잇는다. */
+.tb-icon, .btn, .chip:not(.chip-static), .lens-btn, .card-ctl {
+  transition: background-color .16s ease, color .16s ease, border-color .16s ease,
+              transform var(--dur-fast) var(--ease-out);
+}
+.tb-icon:active, .chip:not(.chip-static):active, .lens-btn:active, .card-ctl:active { transform: scale(.96); }
+.btn-primary {
+  background: linear-gradient(hsl(var(--primary) / .92), hsl(var(--primary)));
+  box-shadow: 0 1px 2px hsl(var(--foreground) / .28), inset 0 1px 0 hsl(0 0% 100% / .22);
+}
+/* 파괴적 확정 버튼(S1 삭제) — 확인 다이얼로그의 진행 쪽에만 쓴다. Signal 토큰
+   --danger(라이트/다크 양쪽 정의됨, error-banner 와 동일 축)를 재사용한다. */
+.btn-danger {
+  background: linear-gradient(hsl(var(--danger) / .92), hsl(var(--danger)));
+  color: hsl(var(--danger-foreground));
+  border-color: hsl(var(--danger));
+  box-shadow: 0 1px 2px hsl(var(--foreground) / .28), inset 0 1px 0 hsl(0 0% 100% / .18);
+}
+/* 꺼진 버튼은 꺼진 티가 나야 한다. 없으면 꺼진 주 버튼이 켜진 것과 똑같아 눌러도 반응이 없는 것으로 읽힌다. */
+.btn:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.btn:disabled:active { transform: none; filter: none; }
+

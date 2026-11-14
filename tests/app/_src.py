@@ -18,6 +18,13 @@ ROOT = Path(__file__).resolve().parents[2]
 APP = ROOT / "app"
 SRC = APP / "src"
 
+
+def _css_files() -> tuple[str, ...]:
+    """`app.css` 가 `@import` 로 잇는 `src/css/*.css`, 적힌 순서대로. 그 순서가 캐스케이드 순서다."""
+    index = (SRC / "app.css").read_text(encoding="utf-8")
+    return tuple(f"src/{m}" for m in re.findall(r'(?m)^@import "\./(css/[\w-]+\.css)";', index))
+
+
 #: 이름 → app/ 아래 파일들(이은 순서). 한 파일이 둘로 갈리면 그 이름에 둘을 다 적는다.
 UNITS: dict[str, tuple[str, ...]] = {
     # 표면
@@ -68,7 +75,8 @@ UNITS: dict[str, tuple[str, ...]] = {
     "node-basics": ("src/node-basics.ts",),
     "role-composer": ("src/role-composer.ts",),
     # 스타일 · 쪽 · 설정
-    "app.css": ("src/app.css",),
+    # 목차 `app.css` 다음에 그것이 잇는 기능별 파일들이 @import 순서로 온다: 한 장의 스타일시트처럼 읽힌다.
+    "app.css": ("src/app.css", *_css_files()),
     "vinc-loaders.css": ("src/vinc-loaders.css",),
     "index.html": ("index.html",),
     "vite.config": ("vite.config.ts",),
