@@ -4,8 +4,9 @@
 `remote.py` 와 왜 분리하나: 그쪽은 `tools/call` 단건 프록시(60s, owner strip)이고,
 동기화는 **대량·다청크·긴 작업**이라 요구가 다르다. 특히:
 
-- **4MB 바디 상한**(`hub_http.MAX_BODY`) — 초과하면 서버가 빈 바디로 400 을 낸다.
-  즉 **조용히 실패**한다. 그래서 청킹은 선택이 아니라 필수다(api/sync.chunk_bundle).
+- **4MB 바디 상한**(`hub_http.MAX_BODY`) — 초과하면 허브가 본문을 읽지 않고 413 으로 거절한다. 거절된
+  묶음은 올라가지 않았으므로 `SyncError` 로 올리고, 부르는 쪽은 커서도 base 도 옮기지 않는다. 그래서
+  청킹은 선택이 아니라 필수다(api/sync.chunk_bundle).
 - **쿼터 면제 경로** — `/sync/*` 는 Dispatcher 를 우회하므로 도구 쿼터를 안 먹는다.
 
 키는 env 가 아니라 **호출부가 넘긴다**(`/sync` 바디로 사이드카에 전달되는 회원 키) —
@@ -111,7 +112,7 @@ def docs_pull(*, since: int, token: str, base: str = DEFAULT_URL,
 def docs_push(payload: dict, *, token: str, base: str = DEFAULT_URL,
               timeout: float = TIMEOUT) -> dict:
     """문서 정본 delta 전송. 조각내기는 호출부(api/sync._chunk_docs) 책임 —
-    4MB 바디 상한을 넘기면 서버가 빈 바디 400 으로 **조용히** 거절한다."""
+    4MB 바디 상한을 넘기면 허브가 413 으로 거절하고 `SyncError` 가 된다."""
     out = _post(base, "/sync/docs-push", token, {"payload": {**payload, **HANDLES}},
                 timeout=timeout)
     if out.get("error"):
