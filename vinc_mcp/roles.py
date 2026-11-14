@@ -27,6 +27,8 @@ import hashlib
 import re
 import json
 from . import agent_export_contract, capability_maps
+# 결과 인코더는 `encoding` 에 있다. `roles.serialize_result` 로 부르는 호출자를 위해 이 이름을 둔다.
+from .encoding import serialize_result  # noqa: F401
 
 #: 역할이 사는 주제, 읽는 순서대로. 앞의 것이 새 역할의 자리다(기본 팩 · GRAPH.md 안내).
 #: 뒤의 것은 Vinc 자기 그래프(모든 주제가 `vinc/` 아래)와 그 전에 시드된 스페이스의
@@ -888,13 +890,6 @@ def contract(role: str | None, bridge, *, forced_owner: str | None = None,
                          "Read it again with compact=true (vinc role get --compact) to leave "
                          "relation evidence out.")}
     return out
-
-
-def serialize_result(value) -> str:
-    """역할의 10 KB 예산과 실제 MCP·REST 인코딩을 맞춘다. 필드는 바꾸지 않는다."""
-    role = isinstance(value, dict) and (value.get("kind") == "role" or
-        isinstance(value.get("role"), dict) and value["role"].get("kind") == "role")
-    return json.dumps(value, ensure_ascii=False, **({"separators": (",", ":")} if role else {}))
 
 
 def list_prompts(bridge, forced_owner: str | None = None) -> dict:
