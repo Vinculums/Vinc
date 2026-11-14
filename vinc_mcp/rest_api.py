@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from typing import Callable
 from urllib.parse import parse_qs, urlparse
 
-from . import community, entitlement, hub_http, rest_routes, spaces, toolcall, tools
-from store import request_timing
+from . import bridge, community, entitlement, hub_http, rest_routes, spaces, toolcall, tools
+from store import failure_codes, request_timing
 from store.envflag import truthy_strict
 
 #: v1 결과 상한. MCP 의 72,000자(rpc.MAX_RESULT_CHARS)는 모델 컨텍스트용 상한이라 스크립트가
@@ -142,30 +142,59 @@ def _account_details(error) -> dict:
 
 @dataclass(frozen=True)
 class _Facts:
-    """`_failure` 의 술어가 읽는 값. `error`·`note` 는 문자열로 맞춘 것이고 `reason` 은 둘을 이은 소문자다."""
+    """`_failure` 의 술어가 읽는 값. `error`·`note` 는 문자열로 맞춘 것이고 `reason` 은 둘을 이은 소문자다.
+    `code` 는 답이 실은 기계 코드다(`_code_of`). 코드가 없으면 빈 문자열이다."""
     name: str
     result: dict
     by_id: bool
     error: str
     note: str
     reason: str
+    code: str = ""
+
+
+#: 코드 칸이 `error` 로 시작하는 문자열 앞쪽(`invalid_cursor: …` 의 `invalid_cursor`)을 뽑는다.
+_CODE_PREFIX_RE = re.compile(r"[a-z][a-z0-9_]*(?=:|$)")
+
+
+def _code_of(result: dict, error: str) -> str:
+    """답의 기계 코드. 사이드카가 `error_code` 에 실은 값이 먼저이고, 없으면 `error` 가 그 자체로 코드이거나
+    `코드: 문장` 꼴일 때의 앞쪽이다. 문장뿐인 `error` 는 코드가 아니다(빈 문자열)."""
+    explicit = result.get(failure_codes.KEY)
+    if isinstance(explicit, str) and explicit:
+        return explicit
+    match = _CODE_PREFIX_RE.match(error)
+    return match.group(0) if match else ""
 
 
 #: 코드 칸의 이 값은 "도구가 낸 `error` 문자열을 그대로 v1 코드로 쓴다"는 뜻이다.
 _ERROR_CODE = object()
+
+#: `_FailureRow.basis` 의 값. 줄이 무엇을 읽어 답하는지 밝힌다.
+#: CODE: 답의 기계 코드(`error_code` 또는 코드인 `error`)나 코드인 `status` 값. 문장을 고쳐도 답이 안 바뀐다.
+#: SHAPE: 답의 구조(`found`·`executed`·숫자 `status`·`verified` 같은 칸). 문장을 읽지 않는다.
+#: TEXT: `error`·`note` 의 문장. 코드를 싣지 않는 답(옛 사이드카, 아직 코드를 안 단 오류)을 위한 대체이고,
+#:       같은 일을 하는 CODE 줄이 바로 앞에 있다.
+CODE, SHAPE, TEXT = "code", "shape", "text"
 
 
 @dataclass(frozen=True)
 class _FailureRow:
     """`_FAILURES` 의 한 줄. `when` 이 참인 첫 줄이 답한다.
 
-    status 가 None 이면 실패가 아니다(성공 봉투로 낸다). message 는 문장을 만드는 함수이고,
-    details 가 있으면 (status, code, message, details) 네 칸을, 없으면 세 칸을 낸다."""
+    basis 는 줄이 읽는 것이다(CODE · SHAPE · TEXT). status 가 None 이면 실패가 아니다(성공 봉투로 낸다).
+    message 는 문장을 만드는 함수이고, details 가 있으면 (status, code, message, details) 네 칸을, 없으면
+    세 칸을 낸다."""
+    basis: str
     when: Callable[[_Facts], bool]
     status: int | None
     code: str | object | None = None
     message: Callable[[_Facts], str] | None = None
     details: Callable[[_Facts], dict] | None = None
+
+    def __post_init__(self):
+        if self.basis not in (CODE, SHAPE, TEXT):
+            raise ValueError(f"unknown failure row basis: {self.basis!r}")
 
 
 def _note_or_error(f: _Facts) -> str:
@@ -192,86 +221,106 @@ def _executed_false_with(*terms: str) -> Callable[[_Facts], bool]:
     return lambda f: f.result.get("executed") is False and any(term in f.reason for term in terms)
 
 
+def _executed_false_coded(codes) -> Callable[[_Facts], bool]:
+    return lambda f: f.result.get("executed") is False and f.code in codes
+
+
 _COMMUNITY_TOOLS = (community.WRITE_TOOL, community.READ_TOOL)
 #: 계정이 거절한 커뮤니티 호출의 상태 → v1 코드. 문장과 details 는 계정의 것을 옮긴다.
 _ACCOUNT_STATUS_CODES = ((400, "invalid_argument"), (401, "not_authenticated"), (403, "role_forbidden"),
                          (404, "not_found"), (409, "conflict"), (410, "gone"), (429, "quota_exceeded"))
+#: 쓰기가 응답 없이 끊겼다: 브리지가 코드를 싣고, 코드 없는 답은 표식 칸이나 문장으로 읽는다. 셋이 같은 답이다.
+#: 이미 적용됐을 수 있으므로 재시도 금지를 싣는다.
+_WRITE_UNCONFIRMED = dict(status=503, code="upstream_unavailable", message=_error,
+                          details=lambda _f: {"retryable": False, "write_may_have_applied": True})
 
-#: 도구 결과 모양 → v1 실패. **순서가 계약이다**: 위의 줄이 먼저 답한다. 줄마다의 결과 모양은
-#: tests/fixtures/tool_failure_shapes.json 이 사람이 읽게 적고, tests/mcp/test_rest_v1_review_fixes.py 의
-#: FAILURE_CASES 가 실제 결과로 고정한다.
+#: 도구 결과 모양 → v1 실패. **순서가 계약이다**: 위의 줄이 먼저 답한다. 줄마다 무엇을 읽는지는 첫 칸(basis)이
+#: 밝힌다. 같은 일을 CODE 와 TEXT 로 하는 줄은 CODE 가 바로 앞에 있다. TEXT 줄은 코드 없는 답을 위한 대체이고,
+#: 문장을 고쳐도 상태가 안 바뀌는 쪽은 CODE 줄이다. 줄마다의 결과 모양은 tests/fixtures/tool_failure_shapes.json 이
+#: 사람이 읽게 적고, tests/mcp/test_rest_v1_review_fixes.py 의 FAILURE_CASES 가 실제 결과로 고정한다.
 _FAILURES: tuple[_FailureRow, ...] = (
     # 계정이 거절한 커뮤니티 쓰기·읽기. message 는 계정의 문장이다(오류 객체를 str() 하면 파이썬 repr 이 나간다).
-    *(_FailureRow(lambda f, s=status: f.name in _COMMUNITY_TOOLS and f.result.get("status") == s,
+    *(_FailureRow(SHAPE, lambda f, s=status: f.name in _COMMUNITY_TOOLS and f.result.get("status") == s,
                   status, code, lambda f: _message(f.result),
                   lambda f: _account_details(f.result.get("error")))
       for status, code in _ACCOUNT_STATUS_CODES),
     # 영수증을 읽었으면 found:false(모르는 영수증)도 답이다. 적용되지 않았다는 증거가 아니다.
-    _FailureRow(lambda f: f.name == "vinc_operation_status" and f.result.get("executed") is True, None),
-    _FailureRow(lambda f: f.result.get("status") == "conflict"
+    _FailureRow(SHAPE, lambda f: f.name == "vinc_operation_status" and f.result.get("executed") is True, None),
+    _FailureRow(CODE, lambda f: f.result.get("status") == "conflict"
                 or f.error in ("write_conflict", "preview_conflict", "operation_id_conflict"),
                 409, _ERROR_CODE, _fixed("The saved state no longer matches this request."),
                 _pick("node_id", "current_rev", "current_content_hash", "operation_id")),
     # 고정한 역할이 바뀌었다. 계약은 싣지 않고 지금의 rev·hash 만 준다.
-    _FailureRow(lambda f: f.error == "role_changed", 409, "role_changed",
+    _FailureRow(CODE, lambda f: f.error == "role_changed", 409, "role_changed",
                 _fixed("The role changed since it was pinned."), _pick("id", "rev", "hash")),
     # 에이전트 자격으로는 사람만 답하는 대기를 풀 수 없다. 사람의 길은 메시지에 있다.
-    _FailureRow(lambda f: f.error == "person_answer_required", 403, "person_answer_required", _note_or_error),
-    _FailureRow(lambda f: f.error == "run_state_protected", 403, "run_state_protected", _note_or_error),
-    _FailureRow(lambda f: f.error == "request_expired", 410, "request_expired", _note_or_error),
-    _FailureRow(lambda f: f.error == "invalid_expires_in", 400, "invalid_argument", _note_or_error),
-    _FailureRow(lambda f: f.error == "invalid_export_format", 400, "invalid_argument", _note_or_error),
+    _FailureRow(CODE, lambda f: f.error == "person_answer_required", 403, "person_answer_required", _note_or_error),
+    _FailureRow(CODE, lambda f: f.error == "run_state_protected", 403, "run_state_protected", _note_or_error),
+    _FailureRow(CODE, lambda f: f.error == "request_expired", 410, "request_expired", _note_or_error),
+    _FailureRow(CODE, lambda f: f.error == "invalid_expires_in", 400, "invalid_argument", _note_or_error),
+    _FailureRow(CODE, lambda f: f.error == "invalid_export_format", 400, "invalid_argument", _note_or_error),
     # 계약이 읽기 예산을 넘었다. 서버 고장이 아니라 요청을 바꾸면(compact) 읽히는 일이다.
-    _FailureRow(lambda f: f.error == "role_contract_too_large", 400, "role_contract_too_large",
+    _FailureRow(CODE, lambda f: f.error == "role_contract_too_large", 400, "role_contract_too_large",
                 lambda f: f.note or "The role contract exceeds the read limit.",
                 _pick("id", "bytes", "limit", "compact")),
-    _FailureRow(lambda f: f.error in ("write_target_unavailable", "document_unavailable",
-                                      "preview_target_unavailable"),
+    _FailureRow(CODE, lambda f: f.error in ("write_target_unavailable", "document_unavailable",
+                                            "preview_target_unavailable"),
                 404, "not_found", _fixed("The requested graph item was not found.")),
-    _FailureRow(lambda f: f.error.startswith("preview_")
+    _FailureRow(CODE, lambda f: f.error.startswith("preview_")
                 and f.error not in ("preview_read_unavailable", "preview_boundary_unavailable"),
                 400, _ERROR_CODE, _fixed("A complete supported preview is required before applying.")),
-    _FailureRow(lambda f: f.result.get("status") in ("invalid_request", "unsupported_kind"),
+    _FailureRow(SHAPE, lambda f: f.result.get("status") in ("invalid_request", "unsupported_kind"),
                 400, _ERROR_CODE, _error),
     # 유지보수 거절은 서버 내부 오류가 아니다. SDK가 재시도 가능한 503을 받아야 한다.
-    _FailureRow(lambda f: f.error == "store_busy", 503, "upstream_unavailable",
+    _FailureRow(CODE, lambda f: f.error == "store_busy", 503, "upstream_unavailable",
                 lambda f: f.note or "Store maintenance is in progress.",
                 lambda _f: {"retryable": True, "retry_after_s": 1}),
     # 브리지가 사이드카와 못 이야기했다. 쓰기라면 **이미 적용됐을 수 있다** — 재시도 금지를 싣는다.
-    _FailureRow(lambda f: f.error.startswith("sidecar write unconfirmed")
-                or (bool(f.error) and f.result.get("write_may_have_applied") is True),
-                503, "upstream_unavailable", _error,
-                lambda _f: {"retryable": False, "write_may_have_applied": True}),
-    _FailureRow(lambda f: f.error.startswith("sidecar HTTP 5") or f.error.startswith("sidecar unreachable"),
+    _FailureRow(CODE, lambda f: f.code == failure_codes.SIDECAR_WRITE_UNCONFIRMED, **_WRITE_UNCONFIRMED),
+    _FailureRow(SHAPE, lambda f: bool(f.error) and f.result.get("write_may_have_applied") is True,
+                **_WRITE_UNCONFIRMED),
+    _FailureRow(TEXT, lambda f: f.error.startswith("sidecar write unconfirmed"), **_WRITE_UNCONFIRMED),
+    _FailureRow(CODE, lambda f: f.code == failure_codes.SIDECAR_SERVER_ERROR,
                 503, "upstream_unavailable", _error),
-    _FailureRow(lambda f: f.error == "domain_limit_reached", 409, "domain_limit_reached",
+    _FailureRow(TEXT, lambda f: f.error.startswith("sidecar HTTP 5") or f.error.startswith("sidecar unreachable"),
+                503, "upstream_unavailable", _error),
+    _FailureRow(CODE, lambda f: f.error == "domain_limit_reached", 409, "domain_limit_reached",
                 _fixed("The space has reached its topic limit."), _pick("limit", "current", "attempted")),
-    _FailureRow(lambda f: f.error.startswith(("invalid_cursor", "stale_cursor")),
+    _FailureRow(CODE, lambda f: f.error.startswith(("invalid_cursor", "stale_cursor")),
                 400, "invalid_argument", _error),
-    _FailureRow(lambda f: f.name == "vinc_delete_edge" and "unsupported edge type" in f.reason,
+    _FailureRow(CODE, lambda f: f.code == failure_codes.UNSUPPORTED_EDGE_TYPE,
                 400, "invalid_argument", _note_or_error),
-    _FailureRow(lambda f: f.name == "vinc_merge_nodes"
+    _FailureRow(TEXT, lambda f: f.name == "vinc_delete_edge" and "unsupported edge type" in f.reason,
+                400, "invalid_argument", _note_or_error),
+    _FailureRow(CODE, lambda f: f.code in (failure_codes.MERGE_PAIR_NOT_CONCEPTS, failure_codes.MERGE_PAIR_SAME_NODE),
+                400, "invalid_argument", _error_or_note),
+    _FailureRow(TEXT, lambda f: f.name == "vinc_merge_nodes"
                 and any(term in f.reason for term in ("supports concept", "same node")),
                 400, "invalid_argument", _error_or_note),
-    _FailureRow(lambda f: f.name == "vinc_doc_get" and f.result.get("verified") is False,
+    _FailureRow(SHAPE, lambda f: f.name == "vinc_doc_get" and f.result.get("verified") is False,
                 503, "upstream_unavailable", _fixed("document chunks could not be verified")),
     # 주소로 물은 노드(`/v1/nodes/{id}`)나 못 읽은 노드는 없는 것이다. 자유 질의가 아무것도 못 찾은 것은
     # 오류가 아니라 빈 답이다(다음 줄).
-    _FailureRow(lambda f: f.name == "vinc_brief" and f.result.get("status") == "none"
+    _FailureRow(SHAPE, lambda f: f.name == "vinc_brief" and f.result.get("status") == "none"
                 and (f.by_id or bool(f.result.get("unreadable"))),
                 404, "not_found", lambda f: f.error or "The requested graph item was not found."),
-    _FailureRow(lambda f: f.name == "vinc_brief" and f.result.get("status") == "none", None),
-    _FailureRow(lambda f: f.result.get("found") is False, 404, "not_found",
+    _FailureRow(SHAPE, lambda f: f.name == "vinc_brief" and f.result.get("status") == "none", None),
+    _FailureRow(SHAPE, lambda f: f.result.get("found") is False, 404, "not_found",
                 lambda f: f.error or "The requested graph item was not found."),
-    _FailureRow(_executed_false_with("unknown", "not found", "no such", "missing doc"),
+    # `executed:false` 인 답의 코드 묶음(store/failure_codes.py). 아래 TEXT 세 줄과 같은 상태를 낸다.
+    _FailureRow(CODE, _executed_false_coded(failure_codes.NOT_FOUND), 404, "not_found", _error_or_note),
+    _FailureRow(CODE, _executed_false_coded(failure_codes.INVALID), 400, "invalid_argument", _error_or_note),
+    _FailureRow(CODE, _executed_false_coded(failure_codes.UNAVAILABLE), 503, "upstream_unavailable",
+                _error_or_note),
+    _FailureRow(TEXT, _executed_false_with("unknown", "not found", "no such", "missing doc"),
                 404, "not_found", _error_or_note),
-    _FailureRow(_executed_false_with("invalid", "required", "malformed", "stale"),
+    _FailureRow(TEXT, _executed_false_with("invalid", "required", "malformed", "stale"),
                 400, "invalid_argument", _error_or_note),
-    _FailureRow(_executed_false_with("unavailable", "unreachable", "no store", "no reachable store"),
+    _FailureRow(TEXT, _executed_false_with("unavailable", "unreachable", "no store", "no reachable store"),
                 503, "upstream_unavailable", _error_or_note),
-    _FailureRow(lambda f: f.result.get("executed") is False, 500, "internal",
+    _FailureRow(SHAPE, lambda f: f.result.get("executed") is False, 500, "internal",
                 lambda f: f.error or "The tool did not execute."),
-    _FailureRow(lambda f: bool(f.result.get("isError")) or bool(f.error), 500, "internal",
+    _FailureRow(SHAPE, lambda f: bool(f.result.get("isError")) or bool(f.error), 500, "internal",
                 lambda f: _message(f.result)),
 )
 
@@ -281,7 +330,7 @@ def _failure(name: str, result: dict, *, by_id: bool = False) -> tuple | None:
     반환은 (status, code, message) 또는 (status, code, message, details)이고, 실패가 아니면 None 이다."""
     error = str(result.get("error") or "")
     note = str(result.get("note") or "")
-    facts = _Facts(name, result, by_id, error, note, (error + " " + note).lower())
+    facts = _Facts(name, result, by_id, error, note, (error + " " + note).lower(), _code_of(result, error))
     for row in _FAILURES:
         if not row.when(facts):
             continue
@@ -452,7 +501,9 @@ def _handle(handler, method: str) -> bool:
         if outcome.kind == "protocol_error" and isinstance(error, (KeyError, ValueError)):
             fail(400, "invalid_argument", message)
             return True
-        if isinstance(error, (ConnectionError, TimeoutError, OSError)) or "sidecar unreachable" in message:
+        # 예외의 종류가 먼저 읽는 것이다. 문장은 `SidecarUnreachable` 이 아닌 예외(옛 코드가 던진 RuntimeError)를 위한 대체다.
+        if (isinstance(error, (bridge.SidecarUnreachable, ConnectionError, TimeoutError, OSError))
+                or "sidecar unreachable" in message):
             fail(503, "upstream_unavailable", message)
         else:
             fail(500, "internal", message)

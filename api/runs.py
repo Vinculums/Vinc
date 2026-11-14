@@ -9,7 +9,7 @@
 """
 from __future__ import annotations
 
-from store import pkns, run_state
+from store import failure_codes as fc, pkns, run_state
 from store.querybase import DOC_MIRROR_PREFIX
 
 from . import events, query as q, readkit
@@ -111,7 +111,7 @@ def list_runs(store, *, owner: str, cited: str | None = None, role: str | None =
 
     base = {"kind": "runs", "executed": False}
     if not owner:
-        return {**base, "error": "owner is required"}
+        return {**base, "error": "owner is required", fc.KEY: fc.OWNER_REQUIRED}
     want_role = events.role_id(role)
     wanted = set(_aliases(cited)) if cited else set()
     try:

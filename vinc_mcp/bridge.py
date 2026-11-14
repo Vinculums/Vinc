@@ -17,7 +17,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from store import diagnostics, request_timing
+from store import diagnostics, failure_codes, request_timing
 # 구현은 한 벌뿐이다(Windows 에서 `os.kill` 이 조회 대상을 죽인 사고의 기록은 그 파일에).
 from store.procutil import pid_alive as _pid_alive
 
@@ -28,6 +28,10 @@ DEFAULT_BASE = "http://127.0.0.1:8787"
 # 이미 user:local 로 쓰인 행은 사이드카가 기동할 때 접는다(`api/owner_fold.py`).
 # 근거: [[vinc.plan.desktop-account-mode §6.3]]
 DEFAULT_OWNER = "tenant:local"
+
+
+class SidecarUnreachable(RuntimeError):
+    """사이드카에 닿지 못했다. REST v1 이 문장이 아니라 이 종류로 503 을 고른다."""
 
 
 def _pick_free_port() -> int:
@@ -148,7 +152,9 @@ class Bridge:
                 try:
                     return json.loads(e.read().decode("utf-8"))
                 except Exception:
-                    return {"error": f"sidecar HTTP {e.code}"}
+                    return {"error": f"sidecar HTTP {e.code}",
+                            **({failure_codes.KEY: failure_codes.SIDECAR_SERVER_ERROR}
+                               if e.code >= 500 else {})}
             except Exception as exc:
                 if not _retryable(exc, method):
                     if method != "GET":
@@ -159,7 +165,8 @@ class Bridge:
                                          f"{type(exc).__name__}: {exc}",
                                 "retryable": False,
                                 "note": ("the write may already have been applied; "
-                                         "verify before retrying")}
+                                         "verify before retrying"),
+                                failure_codes.KEY: failure_codes.SIDECAR_WRITE_UNCONFIRMED}
                     raise
                 attempt += 1
                 if attempt > retries:
@@ -248,7 +255,7 @@ class Bridge:
                 time.sleep(0.3)
                 if self.health():
                     return self
-            raise RuntimeError(f"sidecar unreachable: {self.base}")
+            raise SidecarUnreachable(f"sidecar unreachable: {self.base}")
         if not self.token:
             self.token = secrets.token_urlsafe(24)
         port = _pick_free_port()

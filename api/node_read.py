@@ -21,7 +21,7 @@
 from __future__ import annotations
 
 from engines import domain_hierarchy
-from store import pkns
+from store import failure_codes as fc, pkns
 from store.backend import flag, open_store, operation
 from store.config import load_config
 from store.querybase import (
@@ -280,6 +280,7 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
     with _store_scope(store, cfg, open_store) as store:
         if store is None:
             base["note"] = "no reachable store"
+            base[fc.KEY] = fc.NO_REACHABLE_STORE
             return base
         try:
             lim = max(1, min(int(limit), 12))

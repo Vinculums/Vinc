@@ -21,7 +21,7 @@ from __future__ import annotations
 import datetime as _dt
 import itertools
 
-from store import pkns
+from store import failure_codes as fc, pkns
 from store.backend import open_store
 from store.config import load_config
 from store.querybase import QueryPlan, _props_to_obj, execute
@@ -100,16 +100,19 @@ def decide_paths(paths, *, owner: str | None = None, cfg=None, store=None,
     if (not isinstance(paths, list) or not paths
             or any(not isinstance(p, str) or not p.strip() for p in paths)):
         base["error"] = "invalid paths: send a nonempty list of repo:path strings"
+        base[fc.KEY] = fc.INVALID_PATHS
         return base
     touched = list(dict.fromkeys(normalize_subject_path(p) for p in paths))
     if len(touched) > DECIDE_PATHS_MAX:
         base["error"] = (f"invalid paths: at most {DECIDE_PATHS_MAX} paths per call; "
                          "split the list")
+        base[fc.KEY] = fc.INVALID_PATHS
         return base
     cfg = cfg or load_config()
     with _store_scope(store, cfg, open_store) as store:
         if store is None:
             base["note"] = "no reachable store"
+            base[fc.KEY] = fc.NO_REACHABLE_STORE
             return base
         today = _dt.date.today().isoformat()
         params = {"owner": owner} if owner else {}

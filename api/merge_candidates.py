@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import re
 
+from store import failure_codes as fc
 from store.backend import open_store
 from store.querybase import DOC_MIRROR_PREFIX, QueryPlan, execute
 
@@ -207,7 +208,7 @@ def list_merge_rejections(*, owner: str | None = None, cfg=None, store=None) -> 
     with _store_scope(store, cfg, open_store) as store:
         if store is None:
             return {"kind": "merge_rejections", "executed": False, "rejections": [],
-                    "count": 0, "note": "no reachable store"}
+                    "count": 0, "note": "no reachable store", fc.KEY: fc.NO_REACHABLE_STORE}
         rows = _merge_rejection_rows(store, owner)
         return {"kind": "merge_rejections", "executed": True,
                 "rejections": [dict(r) for r in rows], "count": len(rows)}
@@ -226,11 +227,13 @@ def reject_merge_pair(*, owner: str, a_id: str, b_id: str, note: str = "",
         return base
     if not a_id or not b_id or a_id == b_id:
         base["error"] = base["note"] = "two distinct node ids are required"
+        base[fc.KEY] = fc.DISTINCT_NODE_IDS_REQUIRED
         return base
     with _store_scope(store, cfg, open_store) as store:
         try:
             if store is None:
                 base["error"] = base["note"] = "no reachable store"
+                base[fc.KEY] = fc.NO_REACHABLE_STORE
                 return base
             key = rejection_pair_key(owner, a_id, b_id)
             lo, hi = sorted((a_id, b_id))
