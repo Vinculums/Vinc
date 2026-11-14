@@ -150,8 +150,8 @@ test('the home shows no unverified badge and never reads verified (AC-APP-14, ho
 });
 
 test('the reader rail shows Reconstructed (not verified) only on verified false (AC-APP-14, static)', async () => {
-  // 리더 레일은 view.ts 의 닫힌 함수 안이라 그려 볼 수 없다: 원문으로 대조한다.
-  const view = await srcText('surfaces/view.ts');
+  // 리더 레일은 view-reader.ts 의 닫힌 함수 안이라 그려 볼 수 없다: 원문으로 대조한다.
+  const view = await srcText('surfaces/view-reader.ts');
   const m = /const badge = doc\.verified\s*\?\s*""\s*:\s*`<span class="hint">\$\{COPY\.ui\.viewx\.readerUnverified\}<\/span>`;/.exec(view);
   assert.ok(m, 'the badge is empty when verified and the hint otherwise');
   const after = view.slice(m.index, m.index + 6000);

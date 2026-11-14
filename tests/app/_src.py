@@ -23,7 +23,7 @@ UNITS: dict[str, tuple[str, ...]] = {
     # 표면
     "view": ("src/surfaces/view.ts", "src/surfaces/view-host.ts", "src/surfaces/view-props-card.ts",
              "src/surfaces/view-ask.ts", "src/surfaces/view-rail.ts", "src/surfaces/view-cards.ts",
-             "src/surfaces/view-edge.ts"),
+             "src/surfaces/view-edge.ts", "src/surfaces/view-reader.ts"),
     "view-compass": ("src/surfaces/view-compass.ts", "src/surfaces/view-compass-model.ts",
                      "src/surfaces/view-compass-gather.ts", "src/surfaces/view-compass-tree.ts",
                      "src/surfaces/view-compass-shapes.ts", "src/surfaces/view-compass-side.ts",
