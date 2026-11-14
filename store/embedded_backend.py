@@ -852,7 +852,7 @@ class _ReaderView:
     #: 위험 감사 1.1 이 정확히 그 모양이었다. 실제 적용은 :func:`store.adapter_common.filter_clause`.
     scoped_chunk_search = True
     #: 이 뷰가 가진 선택 연산(`store.backend.OPTIONAL_OPERATIONS`). 쓰기·색인 수리는 writer 에만 있다.
-    capabilities = frozenset({"ensure_search_indexes"})
+    capabilities = frozenset({"ensure_search_indexes", "schedule_search_indexes"})
 
     @property
     def _topic_conversion_terminals(self):

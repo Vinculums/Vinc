@@ -15,7 +15,7 @@ import json
 import os
 import re
 from store.config import load_config
-from store.backend import open_store
+from store.backend import flag, open_store, operation
 from store import pkns
 from store import search_temporal as temporal
 from store.embedded_backend import node_vector_generation, vector_generation
@@ -634,8 +634,8 @@ def _schedule_vector_index(store, dim: int | None) -> None:
     ``schedule_search_indexes`` 가 없는 스토어(CLI·테스트가 직접 여는 백엔드)에서는
     기다릴 요청 스레드가 애초에 없으므로 그 자리에서 만든다 — 다음 검색부터 벡터
     팔이 산다. 실패는 삼킨다: 예약 실패는 검색 실패가 아니고, 다음 검색이 다시 건다."""
-    fn = (getattr(store, "schedule_search_indexes", None)
-          or getattr(store, "ensure_search_indexes", None))
+    fn = (operation(store, "schedule_search_indexes")
+          or operation(store, "ensure_search_indexes"))
     if fn is None or dim is None:
         return
     try:
@@ -1473,7 +1473,7 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
             # 테스트 더블)에 owner 를 넘기면 "스코프를 걸었다고 믿는 무스코프 조회"가
             # 되는데, 그건 지금 고치는 결함과 정확히 같은 것이다. 조용히 넓게 답하느니
             # 답을 줄이고 사유를 남긴다.
-            scoped_ok = bool(getattr(store, "scoped_chunk_search", False))
+            scoped_ok = bool(flag(store, "scoped_chunk_search"))
         pool: list[dict] = []
         vnote = ""
         ran: list[str] = []          # 실제로 돈 팔 — 예외로 새면 빈 채로 남는다
@@ -1497,12 +1497,12 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
                 base["note"] = base["error"]
             else:
                 n = _chunk_count(store)
-                builder = getattr(store, "ensure_search_indexes", None)
+                builder = operation(store, "ensure_search_indexes")
                 if n == 0:
                     # Chunk 0 — 빌드 시도 없이 조용히 폴백(node_hits 가 답, 무 에러).
                     base["executed"] = True
                     base["note"] = "no chunks indexed — node_hits only"
-                elif getattr(store, "fts_index_remnant", False):
+                elif flag(store, "fts_index_remnant"):
                     # 다시 서지 않는 색인이다(잔해). 빌드를 걸면 검색마다 실패할 잡이 돈다.
                     # 근거: [[record:an-fts-remnant-on-chunk-stops-every-document-write-and-the-heal-moves-chunk-with-its-edges-2026-09-25]]
                     base["error"] = base["note"] = f"fts_index_remnant: {_FTS_REMNANT}"
@@ -1537,7 +1537,7 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
         # 청크가 0개라 아무것도 못 찾은 경우는 실패가 아니므로(`error` 없음) 안 선다.
         if query_embedding is not None and "semantic" not in ran and base.get("error"):
             base.setdefault("vector_note", base["error"])
-        if vnote and getattr(store, "vector_index_remnant", False):
+        if vnote and flag(store, "vector_index_remnant"):
             # 재빌드 창이 아니다 — 다시 서지 않는 색인이다. 양성 표식(`vector_rebuilding`)을
             # 달면 "곧 돌아온다"는 거짓이 되므로 실패로 싣고, 빌드도 걸지 않는다.
             # 근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]
