@@ -33,9 +33,10 @@ UNITS: dict[str, tuple[str, ...]] = {
     "agents-board": ("src/surfaces/agents-board.ts",),
     # 셸과 공용 모듈
     "main": ("src/main.ts", "src/theme-apply.ts"),
-    "api": ("src/api.ts", "src/api-types.ts", "src/api-config.ts"),
+    "api": ("src/api.ts", "src/api-types.ts", "src/api-config.ts", "src/api-transport.ts"),
     "copy": ("src/copy.ts",),
-    "lnb": ("src/lnb.ts", "src/agent-roster.ts"),
+    "lnb": ("src/lnb.ts", "src/lnb-state.ts", "src/lnb-docs.ts", "src/lnb-graph.ts", "src/lnb-agents.ts",
+            "src/agent-roster.ts"),
     "lnb-tree": ("src/lnb-tree.ts",),
     "topbar": ("src/topbar.ts",),
     "components": ("src/components.ts",),
