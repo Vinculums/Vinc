@@ -559,6 +559,293 @@ def _tri_state(raw, source: str, nid: str, warnings: list[str]) -> str | None:
     return None
 
 
+def _plan_join(*parts) -> tuple[dict, list[str]]:
+    """열 계획 조각들을 차례로 잇는다. 앞 조각의 열과 경고가 먼저다(SET 순서·경고 순서가 그대로 선다)."""
+    sets: dict = {}
+    warns: list[str] = []
+    for part_sets, part_warns in parts:
+        sets.update(part_sets)
+        warns.extend(part_warns)
+    return sets, warns
+
+
+def _plan_promote(sets: dict, warns: list[str], current: dict, matched: bool, nid: str,
+                  col: str, val: str, source: str) -> None:
+    # props 승격은 신규이거나 열이 비었을 때만 한다. 저작된 열을 props 만 실은
+    # 재전송이 덮으면 안 된다. 값이 다르면 열을 지키고 말한다.
+    held = str(current.get(col) or "")
+    if not matched or not held:
+        sets[col] = val
+    elif held != val:
+        warns.append(
+            f"{source} not promoted — {col} already holds a value and was kept "
+            f"(id={nid}); send {col} at the top level to change it")
+
+
+def _plan_entity(node: dict, ntype: str, nid: str, owner: str, *, matched: bool,
+                 owner_explicit: bool, theme_id: str,
+                 theme_explicit: bool) -> tuple[dict, list[str]]:
+    """Entity 캐리어(F1)의 열 계획. 반환은 (열 → 값, 경고)다."""
+    sets: dict = {}
+    warns: list[str] = []
+    # Entity 캐리어(F1) — 열은 type/title/owner_id/theme_id/tags 뿐. domain/props
+    # 는 열이 없어 미보존(휴면 엔진 동형 — warnings 로 통지, 조용한 유실 금지).
+    sets["type"] = ntype
+    sets["title"] = str(node.get("title")).strip()
+    # tags 는 다른 라벨과 같다: 실으면 쓰고 안 실으면 보존한다. 신규만 빈 목록으로 연다.
+    if node.get("tags") is not None:
+        sets["tags"] = [str(t) for t in (node.get("tags") or [])]
+    elif not matched:
+        sets["tags"] = []
+    # 주제 귀속은 신규이거나 fragment 가 값을 직접 실었을 때만 쓴다. 활성 테마나
+    # themes 없는 호출부("")가 기존 행의 귀속을 덮으면 안 된다.
+    if not matched or (theme_explicit and theme_id):
+        sets["theme_id"] = theme_id
+    if node.get("domain") is not None:
+        warns.append(f"node.domain not persisted on Entity (id={nid}); fold into tags/theme")
+    if node.get("props"):
+        warns.append(f"node.props not persisted — no schema-free column on Entity (id={nid})")
+    if owner_explicit or not matched:
+        sets["owner_id"] = owner
+    return sets, warns
+
+
+def _plan_shared(store, node: dict, label: str, ntype: str, nid: str, owner: str,
+                 current: dict, *, matched: bool, default_day: str) -> tuple[dict, list[str]]:
+    """저작 라벨 다섯(Concept·Decision·Episode·Record·Bridge)이 같이 갖는 열: title·domain·tags·props."""
+    sets: dict = {}
+    warns: list[str] = []
+    # `title` 도 domain·tags·props 와 **같은 규칙**이다: 주면 쓰고, 안 주면
+    # 보존한다. **신규일 때만** id 로 채운다(제목 없는 노드 금지).
+    # ⚠ 이 가드를 걷어내지 말 것 — 없던 시절 스텁 재전송이 제목을 파괴했다:
+    # [[record:unguarded-title-overwrote-107-nodes-with-their-ids]].
+    #
+    # v0.8.4 axis2 item2 — Episode·Record 는 다르다. id 를 제목 대신 쓰면
+    # 빈 제목이 영영 안 보이고 PR-0 감사 전까지 아무도 못 잡는다(id 가 이미
+    # 있으니 "제목 없음"이 안 드러난다). 그래서 이 두 라벨만 **빈 채로 두고
+    # 경고한다** — id 는 키지 이름이 아니다. Concept·Decision·Bridge 는
+    # 이 항목의 범위 밖이라 기존 대체 동작을 유지한다:
+    # [[vinc.canon.mcp-contract §5.2]].
+    if label in ("Episode", "Record"):
+        _title = node.get("title")
+        if _title is not None and str(_title).strip():
+            sets["title"] = str(_title)
+        elif _title is not None:
+            sets["title"] = ""
+            warns.append(
+                f"{ntype} node.title empty — left blank, not set to the id "
+                f"(id={nid})")
+        elif not matched:
+            warns.append(
+                f"{ntype} node has no title — left blank, not set to the id "
+                f"(id={nid})")
+    elif node.get("title") is not None:
+        sets["title"] = str(node["title"]) or nid
+    elif not matched:
+        sets["title"] = nid
+    if node.get("domain") is not None:
+        if label == "Bridge":
+            # Bridge 는 domain 열이 없다(source_domain/target_domain 대신) — SET
+            # 하면 Binder 예외로 죽는다(실측, 2026-07-21). 경고로 강등해 조용한
+            # 유실 대신 명시 통지, 나머지 노드/엣지 처리는 계속한다.
+            warns.append(
+                f"node.domain not persisted on Bridge (id={nid}); "
+                "Bridge has source_domain/target_domain instead, not settable via fragment ingest")
+        else:
+            # 정규화된 값을 **열에도** 넣는다 — 열과 Domain 노드 이름이 정확히
+            # 같아야 IN_DOMAIN 이 그 열의 그래프 표현일 수 있다(engines/
+            # domain_hierarchy.normalize 주석). 잘 쓴 값에는 항등이다.
+            sets["domain"] = domain_hierarchy.normalize(node["domain"])
+    # 열이 없는 라벨(Bridge)에 SET 하면 Binder 로 노드가 통째로 떨어진다. 경고는
+    # 위 `_warn_unkept_fields` 가 이미 냈다.
+    if node.get("tags") is not None and "tags" in _KEPT_FIELDS[label]:
+        sets["tags"] = [str(t) for t in (node.get("tags") or [])]
+    _pv = node.get("props")
+    if label == "Decision" and isinstance(_pv, dict):
+        # 결정의 유효구간은 props 에 산다. 형식 검사는 Record 열과 같다.
+        _pv = _decision_interval(_pv, current.get("props"), nid, warns)
+    if (label == "Decision" and default_day and not matched
+            and (_pv is None or isinstance(_pv, dict))
+            and not str((_pv or {}).get("valid_from") or "").strip()
+            and not str((_pv or {}).get("valid_until") or "").strip()):
+        # 새 결정만 채운다. 기존 결정은 저장된 날짜를 지키고, 보낸 값은 덮지 않는다.
+        # 끝만 있는 결정은 닫힌 구간이라 시작을 오늘로 두면 뒤집힌다. 그대로 둔다.
+        _pv = {**(_pv or {}), "valid_from": default_day}
+        warns.append(_filled_warning(nid, "props.valid_from", default_day,
+                                     "when the decision took effect"))
+    if _pv is not None:
+        sets["props"] = json.dumps(_claim_props(_pv, label, nid, warns,
+                                                known_repos=lambda: _known_repos(store, owner)),
+                                   ensure_ascii=False, sort_keys=True)
+    return sets, warns
+
+
+def _plan_one_liner(node: dict, nid: str, current: dict, *, matched: bool) -> tuple[dict, list[str]]:
+    """Concept 의 `one_liner`."""
+    sets: dict = {}
+    warns: list[str] = []
+    # date/summary 승격(아래 Episode)과 같은 규칙: top-level 이 오면 그것이
+    # 이기고, 없으면 props.one_liner 또는 props.note 를 승격한다(키가 아예
+    # 없을 때만, 그리고 열이 비었을 때만). 왜 되살렸나: [[vinc.research.no-llm-chat]] Q5.
+    _props = node.get("props") if isinstance(node.get("props"), dict) else {}
+    if node.get("one_liner") is not None:
+        sets["one_liner"] = str(node["one_liner"])
+    elif "one_liner" not in node:
+        _src = "one_liner" if _props.get("one_liner") else "note"
+        cand = _props.get(_src)
+        if isinstance(cand, str) and cand.strip():
+            _plan_promote(sets, warns, current, matched, nid, "one_liner", cand.strip(),
+                          f"props.{_src}")
+    return sets, warns
+
+
+def _plan_content_time(node: dict, nid: str, current: dict, *,
+                       matched: bool) -> tuple[dict, list[str]]:
+    """Concept·Record 의 내용 시점(`content_time`)."""
+    sets: dict = {}
+    warns: list[str] = []
+    # v7(D72) — **내용 시점**(`content_time`). 규칙은 앞의 셋과 같다:
+    # top-level 이 이기고, 키가 **아예 없을 때만** props 를 승격한다(F9).
+    # ⚠ 형식 위반은 **쓰지 않고 경고한다** — SET 하면 오타 한 번이 저장된
+    # 시점을 지운다. 빈 문자열은 명시적 지우기로 존중한다. 문서 경로
+    # (`put_doc`)도 이제 같은 규칙이다: [[record:content-time-writable-through-ingest]].
+    _cp = node.get("props") if isinstance(node.get("props"), dict) else {}
+    _raw = node.get("content_time")
+    _promoted = False
+    if _raw is None and "content_time" not in node:
+        _cand = _cp.get("content_time")
+        _raw = _cand if isinstance(_cand, str) else None
+        _promoted = _raw is not None
+    _norm = _tri_state(_raw, "content_time", nid, warns)
+    if _norm is not None and not _promoted:
+        sets["content_time"] = _norm
+    elif _norm:      # 빈 props 값은 승격할 것이 없다. 지우기는 top-level 로만 한다
+        _plan_promote(sets, warns, current, matched, nid, "content_time", _norm,
+                      "props.content_time")
+    return sets, warns
+
+
+def _plan_validity(node: dict, nid: str, current: dict) -> tuple[dict, list[str]]:
+    """Record 의 유효구간 `valid_from`·`valid_until`."""
+    sets: dict = {}
+    warns: list[str] = []
+    # v15(W13) — **유효구간** [valid_from, valid_until). 규칙은 content_time
+    # 과 같다: 키가 있을 때만 쓰고(부분 재전송은 보존), 형식 위반은 쓰지 않고
+    # 경고하며, 빈 문자열은 명시적 지우기다. props 승격은 없다 — 이 두 필드는
+    # 레거시 자리가 없던 신설이라 승격할 관행 자체가 없다(YAGNI).
+    # 무효화("이 주장은 X 까지였다")는 valid_until 만 실은 부분 재전송으로
+    # 쓴다 — 그래서 보존 가드가 이 필드의 핵심이다.
+    # 근거: [[vinc.plan.0-9-0-open-decisions §2]] · 형식 계약은 content_time 동형.
+    for _vcol in ("valid_from", "valid_until"):
+        _vnorm = _tri_state(node.get(_vcol), _vcol, nid, warns)
+        if _vnorm is not None:
+            sets[_vcol] = _vnorm
+    # 뒤집힌 구간은 **저장하되 말한다** — 두 값이 각자 합법이라 거부하면
+    # 잃는 쪽을 고르는 일이 되고, 침묵하면 "T 에 유효한가" 질의가 전부
+    # 거짓이 된다. 유효값은 방금 실은 것, 없으면 저장된 것(사전식 비교 —
+    # 접두 형식이라 자릿수가 달라도 순서가 선다).
+    _vf = sets.get("valid_from", current.get("valid_from") or "")
+    _vu = sets.get("valid_until", current.get("valid_until") or "")
+    if _vf and _vu and _vu < _vf:
+        warns.append(
+            f"validity interval inverted — valid_until '{_vu}' precedes "
+            f"valid_from '{_vf}' (id={nid}); stored as sent, but no instant "
+            f"falls inside it")
+    return sets, warns
+
+
+def _plan_episode(node: dict, nid: str, current: dict, *, matched: bool,
+                  default_day: str) -> tuple[dict, list[str]]:
+    """Episode 의 `date`·`summary`."""
+    sets: dict = {}
+    warns: list[str] = []
+    # share pack(D19)의 레코드 노드 — 콘텐츠 필드만(선호 신호는 팩에 없음).
+    #
+    # F9 — **props.date/summary 를 열로 승격한다.** 계약이 두 필드를 선언하지
+    # 않던 시절 상류가 실을 수 있는 자리는 props 뿐이었고, 그 열은 recall 의
+    # `ORDER BY e.date DESC`·타임라인·팩/공유가 전부 읽는 자리라 비면 정렬이
+    # 무의미해진다. 승격이 **쓰기 시점**인 이유가 그것이다 — 응답에서
+    # coalesce 하면 그 응답 하나만 고쳐지고 정렬·타임라인·공유는 빈 채 남는다.
+    # top-level 이 이기고(빈 문자열로 지우는 것 포함) props 폴백은 키가 아예
+    # 없을 때만. props 원본은 지우지 않는다(부분 재전송이 원본을 깎는다).
+    # 선언 누락의 계보: [[vinc.canon.mcp-contract]] §5.1.
+    _props = node.get("props") if isinstance(node.get("props"), dict) else {}
+    for _col in ("date", "summary"):
+        _val = node.get(_col)
+        _promoted = False
+        if _val is None:
+            # 문자열만 승격한다 — props 는 자유 형태라 dict/list 가 올 수
+            # 있는데 그걸 str() 로 뭉개면 날짜가 아닌 것이 날짜 열에 앉는다.
+            # 승격 못 한 값도 props 에 그대로 남으므로 유실은 아니다.
+            _cand = _props.get(_col)
+            if not isinstance(_cand, str) or not _cand.strip():
+                continue
+            _val, _promoted = _cand.strip(), True
+        _val = str(_val)
+        if _col == "date":
+            # 날짜는 content_time 과 같은 형식 계약이다. 틀리면 쓰지 않고 저장된
+            # 값을 남긴다 — 정렬·시점 읽기가 이 열을 사전식으로 비교한다.
+            _dn = _tri_state(_val, "props.date" if _promoted else "date", nid, warns)
+            if _dn is None:
+                continue
+            _val = _dn
+        if _promoted:
+            _plan_promote(sets, warns, current, matched, nid, _col, _val, f"props.{_col}")
+        else:
+            sets[_col] = _val
+    if default_day and not matched and not sets.get("date"):
+        # 새 사건만 채운다(결정과 같은 규칙). 빈 문자열도 새 노드에선 빈 날짜다.
+        # 이미 있는 키는 자리를 지킨 채 값만 바꾼다(SET 순서가 그대로다).
+        sets["date"] = default_day
+        warns.append(_filled_warning(nid, "date", default_day, "when it happened"))
+    return sets, warns
+
+
+def _plan_birth_and_owner(store, node: dict, label: str, nid: str, owner: str, *,
+                          matched: bool, owner_explicit: bool) -> tuple[dict, list[str]]:
+    """출생(`created`)·소유(`owner_id`)·Record 의 `tenant_id`."""
+    sets: dict = {}
+    warns: list[str] = []
+    # 출생(`created`) = **어느 공간에서든 처음 기록된 때**. 규칙이 둘로 갈린다 —
+    #   신규 : 상류가 실은 값, 없으면 지금(HLC).
+    #   기존 : **절대 안 덮는다**(팩 재적재가 남의 값으로 생일을 바꾸는 것을 막는다).
+    # 동기화의 min 과 다른 이유는 신뢰다: 같은 계정의 두 기기는 한 공간이지만 팩은
+    # 미신뢰 외부 입력이라 min 대신 쓰기 자체를 안 한다(동기화 쪽은
+    # api/sync._reconcile_birth · [[decision:created-is-earliest-known-recording]]).
+    if label in ("Concept", "Record", "Decision", "Bridge") and not matched:
+        # 상류 값은 ISO 날짜·시각일 때만 받는다. 아니면 버리고 지금을 찍는다.
+        _born = _iso_instant(node.get("created"))
+        if node.get("created") and not _born:
+            warns.append(
+                f"created '{node['created']}' is not an ISO date or timestamp — "
+                f"ignored, the write time was stamped instead (id={nid})")
+        sets["created"] = _born or revstamp.hlc_now(store)
+    if label in ("Record", "Concept", "Episode", "Bridge", "Decision") \
+            and (owner_explicit or not matched):
+        sets["owner_id"] = owner
+    if label == "Record":
+        sets["tenant_id"] = "tenant:local"
+    return sets, warns
+
+
+def _plan_authored(store, node: dict, label: str, ntype: str, nid: str, owner: str,
+                   current: dict, *, matched: bool, owner_explicit: bool,
+                   default_day: str) -> tuple[dict, list[str]]:
+    """Domain·Entity 밖 다섯 라벨의 열 계획. 공통 열 뒤에 라벨 묶음별 열, 맨 끝에 출생·소유."""
+    none: tuple[dict, list[str]] = ({}, [])
+    return _plan_join(
+        _plan_shared(store, node, label, ntype, nid, owner, current,
+                     matched=matched, default_day=default_day),
+        _plan_one_liner(node, nid, current, matched=matched) if label == "Concept" else none,
+        _plan_content_time(node, nid, current, matched=matched)
+        if label in ("Concept", "Record") else none,
+        _plan_validity(node, nid, current) if label == "Record" else none,
+        _plan_episode(node, nid, current, matched=matched, default_day=default_day)
+        if label == "Episode" else none,
+        _plan_birth_and_owner(store, node, label, nid, owner, matched=matched,
+                              owner_explicit=owner_explicit))
+
+
 def merge_node(store, node: dict, owner: str, warnings: list[str],
                 *, owner_explicit: bool = False, theme_id: str = "",
                 theme_explicit: bool = False,
@@ -628,221 +915,26 @@ def merge_node(store, node: dict, owner: str, warnings: list[str],
         warnings.extend(role_contract.check(node, created=not matched,
                                             stored_domain=current.get("domain")))
 
-    sets, params = [], {"id": key}
+    # 열 계획. 라벨 묶음마다 `_plan_*` 가 (열 → 값, 경고)를 돌려준다. 계획 순서가 곧 SET 순서이고
+    # 경고 순서다(클라이언트가 경고를 순서대로 읽는다).
+    if is_entity:
+        plan, plan_warnings = _plan_entity(node, ntype, nid, owner, matched=matched,
+                                           owner_explicit=owner_explicit, theme_id=theme_id,
+                                           theme_explicit=theme_explicit)
+    elif label != "Domain":
+        plan, plan_warnings = _plan_authored(store, node, label, ntype, nid, owner, current,
+                                             matched=matched, owner_explicit=owner_explicit,
+                                             default_day=default_day)
+    else:
+        # Domain 의 props·title 은 `_warn_unkept_fields` 가 한 번 말한다. 두 번 말하지 않는다.
+        plan, plan_warnings = {}, []
+    warnings.extend(plan_warnings)
+    sets = [f"n.{col} = ${col}" for col in plan]
+    params = {"id": key, **plan}
+
     def _set(col, val):
         sets.append(f"n.{col} = ${col}")
         params[col] = val
-
-    if is_entity:
-        # Entity 캐리어(F1) — 열은 type/title/owner_id/theme_id/tags 뿐. domain/props
-        # 는 열이 없어 미보존(휴면 엔진 동형 — warnings 로 통지, 조용한 유실 금지).
-        _set("type", ntype)
-        _set("title", str(node.get("title")).strip())
-        # tags 는 다른 라벨과 같다: 실으면 쓰고 안 실으면 보존한다. 신규만 빈 목록으로 연다.
-        if node.get("tags") is not None:
-            _set("tags", [str(t) for t in (node.get("tags") or [])])
-        elif not matched:
-            _set("tags", [])
-        # 주제 귀속은 신규이거나 fragment 가 값을 직접 실었을 때만 쓴다. 활성 테마나
-        # themes 없는 호출부("")가 기존 행의 귀속을 덮으면 안 된다.
-        if not matched or (theme_explicit and theme_id):
-            _set("theme_id", theme_id)
-        if node.get("domain") is not None:
-            warnings.append(f"node.domain not persisted on Entity (id={nid}); fold into tags/theme")
-        if node.get("props"):
-            warnings.append(f"node.props not persisted — no schema-free column on Entity (id={nid})")
-        if owner_explicit or not matched:
-            _set("owner_id", owner)
-    elif label != "Domain":
-        # `title` 도 domain·tags·props 와 **같은 규칙**이다: 주면 쓰고, 안 주면
-        # 보존한다. **신규일 때만** id 로 채운다(제목 없는 노드 금지).
-        # ⚠ 이 가드를 걷어내지 말 것 — 없던 시절 스텁 재전송이 제목을 파괴했다:
-        # [[record:unguarded-title-overwrote-107-nodes-with-their-ids]].
-        #
-        # v0.8.4 axis2 item2 — Episode·Record 는 다르다. id 를 제목 대신 쓰면
-        # 빈 제목이 영영 안 보이고 PR-0 감사 전까지 아무도 못 잡는다(id 가 이미
-        # 있으니 "제목 없음"이 안 드러난다). 그래서 이 두 라벨만 **빈 채로 두고
-        # 경고한다** — id 는 키지 이름이 아니다. Concept·Decision·Bridge 는
-        # 이 항목의 범위 밖이라 기존 대체 동작을 유지한다:
-        # [[vinc.canon.mcp-contract §5.2]].
-        if label in ("Episode", "Record"):
-            _title = node.get("title")
-            if _title is not None and str(_title).strip():
-                _set("title", str(_title))
-            elif _title is not None:
-                _set("title", "")
-                warnings.append(
-                    f"{ntype} node.title empty — left blank, not set to the id "
-                    f"(id={nid})")
-            elif not matched:
-                warnings.append(
-                    f"{ntype} node has no title — left blank, not set to the id "
-                    f"(id={nid})")
-        elif node.get("title") is not None:
-            _set("title", str(node["title"]) or nid)
-        elif not matched:
-            _set("title", nid)
-        if node.get("domain") is not None:
-            if label == "Bridge":
-                # Bridge 는 domain 열이 없다(source_domain/target_domain 대신) — SET
-                # 하면 Binder 예외로 죽는다(실측, 2026-07-21). 경고로 강등해 조용한
-                # 유실 대신 명시 통지, 나머지 노드/엣지 처리는 계속한다.
-                warnings.append(
-                    f"node.domain not persisted on Bridge (id={nid}); "
-                    "Bridge has source_domain/target_domain instead, not settable via fragment ingest")
-            else:
-                # 정규화된 값을 **열에도** 넣는다 — 열과 Domain 노드 이름이 정확히
-                # 같아야 IN_DOMAIN 이 그 열의 그래프 표현일 수 있다(engines/
-                # domain_hierarchy.normalize 주석). 잘 쓴 값에는 항등이다.
-                _set("domain", domain_hierarchy.normalize(node["domain"]))
-        # 열이 없는 라벨(Bridge)에 SET 하면 Binder 로 노드가 통째로 떨어진다. 경고는
-        # 위 `_warn_unkept_fields` 가 이미 냈다.
-        if node.get("tags") is not None and "tags" in _KEPT_FIELDS[label]:
-            _set("tags", [str(t) for t in (node.get("tags") or [])])
-        _pv = node.get("props")
-        if label == "Decision" and isinstance(_pv, dict):
-            # 결정의 유효구간은 props 에 산다. 형식 검사는 Record 열과 같다.
-            _pv = _decision_interval(_pv, current.get("props"), nid, warnings)
-        if (label == "Decision" and default_day and not matched
-                and (_pv is None or isinstance(_pv, dict))
-                and not str((_pv or {}).get("valid_from") or "").strip()
-                and not str((_pv or {}).get("valid_until") or "").strip()):
-            # 새 결정만 채운다. 기존 결정은 저장된 날짜를 지키고, 보낸 값은 덮지 않는다.
-            # 끝만 있는 결정은 닫힌 구간이라 시작을 오늘로 두면 뒤집힌다. 그대로 둔다.
-            _pv = {**(_pv or {}), "valid_from": default_day}
-            warnings.append(_filled_warning(nid, "props.valid_from", default_day,
-                                            "when the decision took effect"))
-        if _pv is not None:
-            _set("props", json.dumps(_claim_props(_pv, label, nid, warnings,
-                                                   known_repos=lambda: _known_repos(store, owner)),
-                                     ensure_ascii=False, sort_keys=True))
-
-        def _promote(col: str, val: str, source: str) -> None:
-            # props 승격은 신규이거나 열이 비었을 때만 한다. 저작된 열을 props 만 실은
-            # 재전송이 덮으면 안 된다. 값이 다르면 열을 지키고 말한다.
-            held = str(current.get(col) or "")
-            if not matched or not held:
-                _set(col, val)
-            elif held != val:
-                warnings.append(
-                    f"{source} not promoted — {col} already holds a value and was kept "
-                    f"(id={nid}); send {col} at the top level to change it")
-
-        if label == "Concept":
-            # date/summary 승격(아래 Episode)과 같은 규칙: top-level 이 오면 그것이
-            # 이기고, 없으면 props.one_liner 또는 props.note 를 승격한다(키가 아예
-            # 없을 때만, 그리고 열이 비었을 때만). 왜 되살렸나: [[vinc.research.no-llm-chat]] Q5.
-            _props = node.get("props") if isinstance(node.get("props"), dict) else {}
-            if node.get("one_liner") is not None:
-                _set("one_liner", str(node["one_liner"]))
-            elif "one_liner" not in node:
-                _src = "one_liner" if _props.get("one_liner") else "note"
-                cand = _props.get(_src)
-                if isinstance(cand, str) and cand.strip():
-                    _promote("one_liner", cand.strip(), f"props.{_src}")
-        if label in ("Concept", "Record"):
-            # v7(D72) — **내용 시점**(`content_time`). 규칙은 앞의 셋과 같다:
-            # top-level 이 이기고, 키가 **아예 없을 때만** props 를 승격한다(F9).
-            # ⚠ 형식 위반은 **쓰지 않고 경고한다** — SET 하면 오타 한 번이 저장된
-            # 시점을 지운다. 빈 문자열은 명시적 지우기로 존중한다. 문서 경로
-            # (`put_doc`)도 이제 같은 규칙이다: [[record:content-time-writable-through-ingest]].
-            _cp = node.get("props") if isinstance(node.get("props"), dict) else {}
-            _raw = node.get("content_time")
-            _promoted = False
-            if _raw is None and "content_time" not in node:
-                _cand = _cp.get("content_time")
-                _raw = _cand if isinstance(_cand, str) else None
-                _promoted = _raw is not None
-            _norm = _tri_state(_raw, "content_time", nid, warnings)
-            if _norm is not None and not _promoted:
-                _set("content_time", _norm)
-            elif _norm:      # 빈 props 값은 승격할 것이 없다. 지우기는 top-level 로만 한다
-                _promote("content_time", _norm, "props.content_time")
-        if label == "Record":
-            # v15(W13) — **유효구간** [valid_from, valid_until). 규칙은 content_time
-            # 과 같다: 키가 있을 때만 쓰고(부분 재전송은 보존), 형식 위반은 쓰지 않고
-            # 경고하며, 빈 문자열은 명시적 지우기다. props 승격은 없다 — 이 두 필드는
-            # 레거시 자리가 없던 신설이라 승격할 관행 자체가 없다(YAGNI).
-            # 무효화("이 주장은 X 까지였다")는 valid_until 만 실은 부분 재전송으로
-            # 쓴다 — 그래서 보존 가드가 이 필드의 핵심이다.
-            # 근거: [[vinc.plan.0-9-0-open-decisions §2]] · 형식 계약은 content_time 동형.
-            for _vcol in ("valid_from", "valid_until"):
-                _vnorm = _tri_state(node.get(_vcol), _vcol, nid, warnings)
-                if _vnorm is not None:
-                    _set(_vcol, _vnorm)
-            # 뒤집힌 구간은 **저장하되 말한다** — 두 값이 각자 합법이라 거부하면
-            # 잃는 쪽을 고르는 일이 되고, 침묵하면 "T 에 유효한가" 질의가 전부
-            # 거짓이 된다. 유효값은 방금 실은 것, 없으면 저장된 것(사전식 비교 —
-            # 접두 형식이라 자릿수가 달라도 순서가 선다).
-            _vf = params.get("valid_from", current.get("valid_from") or "")
-            _vu = params.get("valid_until", current.get("valid_until") or "")
-            if _vf and _vu and _vu < _vf:
-                warnings.append(
-                    f"validity interval inverted — valid_until '{_vu}' precedes "
-                    f"valid_from '{_vf}' (id={nid}); stored as sent, but no instant "
-                    f"falls inside it")
-        if label == "Episode":
-            # share pack(D19)의 레코드 노드 — 콘텐츠 필드만(선호 신호는 팩에 없음).
-            #
-            # F9 — **props.date/summary 를 열로 승격한다.** 계약이 두 필드를 선언하지
-            # 않던 시절 상류가 실을 수 있는 자리는 props 뿐이었고, 그 열은 recall 의
-            # `ORDER BY e.date DESC`·타임라인·팩/공유가 전부 읽는 자리라 비면 정렬이
-            # 무의미해진다. 승격이 **쓰기 시점**인 이유가 그것이다 — 응답에서
-            # coalesce 하면 그 응답 하나만 고쳐지고 정렬·타임라인·공유는 빈 채 남는다.
-            # top-level 이 이기고(빈 문자열로 지우는 것 포함) props 폴백은 키가 아예
-            # 없을 때만. props 원본은 지우지 않는다(부분 재전송이 원본을 깎는다).
-            # 선언 누락의 계보: [[vinc.canon.mcp-contract]] §5.1.
-            _props = node.get("props") if isinstance(node.get("props"), dict) else {}
-            for _col in ("date", "summary"):
-                _val = node.get(_col)
-                _promoted = False
-                if _val is None:
-                    # 문자열만 승격한다 — props 는 자유 형태라 dict/list 가 올 수
-                    # 있는데 그걸 str() 로 뭉개면 날짜가 아닌 것이 날짜 열에 앉는다.
-                    # 승격 못 한 값도 props 에 그대로 남으므로 유실은 아니다.
-                    _cand = _props.get(_col)
-                    if not isinstance(_cand, str) or not _cand.strip():
-                        continue
-                    _val, _promoted = _cand.strip(), True
-                _val = str(_val)
-                if _col == "date":
-                    # 날짜는 content_time 과 같은 형식 계약이다. 틀리면 쓰지 않고 저장된
-                    # 값을 남긴다 — 정렬·시점 읽기가 이 열을 사전식으로 비교한다.
-                    _dn = _tri_state(_val, "props.date" if _promoted else "date", nid, warnings)
-                    if _dn is None:
-                        continue
-                    _val = _dn
-                if _promoted:
-                    _promote(_col, _val, f"props.{_col}")
-                else:
-                    _set(_col, _val)
-            if default_day and not matched and not params.get("date"):
-                # 새 사건만 채운다(결정과 같은 규칙). 빈 문자열도 새 노드에선 빈 날짜다.
-                if "date" in params:
-                    params["date"] = default_day
-                else:
-                    _set("date", default_day)
-                warnings.append(_filled_warning(nid, "date", default_day, "when it happened"))
-        # 출생(`created`) = **어느 공간에서든 처음 기록된 때**. 규칙이 둘로 갈린다 —
-        #   신규 : 상류가 실은 값, 없으면 지금(HLC).
-        #   기존 : **절대 안 덮는다**(팩 재적재가 남의 값으로 생일을 바꾸는 것을 막는다).
-        # 동기화의 min 과 다른 이유는 신뢰다: 같은 계정의 두 기기는 한 공간이지만 팩은
-        # 미신뢰 외부 입력이라 min 대신 쓰기 자체를 안 한다(동기화 쪽은
-        # api/sync._reconcile_birth · [[decision:created-is-earliest-known-recording]]).
-        if label in ("Concept", "Record", "Decision", "Bridge") and not matched:
-            # 상류 값은 ISO 날짜·시각일 때만 받는다. 아니면 버리고 지금을 찍는다.
-            _born = _iso_instant(node.get("created"))
-            if node.get("created") and not _born:
-                warnings.append(
-                    f"created '{node['created']}' is not an ISO date or timestamp — "
-                    f"ignored, the write time was stamped instead (id={nid})")
-            _set("created", _born or revstamp.hlc_now(store))
-        if label in ("Record", "Concept", "Episode", "Bridge", "Decision") \
-                and (owner_explicit or not matched):
-            _set("owner_id", owner)
-        if label == "Record":
-            _set("tenant_id", "tenant:local")
-    # Domain 의 props·title 은 `_warn_unkept_fields` 가 한 번 말한다. 두 번 말하지 않는다.
 
     # 변경감지 스탬핑(S0): 신규이거나 추적필드가 실제로 달라졌을 때만 rev/updated_at/
     # sync_seq 를 찍는다 — 멱등 재적재는 무스탬프(가짜 충돌 방지). 원격에서 apply 되는

@@ -32,7 +32,7 @@ UNITS: dict[str, tuple[str, ...]] = {
     "settings": ("src/surfaces/settings.ts",),
     "agents-board": ("src/surfaces/agents-board.ts",),
     # 셸과 공용 모듈
-    "main": ("src/main.ts",),
+    "main": ("src/main.ts", "src/theme-apply.ts"),
     "api": ("src/api.ts",),
     "copy": ("src/copy.ts",),
     "lnb": ("src/lnb.ts", "src/agent-roster.ts"),

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""사이드카 HTTP 계약(`api/contract/sidecar.json`)과 `api/server.py` 라우트 표가 같은가.
+"""사이드카 HTTP 계약(`api/contract/sidecar.json`)과 `api/routes.py` 라우트 표가 같은가.
 
 계약은 앱(`app/`)이 부르는 경로와 그 밖의 호출자만 쓰는 경로(`x-internal: true`)를 한 파일에
 적는다. 이 테스트가 서버 쪽 두 방향을 지킨다:
@@ -10,10 +10,9 @@
 앱 쪽 두 방향(앱의 호출이 전부 계약에 있고 내부용이 아닌가, 내부용이 아니라고 적은 연산을
 앱이 실제로 부르는가)은 `app/dev/sidecar-contract-check.ts` 가 본다.
 
-라우트 표는 `_Handler._route_get`·`_route_post` 안의 사전 리터럴이고 `/health`·
-`/connect/callback` 은 `_dispatch_request` 가 인증 전에 직접 받는다. 그래서 목록은 소스의 AST
-에서 읽고, 계약의 연산마다 실제 디스패치를 한 번 태워 같은 핸들러에 닿는지도 본다(AST 와
-런타임이 서로를 검산한다).
+라우트 표는 `api.routes` 의 데이터(`GET_ROUTES`·`POST_ROUTES`·접두 표·인증 전 라우트)이고,
+목록은 그것을 import 해 읽는다. 계약의 연산마다 실제 디스패치(`routes.dispatch`)를 한 번 태워 같은
+핸들러에 닿는지도 본다(표와 런타임이 서로를 검산한다).
 """
 from __future__ import annotations
 
@@ -27,7 +26,7 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from api import server as srv  # noqa: E402
+from api import routes  # noqa: E402
 
 CONTRACT = ROOT / "api" / "contract" / "sidecar.json"
 SERVER = ROOT / "api" / "server.py"
@@ -52,71 +51,18 @@ def _sidecar_ops(doc: dict):
             if op["x-served-by"] == "sidecar"]
 
 
-# ── 서버 소스에서 라우트 읽기 ─────────────────────────────────────────────────
-
-def _handler_name(value: ast.expr) -> str | None:
-    """표의 값(`app.read_recall` 또는 `lambda p: app.read_graph(p, wire=True)`)의 핸들러 이름."""
-    if isinstance(value, ast.Lambda):
-        value = value.body.func if isinstance(value.body, ast.Call) else value.body
-    if isinstance(value, ast.Attribute):
-        return value.attr
-    return None
-
+# ── 서버의 라우트 표 ──────────────────────────────────────────────────────────
 
 def _server_routes():
     """`({(METHOD, 경로): 핸들러}, {(METHOD, 접두): 핸들러})`.
 
-    인라인 라우트(`/health`·`/connect/callback`)는 핸들러가 None 이거나 `app.<이름>` 호출이다."""
-    tree = ast.parse(SERVER.read_text(encoding="utf-8"))
-    handler_cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "_Handler")
-    funcs = {f.name: f for f in handler_cls.body if isinstance(f, ast.FunctionDef)}
-    exact: dict[tuple[str, str], str | None] = {}
-    prefix: dict[tuple[str, str], str | None] = {}
-
-    for fname, method in (("_route_get", "GET"), ("_route_post", "POST")):
-        fn = funcs[fname]
-        for node in ast.walk(fn):
-            if (isinstance(node, ast.Assign) and len(node.targets) == 1
-                    and isinstance(node.targets[0], ast.Name) and node.targets[0].id == "table"):
-                assert isinstance(node.value, ast.Dict), f"{fname} 의 table 이 사전 리터럴이 아니다"
-                for k, v in zip(node.value.keys, node.value.values):
-                    assert isinstance(k, ast.Constant) and isinstance(k.value, str), \
-                        f"{fname} 의 table 키가 문자열 상수가 아니다"
-                    exact[(method, k.value)] = _handler_name(v)
-            if isinstance(node, ast.If):
-                t = node.test
-                if (isinstance(t, ast.Call) and isinstance(t.func, ast.Attribute)
-                        and t.func.attr == "startswith" and isinstance(t.func.value, ast.Name)
-                        and t.func.value.id == "path"):
-                    p = t.args[0].value
-                    ret = next((s for s in node.body if isinstance(s, ast.Return)), None)
-                    call = ret.value if ret is not None else None
-                    prefix[(method, p)] = (call.func.attr if isinstance(call, ast.Call)
-                                           and isinstance(call.func, ast.Attribute) else None)
-
-    # 인증 전 인라인 라우트: `if method == "GET" and path == "/health":`
-    for node in ast.walk(funcs["_dispatch_request"]):
-        if not (isinstance(node, ast.If) and isinstance(node.test, ast.BoolOp)):
-            continue
-        consts = {}
-        for v in node.test.values:
-            if (isinstance(v, ast.Compare) and isinstance(v.left, ast.Name)
-                    and len(v.comparators) == 1 and isinstance(v.comparators[0], ast.Constant)
-                    and isinstance(v.ops[0], ast.Eq)):
-                consts[v.left.id] = v.comparators[0].value
-        if {"method", "path"} <= consts.keys():
-            # 응답을 만드는 핸들러는 `code, obj = self.app.<이름>(...)` 의 <이름> 이다.
-            # 그런 줄이 없으면(`/health`) 그 자리에서 답하는 라우트라 None.
-            called = None
-            for sub in ast.walk(node):
-                if (isinstance(sub, ast.Assign) and isinstance(sub.targets[0], ast.Tuple)
-                        and isinstance(sub.value, ast.Call)
-                        and isinstance(sub.value.func, ast.Attribute)
-                        and isinstance(sub.value.func.value, ast.Attribute)
-                        and sub.value.func.value.attr == "app"):
-                    called = sub.value.func.attr
-                    break
-            exact[(consts["method"], consts["path"])] = called
+    인증 전 라우트(`/health`·`/connect/callback`)는 핸들러가 None 이거나 앱 메서드 이름이다."""
+    exact: dict[tuple[str, str], str | None] = {("GET", p): h for p, h in routes.GET_ROUTES.items()}
+    exact.update({("POST", p): h for p, h in routes.POST_ROUTES.items()})
+    exact.update(routes.UNAUTHENTICATED_ROUTES)
+    prefix: dict[tuple[str, str], str | None] = {
+        ("GET", p): h for p, h in routes.GET_PREFIX_ROUTES.items()}
+    prefix.update({("POST", p): h for p, h in routes.POST_PREFIX_ROUTES.items()})
     return exact, prefix
 
 
@@ -240,16 +186,15 @@ class _RecordingApp:
 
 def test_계약의_연산이_실제_디스패치에서_그_핸들러에_닿는다():
     exact, _ = _server_routes()
-    h = object.__new__(srv._Handler)
-    h.server = SimpleNamespace(app=_RecordingApp())
+    app = _RecordingApp()
     seen = 0
     for m, p, op, _ in _sidecar_ops(_contract()):
         if (m, p) in exact and exact[(m, p)] is None:
-            continue   # `/health` — 표가 아니라 `_dispatch_request` 가 답한다
+            continue   # `/health` — 표가 아니라 HTTP 셸이 인증 전에 답한다(`api.server.health`)
         if (m, p) in {("POST", "/connect/callback")}:
-            continue   # 인증 전 인라인 라우트. AST 쪽 테스트가 덮는다
+            continue   # 인증 전 라우트. 표 쪽 테스트가 덮는다
         concrete = _PARAM.sub("x", p)
-        code, body = (h._route_get(concrete, {}) if m == "GET" else h._route_post(concrete, {}))
+        code, body = routes.dispatch(app, m, concrete, {})
         assert code == 299, f"{m} {p}: 디스패치가 핸들러에 닿지 않았다 ({code} {body})"
         want = op["operationId"]
         if _template_prefix(p) is None and (m, p) not in exact:
