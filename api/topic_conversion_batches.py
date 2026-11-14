@@ -17,7 +17,8 @@ from store import durable_generation as dg
 from store import topic_batch_manifest as manifest
 from store.embedded_backend import DDL_GUARD, import_driver
 from store.embedded_schema import rel_table_specs
-from store.topic_transfer import TransferRefused, _canonical
+from store.canon import canonical_json_ascii_v1 as canonical
+from store.topic_transfer import TransferRefused
 from . import topic_conversion as legacy
 
 RELATIONS = {(r["label"], r["from"], r["to"]): r for r in rel_table_specs()}
@@ -115,10 +116,10 @@ class Batches:
             raise TransferRefused("conversion_engine_unqualified")
 
     def _journal(self):
-        journal = legacy._get(self.store, self.run)
+        journal = legacy.get_journal(self.store, self.run)
         if journal is None:
             raise TransferRefused("run_not_prepared")
-        legacy._identity(journal, **self.identity)
+        legacy.check_identity(journal, **self.identity)
         if legacy.journal_protocol(journal) != legacy.PROTOCOL_V3:
             raise TransferRefused("unsupported_conversion_inventory_version")
         return journal
@@ -141,11 +142,11 @@ class Batches:
         return path, header
 
     def _forget_terminal(self, journal):
-        getattr(self.store,'_topic_conversion_terminals',set()).discard(_canonical(journal))
+        getattr(self.store,'_topic_conversion_terminals',set()).discard(canonical(journal))
 
     def initialize(self, sealed, sha, expected, *, conventions_policy="retain"):
         """Caller has revalidated a fenced complete inventory against expected."""
-        previous = legacy._get(self.store, self.run)
+        previous = legacy.get_journal(self.store, self.run)
         if previous is not None:
             journal = self._journal()
             if journal.get("conventions_policy", "retain") != conventions_policy:
@@ -177,16 +178,16 @@ class Batches:
         from store.topic_transfer import fingerprint, plan_transfer
         with tempfile.TemporaryDirectory(prefix="vinc-conversion-recheck-") as directory:
             with TopicManifest(Path(directory) / "source.sqlite", deadline=time.monotonic() + 180) as current:
-                with legacy._inventory_read_transaction(self.store):
+                with legacy.inventory_read_transaction(self.store):
                     inventory = read_scoped_inventory(self.store, **self.identity, manifest=current)
-                    plan = legacy._plan(inventory, **self.identity, conventions_policy=conventions_policy)
+                    plan = legacy.plan_conversion(inventory, **self.identity, conventions_policy=conventions_policy)
                     if not plan.ready or fingerprint(inventory.snapshot) != header["before_hash"]:
                         raise TransferRefused("plan_stale")
-                    if legacy._index_inventory(self.store) != header["indexes"]:
+                    if legacy.present_indexes(self.store) != header["indexes"]:
                         raise TransferRefused("conversion_index_inventory_changed")
                     if 'untouched_source' in header:
                         current.db.execute("CREATE TABLE instructions(ordinal INTEGER PRIMARY KEY,kind TEXT,body TEXT)")
-                        current.db.executemany("INSERT INTO instructions VALUES(?,?,?)",((ordinal,item['kind'],_canonical(item)) for ordinal,item in manifest.instructions(sealed)))
+                        current.db.executemany("INSERT INTO instructions VALUES(?,?,?)",((ordinal,item['kind'],canonical(item)) for ordinal,item in manifest.instructions(sealed)))
                         if manifest.untouched_summary(self.store,current,self.identity['source']) != header['untouched_source']:
                             raise TransferRefused('plan_stale')
         manifest.publish(self.root, self.run, sealed, sha)
@@ -195,7 +196,7 @@ class Batches:
                    "manifest_hash": sha, "inventory_version": legacy.PROTOCOL_V3,
                    "indexes": header["indexes"], "status": "prepared", "phase": PHASES[0],
                    "cursor": 0, "batches": 0, "business_batches": 0, "chain": "0" * 64}
-        legacy._save(self.store, self.run, journal)
+        legacy.save_journal(self.store, self.run, journal)
         self._publish(journal)
 
     def _receipt_path(self, journal):
@@ -222,7 +223,7 @@ class Batches:
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         stage = path.with_suffix(".stage")
         receipt = {**fields, "generation": generation}
-        data = (_canonical(receipt) + "\n").encode()
+        data = (canonical(receipt) + "\n").encode()
         if stage.exists():
             try:
                 staged = json.loads(stage.read_text())
@@ -258,12 +259,12 @@ class Batches:
         self._receipt(journal)
         if not hasattr(self.store, '_topic_conversion_terminals'):
             self.store._topic_conversion_terminals=set()
-        self.store._topic_conversion_terminals.add(_canonical(journal))
+        self.store._topic_conversion_terminals.add(canonical(journal))
 
     def _commit_journal(self, journal):
         self.store.run('BEGIN TRANSACTION',raw=True)
         try:
-            legacy._save(self.store,self.run,journal)
+            legacy.save_journal(self.store,self.run,journal)
             self.store.run('COMMIT',raw=True)
         except BaseException:
             try:
@@ -328,7 +329,7 @@ class Batches:
         while True:
             rows = self.store.run(head + " RETURN " + projection + (" ORDER BY " + order if order else "")
                                   + f" SKIP {offset} LIMIT 32", params, raw=True)
-            if len(_canonical(rows).encode()) > self.max_bytes:
+            if len(canonical(rows).encode()) > self.max_bytes:
                 raise TransferRefused("conversion_batch_byte_limit")
             for properties in rows:
                 if not spec["props"]:
@@ -377,7 +378,7 @@ class Batches:
         if journal["phase"] == "verifying":
             raise TransferRefused("conversion_verification_required")
         phase = journal["phase"]
-        if legacy._index_inventory(self.store) and not self.qualified_indexes:
+        if legacy.present_indexes(self.store) and not self.qualified_indexes:
             raise TransferRefused("conversion_index_execution_unqualified")
         if phase not in PHASES[:3]:
             raise TransferRefused("conversion_manifest_invalid")
@@ -386,7 +387,7 @@ class Batches:
             wanted = item["kind"] in ("node", "generated") if phase == PHASES[0] else item["kind"] == ("edge" if phase == PHASES[1] else "node")
             if not wanted:
                 continue
-            cost = item.get("payload_bytes", len(_canonical(item).encode()))
+            cost = item.get("payload_bytes", len(canonical(item).encode()))
             if cost > self.max_bytes:
                 raise TransferRefused("conversion_single_row_too_large")
             if selected and (len(selected) >= self.max_rows or size + cost > self.max_bytes):
@@ -400,7 +401,7 @@ class Batches:
             next_journal["business_batches"] += 1
         next_journal["status"] = next_journal["phase"]
         next_journal["batches"] += 1
-        next_journal["chain"] = hashlib.sha256((journal["chain"] + _canonical(selected)).encode()).hexdigest()
+        next_journal["chain"] = hashlib.sha256((journal["chain"] + canonical(selected)).encode()).hexdigest()
         with DDL_GUARD.exclusive():
             if self.qualified_indexes:
                 self._drop_indexes()
@@ -417,7 +418,7 @@ class Batches:
                         self._retire(item)
                 if fail_at == "before_ledger":
                     raise RuntimeError("injected_before_ledger")
-                legacy._save(self.store, self.run, next_journal)
+                legacy.save_journal(self.store, self.run, next_journal)
                 if fail_at == "before_commit":
                     raise RuntimeError("injected_before_commit")
                 self.store.run("COMMIT", raw=True)
@@ -434,7 +435,7 @@ class Batches:
         return self.status()
 
     def _drop_indexes(self):
-        inventory = legacy._index_inventory(self.store)
+        inventory = legacy.present_indexes(self.store)
         if "ChunkVec" in inventory:
             self.store.drop_vector_index()
         if "NodeVec" in inventory:
@@ -463,7 +464,7 @@ class Batches:
         with tempfile.TemporaryDirectory(prefix="vinc-conversion-verify-") as directory:
             with TopicManifest(Path(directory) / "observed.sqlite",
                                deadline=time.monotonic() + 180 + budget["scan_seconds"]) as observed:
-                with legacy._inventory_read_transaction(self.store):
+                with legacy.inventory_read_transaction(self.store):
                     read_scoped_inventory(self.store, **self.identity, after=True, manifest=observed, **budget)
                     db = observed.db
                     db.execute("CREATE TABLE expected_rows(label TEXT,key TEXT,digest TEXT,PRIMARY KEY(label,key))")
@@ -497,7 +498,7 @@ class Batches:
                                 raise TransferRefused('conversion_source_retirement_incomplete')
                     if 'untouched_source' in header:
                         db.execute("CREATE TABLE instructions(ordinal INTEGER PRIMARY KEY,kind TEXT,body TEXT)")
-                        db.executemany("INSERT INTO instructions VALUES(?,?,?)",((ordinal,item['kind'],_canonical(item)) for ordinal,item in manifest.instructions(path)))
+                        db.executemany("INSERT INTO instructions VALUES(?,?,?)",((ordinal,item['kind'],canonical(item)) for ordinal,item in manifest.instructions(path)))
                         if manifest.untouched_summary(self.store,observed,self.identity['source']) != header['untouched_source']:
                             raise TransferRefused('conversion_outside_payload_changed')
                     actual_rows = db.execute("SELECT count(*) FROM payload").fetchone()[0]
@@ -510,8 +511,8 @@ class Batches:
                                       "EXCEPT SELECT digest,count(*) FROM expected_edges GROUP BY digest LIMIT 1").fetchone()):
                         raise TransferRefused("conversion_payload_verification_failed")
         with DDL_GUARD.exclusive():
-            legacy._indexes(self.store, header["indexes"])
-            if sorted(legacy._index_inventory(self.store)) != sorted(header["indexes"]):
+            legacy.restore_indexes(self.store, header["indexes"])
+            if sorted(legacy.present_indexes(self.store)) != sorted(header["indexes"]):
                 raise TransferRefused("conversion_index_restore_failed")
 
     def release(self, *, account_active=False):
@@ -546,13 +547,13 @@ class Batches:
         from store.topic_transfer import fingerprint
         with tempfile.TemporaryDirectory(prefix='vinc-conversion-cancel-') as directory:
             with TopicManifest(Path(directory)/'source.sqlite',deadline=time.monotonic()+180) as current:
-                with legacy._inventory_read_transaction(self.store):
+                with legacy.inventory_read_transaction(self.store):
                     inventory=read_scoped_inventory(self.store,**self.identity,manifest=current)
                     if fingerprint(inventory.snapshot)!=header['before_hash']:
                         raise TransferRefused('conversion_payload_changed')
         with DDL_GUARD.exclusive():
-            legacy._indexes(self.store,header['indexes'])
-            if sorted(legacy._index_inventory(self.store))!=sorted(header['indexes']):
+            legacy.restore_indexes(self.store,header['indexes'])
+            if sorted(legacy.present_indexes(self.store))!=sorted(header['indexes']):
                 raise TransferRefused('conversion_index_restore_failed')
         journal={**journal,'status':'cancelled','phase':'cancelled','batches':journal['batches']+1}
         self._commit_journal(journal)

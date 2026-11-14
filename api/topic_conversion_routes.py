@@ -69,9 +69,9 @@ def write_topic_conversion(app, body):
             if action == "preflight":
                 return conversion.preflight(app.store, source, str(body.get("topic") or ""))
             args = dict(source=source, target=body["target"], topic=body["topic"], run=body["run"])
-            journal = conversion._get(app.store, args["run"])
+            journal = conversion.get_journal(app.store, args["run"])
             if journal is not None and conversion.journal_protocol(journal) == conversion.PROTOCOL_V3:
-                conversion._identity(journal, source=source, target=body["target"], topic=body["topic"])
+                conversion.check_identity(journal, source=source, target=body["target"], topic=body["topic"])
                 return app._resume_bounded_conversion(action, args, body.get("fingerprint"), conventions_policy)
             if action == "status" and journal is None and hasattr(app, "_conversion_jobs"):
                 # 저널을 쓰기 전에 거절된 새 예약은 작업 상태에만 남는다. 예전 경로는
@@ -108,7 +108,7 @@ def exceeds_single_transaction(app, args):
     from . import topic_conversion as conversion
     from store.topic_manifest import ManifestLimit
     try:
-        conversion._inventory(app.store, args["source"], args["target"], args["topic"])
+        conversion.read_inventory(app.store, args["source"], args["target"], args["topic"])
     except ManifestLimit as exc:
         return exc.reason in ("retained_payload", "retained_rows", "retained_bytes")
     except Exception:
@@ -148,7 +148,7 @@ def resume_bounded_conversion(app, action, args, expected, conventions_policy="r
                                     allow_new=allow_new, conventions_policy=conventions_policy)
             except TransferRefused as exc:
                 # 저널이 없으면 아무것도 쓰지 않은 거절이다(낡은 지문·의존 차단·다른 이동 중).
-                if conversion._get(app.store, args["run"]) is None:
+                if conversion.get_journal(app.store, args["run"]) is None:
                     raise StepBlocked(str(exc).split(":", 1)[0]) from None
                 raise
             finally:

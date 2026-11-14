@@ -135,14 +135,18 @@ class Plan:
         return not self.blockers
 
 
-_KINDS = ("Concept", "Record", "Decision", "Episode", "LearnerPattern")
-_REFERENCE = re.compile(r"\[\[([^\]\s|]+)(?:[^\]]*)\]\]")
+KINDS = ("Concept", "Record", "Decision", "Episode", "LearnerPattern")
+# 밑줄 이름은 같은 객체다. 이 모듈 안의 호출과 테스트가 그 이름으로 부른다.
+_KINDS = KINDS
+REFERENCE = re.compile(r"\[\[([^\]\s|]+)(?:[^\]]*)\]\]")
+_REFERENCE = REFERENCE
 _ATTACHMENTS = {"attachment", "attachments", "file", "files", "blob", "blobs", "asset", "assets"}
 _EXTERNAL_RESOURCE = re.compile(r"^(?:[A-Za-z]:[\\/]|(?:file|blob|s3|azure|gs|az|https?):|[/\\])", re.I)
 _MANAGED_RESOURCE = re.compile(r"^(?:blob|s3|azure|gs|az):", re.I)
 _IMAGE_REFERENCE = re.compile(r"!\[[^\]]*\]\([^)]*\)|<img\b[^>]*>", re.I)
 _IMAGE_SOURCE = re.compile(r"!\[[^\]]*\]\(\s*<?([^)\s>]*)|<img\b[^>]*?\bsrc\s*=\s*[\"']?([^\"'\s>]*)", re.I)
-_HISTORY = ("_Tombstone", "_EdgeTombstone", "_DocTombstone")
+HISTORY = ("_Tombstone", "_EdgeTombstone", "_DocTombstone")
+_HISTORY = HISTORY
 
 
 def rejection_disposition(row, source, logical, endpoint_state):
@@ -723,7 +727,7 @@ def transformed_snapshot(snapshot: dict, plan: Plan, *, stamp: str) -> dict:
     return out
 
 
-def _write_difference(store, before: dict, after: dict, *, fail_at=None, vocabulary_owner=None,
+def write_difference(store, before: dict, after: dict, *, fail_at=None, vocabulary_owner=None,
                       verify_snapshot=None):
     specs = {**node_table_specs(), **meta_table_specs()}
     # 전체 스토어를 지우지 않는다. 키가 바뀌는 선택 행만 새로 만들고 관계를 옮긴다.
@@ -765,6 +769,9 @@ def _write_difference(store, before: dict, after: dict, *, fail_at=None, vocabul
                 read_snapshot(store, vocabulary_owner=vocabulary_owner))
     if fingerprint(observed) != fingerprint(after):
         raise TransferRefused("payload_verification_failed")
+
+
+_write_difference = write_difference
 
 
 def _apply_rehearsal(store, plan: Plan, *, run_id: str, stamp: str, fail_at=None) -> str:

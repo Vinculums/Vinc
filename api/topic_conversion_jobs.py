@@ -55,7 +55,7 @@ def bounded_step(store, durable, *, source, target, topic, run, expected, stamp,
     flow = bounded_flow(store, durable, run=run,
                    source=source, target=target, topic=topic,
                    qualified_indexes=qualified_indexes)
-    journal = legacy._get(store, run)
+    journal = legacy.get_journal(store, run)
     if journal is None:
         if not allow_new:
             raise TransferRefused("conversion_bounded_executor_required")
@@ -66,10 +66,10 @@ def bounded_step(store, durable, *, source, target, topic, run, expected, stamp,
         with tempfile.TemporaryDirectory(prefix="vinc-conversion-prepare-") as directory:
             path = Path(directory) / "sealed.jsonl"
             with TopicManifest(Path(directory) / "inventory.sqlite", deadline=time.monotonic() + 180) as scratch:
-                with legacy._inventory_read_transaction(store):
+                with legacy.inventory_read_transaction(store):
                     inventory = read_scoped_inventory(store, source=source, target=target,
                                                       topic=topic, manifest=scratch)
-                    plan = legacy._plan(inventory, source, target, topic, conventions_policy)
+                    plan = legacy.plan_conversion(inventory, source, target, topic, conventions_policy)
                     if not plan.ready:
                         raise TransferRefused("conversion_dependency_blocked")
                     if manifest.authorized_hash(plan.before_hash, conventions_policy) != expected:
@@ -77,12 +77,12 @@ def bounded_step(store, durable, *, source, target, topic, run, expected, stamp,
                     # 목록 읽기와 봉인은 각자 처리 시간 한도를 갖는다.
                     scratch.deadline = time.monotonic() + 180
                     header = manifest.prepare(scratch, plan, run=run, stamp=stamp,
-                                              indexes=legacy._index_inventory(store), store=store)
+                                              indexes=legacy.present_indexes(store), store=store)
                     scratch.deadline = time.monotonic() + 180
                     sealed = manifest.seal(scratch, path, header)
             flow.initialize(path, sealed["sha256"], expected, conventions_policy=conventions_policy)
         return flow.status()
-    legacy._identity(journal, source=source, target=target, topic=topic)
+    legacy.check_identity(journal, source=source, target=target, topic=topic)
     if journal.get("conventions_policy", "retain") != conventions_policy:
         raise TransferRefused("run_conventions_policy_changed")
     if legacy.journal_protocol(journal) != legacy.PROTOCOL_V3:
