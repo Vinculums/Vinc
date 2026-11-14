@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { readFile } from 'node:fs/promises';
-import ts from 'typescript';
+import { loadTs, tsUrl } from './ts-load.mjs';
 
-const src = await readFile(new URL('../src/agent-ontology.ts', import.meta.url), 'utf8');
-const js = ts.transpileModule(src, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { compose, repeats, repeatedInField, layoutMap, listsOf, mapHeight, idSlugOf } = await import(
-  `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
+const idsUrl = await tsUrl('agent-ids.ts');
+const ids = await import(idsUrl);
+const { compose, repeats, repeatedInField, layoutMap, listsOf, mapHeight, policySlug, idSlugOf } = await loadTs('agent-ontology.ts',
+  { './agent-ids': idsUrl });
 
 // 2026-11-05 소유자 그래프의 모양 그대로: Maker 의 불변 목록, 읽기 전용 정책 하나, 그 정책이 다스리는 절차.
 const maker = { disallowed_tools: ['vinc_delete', 'vinc_merge_nodes'], capabilities: { deny: [] },
@@ -148,4 +147,14 @@ test('over many titles the tail is valid, and equals the plain 48-character cut 
     assert.ok(ROLE_SLUG.test(got), `${title} -> ${got}`);
   }
   assert.ok(onHyphen > 50 && onHyphen < total, `the sweep must hit both branches (${onHyphen}/${total})`);
+});
+
+test('id prefixes are the hub values and a slug takes only a leading prefix off', () => {
+  assert.equal(ids.AGENT_ID_PREFIX, 'concept:agent-');
+  assert.equal(ids.PROCEDURE_ID_PREFIX, 'concept:procedure-');
+  assert.equal(ids.POLICY_ID_PREFIX, 'decision:policy-');
+  assert.equal(policySlug('decision:policy-read-only-procedures'), 'read-only-procedures');
+  assert.equal(policySlug('x-decision:policy-y'), 'x-decision:policy-y');
+  assert.equal(ids.withoutPrefix('concept:agent-dev-core', ids.AGENT_ID_PREFIX), 'dev-core');
+  assert.equal(ids.withoutPrefix('concept:procedure-a', ids.AGENT_ID_PREFIX), 'concept:procedure-a');
 });
