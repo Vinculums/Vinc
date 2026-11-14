@@ -85,7 +85,7 @@ def bounded_step(store, durable, *, source, target, topic, run, expected, stamp,
     legacy._identity(journal, source=source, target=target, topic=topic)
     if journal.get("conventions_policy", "retain") != conventions_policy:
         raise TransferRefused("run_conventions_policy_changed")
-    if journal.get("inventory_version") != manifest.PROTOCOL:
+    if legacy.journal_protocol(journal) != legacy.PROTOCOL_V3:
         raise TransferRefused("unsupported_conversion_inventory_version")
     if journal.get("expected") != expected:
         raise TransferRefused("run_id_reused")

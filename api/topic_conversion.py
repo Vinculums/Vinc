@@ -19,6 +19,7 @@ from uuid import UUID
 from store.backend import flag
 from store.embedded_backend import DDL_GUARD
 from store.scoped_topic_inventory import read_scoped_inventory
+from store.topic_batch_manifest import PROTOCOL as PROTOCOL_V3
 from store.topic_manifest import TopicManifest, ManifestLimit
 from store.topic_transfer import (TransferRefused, fingerprint, read_snapshot,
                                  plan_transfer, transformed_snapshot, _write_difference, check_inventory_budget,
@@ -28,7 +29,17 @@ request_owner = ContextVar("conversion_request_owner", default=None)
 request_payload = ContextVar("conversion_request_payload", default=None)
 PREFIX = "topic-conversion:"
 PREFLIGHT_TARGET = "team:00000000-0000-0000-0000-000000000000"
-SCOPED_INVENTORY_VERSION = 2
+#: 이동 저널의 프로토콜 판(`inventory_version`). 판을 적지 않은 저널은 1판이다(`journal_protocol`).
+#: 1판은 스토어 전체 스냅숏, 2판은 범위 인벤토리 위에서 한 트랜잭션으로 옮긴다(이 모듈의 `stage`).
+#: 3판은 봉인 목록과 유한 배치다(`api.topic_conversion_batches`). 그 값은 봉인 목록 머리의 프로토콜
+#: (`store.topic_batch_manifest.PROTOCOL`)과 같은 수다.
+PROTOCOL_V1 = 1
+PROTOCOL_V2 = 2
+
+
+def journal_protocol(journal: dict) -> int:
+    """저널의 프로토콜 판. 판을 적지 않은 저널은 1판이다."""
+    return journal.get("inventory_version", PROTOCOL_V1)
 
 
 def _inventory(store, source, target, topic, *, after=False, verify_shape=True):
@@ -77,9 +88,9 @@ def _missing_document_evidence(snapshot, plan, source):
 
 
 def _committed_snapshot(store, source, target, topic, journal):
-    if journal.get("inventory_version", 1) == 1:
+    if journal_protocol(journal) == PROTOCOL_V1:
         return read_snapshot(store, vocabulary_owner=source)
-    if journal["inventory_version"] != SCOPED_INVENTORY_VERSION:
+    if journal_protocol(journal) != PROTOCOL_V2:
         raise TransferRefused("unsupported_conversion_inventory_version")
     return _inventory(store, source, target, topic, after=True).snapshot
 
@@ -99,7 +110,7 @@ def fenced(store, owner):
 def _terminal_visible(store, journal):
     if journal["status"] not in ("active", "cancelled"):
         return False
-    if journal.get("inventory_version", 1) in (1, SCOPED_INVENTORY_VERSION):
+    if journal_protocol(journal) in (PROTOCOL_V1, PROTOCOL_V2):
         return True
     # 새 프로토콜은 영속 게시 증명이 확인된 이 프로세스에서만 울타리를 해제한다.
     # 재시작 뒤에는 봉인 파일과 같은 실행의 영수증을 다시 확인해야 한다.
@@ -113,7 +124,7 @@ def check_read(store, owner):
 
 def check_index_write(store):
     # 다른 소유자의 검색이 예약한 재빌드도 전환 중인 전역 색인을 되살리지 않는다.
-    if any(r.get('inventory_version')==3 and r.get('indexes')
+    if any(journal_protocol(r) == PROTOCOL_V3 and r.get('indexes')
            and r.get('phase') not in ('graph_committed','active','cancelled') for r in journals(store)):
         raise TransferRefused('conversion_index_maintenance')
 
@@ -275,7 +286,7 @@ def inventory_diagnostics(store, source, topic, *, conventions_policy="retain"):
                         "document_missing_evidence": _missing_document_evidence(inventory.snapshot,plan,source),
                         "inventory_rows": inventory.retained_rows, "inventory_bytes": inventory.retained_bytes,
                         "inspected_rows": inventory.inspected_rows, "inventory_hash": fingerprint,
-                        "inventory_version": 3, "diagnostic_only": bool(blockers),
+                        "inventory_version": PROTOCOL_V3, "diagnostic_only": bool(blockers),
                         "blockers": sorted(blockers)}
                 if not blockers:
                     result["fingerprint"] = fingerprint
@@ -369,7 +380,7 @@ def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None,
         previous = _get(store, run)
         if previous:
             _identity(previous, source, target, topic)
-            if previous.get('inventory_version',1) not in (1,SCOPED_INVENTORY_VERSION):
+            if journal_protocol(previous) not in (PROTOCOL_V1, PROTOCOL_V2):
                 raise TransferRefused('unsupported_conversion_inventory_version')
             if previous.get("conventions_policy", "retain") != conventions_policy:
                 raise TransferRefused("run_conventions_policy_changed")
@@ -388,7 +399,7 @@ def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None,
         else:
             check_read(store, source)
             check_read(store, target)
-        legacy = bool(previous and previous.get("inventory_version", 1) == 1)
+        legacy = bool(previous and journal_protocol(previous) == PROTOCOL_V1)
         def checked_before():
             if legacy:
                 snapshot = read_snapshot(store, vocabulary_owner=source)
@@ -429,7 +440,7 @@ def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None,
             _save(store, run, {"source": source, "target": target, "topic": topic,
                               "conventions_policy": conventions_policy,
                               "expected": expected, "indexes": index_inventory, "status": "prepared",
-                              "inventory_version": 1 if legacy else SCOPED_INVENTORY_VERSION})
+                              "inventory_version": PROTOCOL_V1 if legacy else PROTOCOL_V2})
             before, plan = checked_before()
             after = transformed_snapshot(before, plan, stamp=stamp)
         # Keep the crash-sensitive HNSW mutation guard. All readers are excluded.
@@ -451,7 +462,7 @@ def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None,
                               "conventions_policy": conventions_policy,
                               "expected": expected, "after_hash": scoped_hash(after, source, target),
                               "indexes": index_inventory, "prior_sync_metadata": audit, "status": "graph_committed",
-                              "inventory_version": 1 if legacy else SCOPED_INVENTORY_VERSION})
+                              "inventory_version": PROTOCOL_V1 if legacy else PROTOCOL_V2})
             if fail_at == "journal":
                 raise RuntimeError("injected_before_commit")
             store.run("COMMIT", raw=True)
@@ -487,7 +498,7 @@ def cancel(store, *, source, target, topic, run):
         journal = _get(store, run)
         if journal:
             _identity(journal, source, target, topic)
-            if journal.get("inventory_version", 1) not in (1, SCOPED_INVENTORY_VERSION):
+            if journal_protocol(journal) not in (PROTOCOL_V1, PROTOCOL_V2):
                 raise TransferRefused("unsupported_conversion_inventory_version")
             if journal["status"] not in ("prepared", "cancelled"):
                 raise TransferRefused("conversion_resume_required")

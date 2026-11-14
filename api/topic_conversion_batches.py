@@ -44,7 +44,7 @@ def restore_terminal_visibility(store, root):
             journal = json.loads(entry["value"])
             if not isinstance(journal, dict):
                 raise ValueError("invalid conversion journal")
-            if journal.get("inventory_version") != manifest.PROTOCOL or journal.get("status") not in ("active", "cancelled"):
+            if legacy.journal_protocol(journal) != legacy.PROTOCOL_V3 or journal.get("status") not in ("active", "cancelled"):
                 continue
             flow = Batches(store, root=root, publisher=no_publication,
                            run=entry["key"][len(legacy.PREFIX):],
@@ -119,7 +119,7 @@ class Batches:
         if journal is None:
             raise TransferRefused("run_not_prepared")
         legacy._identity(journal, **self.identity)
-        if journal.get("inventory_version") != manifest.PROTOCOL:
+        if legacy.journal_protocol(journal) != legacy.PROTOCOL_V3:
             raise TransferRefused("unsupported_conversion_inventory_version")
         return journal
 
@@ -192,7 +192,7 @@ class Batches:
         manifest.publish(self.root, self.run, sealed, sha)
         journal = {**self.identity, "stamp": binding["stamp"], "expected": expected,
                    "conventions_policy": conventions_policy,
-                   "manifest_hash": sha, "inventory_version": manifest.PROTOCOL,
+                   "manifest_hash": sha, "inventory_version": legacy.PROTOCOL_V3,
                    "indexes": header["indexes"], "status": "prepared", "phase": PHASES[0],
                    "cursor": 0, "batches": 0, "business_batches": 0, "chain": "0" * 64}
         legacy._save(self.store, self.run, journal)
