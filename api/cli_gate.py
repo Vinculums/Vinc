@@ -17,7 +17,7 @@ import json
 import os
 import subprocess
 
-from vinc_mcp import tools
+from vinc_mcp import toolcall, tools
 
 from .cli_output import usage_error
 from .fragment import _split_subject
@@ -228,7 +228,7 @@ def run(args, *, target: str, space: str) -> tuple[dict | None, int | None]:
     from .cli_tools import _bridge
     with _bridge(args) as bridge:
         def call(name, data):
-            return tools.call(name, data, bridge)
+            return toolcall.call(name, data, bridge)
         result = merge([call("vinc_decide_paths", {**common, "paths": c}) for c in chunks])
         return _finish(args, result, target=target, space=space, call=call), None
 

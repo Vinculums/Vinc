@@ -44,9 +44,9 @@ def payload(owner: str, eid: str, props: dict) -> dict | None:
     pending = props.get("pending") if isinstance(props.get("pending"), dict) else {}
     if props.get("state") != "waiting" or not owner.startswith(("user:", "team:")):
         return None
-    from .run_protocol import _title, expires_at
+    from .run_protocol import expires_at, title
     return {"owner": owner, "run": eid, "ask": props["asks"],
-            "title": _title(props, eid)[:TITLE_MAX], "expires_at": expires_at(pending)}
+            "title": title(props, eid)[:TITLE_MAX], "expires_at": expires_at(pending)}
 
 
 def _assertion(seed: bytes, owner: str, raw: bytes) -> str:

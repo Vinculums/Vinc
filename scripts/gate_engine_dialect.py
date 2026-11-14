@@ -69,7 +69,7 @@ EMBEDDED_TOOLS = frozenset({
 })
 
 NOT_GRAPH = frozenset({
-    "vinc_mcp/store.py",
+    "vinc_mcp/hub_state.py",
 })
 
 #: 계열 → 패턴. 대문자 키워드는 대소문자를 구분한다(영어 문장 속 소문자와 섞이지 않게).

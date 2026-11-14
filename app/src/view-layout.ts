@@ -152,7 +152,7 @@ function stablePlacement(boxes: { id: string; width: number; height: number; lef
 /** 주제 상자의 순서. 맨 앞은 메인 토픽(하위 주제를 가장 많이 거느린 주제)이고, 나머지는 그
  * 주제에서 가장 이른 항목의 날짜순이다. 날짜를 모르는 주제는 끝에 이름순으로 선다.
  * 하위 주제를 가진 주제가 없으면 메인 토픽도 없다(날짜순만 남는다). */
-export function chronologicalTopics(domains: string[], firstTime: Map<string, string>): string[] {
+function chronologicalTopics(domains: string[], firstTime: Map<string, string>): string[] {
   const below = (d: string) => d ? domains.filter(o => o.startsWith(d + "/")).length : 0;
   const main = domains.map(d => ({ d, n: below(d) })).filter(t => t.n > 0)
     .sort((a, b) => b.n - a.n || a.d.split("/").length - b.d.split("/").length || a.d.localeCompare(b.d))[0]?.d;

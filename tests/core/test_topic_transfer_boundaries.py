@@ -14,8 +14,9 @@ from test_topic_transfer import (  # noqa: E402
 )
 from store.embedded_schema import meta_table_specs, node_table_specs, render_embedded_ddl  # noqa: E402
 from store.topic_transfer import (  # noqa: E402
-    TransferRefused, _apply_rehearsal, fingerprint, read_snapshot, transformed_snapshot,
+    TransferRefused, fingerprint, read_snapshot, transformed_snapshot,
 )
+from topic_rehearsal import apply_rehearsal  # noqa: E402
 
 
 def add_row(data, table, **fields):
@@ -129,7 +130,7 @@ def test_native_move_preserves_document_provenance_and_canonical_payload(native)
     selected = plan(before)
     assert selected.ready, selected.blockers
     expected = transformed_snapshot(before, selected, stamp=STAMP)
-    assert _apply_rehearsal(native, selected, run_id="synthetic-provenance", stamp=STAMP) == "committed"
+    assert apply_rehearsal(native, selected, run_id="synthetic-provenance", stamp=STAMP) == "committed"
     actual = read_snapshot(native)
     actual["meta"]["_SyncMeta"] = [r for r in actual["meta"]["_SyncMeta"]
                                   if not r["key"].startswith("topic-transfer:run:")]
@@ -274,7 +275,7 @@ def test_native_owner_vocabulary_sidecar_refuses_before_dml(native, content):
     with pytest.raises(TransferRefused, match="owner_vocabulary_sidecar_not_supported"):
         read_snapshot(native)
     with pytest.raises(TransferRefused, match="owner_vocabulary_sidecar_not_supported"):
-        _apply_rehearsal(native, p, run_id="sidecar-must-not-move", stamp=STAMP)
+        apply_rehearsal(native, p, run_id="sidecar-must-not-move", stamp=STAMP)
     assert not any(re.search(r"\b(CREATE|MERGE|SET|DELETE|ALTER|DROP|COPY)\b", q) for q in trace)
     assert path.read_text(encoding="utf-8") == content
     source_count = sum(r.get("owner_id") == SOURCE for r in before["nodes"]["Concept"])
@@ -342,7 +343,7 @@ def test_native_unsupported_payload_is_preserved_and_no_dml_runs(tmp_path, case,
 
         store.run = traced_run
         with pytest.raises(TransferRefused, match=reason):
-            _apply_rehearsal(store, p, run_id="must-not-move", stamp=STAMP)
+            apply_rehearsal(store, p, run_id="must-not-move", stamp=STAMP)
         assert not any(re.search(r"\b(CREATE|MERGE|SET|DELETE|ALTER|DROP|COPY)\b", q) for q in trace)
         assert fingerprint(read_snapshot(store)) == fingerprint(before)
     finally:

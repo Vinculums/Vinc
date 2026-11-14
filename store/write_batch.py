@@ -11,7 +11,7 @@
 - `_SyncMeta` 의 시계·카운터(`last_hlc`·`seq:<owner>`)는 메모리에서 세고 커밋 직전에 한 번 쓴다
   (`api.revstamp`).
 - 도메인 사슬(`Domain`·`PARENT_OF`)은 한 번 만든 것을 다시 만들지 않는다
-  (`engines.domain_hierarchy`).
+  (`store.domain_hierarchy`).
 
 ⚠ 트랜잭션 안의 문장이 하나라도 실패하면 엔진이 트랜잭션 전체를 되돌린다. 그 실패를 호출부가
 삼키고 이어 가면, 뒤의 문장은 트랜잭션 밖에서 하나씩 커밋되어 반쪽 상태가 남는다. 그래서 실패한
@@ -85,7 +85,7 @@ def current(store) -> Batch | None:
 
 def flush_domain_links(batch: Batch, run) -> None:
     """모아 둔 `IN_DOMAIN` 고리를 라벨마다 두 문장으로 맞춘다: 옛 고리를 지우고 새 고리를 단다.
-    한 문장씩 쓸 때(`engines.domain_hierarchy.link_node`)와 결과가 같다: 노드마다 도메인 하나."""
+    한 문장씩 쓸 때(`store.domain_hierarchy.link_node`)와 결과가 같다: 노드마다 도메인 하나."""
     last: dict[tuple[str, str], tuple[str, str]] = {}
     for label, pk, key, norm in batch.links_pending:
         last[(label, key)] = (pk, norm)

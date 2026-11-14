@@ -158,7 +158,7 @@ export { areaKeys };
  * 차면 바깥에 새 고리를 연다. 고리 하나에 전부 세우면 수가 많을 때 반지름이 수에 비례해 커져서 가는
  * 테 하나가 된다(주제 174개에서 실측). 고리마다 호는 지름(`reach`)만큼 나눠 가지므로 큰 것이 이웃을
  * 덮지 않는다. */
-export function ringCentres(reach: number[], gap: number): { y: number; z: number }[] {
+function ringCentres(reach: number[], gap: number): { y: number; z: number }[] {
   const centres: { y: number; z: number }[] = reach.length ? [{ y: 0, z: 0 }] : [];
   let inner = 0, innerReach = reach[0] ?? 0;
   for (let i = 1; i < reach.length;) {

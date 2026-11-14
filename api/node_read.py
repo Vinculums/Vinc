@@ -11,6 +11,10 @@
 두 이름은 같은 객체다. 여기 함수가 부르는 이름(`execute`·`open_store`·`_retrieval` 등)은 이 모듈에서
 찾으므로, `search()`·`node_context()` 안의 호출을 바꾸려면 `api.query` 가 아니라 이 모듈의 이름을 패치한다.
 
+스토어를 안 받으면 `_store_scope`(`api/query_base.py`)가 열고 닫는다. 열 수 없을 때의 규칙: 읽기는 `executed:False`
+에 `note` 만 싣는다(`node_context`). `search()` 의 인용 단계는 `_store_scope` 를 쓰지 않는다. 열 수 없으면 행을
+지우지 않고 `cite_unavailable` 을 남기고, 열고 닫다 난 오류는 `citation_error` 로 옮겨 검색 답을 잃지 않는다.
+
 이 모듈은 `api.query` 를 import 하지 않는다. 바닥은 `api/query_base.py`, 한 홉 관측은 `api/neighbors.py`
 에서 읽는다(`tests/core/test_node_read.py` 가 둘을 본다).
 """
@@ -20,7 +24,15 @@ from engines import domain_hierarchy
 from store import pkns
 from store.backend import flag, open_store, operation
 from store.config import load_config
-from store.querybase import _VALIDITY_EMPTY, _classify_chunk_error, _validity_cols, holds_during
+from store.querybase import (
+    _VALIDITY_EMPTY,
+    DOC_MIRROR_PREFIX,
+    _classify_chunk_error,
+    _validity_cols,
+    doc_id_of,
+    holds_during,
+    mirror_id,
+)
 from vinc_rag import excerpt as _excerpt
 from vinc_rag import retrieval as _retrieval
 from vinc_rag.retrieval import _FTS_REMNANT, _chunk_count
@@ -34,6 +46,7 @@ from .query_base import (
     _props_to_obj,
     _seed_table,
     _stamp_validity,
+    _store_scope,
     _topic_description_mirrors_by_domain,
     _track_cols,
     execute,
@@ -87,7 +100,7 @@ def _drop_unstarted_episodes(result: dict, query: str, *, as_of, mode, historica
 
 def _doc_cite_ids(store, owner: str | None, doc_ids) -> dict[str, str]:
     """문서 키와 인용할 노드 id는 다르다. 읽을 수 있는 미러만 인용한다."""
-    ids = {f"concept:doc.{doc_id}" for doc_id in doc_ids if doc_id}
+    ids = {mirror_id(str(doc_id)) for doc_id in doc_ids if doc_id}
     if not ids or store is None:
         return {}
     where = "c.concept_id IN $ids"
@@ -97,7 +110,7 @@ def _doc_cite_ids(store, owner: str | None, doc_ids) -> dict[str, str]:
         params["owner"] = owner
     rows = store.run(f"MATCH (c:Concept) WHERE {where} "
                      "RETURN c.concept_id AS id", params) or []
-    return {nid[len("concept:doc."):]: nid for row in rows
+    return {doc_id_of(nid): nid for row in rows
             if (nid := pkns.strip(str(row.get("id") or ""))) in ids}
 
 
@@ -159,12 +172,9 @@ def node_context(**kwargs) -> dict:
     """상세·요약도 검색과 같은 시간 메타를 보존한다."""
     from store import search_temporal as temporal
     store = kwargs.get("store")
-    owns = store is None
-    if owns:
-        store = open_store(kwargs.get("cfg") or load_config())
-    if store is None:
-        return _node_context(**kwargs)
-    try:
+    with _store_scope(store, kwargs.get("cfg"), open_store) as store:
+        if store is None:
+            return _node_context(**kwargs)
         res = _node_context(**{**kwargs, "store": store})
         if res.get("executed") and res.get("node_kind") != "domain":
             try:
@@ -195,9 +205,6 @@ def node_context(**kwargs) -> dict:
             res["validity_basis"] = "legacy_visibility"
             res["claim_validity"] = res["temporal"]["validity"]
         return res
-    finally:
-        if owns:
-            store.close()
 
 
 def _node_context(*, owner: str, node: str, limit: int = 4,
@@ -270,241 +277,236 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
                   # 노드 자신의 유효구간(부착 목록의 것과 다르다). 못 읽었으면 빈 값.
                   "valid_from": "", "valid_until": "", "validity": "",
                   "superseded_by": ""}
-    owns = store is None
-    if owns:
-        store = open_store(cfg)
-    if store is None:
-        base["note"] = "no reachable store"
-        return base
-    try:
-        lim = max(1, min(int(limit), 12))
-        if node.startswith(domain_hierarchy.ID_PREFIX):
-            return _domain_context(store, node, owner=owner, offset=links_offset, cfg=cfg)
-        if _seed_table(node)[0] == "Entity":
-            return _entity_context(store, node, base, owner=owner,
-                                   with_evidence=with_evidence, offset=links_offset)
-        if _seed_table(node)[0] not in (*_SEMANTIC_LABELS, "Record", "Episode"):
-            exact = execute(node_plan(node, owner=owner), cfg, store=store)
-            if not exact.get("executed"):
-                return {**base, "status": "query_failed", "error": exact.get("error") or exact.get("note")}
-            found = bool(exact.get("rows"))
-            return {**base, "status": "unsupported_kind" if found else "unavailable",
-                    "found": found, "note": "node context unavailable for this kind"}
-        # ① 노드 메타 — 의미층(개념·결정) 우선, 없으면 Episode(타임라인 클릭 대상).
-        #
-        # v12 — 라벨을 id 접두사에서 꺼낸다. 여기 Concept 이 박혀 있으면 결정을
-        # 클릭했을 때 `executed:False` + "unknown node" 가 나온다(라이브 탐침에서
-        # 실제로 그랬다). Decision 에는 one_liner 열이 없어 그 자리는 '' 로 둔다 —
-        # props 폴백은 아래 주석대로 호출부가 한다.
-        meta_label, meta_pk = _seed_table(node)
-        if meta_label not in _SEMANTIC_LABELS:
-            meta_label, meta_pk = "Concept", "concept_id"
-        ol_expr = "c.one_liner" if meta_label == "Concept" else "''"
-        rows = store.run(
-            f"MATCH (c:{meta_label}) WHERE c.{meta_pk} = $id AND c.owner_id = $owner "
-            f"RETURN c.title AS title, {ol_expr} AS ol, c.props AS props, "
-            "c.domain AS domain, "
-            + _track_cols("c"),
-            # PK 네임스페이싱 — 노드 PK 바인딩은 물리 키다. 응답의 `node` 는 논리
-            # 그대로다(사용자가 준 값). 근거: [[vinc.plan.node-pk-namespacing]] §7
-            {"id": pkns.key(owner, node), "owner": owner})
-        if rows:
-            # `props` 를 함께 싣는다(D73). `one_liner` 는 **쓰기 경로가 없는 열**이라
-            # (`api/fragment.py` 가 SET 하지 않는다 — MCP 적재분 전량이 빈 값) 이것만
-            # 돌려주면 상세 패널·묻기 답변이 통째로 빈다. 사람이 쓴 한두 문장 요약은
-            # 실제로는 props 에 들어와 있고(검색은 이미 본다 — matched_in:'props'),
-            # 조회만 그것을 안 주고 있었다. 호출부가 one_liner → props 순으로 고른다.
-            base.update(executed=True,
-                        node_kind="decision" if meta_label == "Decision" else "concept",
-                        title=rows[0].get("title") or node,
-                        domain=rows[0].get("domain") or "",
-                        one_liner=rows[0].get("ol") or "",
-                        rev=rows[0].get("rev") or 0,
-                        updated_at=rows[0].get("updated_at") or "",
-                        props=_props_to_obj(rows[0].get("props")))
-            # Decision 의 구간은 props 에 있다(§8 항목 5 임시 인코딩). Concept 은
-            # 구간이 없고, 미기재는 current 다.
-            _p = base["props"] if meta_label == "Decision" else {}
-            _stamp_validity(base, _p.get("valid_from"), _p.get("valid_until"))
-            if meta_label == "Concept" and node.startswith("concept:doc."):
-                # 문서 미러의 구간은 문서의 것이다(F13). 문서가 없으면 개념 규칙 그대로다.
-                # 구간 열이 없는 v22 이전 스토어에서는 이 조회만 실패하고 개념 규칙으로
-                # 남는다 — 발췌·관계까지 함께 잃으면 안 된다. 사유는 싣는다.
-                try:
-                    dm = store.run(
-                        "MATCH (d:_DocMeta) WHERE d.doc_id = $doc AND d.owner_id = $owner "
-                        "RETURN d.valid_from AS vf, d.valid_until AS vu, d.superseded_by AS sb",
-                        {"doc": node[len("concept:doc."):], "owner": owner}) or []
-                except Exception as exc:
-                    dm = []
-                    base["doc_validity_error"] = f"{type(exc).__name__}: {exc}"
-                if dm:
-                    _stamp_validity(base, dm[0].get("vf"), dm[0].get("vu"))
-                    base["superseded_by"] = str(dm[0].get("sb") or "")
-        else:
-            ep = store.run(
-                "MATCH (e:Episode) WHERE e.episode_id = $id AND e.owner_id = $owner "
-                "RETURN e.title AS title, e.summary AS s, e.domain AS domain, "
-                "e.props AS props, "
-                + _track_cols("e"),
-                {"id": pkns.key(owner, node), "owner": owner})
-            if not ep:
-                # Record — 의미층도 Episode 도 아닌 세 번째 실체. 위 ① 이 라벨을
-                # Concept 으로 접어 버려서 `record:` id 는 여기까지 흘러와
-                # "unknown node" 로 답했다. 존재하는 노드를 없다고 말하는 것이라
-                # 조인 읽기(brief)가 Record 를 통째로 못 열었다 —
-                # [[record:brief-returns-none-when-its-winner-is-a-record-2026-08-30]]
-                # 이 그래프의 사실형 제목은 대부분 Record 에 있어서, 가장 싸게
-                # 얻을 수 있는 답을 정확히 못 얻고 있었다.
-                if _seed_table(node)[0] == "Record":
-                    rc = store.run(
-                        "MATCH (r:Record) WHERE r.record_id = $id "
-                        "AND r.owner_id = $owner "
-                        "RETURN r.title AS title, r.props AS props, "
-                        "r.domain AS domain, "
-                        + _track_cols("r") + ", " + _validity_cols("r"),
-                        {"id": pkns.key(owner, node), "owner": owner})
-                    if rc:
-                        # one_liner 열이 없다 — 카드 본문은 props 다(부착 목록이
-                        # `note` 를 뽑아 쓰는 그 자리와 같은 값). 호출부의
-                        # one_liner → props 폴백이 그것을 집는다.
-                        base.update(executed=True, node_kind="record",
-                                    title=rc[0].get("title") or node,
-                                    domain=rc[0].get("domain") or "",
-                                    rev=rc[0].get("rev") or 0,
-                                    updated_at=rc[0].get("updated_at") or "",
-                                    props=_props_to_obj(rc[0].get("props")))
-                        _stamp_validity(base, rc[0].get("valid_from"),
-                                        rc[0].get("valid_until"))
-                        # MENTIONS 는 Chunk→Concept 이라 Record 는 대상이 아니다.
-                        # 관계는 있다(ATTACHES_TO). 여기서 links 를 비워 두면
-                        # vinc_neighbors 가 양쪽 끝에서 보여 주는 부착을 이 표면만
-                        # "연결 0"이라 답해, 두 도구가 같은 그래프를 두고 어긋난다.
-                        base["links"] = _node_links(store, node, owner=owner,
-                                                    with_evidence=with_evidence,
-                                                    offset=links_offset)
-                        return base
-                base["status"] = "unavailable"
-                base["found"] = False
-                base["note"] = f"unknown node: {node}"
-                return base
-            base.update(executed=True, node_kind="episode",
-                        title=ep[0].get("title") or node,
-                        domain=ep[0].get("domain") or "",
-                        one_liner=ep[0].get("s") or "",
-                        rev=ep[0].get("rev") or 0,
-                        updated_at=ep[0].get("updated_at") or "",
-                        # F11 — 사건도 props 열이 있다. 안 고르면 저장된 값이 안 보인다.
-                        props=_props_to_obj(ep[0].get("props")))
-            _stamp_validity(base, "", "")   # 사건은 구간이 없다 — 꼴만 맞춘다
-            # Episode 는 MENTIONS 대상이 아니다(발췌 없음 — 요약이 곧 설명). 그렇다고
-            # **관계까지 없는 것은 아니다**: ABOUT 이 사건을 개념·결정에 잇는다. 여기서
-            # 일찍 빠져나가면서 그 둘을 함께 건너뛰고 있었고, 사건이 해소 후보가 되면서
-            # 확정된 사건만 관계 없이 답하게 됐다. 바로 위 Record 갈래가
-            # 같은 사유로 이미 링크를 채운다.
-            base["arm"] = "none"
-            base["excerpts"] = []
-            base["links"] = _episode_links(store, node, owner=owner,
-                                           with_evidence=with_evidence,
-                                           offset=links_offset)
+    with _store_scope(store, cfg, open_store) as store:
+        if store is None:
+            base["note"] = "no reachable store"
             return base
-        # ② MENTIONS 역참조 — 정본 발췌.
-        ment = store.run(
-            f"MATCH (ch:Chunk)-[m:MENTIONS]->(c:{meta_label}) "
-            f"WHERE c.{meta_pk} = $id AND c.owner_id = $owner "
-            "AND (ch.owner_id = $owner OR ch.owner_id = '') "
-            "RETURN ch.chunk_id AS cid, ch.doc_id AS doc_id, "
-            "ch.section_title AS section, ch.text AS text, m.method AS method "
-            # 링크 방법이 강한 순(title > stem > source)으로 먼저 정렬한다. source 는
-            # 파일 제공처(provenance)라 그 파일의 **모든** 청크가 걸리므로, 문서 순서만으로
-            # 자르면 창이 앞 문서 머리말로 채워지고 정작 이 노드를 말하는 청크가 밀려난다.
-            # doc_id·chunk_index 는 동순위 타이브레이크로 남겨 결과를 결정론으로 유지할 것.
-            # 이 순서는 `tests/core/test_excerpt_rank.py` 가 고정하고, 근거 인용도 그 머리말에 있다.
-            "ORDER BY CASE m.method WHEN 'title' THEN 0 WHEN 'stem' THEN 1 ELSE 2 END, "
-            f"ch.doc_id, ch.chunk_index LIMIT {lim}",
-            {"id": pkns.key(owner, node), "owner": owner}) or []
-        arm = "mentions" if ment else "none"
-        # ③ FTS 폴백 — 링크 없는 개념도 제목으로 관련 정본을 찾는다(증강).
-        # B7 — 전문 검색을 **소유자로 좁혀** 묻는다. 전역 상위 몇 개를 받아 남의 행을
-        # 버리면 공유 허브에서 남의 청크가 창을 채우고 내 발췌가 빈다.
-        if not ment and base["title"]:
-            ids, fts_error = _owner_fts_ids(store, base["title"], lim, owner=owner)
-            if fts_error:
-                base["excerpt_error"] = fts_error
-            if ids:
-                ment = store.run(
-                    "MATCH (ch:Chunk) WHERE ch.chunk_id IN $ids "
-                    "AND (ch.owner_id = $owner OR ch.owner_id = '') "
-                    "RETURN ch.chunk_id AS cid, ch.doc_id AS doc_id, "
-                    "ch.section_title AS section, ch.text AS text, "
-                    "'fts' AS method", {"ids": ids, "owner": owner}) or []
-                # `IN $ids` 는 BM25 순위를 지키지 않는다 — 되돌리지 않으면 같은 노드의 발췌
-                # 순서가 호출마다(REST 와 MCP 사이에서도) 달라진다.
-                ment = _excerpt.by_rank(ment, ids)
-                arm = "fts" if ment else "none"
-        # ④-0 이 노드에 딸린 **문서 전부**. 발췌와 다른 계약이다: 발췌는 청크를
-        # `lim` 개로 자르므로 그 넷이 한 문서에서 나오면 **문서도 하나로 보인다** —
-        # 노드가 열 개 문서에 언급돼 있어도 그렇다. 소스 선택기가 그것을 전체 목록으로
-        # 읽으면 사용자는 있는 줄도 모르는 문서를 고를 수 없다.
-        # 근거: [[vinc.spec.desktop-content-first-ia-0-9-4 §4]].
-        srows = store.run(
-            f"MATCH (ch:Chunk)-[:MENTIONS]->(c:{meta_label}) "
-            f"WHERE c.{meta_pk} = $id AND c.owner_id = $owner "
-            "AND (ch.owner_id = $owner OR ch.owner_id = '') "
-            "RETURN ch.doc_id AS doc_id, count(ch.chunk_id) AS n",
-            {"id": pkns.key(owner, node), "owner": owner}) or []
-        # ④ 문서 제목 조인(_DocMeta) + 발췌 정리(공백 접기, 240자).
-        # 제목은 발췌에 뜬 문서와 소스 목록 **양쪽**에 필요하므로 한 번에 받는다.
-        # `_DocMeta.doc_id` 는 소유자로 네임스페이싱되지 않으므로 청크와 같은 과도기 술어
-        # (owner OR '')를 건다 — 빠지면 같은 doc_id 를 가진 남의 문서 제목이 샌다.
-        doc_ids = sorted({r["doc_id"] for r in ment if r.get("doc_id")})
-        all_ids = sorted({str(r.get("doc_id") or "") for r in srows
-                          if r.get("doc_id")} | set(doc_ids))
-        titles: dict[str, str] = {}
-        if all_ids:
-            for r in store.run(
-                    "MATCH (d:_DocMeta) WHERE d.doc_id IN $ids "
-                    "AND (d.owner_id = $owner OR d.owner_id = '') "
-                    "RETURN d.doc_id AS id, d.title AS t",
-                    {"ids": all_ids, "owner": owner}) or []:
-                titles[r["id"]] = r.get("t") or ""
-        # 제목 → id 순서로 창을 자른다. 발췌 상한과 독립적으로 끝까지 읽을 수 있다.
-        _src = sorted(({"doc_id": str(r.get("doc_id") or ""),
-                        "title": titles.get(str(r.get("doc_id") or ""), "")
-                        or str(r.get("doc_id") or ""),
-                        "mentions": int(r.get("n") or 0)} for r in srows
-                       if r.get("doc_id")),
-                      key=lambda s: (s["title"], s["doc_id"]))
-        base["sources"] = {"total": len(_src),
-                           **_window(_src, sources_offset, _NODE_SOURCES_CAP)}
-        base["excerpts"] = [{
-            "doc_id": r.get("doc_id") or "",
-            "doc_title": titles.get(r.get("doc_id") or "", "") or (r.get("doc_id") or ""),
-            "section": r.get("section") or "",
-            # 노드 토큰이 모인 자리의 240자(`VINC_EXCERPT_WINDOW=head` 면 맨 앞 240자).
-            "excerpt": _excerpt.excerpt(r.get("text") or "", base["title"],
-                                        base.get("one_liner") or ""),
-            "method": r.get("method") or "",
-        } for r in ment]
         try:
-            cites = _doc_cite_ids(store, owner, all_ids)
+            lim = max(1, min(int(limit), 12))
+            if node.startswith(domain_hierarchy.ID_PREFIX):
+                return _domain_context(store, node, owner=owner, offset=links_offset, cfg=cfg)
+            if _seed_table(node)[0] == "Entity":
+                return _entity_context(store, node, base, owner=owner,
+                                       with_evidence=with_evidence, offset=links_offset)
+            if _seed_table(node)[0] not in (*_SEMANTIC_LABELS, "Record", "Episode"):
+                exact = execute(node_plan(node, owner=owner), cfg, store=store)
+                if not exact.get("executed"):
+                    return {**base, "status": "query_failed", "error": exact.get("error") or exact.get("note")}
+                found = bool(exact.get("rows"))
+                return {**base, "status": "unsupported_kind" if found else "unavailable",
+                        "found": found, "note": "node context unavailable for this kind"}
+            # ① 노드 메타 — 의미층(개념·결정) 우선, 없으면 Episode(타임라인 클릭 대상).
+            #
+            # v12 — 라벨을 id 접두사에서 꺼낸다. 여기 Concept 이 박혀 있으면 결정을
+            # 클릭했을 때 `executed:False` + "unknown node" 가 나온다(라이브 탐침에서
+            # 실제로 그랬다). Decision 에는 one_liner 열이 없어 그 자리는 '' 로 둔다 —
+            # props 폴백은 아래 주석대로 호출부가 한다.
+            meta_label, meta_pk = _seed_table(node)
+            if meta_label not in _SEMANTIC_LABELS:
+                meta_label, meta_pk = "Concept", "concept_id"
+            ol_expr = "c.one_liner" if meta_label == "Concept" else "''"
+            rows = store.run(
+                f"MATCH (c:{meta_label}) WHERE c.{meta_pk} = $id AND c.owner_id = $owner "
+                f"RETURN c.title AS title, {ol_expr} AS ol, c.props AS props, "
+                "c.domain AS domain, "
+                + _track_cols("c"),
+                # PK 네임스페이싱 — 노드 PK 바인딩은 물리 키다. 응답의 `node` 는 논리
+                # 그대로다(사용자가 준 값). 근거: [[vinc.plan.node-pk-namespacing]] §7
+                {"id": pkns.key(owner, node), "owner": owner})
+            if rows:
+                # `props` 를 함께 싣는다(D73). `one_liner` 는 **쓰기 경로가 없는 열**이라
+                # (`api/fragment.py` 가 SET 하지 않는다 — MCP 적재분 전량이 빈 값) 이것만
+                # 돌려주면 상세 패널·묻기 답변이 통째로 빈다. 사람이 쓴 한두 문장 요약은
+                # 실제로는 props 에 들어와 있고(검색은 이미 본다 — matched_in:'props'),
+                # 조회만 그것을 안 주고 있었다. 호출부가 one_liner → props 순으로 고른다.
+                base.update(executed=True,
+                            node_kind="decision" if meta_label == "Decision" else "concept",
+                            title=rows[0].get("title") or node,
+                            domain=rows[0].get("domain") or "",
+                            one_liner=rows[0].get("ol") or "",
+                            rev=rows[0].get("rev") or 0,
+                            updated_at=rows[0].get("updated_at") or "",
+                            props=_props_to_obj(rows[0].get("props")))
+                # Decision 의 구간은 props 에 있다(§8 항목 5 임시 인코딩). Concept 은
+                # 구간이 없고, 미기재는 current 다.
+                _p = base["props"] if meta_label == "Decision" else {}
+                _stamp_validity(base, _p.get("valid_from"), _p.get("valid_until"))
+                if meta_label == "Concept" and node.startswith(DOC_MIRROR_PREFIX):
+                    # 문서 미러의 구간은 문서의 것이다(F13). 문서가 없으면 개념 규칙 그대로다.
+                    # 구간 열이 없는 v22 이전 스토어에서는 이 조회만 실패하고 개념 규칙으로
+                    # 남는다 — 발췌·관계까지 함께 잃으면 안 된다. 사유는 싣는다.
+                    try:
+                        dm = store.run(
+                            "MATCH (d:_DocMeta) WHERE d.doc_id = $doc AND d.owner_id = $owner "
+                            "RETURN d.valid_from AS vf, d.valid_until AS vu, d.superseded_by AS sb",
+                            {"doc": doc_id_of(node), "owner": owner}) or []
+                    except Exception as exc:
+                        dm = []
+                        base["doc_validity_error"] = f"{type(exc).__name__}: {exc}"
+                    if dm:
+                        _stamp_validity(base, dm[0].get("vf"), dm[0].get("vu"))
+                        base["superseded_by"] = str(dm[0].get("sb") or "")
+            else:
+                ep = store.run(
+                    "MATCH (e:Episode) WHERE e.episode_id = $id AND e.owner_id = $owner "
+                    "RETURN e.title AS title, e.summary AS s, e.domain AS domain, "
+                    "e.props AS props, "
+                    + _track_cols("e"),
+                    {"id": pkns.key(owner, node), "owner": owner})
+                if not ep:
+                    # Record — 의미층도 Episode 도 아닌 세 번째 실체. 위 ① 이 라벨을
+                    # Concept 으로 접어 버려서 `record:` id 는 여기까지 흘러와
+                    # "unknown node" 로 답했다. 존재하는 노드를 없다고 말하는 것이라
+                    # 조인 읽기(brief)가 Record 를 통째로 못 열었다 —
+                    # [[record:brief-returns-none-when-its-winner-is-a-record-2026-08-30]]
+                    # 이 그래프의 사실형 제목은 대부분 Record 에 있어서, 가장 싸게
+                    # 얻을 수 있는 답을 정확히 못 얻고 있었다.
+                    if _seed_table(node)[0] == "Record":
+                        rc = store.run(
+                            "MATCH (r:Record) WHERE r.record_id = $id "
+                            "AND r.owner_id = $owner "
+                            "RETURN r.title AS title, r.props AS props, "
+                            "r.domain AS domain, "
+                            + _track_cols("r") + ", " + _validity_cols("r"),
+                            {"id": pkns.key(owner, node), "owner": owner})
+                        if rc:
+                            # one_liner 열이 없다 — 카드 본문은 props 다(부착 목록이
+                            # `note` 를 뽑아 쓰는 그 자리와 같은 값). 호출부의
+                            # one_liner → props 폴백이 그것을 집는다.
+                            base.update(executed=True, node_kind="record",
+                                        title=rc[0].get("title") or node,
+                                        domain=rc[0].get("domain") or "",
+                                        rev=rc[0].get("rev") or 0,
+                                        updated_at=rc[0].get("updated_at") or "",
+                                        props=_props_to_obj(rc[0].get("props")))
+                            _stamp_validity(base, rc[0].get("valid_from"),
+                                            rc[0].get("valid_until"))
+                            # MENTIONS 는 Chunk→Concept 이라 Record 는 대상이 아니다.
+                            # 관계는 있다(ATTACHES_TO). 여기서 links 를 비워 두면
+                            # vinc_neighbors 가 양쪽 끝에서 보여 주는 부착을 이 표면만
+                            # "연결 0"이라 답해, 두 도구가 같은 그래프를 두고 어긋난다.
+                            base["links"] = _node_links(store, node, owner=owner,
+                                                        with_evidence=with_evidence,
+                                                        offset=links_offset)
+                            return base
+                    base["status"] = "unavailable"
+                    base["found"] = False
+                    base["note"] = f"unknown node: {node}"
+                    return base
+                base.update(executed=True, node_kind="episode",
+                            title=ep[0].get("title") or node,
+                            domain=ep[0].get("domain") or "",
+                            one_liner=ep[0].get("s") or "",
+                            rev=ep[0].get("rev") or 0,
+                            updated_at=ep[0].get("updated_at") or "",
+                            # F11 — 사건도 props 열이 있다. 안 고르면 저장된 값이 안 보인다.
+                            props=_props_to_obj(ep[0].get("props")))
+                _stamp_validity(base, "", "")   # 사건은 구간이 없다 — 꼴만 맞춘다
+                # Episode 는 MENTIONS 대상이 아니다(발췌 없음 — 요약이 곧 설명). 그렇다고
+                # **관계까지 없는 것은 아니다**: ABOUT 이 사건을 개념·결정에 잇는다. 여기서
+                # 일찍 빠져나가면서 그 둘을 함께 건너뛰고 있었고, 사건이 해소 후보가 되면서
+                # 확정된 사건만 관계 없이 답하게 됐다. 바로 위 Record 갈래가
+                # 같은 사유로 이미 링크를 채운다.
+                base["arm"] = "none"
+                base["excerpts"] = []
+                base["links"] = _episode_links(store, node, owner=owner,
+                                               with_evidence=with_evidence,
+                                               offset=links_offset)
+                return base
+            # ② MENTIONS 역참조 — 정본 발췌.
+            ment = store.run(
+                f"MATCH (ch:Chunk)-[m:MENTIONS]->(c:{meta_label}) "
+                f"WHERE c.{meta_pk} = $id AND c.owner_id = $owner "
+                "AND (ch.owner_id = $owner OR ch.owner_id = '') "
+                "RETURN ch.chunk_id AS cid, ch.doc_id AS doc_id, "
+                "ch.section_title AS section, ch.text AS text, m.method AS method "
+                # 링크 방법이 강한 순(title > stem > source)으로 먼저 정렬한다. source 는
+                # 파일 제공처(provenance)라 그 파일의 **모든** 청크가 걸리므로, 문서 순서만으로
+                # 자르면 창이 앞 문서 머리말로 채워지고 정작 이 노드를 말하는 청크가 밀려난다.
+                # doc_id·chunk_index 는 동순위 타이브레이크로 남겨 결과를 결정론으로 유지할 것.
+                # 이 순서는 `tests/core/test_excerpt_rank.py` 가 고정하고, 근거 인용도 그 머리말에 있다.
+                "ORDER BY CASE m.method WHEN 'title' THEN 0 WHEN 'stem' THEN 1 ELSE 2 END, "
+                f"ch.doc_id, ch.chunk_index LIMIT {lim}",
+                {"id": pkns.key(owner, node), "owner": owner}) or []
+            arm = "mentions" if ment else "none"
+            # ③ FTS 폴백 — 링크 없는 개념도 제목으로 관련 정본을 찾는다(증강).
+            # B7 — 전문 검색을 **소유자로 좁혀** 묻는다. 전역 상위 몇 개를 받아 남의 행을
+            # 버리면 공유 허브에서 남의 청크가 창을 채우고 내 발췌가 빈다.
+            if not ment and base["title"]:
+                ids, fts_error = _owner_fts_ids(store, base["title"], lim, owner=owner)
+                if fts_error:
+                    base["excerpt_error"] = fts_error
+                if ids:
+                    ment = store.run(
+                        "MATCH (ch:Chunk) WHERE ch.chunk_id IN $ids "
+                        "AND (ch.owner_id = $owner OR ch.owner_id = '') "
+                        "RETURN ch.chunk_id AS cid, ch.doc_id AS doc_id, "
+                        "ch.section_title AS section, ch.text AS text, "
+                        "'fts' AS method", {"ids": ids, "owner": owner}) or []
+                    # `IN $ids` 는 BM25 순위를 지키지 않는다 — 되돌리지 않으면 같은 노드의 발췌
+                    # 순서가 호출마다(REST 와 MCP 사이에서도) 달라진다.
+                    ment = _excerpt.by_rank(ment, ids)
+                    arm = "fts" if ment else "none"
+            # ④-0 이 노드에 딸린 **문서 전부**. 발췌와 다른 계약이다: 발췌는 청크를
+            # `lim` 개로 자르므로 그 넷이 한 문서에서 나오면 **문서도 하나로 보인다** —
+            # 노드가 열 개 문서에 언급돼 있어도 그렇다. 소스 선택기가 그것을 전체 목록으로
+            # 읽으면 사용자는 있는 줄도 모르는 문서를 고를 수 없다.
+            # 근거: [[vinc.spec.desktop-content-first-ia-0-9-4 §4]].
+            srows = store.run(
+                f"MATCH (ch:Chunk)-[:MENTIONS]->(c:{meta_label}) "
+                f"WHERE c.{meta_pk} = $id AND c.owner_id = $owner "
+                "AND (ch.owner_id = $owner OR ch.owner_id = '') "
+                "RETURN ch.doc_id AS doc_id, count(ch.chunk_id) AS n",
+                {"id": pkns.key(owner, node), "owner": owner}) or []
+            # ④ 문서 제목 조인(_DocMeta) + 발췌 정리(공백 접기, 240자).
+            # 제목은 발췌에 뜬 문서와 소스 목록 **양쪽**에 필요하므로 한 번에 받는다.
+            # `_DocMeta.doc_id` 는 소유자로 네임스페이싱되지 않으므로 청크와 같은 과도기 술어
+            # (owner OR '')를 건다 — 빠지면 같은 doc_id 를 가진 남의 문서 제목이 샌다.
+            doc_ids = sorted({r["doc_id"] for r in ment if r.get("doc_id")})
+            all_ids = sorted({str(r.get("doc_id") or "") for r in srows
+                              if r.get("doc_id")} | set(doc_ids))
+            titles: dict[str, str] = {}
+            if all_ids:
+                for r in store.run(
+                        "MATCH (d:_DocMeta) WHERE d.doc_id IN $ids "
+                        "AND (d.owner_id = $owner OR d.owner_id = '') "
+                        "RETURN d.doc_id AS id, d.title AS t",
+                        {"ids": all_ids, "owner": owner}) or []:
+                    titles[r["id"]] = r.get("t") or ""
+            # 제목 → id 순서로 창을 자른다. 발췌 상한과 독립적으로 끝까지 읽을 수 있다.
+            _src = sorted(({"doc_id": str(r.get("doc_id") or ""),
+                            "title": titles.get(str(r.get("doc_id") or ""), "")
+                            or str(r.get("doc_id") or ""),
+                            "mentions": int(r.get("n") or 0)} for r in srows
+                           if r.get("doc_id")),
+                          key=lambda s: (s["title"], s["doc_id"]))
+            base["sources"] = {"total": len(_src),
+                               **_window(_src, sources_offset, _NODE_SOURCES_CAP)}
+            base["excerpts"] = [{
+                "doc_id": r.get("doc_id") or "",
+                "doc_title": titles.get(r.get("doc_id") or "", "") or (r.get("doc_id") or ""),
+                "section": r.get("section") or "",
+                # 노드 토큰이 모인 자리의 240자(`VINC_EXCERPT_WINDOW=head` 면 맨 앞 240자).
+                "excerpt": _excerpt.excerpt(r.get("text") or "", base["title"],
+                                            base.get("one_liner") or ""),
+                "method": r.get("method") or "",
+            } for r in ment]
+            try:
+                cites = _doc_cite_ids(store, owner, all_ids)
+            except Exception as exc:
+                cites = {}
+                base["citation_error"] = f"{type(exc).__name__}: {exc}"
+            base["excerpts"] = _cite_doc_rows(base["excerpts"], cites)
+            base["sources"]["items"] = _cite_doc_rows(base["sources"]["items"], cites)
+            base["arm"] = arm
+            base["links"] = _node_links(store, node, owner=owner,
+                                        with_evidence=with_evidence,
+                                        offset=links_offset)
+            return base
         except Exception as exc:
-            cites = {}
-            base["citation_error"] = f"{type(exc).__name__}: {exc}"
-        base["excerpts"] = _cite_doc_rows(base["excerpts"], cites)
-        base["sources"]["items"] = _cite_doc_rows(base["sources"]["items"], cites)
-        base["arm"] = arm
-        base["links"] = _node_links(store, node, owner=owner,
-                                    with_evidence=with_evidence,
-                                    offset=links_offset)
-        return base
-    except Exception as exc:
-        base["status"] = "query_failed"
-        base["note"] = base["error"] = f"{type(exc).__name__}: {exc}"
-        return base
-    finally:
-        if owns:
-            store.close()
+            base["status"] = "query_failed"
+            base["note"] = base["error"] = f"{type(exc).__name__}: {exc}"
+            return base
 
 
 # 상세 레일 관계 목록 상한 — 허브(차수 30+)에서 레일이 끝없이 길어지지 않게.

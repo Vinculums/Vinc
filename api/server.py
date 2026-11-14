@@ -46,6 +46,7 @@ MAX_BODY = 256 * 1024 * 1024
 from store.config import load_config
 from store import httpbody
 from store import request_timing
+from store import topic_conversion_guard
 from store.write_waits import WRITE_WAITS
 from store import search_temporal
 from store.backend import open_store, operation
@@ -252,11 +253,11 @@ class VincApp:
         # 전환의 영속 확인은 일반 쓰기의 전역 ACK 플래그와 별개다.
         self._conversion_durable = self._durable or (
             DurableAck(lambda: self.store, self.cfg.data_dir)
-            if (os.environ.get("VINC_TOPIC_CONVERSION") == "1" or
-                getattr(store, "_topic_conversion_guard", False)) and
+            if (topic_conversion_guard.enabled_by_env() or
+                topic_conversion_guard.guard_active(store)) and
             resolve_snapshot_path() and self.cfg.data_dir else None)
         # 워커·HTTP를 열기 전에 완료된 새 프로토콜의 영수증만 읽어 울타리를 복원한다.
-        if store is not None and getattr(store, "_topic_conversion_guard", False):
+        if store is not None and topic_conversion_guard.guard_active(store):
             from .topic_conversion_batches import restore_terminal_visibility
             from store.persistence import generations_root
             root = (self._conversion_durable.root if self._conversion_durable is not None else
@@ -575,7 +576,7 @@ class VincApp:
         try:
             scope = getattr(r, "request_read_scope", None)
             with (scope() if callable(scope) else nullcontext()), request_timing.measure("query"):
-                if getattr(getattr(self, "store", None), "_topic_conversion_guard", False):
+                if topic_conversion_guard.guard_active(getattr(self, "store", None)):
                     from . import topic_conversion as conversion
                     conversion.check_read(r, conversion.request_owner.get())
                 return 200, fn(r)
@@ -764,7 +765,7 @@ class VincApp:
             return 400, {"executed": False, "error": str(exc)}
 
     def _conversion_write_guard(self, job):
-        if self.store is not None and getattr(self.store, "_topic_conversion_guard", False) \
+        if self.store is not None and topic_conversion_guard.guard_active(self.store) \
                 and not job.kind.startswith("topic-conversion."):
             from . import topic_conversion as conversion
             conversion.check_write(self.store, conversion.request_owner.get(),
@@ -2346,7 +2347,7 @@ class _Handler(BaseHTTPRequestHandler):
     def _body(self) -> dict:
         try:
             raw = httpbody.read_body(self.headers, self.rfile, MAX_BODY)
-        except httpbody.BodyTooLarge:
+        except (httpbody.BodyTooLarge, httpbody.BadContentLength):
             # 읽지 않은 바이트가 소켓에 남는다. 이 서버는 HTTP/1.1 keep-alive 라 연결을
             # 닫지 않으면 그 잔여물이 다음 요청으로 파싱된다(요청 밀수).
             self.close_connection = True
@@ -2408,6 +2409,8 @@ class _Handler(BaseHTTPRequestHandler):
                 code, obj = 400, {"error": f"invalid JSON body: {exc}"}
             except httpbody.BodyTooLarge as exc:
                 code, obj = 413, {"error": str(exc)}
+            except httpbody.BadContentLength as exc:
+                code, obj = 400, {"error": str(exc)}
             return self._send(code, obj)
 
         # 인증(F4): Bearer 세션 토큰 필수.
@@ -2442,6 +2445,8 @@ class _Handler(BaseHTTPRequestHandler):
             code, obj = 400, {"error": f"invalid JSON body: {exc}"}
         except httpbody.BodyTooLarge as exc:
             code, obj = 413, {"error": str(exc)}
+        except httpbody.BadContentLength as exc:
+            code, obj = 400, {"error": str(exc)}
         except JobError as exc:
             code, obj = 500, {"error": str(exc)}
             if exc.write_may_have_applied:

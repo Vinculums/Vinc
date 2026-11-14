@@ -27,7 +27,7 @@ from store.theme_store import ThemeStore, owner_theme_id   # noqa: E402
 from vinc_mcp import edverify as ev            # noqa: E402
 from vinc_mcp.bridge import Bridge             # noqa: E402
 from vinc_mcp.http_server import MCPHTTPApp    # noqa: E402
-from vinc_mcp.store import Store               # noqa: E402
+from vinc_mcp.hub_state import Store               # noqa: E402
 
 ACCT_SEED = bytes((i * 9 + 4) & 0xFF for i in range(32))
 

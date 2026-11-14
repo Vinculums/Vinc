@@ -12,6 +12,7 @@ import json
 import os
 
 from store import run_state as _run_state
+from store.querybase import DOC_MIRROR_PREFIX, doc_id_of
 
 from .bridge import Bridge
 from . import events
@@ -145,8 +146,8 @@ def _t_graph(args, bridge):
         return {"kind": "graph", "executed": False, "seed": "",
                 "note": "seed_id or url is required"}
     explicit = depth is not None
-    if review and (not seed.startswith("concept:doc.")
-                   or not seed[len("concept:doc."):] or "\x1f" in seed):
+    if review and (not seed.startswith(DOC_MIRROR_PREFIX)
+                   or not doc_id_of(seed) or "\x1f" in seed):
         raise ValueError("review_mirror requires one exact logical concept:doc.<doc_id> seed")
     want = depth if explicit else 2
     params = {"owner": _owner(args, bridge), "seed": seed, "depth": want}

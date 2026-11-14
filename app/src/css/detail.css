@@ -1,0 +1,179 @@
+/* ── 문서 내용 패널 ──────────────────────────────────────────────────────
+   D70 에서는 캔버스 위에 겹쳐 뜨는 우측 레일이었고, 지금은 셸의 가운데 열
+   (#docpane) 안에 산다. 그래서 좌표도 자기 폭도 스스로 정하지 않는다 — 폭은 열이
+   갖고(--doc-w ← --rail-size), 패널은 그 열을 채운다.
+   폭의 단일 원천은 여전히 view.ts setRailWidth 하나다(여기 숫자를 적지 않는다). */
+#view-detail {
+  flex: 1 1 auto; min-height: 0; overflow: auto;
+  padding: var(--space-4, 1rem);
+}
+
+/* 키 입력칸과 저장 버튼은 **한 줄**이다 — 버튼이 다음 줄로 내려가면 무엇을 저장하는
+   버튼인지 자리로 말하지 못한다. */
+.s-keyrow { display: flex; align-items: center; gap: var(--space-2, .5rem); }
+.s-keyrow > input, .settings-main .s-keyrow > .set-input { flex: 1 1 auto; width: auto; min-width: 0; }
+.s-keyrow > .btn { flex: 0 0 auto; }
+
+/* 문서 패널의 머리도 **스크롤 밖에 남는다**(발주자 지시 2026-09-10 — 렌즈·LNB 와
+   같은 요구). 여기서만 `sticky` 를 쓰는 이유: 이 패널의 내용은 모드마다 통째로
+   innerHTML 로 갈린다(상세·관계·드릴다운·기간·리더). 머리를 스크롤러 밖으로 빼면
+   그 다섯 경로를 전부 고쳐야 하는데, `sticky` 는 마크업을 안 건드리고 같은 결과를
+   낸다 — 머리를 그리는 모드는 자동으로 얻고, 안 그리는 모드는 잃을 것이 없다.
+   배경이 필요하다: 없으면 굴러 올라온 본문이 머리 글자 뒤로 비친다. 패널이 유리라
+   여기에 또 블러를 얹으면 스크롤마다 다시 계산돼 끊기므로(같은 파일의 렌즈 주석),
+   불투명 `--card` 한 겹으로 덮는다. */
+#view-detail > .rail-head {
+  position: sticky; top: calc(var(--space-4, 1rem) * -1); z-index: 2;
+  margin: calc(var(--space-4, 1rem) * -1) calc(var(--space-4, 1rem) * -1) 0;
+  padding: var(--space-4, 1rem) var(--space-4, 1rem) var(--space-2, .5rem);
+  background: hsl(var(--card));
+  border-bottom: 1px solid hsl(var(--border) / .6);
+}
+/* 넓은 열의 머리는 바와 한 줄이다(위 `#docpane` 의 VIN-742 주석). 높이는 바 줄과 같고, 오른쪽은
+   바가 덮는 만큼 비운다. 열의 오른쪽 끝과 바의 오른쪽 끝이 같은 여백에 선다. */
+#shell[data-doc-size="full"] #view-detail > .rail-head {
+  min-height: calc(var(--ctl-h) + var(--space-4, 1rem));
+  padding-top: var(--space-2, .5rem);
+  padding-right: calc(var(--chrome-w, 0px) + var(--space-4, 1rem));
+}
+/* 잡는 면은 6px 이되 보이는 선은 1px. 패널의 **왼쪽** 모서리에 선다.
+   왼쪽으로 끌면 문서가 넓어지고, 지도는 같은 폭으로 뒤에 남는다. */
+#rail-grip {
+  position: absolute; top: 0; bottom: 0; z-index: 3;
+  left: -3px; width: 6px;
+  cursor: col-resize; touch-action: none;
+}
+/* 문서 패널은 캔버스 위에 뜬다. 인캔버스 크롬의 예전 레일 오프셋은 0 으로
+   눌러 두고, 아래 규칙은 패널이 표면 안에 남는 임베드 배치를 위해 유지한다. */
+#surface { --rail-w: 0px; }
+#rail-grip:hover, #rail-grip:active { background: hsl(var(--muted-foreground) / .35); }
+#rail-grip:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+
+/* 인캔버스 크롬 — 레일이 열리면 그 폭만큼 비켜선다(자리 다툼 방지: 같은 우상단을
+   두 층이 쓰면 레일의 닫기(✕)가 칩 밑에 깔린다). 예전엔 JS 가 인라인 style 로
+   밀었는데, 이제 --rail-w 하나로 CSS 가 스스로 한다. */
+#view-msg { position: absolute; inset: 0; display: grid; place-items: center; z-index: 1; }
+#view-tools {
+  /* 떠 있는 바 아래에서 시작한다 — 여기 `--space-4` 만 두면 바 밑에 깔린다. */
+  position: absolute; top: calc(var(--chrome-top) + var(--space-2, .5rem)); z-index: 2;
+  right: calc(var(--rail-w, 0px) + var(--space-6, 1.5rem));
+  display: flex; gap: .5rem;
+}
+
+/* 레일 머리 — 제목 캡션 + 닫기(✕). 닫는 수단이 없어 상세를 열면 크럼을 찾아
+   눌러야만 빠져나올 수 있던 비대칭을 없앤다(Esc 도 같은 자리에서 받는다). */
+.rail-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: calc(var(--space-1, .25rem) * -1) 0 var(--space-2, .5rem);
+}
+.rail-x {
+  background: none; border: none; cursor: pointer; font: inherit; line-height: 1;
+  color: hsl(var(--caption-foreground)); padding: .2rem .35rem;
+  border-radius: var(--radius-sm, .625rem);
+}
+.rail-x:hover { background: hsl(var(--muted-foreground) / .14); color: hsl(var(--foreground)); }
+.rail-head-acts { display: flex; align-items: center; gap: .15rem; }
+/* 크기 전환은 글자 단추라 ✕ 보다 작게 둔다 — 머리의 주인공은 캡션이다. */
+.rail-size { font-size: var(--fs-xs); padding: .25rem .5rem; }
+
+/* 속성(props) — 키는 저자가 쓴 이름 그대로(등폭 캡션), 값은 생긴 대로. 옆 칸에서는
+   키가 값 위에 서고, 넓은 열에서는 두 칸으로 선다. */
+.props-dl { margin: 0; }
+.props-row { padding: .45rem 0; border-bottom: 1px solid hsl(var(--border) / .55); }
+.props-row:last-child { border-bottom: 0; }
+.props-row > dt {
+  margin: 0 0 .15rem; font-family: var(--font-mono); font-size: var(--fs-xs);
+  color: hsl(var(--caption-foreground));
+}
+.props-row > dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.props-row .props-list { margin: .05rem 0; padding-left: 1.1rem; }
+.props-row .props-list > li + li { margin-top: .15rem; }
+.props-row .props-dl { margin: .15rem 0 0; padding-left: .75rem;
+  border-left: 1px solid hsl(var(--border) / .7); }
+.props-row .props-scalar { font-variant-numeric: tabular-nums; }
+.props-row .props-json { margin: .2rem 0 0; font-size: var(--fs-xs); white-space: pre-wrap; }
+.props-row .doc-render > :first-child { margin-top: 0; }
+.props-row .doc-render > :last-child { margin-bottom: 0; }
+#shell[data-doc-size="full"] .node-props > .props-dl > .props-row {
+  display: grid; grid-template-columns: minmax(8rem, 12rem) minmax(0, 1fr); gap: 1rem;
+}
+#shell[data-doc-size="full"] .node-props > .props-dl > .props-row > dt { margin: .1rem 0 0; }
+/* 속성 편집(2026-09-26) — 절 머리에 글자 단추 하나(크기 전환과 같은 결), 누르면 절이
+   제자리에서 편집 줄로 바뀐다. 줄 = 이름 · 형식 · 지우기 한 줄 + 값. 값 칸은 형식이
+   정한다(글·목록·JSON 은 여러 줄, 숫자는 한 줄, 예/아니요는 드롭다운).
+   근거: [[decision:node-props-are-edited-in-the-document-pane-as-a-whole-and-checked-against-the-read-revision-2026-09-26]] */
+.props-head { display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-2, .5rem); }
+.props-head .rail-sec { margin-right: auto; }
+.props-edit-btn, .props-add, .props-reload { font-size: var(--fs-xs); padding: .25rem .5rem; }
+.props-rows { display: flex; flex-direction: column; }
+.props-erow {
+  display: grid; gap: var(--space-1, .25rem);
+  padding: var(--space-2, .5rem) 0 var(--space-3, .75rem);
+  border-bottom: 1px solid hsl(var(--border) / .55);
+}
+.props-erow-head { display: flex; align-items: center; gap: var(--space-2, .5rem); }
+.props-key, .props-val {
+  padding: .4rem .5rem; border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--card)); color: hsl(var(--foreground)); font: inherit;
+}
+.props-key {
+  flex: 1 1 auto; min-width: 0;
+  font-family: var(--font-mono); font-size: var(--fs-sm);
+}
+/* 형식 드롭다운은 공용 select 규칙을 쓰되 이름 칸과 같은 높이로 줄인다. */
+.props-kind { flex: 0 0 auto; padding: .4rem .55rem; font-size: var(--fs-sm); }
+.props-val { width: 100%; min-width: 0; }
+textarea.props-val {
+  resize: vertical; line-height: 1.45;
+  /* 내용만큼 자란다(지원하는 엔진에서). 못 하는 엔진은 rows 가 첫 높이를 정한다. */
+  field-sizing: content; min-height: 2.6rem; max-height: 22rem;
+}
+.props-mono { font-family: var(--font-mono); font-size: var(--fs-sm); }
+.props-key:focus-visible, .props-val:focus-visible {
+  outline: 2px solid hsl(var(--ring)); outline-offset: 1px;
+}
+.props-erow[aria-invalid="true"] .props-key,
+.props-erow[aria-invalid="true"] .props-val { border-color: hsl(var(--danger)); }
+.props-err { margin: 0; font-size: var(--fs-xs); color: hsl(var(--danger)); }
+.props-add { justify-self: start; margin-top: var(--space-2, .5rem); }
+.props-editing { display: grid; }
+.props-status { margin: var(--space-2, .5rem) 0 0; }
+.props-status:empty { display: none; }
+.props-status .error-banner { font-size: var(--fs-sm); padding: var(--space-2, .5rem) var(--space-3, .75rem); }
+.props-acts { display: flex; justify-content: flex-end; gap: var(--space-2, .5rem);
+  margin-top: var(--space-3, .75rem); }
+/* 넓은 열의 연결 절 — 카드의 연결 줄과 같은 줄을 쓰되 글자는 본문 크기로. */
+.pane-links .link-title { font-size: inherit; }
+/* 수치 행 — 이름/값 두 칸. 값은 표 숫자(tabular)라 자릿수가 흔들리지 않는다. */
+.stat-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--space-3, .75rem); padding: .3rem 0;
+  border-bottom: 1px solid hsl(var(--border) / .55);
+}
+.stat-row b { font-variant-numeric: tabular-nums; font-weight: 600; }
+/* A2 항목 페이지 — 넓은 열에서만 선다(view.ts drawItemPage). */
+.item-facts { margin: .6rem 0; }
+.item-fix { display: inline-flex; align-items: center; gap: .4rem; }
+.item-sec { margin: 1rem 0; }
+.item-sec-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.item-say { margin: .45rem 0; padding: .1rem 0 .1rem .75rem; border-left: 2px solid hsl(var(--border)); }
+.item-say p { margin: .1rem 0; }
+.item-step { display: grid; grid-template-columns: 6.5rem 1fr auto; gap: .6rem; align-items: baseline;
+  padding: .3rem 0; border-bottom: 1px solid hsl(var(--border) / .5); }
+.item-step.is-self b { color: hsl(var(--foreground)); }
+.item-map { display: flex; align-items: stretch; gap: .4rem; overflow-x: auto; padding: .4rem 0; }
+.item-cell { display: flex; flex-direction: column; gap: .15rem; min-width: 9rem; max-width: 14rem;
+  padding: .5rem .6rem; border: 1px solid hsl(var(--border)); border-radius: .5rem; }
+.item-cell.is-self { border-color: hsl(var(--ring)); }
+.item-arrow { align-self: center; color: hsl(var(--caption-foreground)); }
+.item-sec .link-btn, .item-say .link-btn { border: none; background: none; padding: 0; font: inherit;
+  color: hsl(var(--link)); cursor: pointer; text-align: left; }
+.item-sec .link-btn:hover { text-decoration: underline; }
+.item-sec-head .seg { display: inline-flex; border: 1px solid hsl(var(--border)); border-radius: .45rem; padding: .1rem; }
+.item-sec-head .seg button { border: none; background: none; font: inherit; font-size: var(--fs-sm);
+  color: hsl(var(--caption-foreground)); padding: .15rem .5rem; border-radius: .35rem; cursor: pointer; }
+.item-sec-head .seg button[aria-checked="true"] { background: hsl(var(--muted-foreground) / .14); color: hsl(var(--foreground)); }
+.stat-note { margin: var(--space-2, .5rem) 0 0; }
+.rail-acts { display: flex; gap: var(--space-2, .5rem); flex-wrap: wrap; }

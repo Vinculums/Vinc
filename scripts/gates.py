@@ -188,7 +188,7 @@ GATES: tuple[Gate, ...] = (
          note="app board captures are current"),
     # 역할 껍데기(agents/shells/*.md)와 CODEOWNERS 가 커밋된 스냅샷에서 생성한 그대로인가.
     Gate("agents-roster", py("-X", "utf8", "scripts/agents_sync.py", "--check"),
-         paths=(r"^agents/", r"^\.github/CODEOWNERS$", r"^vinc_mcp/roles\.py$",
+         paths=(r"^agents/", r"^\.github/CODEOWNERS$", r"^vinc_mcp/roles(_render)?\.py$",
                 r"^scripts/worktree_hook\.py$"),
          ci="core", marker="agents_sync.py --check", note="role shells match the snapshot"),
 

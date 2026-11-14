@@ -1,0 +1,8 @@
+/* ── Tools(D71) — 설정의 가져오기 · 공유 분류 안의 몸 ──────────────────── */
+.tools-preview:not(:empty) { margin: var(--space-3, .75rem) 0; }
+/* 라디오 줄 — 목록 행 문법을 그대로 쓰되 선택 컨트롤이 앞에 온다. */
+.tools-opt {
+  display: flex; align-items: center; gap: .6rem; cursor: pointer;
+}
+.tools-opt select { margin-left: auto; }   /* 모양은 공용 select 규칙 */
+

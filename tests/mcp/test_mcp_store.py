@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""vinc_mcp.store — SQLite OAuth·쿼터 영속 스토어 단위."""
+"""vinc_mcp.hub_state — SQLite OAuth·쿼터 영속 스토어 단위."""
 import os
 import shutil
 import time
 
 import pytest
 
-from vinc_mcp.store import Store
+from vinc_mcp.hub_state import Store
 
 
 @pytest.fixture
@@ -295,7 +295,7 @@ def test_add_client_keeps_live_rows(store):
 
 
 def test_clients_table_is_capped(store, monkeypatch):
-    from vinc_mcp import store as store_mod
+    from vinc_mcp import hub_state as store_mod
     monkeypatch.setattr(store_mod, "MAX_CLIENTS", 3)
     for i in range(10):
         store.add_client(f"c{i}", ["https://a/cb"], f"n{i}", now=1000 + i)
@@ -309,7 +309,7 @@ def test_clients_table_is_capped(store, monkeypatch):
 def test_cap_never_evicts_a_live_connector(store, monkeypatch):
     """상한이 **인증된 커넥터를 끊으면** 치료가 병보다 나쁘다. 토큰을 든
     client_id 는 오래됐어도 후보에서 빠진다."""
-    from vinc_mcp import store as store_mod
+    from vinc_mcp import hub_state as store_mod
     monkeypatch.setattr(store_mod, "MAX_CLIENTS", 2)
     store.add_client("old-but-live", ["https://a/cb"], "keep", now=1)
     store.add_token("tok", "old-but-live", "user:u1", "free", exp=9e9)

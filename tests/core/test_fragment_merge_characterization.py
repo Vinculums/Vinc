@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """`fragment._merge_node`·`_merge_edge` 의 현재 동작을 표로 고정한다(특성 테스트).
 
+엣지는 낱개 케이스 뒤에 생성한 행렬(`edgem.*`, 종류 × 끝점 × 소유 × 생애 × 근거)이 더 덮는다.
+
 입력은 아래 `CASES` 의 한 줄이고, 결과는 공개 입구 `fragment.merge_fragment` 를 실 엔진
 스토어에 한 번 돌려 얻는다. 기록하는 것은 셋이다: 응답(경고를 뺀 나머지), 경고 목록(순서
 그대로), 호출 뒤 스토어의 노드·엣지·엣지 삭제 표식 전부. 기대값은 데이터 파일
@@ -641,6 +643,65 @@ CASES: list[Case] = [
                                              owner=None),
          raw=(tombstone(B, "concept:a", "RELATED_TO", "concept:b"),)),
 ]
+
+
+# ── 엣지 행렬: 종류 × 끝점 × 소유 × 생애 × 근거 ─────────────────────────────────
+# 위의 낱개 케이스가 놓친 조합을 빠짐없이 덮는다. 이름은 `edgem.<종류>.<끝점>.<소유>.<생애>.<근거>` 다.
+#   끝점: payload(두 노드를 같은 fragment 에) · store(앞서 넣은 노드, 엣지만 보낸다) · missing(대상 없음)
+#   소유: same(같은 owner 명시) · local(owner 없음) · other(끝점을 남이 가졌다, 이쪽은 owner 명시)
+#   생애: new · same(같은 엣지·근거를 다시) · changed(앞서 다른 근거·신뢰도로 넣은 엣지)
+#   근거: absent(키 없음) · empty(evidence "") · present(evidence·confidence)
+
+_EM_KINDS: dict[str, tuple] = {
+    "relates_to": (C("concept:ea", title="EA"), C("concept:eb", title="EB"), "relates_to"),
+    "prerequisite_of": (D("decision:ea", title="EA"), C("concept:eb", title="EB"), "prerequisite_of"),
+    "derives_from": (D("decision:ea", title="EA"), D("decision:eb", title="EB"), "derives_from"),
+    "inherits_from": (C("concept:ea", title="EA"), C("concept:eb", title="EB"), "inherits_from"),
+    "about": (EP("episode:ea", title="EA"), C("concept:eb", title="EB"), "about"),
+    "connects_via": (BR("bridge:ea", title="EA"), C("concept:eb", title="EB"), "connects_via"),
+    "attaches": (R("record:ea", title="EA"), C("concept:eb", title="EB"), "relates_to"),
+    "supersedes": (R("record:ea", title="EA", valid_from="2025-06"), R("record:eb", title="EB"),
+                   "supersedes"),
+}
+_EM_PROPS = {"absent": {}, "empty": {"evidence": ""},
+             "present": {"evidence": "because of this", "confidence": 0.6}}
+_EM_OLD = {"evidence": "old reason", "confidence": 0.3}
+
+
+def _em_case(kind: str, ends: str, own: str, life: str, props: str) -> Case:
+    src, dst, etype = _EM_KINDS[kind]
+    edge = E(src["id"], dst["id"], etype, **_EM_PROPS[props])
+    call_owner = None if own == "local" else A
+    seed: list = []
+    if ends == "payload":
+        call = F([src, dst], [edge], owner=call_owner)
+    elif ends == "store":
+        seed.append(F([src, dst], owner=B if own == "other" else A))
+        call = F([], [edge], owner=call_owner)
+    else:
+        call = F([src], [edge], owner=call_owner)
+    if life != "new":
+        prior = _EM_PROPS[props] if life == "same" else _EM_OLD
+        seed.append(F([], [E(src["id"], dst["id"], etype, **prior)],
+                      owner=B if own == "other" else A))
+    return Case(f"edgem.{kind}.{ends}.{own}.{life}.{props}", call, seed=tuple(seed))
+
+
+def _edge_matrix() -> list[Case]:
+    out = []
+    for kind in _EM_KINDS:
+        for ends in ("payload", "store", "missing"):
+            for props in _EM_PROPS:
+                out.append(_em_case(kind, ends, "same", "new", props))
+        for own in ("local", "other"):
+            out.append(_em_case(kind, "store", own, "new", "present"))
+        for life in ("same", "changed"):
+            for props in _EM_PROPS:
+                out.append(_em_case(kind, "store", "same", life, props))
+    return out
+
+
+CASES += _edge_matrix()
 
 
 # ── 실행과 기록 ────────────────────────────────────────────────────────────────

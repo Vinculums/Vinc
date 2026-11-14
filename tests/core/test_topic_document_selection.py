@@ -9,8 +9,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_topic_transfer import SOURCE, TARGET, TOPIC, STAMP, SEP, RawStore, seed, insert, plan
 from store.embedded_schema import render_embedded_ddl
 from store.scoped_topic_inventory import read_scoped_inventory
-from store.topic_transfer import (_apply_rehearsal, fingerprint, read_snapshot,
+from store.topic_transfer import (fingerprint, read_snapshot,
                                   transformed_snapshot, plan_transfer)
+from topic_rehearsal import apply_rehearsal  # noqa: E402
 from api.docstore import MentionTally, list_docs
 
 
@@ -86,7 +87,7 @@ def test_native_scoped_inventory_and_full_transfer_match_document_list(tmp_path)
         assert scoped_plan.ready and scoped_plan.documents == chosen.documents
         assert set(scoped_plan.selected) == set(chosen.selected)
         expected = transformed_snapshot(before, chosen, stamp=STAMP)
-        assert _apply_rehearsal(store, chosen, run_id="derived-doc-topic", stamp=STAMP) == "committed"
+        assert apply_rehearsal(store, chosen, run_id="derived-doc-topic", stamp=STAMP) == "committed"
         actual = read_snapshot(store)
         actual["meta"]["_SyncMeta"] = [row for row in actual["meta"]["_SyncMeta"]
                                        if not row["key"].startswith("topic-transfer:run:")]

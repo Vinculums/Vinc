@@ -1,0 +1,151 @@
+/* ── 리더 머리 — 본문 **앞에** 서는 두 줄: 이 문서가 무엇에 걸려 있고(칩) 어떤
+   모양인가(목차). 둘 다 길잡이지 본문이 아니므로 글자를 키우지 않는다. 목차의
+   깊이는 **들여쓰기로만** 말한다 — 크기로 말하면 목차가 제목 행세를 한다. */
+.rdr-chips { display: flex; gap: var(--space-2, .5rem); flex-wrap: wrap; align-items: baseline;
+  margin: var(--space-2, .5rem) 0 0; }
+.rdr-chips .chip { cursor: pointer; font-size: var(--fs-sm); }
+.rdr-toc { margin: var(--space-2, .5rem) 0 0; }
+.rdr-toc > summary { cursor: pointer; }
+.rdr-sec {
+  display: block; width: 100%; text-align: left; border: 0; background: none;
+  color: inherit; font: inherit; font-size: var(--fs-sm); cursor: pointer;
+  padding: .15rem 0; opacity: .8;
+}
+.rdr-sec:hover, .rdr-sec:focus-visible { opacity: 1; text-decoration: underline; }
+/* ── 문서 표면 — 렌더된 글이지 코드 상자가 아니다 ─────────────────────────
+   스크롤은 **레일 하나만** 진다(문서는 자기 높이를 다 차지한다) — 중첩 스크롤은
+   막대 두 개를 나란히 세우고 휠이 어디로 갈지도 예측 불가로 만든다.
+   ⚠ 폰트: 한국어 로케일에서 system-ui 가 맑은 고딕으로 잡히면 백슬래시(U+005C)가
+   원화(₩)로 그려진다 — 수식·경로가 들어간 문서에서 곧바로 오독이다. 라틴 우선
+   페이스를 앞에 세워 그 자리만 피한다(한글은 그대로 뒤 폴백이 받는다). */
+/* 스코프는 **마운트 지점 id 가 아니라 `.doc-render` 클래스**다(doc-editor.ts 가
+   붙인다). id 스코프였을 때 레일(#rdr-host)에만 걸려 시트(#ed-host·#tl-ed)에서
+   같은 문서가 다른 타이포로 보였다. */
+.doc-render .cm-editor { max-height: none; }
+.doc-render .cm-content {
+  padding: 0; font-family: "Segoe UI", var(--font-ui);
+  /* 글자 크기와 줄 간격은 읽기 설정이 정한다(doc-options.ts, 아래 `data-doc-*`). */
+  font-size: var(--doc-fs, 1rem); line-height: var(--doc-lh, 1.65);  /* fs-allow: 읽기 설정(작게·보통·크게)이 정하는 본문 크기 */
+}
+.doc-render .cm-line { padding: 0; }
+/* 블록 사이 숨 — 마크다운의 빈 줄이 실제 문단 간격으로 읽히게.
+   ⚠ 줄(`.cm-line`)에는 **세로 margin 을 주지 않는다.** CodeMirror 는 줄 높이를 상자 높이로
+   재고 margin 은 세지 않아서, 줄마다 그만큼 높이 지도가 어긋난다. 그러면 화살표 · Home · End
+   가 몇 줄 위나 아래로 떨어진다(긴 문서 끝에서 위 화살표 한 번이 다섯 줄을 건너뛰었다).
+   그래서 간격은 padding 으로 준다. 값은 예전 margin 이 접히던 간격과 같게 맞췄다
+   (이웃 줄의 .06 과 더해 .12 · 1.15 · .3). */
+.doc-render .cm-line:not(:empty) { padding-block: .06rem; }
+.doc-render .cm-r-h { padding-block: 1.09rem .24rem; line-height: 1.25; letter-spacing: -.01em; }
+.doc-render .cm-r-h1 { font-size: 1.5em; }
+.doc-render .cm-r-h2 { font-size: 1.22em; }
+.doc-render .cm-r-h3 { font-size: 1.06em; }
+.doc-render .cm-r-h4, .doc-render .cm-r-h5, .doc-render .cm-r-h6 { font-size: 1em; }
+.doc-render .cm-r-quote { padding-block: .24rem; }
+.doc-render .cm-r-code { background: hsl(var(--muted)); border-radius: 4px; padding: 0 .2em; }
+/* 표(GFM) — 격자를 그리지 않고 **소스의 공백 정렬을 그대로 살린다**.
+   등폭 + 줄바꿈 금지가 핵심이다: 비례폰트면 열이 어긋나고, lineWrapping 이 걸려
+   있으면 긴 행이 단어 중간에서 쪼개져 표가 무너진다(레일 본문 폭이 288px 라
+   3열만 돼도 넘친다). 넘치는 폭은 스크롤러가 가로로 받는다. */
+.doc-render .cm-r-table {
+  font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
+  font-size: .92em; line-height: 1.5;
+  white-space: pre;
+  margin: 0;
+}
+/* 구분행(`|---|---|`)은 replace 로 글자를 비웠다. 빈 줄이 남으면 표 한가운데가
+   벌어지므로 높이를 접고, 대신 헤더와 본문을 가르는 선을 그 자리에 그린다. */
+.doc-render .cm-r-table-delim {
+  height: 0; margin: 0; overflow: hidden;
+  border-top: 1px solid hsl(var(--border));
+}
+/* 진짜 격자(커서가 표 밖일 때). 위 `.cm-r-table` 은 커서가 표 안에 들어왔을 때의
+   **원문 모드**라 둘 다 필요하다 — 등폭 정렬은 소스를 고치는 동안에만 쓸모 있다.
+   가로 스크롤은 이 상자가 진다: 본문 스크롤러에 맡기면 좁은 레일에서 문서 전체가
+   옆으로 밀린다. */
+.doc-render .cm-r-tablewrap { overflow-x: auto; margin: .5rem 0; }
+/* 열이 많은 표는 칸을 짓눌러 한 글자씩 꺾지 않고 가로로 굴린다. 칸마다 최소 폭을 두고,
+   그 합이 넘치면 상자가 굴린다. */
+.doc-render .cm-r-tablewrap > .cm-r-tbl { width: max-content; min-width: 100%; }
+/* 상자의 내재 폭이 표를 따라 커지면 편집기 본문 전체가 칸보다 넓어져 오른쪽이 잘리고
+   가운데 정렬(수식)이 밀린다. 폭은 칸이 정하고 넘침은 이 상자 안에서만 굴린다. */
+.doc-render .cm-r-tablewrap { contain: inline-size; }
+/* 빈 칸도 줄 높이를 갖는다 — 막 넣은 표의 빈 줄이 실처럼 납작해졌다. */
+.doc-render .cm-r-tbl td:empty::before, .doc-render .cm-r-tbl th:empty::before { content: "\00a0"; }
+.doc-render .cm-r-tbl th, .doc-render .cm-r-tbl td { min-width: 7rem; max-width: 28rem; }
+/* 표는 렌더러가 둘이라 클래스도 둘이다(`cm-r-tbl` = 라이브 프리뷰, `md-tbl` =
+   `renderMarkdown`). 규칙을 나누지 않는 이유는 그 둘이 **같게 보여야** 하기 때문이다 —
+   같은 문서가 문서 열과 발췌에서 다르게 생기면 안 된다는 규율이 그 함수 머리에 있다. */
+.doc-render .cm-r-tbl, .doc-render .md-tbl {
+  border-collapse: collapse; width: 100%;
+  font-size: .92em; line-height: 1.45;
+}
+.doc-render .cm-r-tbl th, .doc-render .cm-r-tbl td,
+.doc-render .md-tbl th, .doc-render .md-tbl td {
+  border: 1px solid hsl(var(--border));
+  padding: .25rem .45rem; text-align: left; vertical-align: top;
+}
+.doc-render .cm-r-tbl th, .doc-render .md-tbl th {
+  font-weight: 600; background: hsl(var(--muted));
+}
+/* 편집 중인 칸 — 칸 경계를 넘지 않는 안쪽 고리로 짚는다(테두리를 굵히면 열 폭이 흔들린다).
+   그 칸만 원문 기호가 보이므로 등폭 글꼴은 쓰지 않는다: 글자가 튀지 않아야 이어서 읽힌다. */
+.doc-render .cm-r-tbl [contenteditable] { cursor: text; outline: none; }
+.doc-render .cm-r-tbl [contenteditable]:focus {
+  box-shadow: inset 0 0 0 2px hsl(var(--ring)); background: hsl(var(--card));
+}
+/* 수식 · 다이어그램을 고치는 동안 원문 아래에 남는 그림. 원문에 붙어 있다는 것을 왼쪽 선으로 말한다. */
+.cm-r-preview { padding-left: .75rem; border-left: 2px solid hsl(var(--border)); }
+/* 편집기 안의 블록 위젯(표 · 수식 · 다이어그램)도 세로 margin 대신 padding 으로 띄운다 —
+   줄과 같은 이유로, 위젯의 margin 도 높이 지도에 안 잡힌다(위 `.cm-line` 주석). */
+.doc-render .cm-content > :is(.cm-r-tablewrap, .md-math, .md-mermaid) { margin-block: 0; padding-block: .5rem; }
+/* 문서 참조는 **누를 수 있는 것처럼 보이지 않게** 둔다 — 발췌·폴백에는 그 문을 여는
+   배선이 없다(CM 쪽만 `onDocLink` 를 갖는다). 원문 대괄호를 감추는 것이 목적이고,
+   없는 동작을 약속하는 것이 목적이 아니다. */
+.md-doclink { text-decoration-style: dotted; }
+/* 수식·다이어그램 — 늦게 채워지므로 **자리를 미리 잡지 않는다.** 높이를 박아 두면
+   빈 상자가 먼저 보이고 내용이 도착하며 글이 밀린다. 비어 있는 동안은 아무 자리도
+   차지하지 않고, 채워진 뒤 자기 크기를 갖는다. */
+.md-math { margin: .5rem 0; overflow-x: auto; }
+.md-mermaid { margin: .5rem 0; }
+.md-mermaid svg { max-width: 100%; height: auto; }
+/* 실패한 다이어그램은 원문을 코드처럼 보인다(rich-blocks 의 폴백) — 문서가 조용히
+   내용을 잃는 것보다 소스가 보이는 편이 낫다. */
+.md-mermaid pre {
+  margin: 0; padding: .5rem .6rem; overflow-x: auto;
+  border: 1px dashed hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--muted) / .5); font-family: ui-monospace, monospace; font-size: var(--fs-sm);
+}
+/* 프론트매터 접이 줄 — 문서가 가진 값이지 문서의 글이 아니다. 산문 타이포에서
+   떼어 내 상단에 한 줄로 세우고, 눌러야 원문 YAML 이 펼쳐진다. */
+.doc-render .cm-r-fm {
+  display: flex; gap: .5rem; align-items: baseline;
+  margin: 0 0 .5rem; padding: .3rem .5rem;
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--muted)); cursor: pointer;
+  font-size: var(--fs-sm); line-height: 1.4;
+  /* 한 줄로 자른 요약의 원래 길이가 본문 칸 폭이 되지 않게 한다(VIN-742). 없으면 편집기가
+     이 줄의 전체 길이를 본문 폭으로 잡아, 본문 전체가 가로로 스크롤된 채 왼쪽이 잘려 보였다
+     (프론트매터가 긴 문서, 실측 칸 832px · 본문 1140px). */
+  contain: inline-size;
+}
+.doc-render .cm-r-fm:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.doc-render .cm-r-fm-cap { flex: none; font-weight: 600; opacity: .8; }
+/* 요약은 한 줄로 자른다 — 프론트매터가 길다고 문서가 아래로 밀리면 접은 의미가 없다. */
+.doc-render .cm-r-fm-sum {
+  flex: 1; min-width: 0; opacity: .7;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.doc-render .cm-r-fm-open { margin-bottom: .2rem; }
+.doc-render .cm-scroller { overflow-x: auto; overflow-y: visible; }
+/* 레일 안 목록 필터 — 40행짜리 목록을 눈으로 훑지 않게. */
+.rail-filter {
+  width: 100%; font: inherit; font-size: var(--fs-sm);
+  padding: .3rem .5rem; margin: .35rem 0 .5rem;
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+}
+.rail-sec {
+  margin: var(--space-4, 1rem) 0 var(--space-2, .5rem);
+  text-transform: uppercase; letter-spacing: .075em; font-size: var(--fs-xs);
+}
+

@@ -68,7 +68,7 @@ export function fitLabel(text: string, measure: Measure, max = MAXW): { text: st
 
 const grow = (b: Box, x0: number, y0: number, x1: number, y1: number) => { b[0] = Math.min(b[0], x0); b[1] = Math.min(b[1], y0); b[2] = Math.max(b[2], x1); b[3] = Math.max(b[3], y1); };
 /** 회전 이름표가 차지하는 네 꼭짓점: 중심 c 에서 각 a 로 s0 부터 len 만큼, 두께 h */
-export function labelPoly(cx: number, cy: number, a: number, s0: number, len: number, h = LH): Pt[] {
+function labelPoly(cx: number, cy: number, a: number, s0: number, len: number, h = LH): Pt[] {
   const ux = Math.cos(a), uy = Math.sin(a), nx = -uy * h / 2, ny = ux * h / 2, s1 = s0 + len;
   return [[cx + ux * s0 + nx, cy + uy * s0 + ny], [cx + ux * s1 + nx, cy + uy * s1 + ny], [cx + ux * s1 - nx, cy + uy * s1 - ny], [cx + ux * s0 - nx, cy + uy * s0 - ny]];
 }

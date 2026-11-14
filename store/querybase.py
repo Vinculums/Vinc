@@ -505,6 +505,20 @@ def is_conventions_doc_id(doc_id: str) -> bool:
     # 접두만 보면 `graph.md~notes` 같은 남의 문서를 삼킨다 — 꼬리가 해시인지까지 본다.
     return bool(_OWNER_TAG_RE.match(doc_id[len(_CONVENTIONS_PREFIX):]))
 
+#: 문서 미러 개념의 id 접두. 문서 `<doc_id>` 의 미러는 `concept:doc.<doc_id>` 다.
+#: 미러 id 를 만들고 푸는 일은 아래 두 함수가 하고, 접두만 보는 곳은 이 상수를 쓴다.
+DOC_MIRROR_PREFIX = "concept:doc."
+
+def mirror_id(doc_id: str) -> str:
+    """문서 id → 그 문서 미러 개념의 논리 id(`pkns.key` 로 소유자를 입히기 전의 값)."""
+    return DOC_MIRROR_PREFIX + doc_id
+
+def doc_id_of(node_id: str) -> str:
+    """미러 개념의 논리 id → 문서 id. 접두 길이만큼 앞을 잘라 낼 뿐 접두를 **확인하지
+    않는다** — 접두가 없는 id 에는 앞 글자를 잃은 꼬리가 나온다. 부르는 쪽이 먼저
+    `node_id.startswith(DOC_MIRROR_PREFIX)` 로 가른다."""
+    return node_id[len(DOC_MIRROR_PREFIX):]
+
 def is_conventions_chunk_id(chunk_id: str) -> bool:
     """관례 문서의 청크인가(`docstore.chunk_id_of` 규약: ``{doc_id}#{index:05d}``).
 

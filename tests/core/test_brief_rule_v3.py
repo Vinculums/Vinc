@@ -221,13 +221,13 @@ def test_retrieval_switches_report_the_effective_values(monkeypatch):
 
 def test_switch_is_explicit_and_defaults_to_production(monkeypatch, run_brief):
     monkeypatch.delenv("VINC_BRIEF_RULE", raising=False)
-    assert q._brief_rule() == "production" and not q._brief_rule_v3() and not q._brief_rule_colbert()
+    assert q._brief_rule() == "production" and not q._BRIEF_RULES[q._brief_rule()].uses_colbert
     for raw, want in (("v3", "v3"), (" V3 ", "v3"), ("learned", "production"), ("bogus", "production"),
                       ("", "production")):
         monkeypatch.setenv("VINC_BRIEF_RULE", raw)
         assert q._brief_rule() == want
     monkeypatch.setenv("VINC_BRIEF_RULE", "v3")
-    assert q._brief_rule_v3() and q._brief_rule_colbert()
+    assert q._brief_rule() == "v3" and q._BRIEF_RULES[q._brief_rule()].uses_colbert
     assert run_brief("what is it", _res([]), rule="v3")["_qc"] == "TOKENS"
     assert run_brief("what is it", _res([]), rule="production")["_qc"] is None
     # 모르는 값은 production 그대로 답한다: ColBERT 순서를 안 받고 `resolution` 도 싣지 않는다.

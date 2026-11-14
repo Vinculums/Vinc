@@ -15,9 +15,10 @@ from api import topic_conversion as tc
 from api.query import list_merge_rejections
 from store.embedded_schema import meta_table_specs, render_embedded_ddl
 from store.scoped_topic_inventory import read_scoped_inventory
-from store.topic_transfer import (_apply_rehearsal, fingerprint, plan_transfer,
+from store.topic_transfer import (fingerprint, plan_transfer,
                                   read_snapshot, transformed_snapshot, TransferRefused,
                                   retained_history_counts)
+from topic_rehearsal import apply_rehearsal  # noqa: E402
 
 
 def rejection(data, a="concept:a", b="concept:b", owner=SOURCE, key=None):
@@ -82,10 +83,10 @@ def test_native_retained_history_exact_scoped_verification_and_rollback(tmp_path
         assert retained_history_counts(scoped.snapshot, chosen)["_MergeRejection"] == 2
         if phase:
             with pytest.raises(RuntimeError):
-                _apply_rehearsal(store, plan(before), run_id="retained", stamp=STAMP, fail_at=phase)
+                apply_rehearsal(store, plan(before), run_id="retained", stamp=STAMP, fail_at=phase)
             assert fingerprint(read_snapshot(store)) == fingerprint(before)
         else:
-            assert _apply_rehearsal(store, plan(before), run_id="retained", stamp=STAMP) == "committed"
+            assert apply_rehearsal(store, plan(before), run_id="retained", stamp=STAMP) == "committed"
             after = read_scoped_inventory(store, source=SOURCE, target=TARGET, topic=TOPIC, after=True)
             assert fingerprint(after.snapshot) == fingerprint(transformed_snapshot(scoped.snapshot, chosen, stamp=STAMP))
             actual = read_snapshot(store)["meta"]["_MergeRejection"]
@@ -163,8 +164,8 @@ def test_native_history_full_scoped_after_and_retry(tmp_path):
         assert not scoped.blockers and scoped_plan.ready
         assert set(scoped_plan.selected) == set(chosen.selected)
         expected = transformed_snapshot(before, chosen, stamp=STAMP)
-        assert _apply_rehearsal(store, chosen, run_id="history", stamp=STAMP) == "committed"
-        assert _apply_rehearsal(store, chosen, run_id="history", stamp=STAMP) == "already_committed"
+        assert apply_rehearsal(store, chosen, run_id="history", stamp=STAMP) == "committed"
+        assert apply_rehearsal(store, chosen, run_id="history", stamp=STAMP) == "already_committed"
         actual = read_snapshot(store)
         actual["meta"]["_SyncMeta"] = [r for r in actual["meta"]["_SyncMeta"]
                                        if not r["key"].startswith("topic-transfer:run:")]
@@ -201,7 +202,7 @@ def test_native_history_failure_rolls_back_without_losing_rejection(tmp_path, ph
         insert(store, data)
         before = read_snapshot(store)
         with pytest.raises(RuntimeError):
-            _apply_rehearsal(store, plan(before), run_id="history", stamp=STAMP, fail_at=phase)
+            apply_rehearsal(store, plan(before), run_id="history", stamp=STAMP, fail_at=phase)
         assert fingerprint(read_snapshot(store)) == fingerprint(before)
     finally:
         store.close()

@@ -1,0 +1,62 @@
+/* ── 문서 홈(2026-10-22) ───────────────────────────────────────────────────
+   문서를 보고 쓰고 정리하는 첫 화면. 짜임은 웹 커뮤니티 홈을 따른다: 주제 칩 · 거르기 ·
+   정렬 · 목록, 문서 면은 본문(최대 720px) + 옆 칸.
+   목록은 맨 위까지 올라온다: 홈에서는 바가 한 줄(검색 알약 · 그래프 버튼)이고, 머리 줄이 그 띠에
+   같이 서서 바와 겹치는 만큼만 오른쪽을 비운다(`--chrome-w`, topbar.ts 가 잰다). 문서 면은 옆
+   칸이 오른쪽 위에 서므로 바 아래(`--chrome-top`)에서 시작한다.
+   근거: [[decision:the-desktop-shell-is-documents-first]] */
+.home {
+  /* 뷰 머리와 같은 칼럼이다 — 머리의 경로와 여기 첫 글자가, 머리의 검색과 읽기 칸이 같은
+     세로선에 선다(app.css `.tb-col`). */
+  box-sizing: border-box;
+  max-width: calc(var(--page-col) + var(--page-inset) * 2); margin: 0 auto;
+  padding: 0 var(--page-inset) var(--space-8, 2rem);
+}
+.home-head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-4, 1rem); flex-wrap: wrap;
+  min-height: calc(var(--ctl-h) + var(--space-2, .5rem));
+}
+.home-head h1 { margin: 0; font-size: var(--fs-title); }
+.home-count { font-size: var(--fs-base); font-weight: 400; color: hsl(var(--muted-foreground)); margin-left: var(--space-2, .5rem); }
+.home-acts { display: flex; gap: var(--space-2, .5rem); flex-wrap: wrap; }
+.home-acts .btn, .ha-acts .btn { display: inline-flex; align-items: center; gap: var(--space-2, .5rem); }
+.home-topics { display: flex; flex-direction: column; gap: var(--space-2, .5rem); margin: var(--space-4, 1rem) 0 var(--space-3, .75rem); }
+.home-crumbs { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1, .25rem); font-size: var(--fs-sm); }
+.home-crumb, .home-back {
+  border: none; background: none; padding: .15rem .35rem; border-radius: var(--shell-ctl-r);
+  font: inherit; color: hsl(var(--muted-foreground)); cursor: pointer; text-decoration: none;
+}
+.home-crumb:hover, .home-back:hover { background: hsl(var(--muted-foreground) / .12); color: hsl(var(--foreground)); }
+.home-crumb.on { color: hsl(var(--foreground)); font-weight: 600; }
+.home-sep { color: hsl(var(--caption-foreground)); }
+.home-chips { display: flex; flex-wrap: wrap; gap: var(--space-2, .5rem); }
+.home-chip {
+  display: inline-flex; align-items: center; gap: var(--space-2, .5rem);
+  height: 1.75rem; padding: 0 .65rem; border: 1px solid hsl(var(--border)); border-radius: 999px;
+  background: hsl(var(--card)); color: hsl(var(--foreground)); font: inherit; font-size: var(--fs-sm); cursor: pointer;
+}
+.home-chip:hover { border-color: hsl(var(--muted-foreground)); }
+.home-chip-n { font-family: var(--font-mono); font-size: var(--fs-xs); color: hsl(var(--caption-foreground)); }
+.home-toolbar { display: flex; align-items: center; gap: var(--space-3, .75rem); margin-bottom: var(--space-2, .5rem); }
+.home-filter {
+  flex: 1 1 auto; min-width: 0; height: var(--ctl-h); padding: 0 var(--pad-row);
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--background)); color: hsl(var(--foreground)); font: inherit;
+}
+.home-filter:focus { outline: none; border-color: hsl(var(--ring)); box-shadow: 0 0 0 3px hsl(var(--ring) / .16); }
+.home-sort { display: inline-flex; align-items: center; gap: var(--space-2, .5rem); font-size: var(--fs-sm); }
+.home-list { display: flex; flex-direction: column; border-top: 1px solid hsl(var(--border)); }
+.home-row {
+  display: grid; grid-template-columns: .6rem minmax(0, 1fr) auto; align-items: center; gap: var(--space-3, .75rem);
+  padding: .6rem var(--pad-row); border-bottom: 1px solid hsl(var(--border));
+  color: hsl(var(--foreground)); text-decoration: none;
+}
+.home-row:hover { background: hsl(var(--muted-foreground) / .08); }
+.home-row:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+.home-dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--tint, hsl(var(--muted-foreground))); }
+.home-rtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-rmeta { font-size: var(--fs-xs); color: hsl(var(--muted-foreground)); white-space: nowrap; max-width: 22rem; overflow: hidden; text-overflow: ellipsis; }
+.home-group { margin: var(--space-4, 1rem) 0 var(--space-1, .25rem); font-size: var(--fs-xs); font-weight: 600; color: hsl(var(--muted-foreground)); }
+.home-more { margin: var(--space-4, 1rem) auto 0; display: block; }
+.home-empty { padding: var(--space-8, 2rem) 0; text-align: center; color: hsl(var(--muted-foreground)); }
+.home-empty .home-acts { justify-content: center; }

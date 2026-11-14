@@ -21,11 +21,13 @@ from store import pkns
 from store import search_temporal as temporal
 from store.embedded_backend import node_vector_generation, vector_generation
 from store.querybase import (
+    DOC_MIRROR_PREFIX,
     QueryPlan,
     _VALIDITY_EMPTY,
     _classify_chunk_error,
     _props_to_obj,
     _validity_cols,
+    doc_id_of,
     domain_subtree_where,
     execute,
     is_conventions_chunk_id,
@@ -690,10 +692,6 @@ def _props_values_text(raw) -> str:
     return _PROPS_KEY.sub(" ", str(raw or "").lower())
 
 
-#: 문서 미러 개념의 id 접두. 뒤가 문서 id 다(`concept:doc.<doc_id>`).
-_MIRROR_PREFIX = "concept:doc."
-
-
 def _predates_column(exc: Exception) -> bool:
     """스토어가 그 열을 아직 모른다(v22 이전 스키마). 문서 구간을 적은 적이 없으니 거를 것도
     없다. 읽기 실패가 아니라 "구간 없음"으로 읽는다. 이관 전 고정 평가 스토어가 이 모양이다.
@@ -711,8 +709,8 @@ def _mirror_validity(store, ids, *, owner: str | None = None) -> dict:
     docs = {}
     for nid in ids:
         nid = pkns.strip(str(nid or ""))
-        if nid.startswith(_MIRROR_PREFIX) and len(nid) > len(_MIRROR_PREFIX):
-            docs[nid] = nid[len(_MIRROR_PREFIX):]
+        if nid.startswith(DOC_MIRROR_PREFIX) and len(nid) > len(DOC_MIRROR_PREFIX):
+            docs[nid] = doc_id_of(nid)
     if not docs:
         return {}
     try:

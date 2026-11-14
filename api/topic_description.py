@@ -6,6 +6,7 @@ import hashlib
 from api import docstore
 from engines import domain_hierarchy
 from store import pkns
+from store.querybase import DOC_MIRROR_PREFIX
 
 ORIGIN = "vinc:topic-description"
 MAX_CHARS = 32768
@@ -22,7 +23,7 @@ def read(store, *, owner: str, domain: str) -> dict:
             "AND c.concept_id=$prefix+d.doc_id "
             "RETURN d.doc_id AS doc_id, d.chunk_count AS chunk_count LIMIT 2",
             {"owner": owner, "origin": ORIGIN, "domain": domain,
-             "prefix": pkns.key(owner, "concept:doc.")})
+             "prefix": pkns.key(owner, DOC_MIRROR_PREFIX)})
         if rows is None or len(rows) > 1:
             return {**base, "error": "topic_description_inconsistent"}
         if not rows:

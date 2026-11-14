@@ -31,7 +31,7 @@ class TreeDefaultTests(unittest.TestCase):
         self.assertNotIn("saveExpanded", LNB)
         self.assertNotIn("loadExpanded", LNB)
         self.assertIn("localStorage.removeItem(KEY_EXPANDED)", LNB)
-        self.assertIn("applyDefaults(tops, expanded, seenDefault)", LNB)
+        self.assertIn("applyDefaults(tops, st.expanded, st.seenDefault)", LNB)
 
     def test_하위_주제가_있는_줄은_자기_항목을_접어_둔다(self):
         rows = func(LNB, "groupRows")
