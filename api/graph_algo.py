@@ -29,7 +29,7 @@ import random
 from collections import defaultdict
 
 #: 고립(차수 0) 노드의 커뮤니티 값. 엔진 Louvain 과 같은 값을 쓴다 — 소비자
-#: (`api.query.communities`·`community_context`)가 이 값을 "커뮤니티 아님"으로 읽는다.
+#: (`api.diagnose.communities`·`community_context`)가 이 값을 "커뮤니티 아님"으로 읽는다.
 ISOLATED = -1
 
 #: 기본 해상도(모듈러리티의 γ). 1.0 이 표준 모듈러리티다.
