@@ -16,8 +16,8 @@ import { wireAsk, askRowHTML, nodeAskItems, chev, SHARE_DEPTH } from "./view-ask
 import { disposeEditorsIn, docEditorOpen } from "../doc-editor";
 
 import { dayOf, localStamp } from "../view-prefs";
-import { setViewHooks, refreshTopbar, setSearchFilter, setTopbarTools } from "../topbar";
-import { setLnbActive, setLnbNavigator, setLnbTopicPicker, setLnbScopeClearer, setLnbGraphSource, repaintLnbGraph, setLnbGraphActive,
+import { refreshTopbar } from "../topbar";
+import { setLnbActive, repaintLnbGraph, setLnbGraphActive,
          refreshLnb } from "../lnb";
 import { isAgentRoleId, stripRolePrefix } from "../agent-roster";
 import { createPropsCard } from "./view-props-card";
@@ -27,7 +27,7 @@ import { createEdgeDetail } from "./view-edge";
 import { createReader } from "./view-reader";
 import type { N3, ViewHost } from "./view-host";
 import { openFloatPanel, closeFloatPanel, isFloatPanelOpen } from "../float-panel";
-import { setLiveRefresher } from "../live";
+import { bindSurface } from "../surface-binding";
 import { emptyInviteHtml } from "../empty-invite";
 import { takePendingNewDoc } from "../authoring";
 import { detailState, detailFailure, topicDetailHTML, type DetailState } from "../topic-detail";
@@ -179,6 +179,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   let compass: CompassHandle | null = null;   // 나침반 렌즈(그래프 보기)
   // 같은 범위를 다시 그릴 때(`keepCamera`: 변경 감지 새로고침 · 쓰고 난 뒤) 나침반이 보던 자리. 다음 마운트가 한 번 받아 간다
   let compassKeep: CompassState | null = null;
+  let unbindSearch: (() => void) | null = null;   // 나침반이 건 검색 거르개를 푸는 손(나침반을 부술 때)
   let compassDisposeWrapped = false;   // dispose 를 나침반 정리로 한 번만 감싼다(마운트마다 감싸면 사슬이 자란다)
   let lastNode: N3 | null = null;                   // Reader 뒤로가기용 마지막 상세 노드(D45-V2)
   /** 잇기(흐름 F)가 기다리는 대상 — 있으면 다음 초점이 카드 대신 여기로 간다(`focusOnMap`). */
@@ -475,16 +476,17 @@ export async function renderView(el: HTMLElement, resume = false) {
         onTree: (o) => repaintLnbGraph(o),
         onOpen: (id) => openFromCompass(id),
         onChange: () => { if (ready && compass) setLnbGraphActive(compass.centre()); },
-        onDestroy: () => { setLnbGraphSource(null); setTopbarTools(null); } });
+        onDestroy: () => unbindGraph() });
       const cmp = compass;
-      setLnbGraphSource({ groups: () => cmp.tree(), open: (id) => cmp.open(id), mark: (k) => cmp.mark(k), dock: cmp.side });
-      setTopbarTools(cmp.tools);
+      const unbindGraph = bindSurface({
+        lnbGraphSource: { groups: () => cmp.tree(), open: (id) => cmp.open(id), mark: (k) => cmp.mark(k), dock: cmp.side },
+        topbarTools: cmp.tools });
       ready = true;
       setLnbGraphActive(cmp.centre());
-      setSearchFilter((q) => compass?.filter(q));
+      unbindSearch = bindSurface({ searchFilter: (q) => compass?.filter(q) });
       if (!compassDisposeWrapped) {
         const prevDispose = disposeView; compassDisposeWrapped = true;
-        disposeView = () => { prevDispose?.(); setSearchFilter(null); if (compass) { compass.destroy(); compass = null; } };
+        disposeView = () => { prevDispose?.(); unbindSearch?.(); if (compass) { compass.destroy(); compass = null; } };
       }
       markDisplayed(domains);
       return;
@@ -996,7 +998,7 @@ export async function renderView(el: HTMLElement, resume = false) {
    *  캔버스를 투명하게 두고 나가면 revealSurface() 가 첫 그림을 페이드인한다. */
   function swapSurface() {
     displayedScene = undefined;
-    if (compass) { setSearchFilter(null); compass.destroy(); compass = null; }
+    if (compass) { unbindSearch?.(); compass.destroy(); compass = null; }
     canvas.innerHTML = "";
     canvas.style.opacity = "0";
   }
@@ -1121,7 +1123,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   // D56 — 상단 바에 자기 동작을 건다. 공유 범위는 **지금 보고 있는 스코프**가
   // 기본값이다(정본 §5 "공유는 스코프의 출구"). 여태 진입이 올가미 제스처 하나뿐이라
   // 발견되지 않았고, 우클릭 메뉴는 아직 없다.
-  setViewHooks({
+  bindSurface({ viewHooks: {
     share: () => {
       const lv = trail[trail.length - 1];
       // 노드 하나를 건네는 길은 그 노드의 우클릭 메뉴와 상세 레일이 든다(SHARE_DEPTH).
@@ -1142,7 +1144,7 @@ export async function renderView(el: HTMLElement, resume = false) {
       return { topic: lastNode?.domain || lnbFocus.domain || scoped, nodeId: lastNode?.id || "" };
     },
     pickNode: (cb) => { pickTarget = cb; },
-  });
+  } });
   // 지도 빈 곳 우클릭 = 여기에 새로 만들기(흐름 A). 노드 우클릭은 렌더러가 자기 메뉴를
   // 먼저 연다 — 캡처로 받고 한 틱 뒤에 메뉴가 이미 떠 있으면 비켜선다(렌더러 둘에 빈 곳
   // 훅을 따로 뚫지 않는 방법이다).
@@ -1161,11 +1163,11 @@ export async function renderView(el: HTMLElement, resume = false) {
   // 좌측 트리의 문서 클릭이 여기로 온다(D69·D70). 훅이 없으면 트리는 해시 착지로
   // 강등되므로, View 가 살아 있는 동안만 "리마운트 없는 이동"이 성립한다.
   // LNB 에서 고른 것은 카드와 옆 칸으로 연다(openFromNav).
-  setLnbNavigator((id, dom, docId) => void openFromNav(id, dom, docId));
+  bindSurface({ lnbNavigator: (id, dom, docId) => void openFromNav(id, dom, docId) });
   // 주제 고르기 — **즉시 반영**이다(발주자 결정 2026-08-15). 고른 것과 보는 것이
   // 어긋나는 중간 상태를 두지 않는 대신, 고를 때마다 서버를 한 번 왕복한다.
-  setLnbScopeClearer(() => false);
-  setLnbTopicPicker((path, add, set) => {
+  bindSurface({ lnbScopeClearer: () => false });
+  bindSurface({ lnbTopicPicker: (path, add, set) => {
     const lv = trail[trail.length - 1];
     const cur = lv.kind === "l1" ? lv.domains : [];
     // `set` 은 토글이 아니라 "이 주제(들)로" 다(Agent 레일: 역할 주제 둘). 이미 그 주제거나
@@ -1189,20 +1191,20 @@ export async function renderView(el: HTMLElement, resume = false) {
     if (lv.kind === "l1") trail.pop();
     if (next.length) trail.push({ kind: "l1", domains: next });
     void show(trail[trail.length - 1]);
-  });
+  } });
 
 
   // 저절로 새로워지는 갱신(VIN-129). 지금 층을 다시 받되 카메라와 렌즈 패널은 잇는다 —
   // 옵션 재마운트(`applyPrefs`)와 같은 길이라 "보던 곳을 잃는다"가 다시 생기지 않는다.
   // 재생 중이거나 카드·상세가 떠 있으면 "지금은 아니다"(`false`): 다시 그리기가 그것들을
   // 닫는다. 바뀐 것은 `live.ts` 가 기억했다가 손을 뗀 뒤 적용한다.
-  setLiveRefresher(async () => {
+  bindSurface({ liveRefresher: async () => {
     if (myGen !== liveGen) return;
     // 잇기 대상을 고르는 중에도 기다린다 — 다시 그리기가 그 고르기를 푼다.
     if (isFloatPanelOpen() || !detail.hidden || pickTarget) return false;
     loader.reset();
     await show(trail[trail.length - 1], { keepPanel: true, keepCamera: true });
-  });
+  } });
 
   await show(trail[trail.length - 1]);
   // View 밖에서 "새 문서"를 눌러 여기로 왔다(authoring.startNewDoc) — 첫 화면 뒤에 연다.

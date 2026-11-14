@@ -41,6 +41,7 @@ UNITS: dict[str, tuple[str, ...]] = {
     "components": ("src/components.ts",),
     "keys": ("src/keys.ts",),
     "live": ("src/live.ts",),
+    "surface-binding": ("src/surface-binding.ts",),
     "theme": ("src/theme.ts",),
     "account-signals": ("src/account-signals.ts",),
     "account-connect": ("src/account-connect.ts",),

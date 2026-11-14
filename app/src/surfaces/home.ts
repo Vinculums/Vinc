@@ -5,10 +5,10 @@ import { esc, confirmDestructive } from "../components";
 import { icon } from "../icons";
 import { dayOf } from "../view-prefs";
 import type { DocEditorHandle } from "../doc-editor";
-import { setTopbarLead, setViewHooks } from "../topbar";
-import { lnbTopicTint, setLnbActive, setLnbDocOpener, setLnbTopicPicker, setLnbScopeClearer, refreshLnb } from "../lnb";
+import { setTopbarLead } from "../topbar";
+import { lnbTopicTint, setLnbActive, refreshLnb } from "../lnb";
+import { bindSurface } from "../surface-binding";
 import { agentRoleCount } from "../agent-roster";
-import { setLiveRefresher } from "../live";
 import { loaderRows } from "../vinc-loaders.js";
 import { namedDecisions, docMirrorId } from "../doc-graph";
 
@@ -55,15 +55,13 @@ let sort: Sort = (() => {
 let liveGen = 0;
 let editor: DocEditorHandle | null = null;
 
-/** 라우터가 표면을 떠날 때 부른다. 편집기는 라우터가 먼저 확정·해제한다(disposeEditorsIn). */
+/** 라우터가 표면을 떠날 때 부른다. 편집기는 라우터가 먼저 확정·해제한다(disposeEditorsIn).
+ *  이 면이 셸에 건 손잡이(문서 열기 · 주제 고르기 · View 동작 · 갱신)는 라우터가 `unbindSurface` 로 푼다. */
 export function leaveHome(): void {
   ++liveGen;
   // Agents 보드의 갱신 구독은 여기서 풀지 않는다. 비동기로 풀면 곧이어 그린 새 보드의 구독이
   // 풀린다. 떠난 보드의 구독은 다음 신호 때 스스로 풀린다(agents-board.ts).
   editor = null;
-  setLnbDocOpener(null);
-  setLnbTopicPicker(null);
-  setLnbScopeClearer(null);
 }
 
 /** 목록의 주제 점은 사이드바와 같은 색이다(`lnbTopicTint`). 사이드바 표가 늦게 오거나 테마가 뒤집혀 바뀌면 따라 칠한다. */
@@ -94,16 +92,16 @@ export async function renderHome(el: HTMLElement): Promise<void> {
 
   // 다른 화면(검색 결과 · 새 문서 단축키 · 묻기의 착지)이 이 면으로 오는 길. 그래프가 없는
   // 동안 View 훅을 이 면이 대신 든다 — 문서는 여기서 열고, 노드는 그래프로 보낸다.
-  setViewHooks({
+  bindSurface({ viewHooks: {
     share: () => void import("./settings").then((m) => m.openSettings("data", "share")),
     openNode: (id) => { location.hash = `#view/trace/${encodeURIComponent(id)}`; },
     openDoc: (docId) => { location.hash = `#home/doc/${encodeURIComponent(docId)}`; },
     newDoc: (topic) => openWriter(topic),
     context: () => ({ topic: scope.length === 1 ? scope[0] : "", nodeId: "" }),
-  });
-  setLnbDocOpener((docId) => { location.hash = `#home/doc/${encodeURIComponent(docId)}`; });
+  } });
+  bindSurface({ lnbDocOpener: (docId) => { location.hash = `#home/doc/${encodeURIComponent(docId)}`; } });
   // 트리 줄 끝의 거르기 버튼 · Agent 가 이 목록을 좁힌다(그래프에서는 같은 손잡이가 지도를 좁힌다).
-  setLnbTopicPicker((path, add, set) => {
+  bindSurface({ lnbTopicPicker: (path, add, set) => {
     const paths = Array.isArray(path) ? path : [path];
     const one = paths[0];
     agentScope = !!set;
@@ -115,13 +113,13 @@ export async function renderHome(el: HTMLElement): Promise<void> {
     // 보드에서 주제를 고르면 그 주제의 문서 목록으로 간다. Agent 가 거는 역할 주제 묶음(set)은
     // 보드가 이미 그 역할들을 보여 주므로 따르지 않는다.
     else if (!(mode === "agents" && set)) location.hash = "#home";
-  });
+  } });
   // 저절로 새로워지는 갱신(VIN-129). 쓰는 중에는 다시 그리지 않는다 — 목록만 새로 읽는다.
-  setLiveRefresher(async () => {
+  bindSurface({ liveRefresher: async () => {
     if (!live()) return;
     docsCache = null;
     if (mode === "list") await paintList(el, gen);
-  });
+  } });
 
   if (mode === "agents" && parts[2]) {
     // 역할 편집 면(`#home/agents/<id>` · `#home/agents/new[/<팀>]`). 보드 안의 한 면이다.

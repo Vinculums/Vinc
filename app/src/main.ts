@@ -8,12 +8,13 @@ import { openSettings } from "./surfaces/settings";
 import { connectSidecar, WEB, ensureWebAuth, cfg, IN_SHELL, decideDataMode,
          adoptSpaceFromAddress, remote } from "./api";
 import { checkForUpdate } from "./update";
-import { mountLiveRefresh, setLiveRefresher } from "./live";
+import { mountLiveRefresh } from "./live";
 import { wireFileAssociations } from "./openfiles";
 import { installTooltip } from "./tooltip";
 import { loaderBlock } from "./vinc-loaders.js";
-import { mountTopbar, setViewHooks } from "./topbar";
-import { mountLnb, refreshLnb, setLnbNavigator, repaintLnb } from "./lnb";
+import { mountTopbar } from "./topbar";
+import { mountLnb, refreshLnb, repaintLnb } from "./lnb";
+import { unbindSurface } from "./surface-binding";
 import { mountSpaceSwitcher } from "./space-switcher";
 import { SELF_HOSTED_BUILD, selfHosted } from "./self-hosted";
 import { showNotice } from "./components";
@@ -158,15 +159,11 @@ async function route() {
   docpaneEl.querySelector("#rail-grip")?.remove();
   docpaneEl.hidden = true;
   shellEl.dataset.doc = "closed";
-  // 상단 바의 View 전용 버튼은 표면을 떠나는 즉시 사라진다 — View 면 아래에서
-  // 다시 등록한다. 표면이 자기 소멸을 감지하게 두는 대신 라우터가 명시적으로 끈다
-  // (컨테이너가 남아 있어 표면 스스로는 떠난 줄을 알 수 없다).
-  setViewHooks(null);
-  // 저절로 새로워지는 갱신(VIN-129)도 떠나는 표면을 부르지 않게 푼다. 새 표면이 다시 건다.
-  setLiveRefresher(null);
-  // 좌측 트리의 착지 훅도 같이 끈다 — View 가 없으면 "그 노드로 날아가기"가
-  // 성립하지 않으므로 문서 클릭은 해시 착지로 강등된다(lnb.openDoc).
-  setLnbNavigator(null);
+  // 떠나는 표면이 셸에 건 손잡이를 전부 푼다(`surface-binding.ts`): 상단 바의 View 동작과 그래프 단추,
+  // 저절로 새로 고침, 좌측 트리의 착지 · 문서 열기 · 주제 고르기 · "전체" 단추. 표면이 자기 소멸을 감지하게
+  // 두는 대신 라우터가 명시적으로 푼다(컨테이너가 남아 있어 표면 스스로는 떠난 줄을 알 수 없다). 새 표면이 다시
+  // 건다. 착지 훅이 없으면 트리의 문서 클릭은 해시 착지로 강등된다(lnb.openDoc).
+  unbindSurface();
   shellEl.dataset.surface = s;
   if (s === "view") await renderView(surfaceEl, resumeView);
   else await SURFACES[s](surfaceEl);
