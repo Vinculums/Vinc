@@ -267,7 +267,9 @@ class DdlRacesReadersE2E(unittest.TestCase):
                 rv.close()
 
         threads = [threading.Thread(target=reader) for _ in range(2)]
-        with mock.patch.object(ds, "_apply_embeddings", slow_apply):
+        # 적용 본체는 `api.docembed` 에 산다. 배타 래퍼(`apply_embeddings`)가 그 모듈의 이름을 부른다.
+        from api import docembed
+        with mock.patch.object(docembed, "_apply_embeddings", slow_apply):
             for t in threads:
                 t.start()
             time.sleep(0.1)

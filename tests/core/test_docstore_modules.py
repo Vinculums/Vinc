@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"""`api.docreader`·`api.docextract`·`api.docevidence` 가 리더 도우미·개념 추출·관계 근거 백필의
-정본이고, `api.docstore` 의 이름은 같은 객체를 가리키는가.
+"""`api.docreader`·`api.docextract`·`api.docevidence`·`api.docembed` 가 리더 도우미·개념 추출·관계
+근거 백필·임베딩 상태의 정본이고, `api.docstore` 의 이름은 같은 객체를 가리키는가.
 
 잠그는 것:
 - `docstore.X` 로 부르는 이름(서버·평가 스크립트·테스트가 그렇게 부른다)이 새 모듈의 이름과
   **같은 객체**다. 사본이 생기면 한쪽만 고친 규칙이 조용히 갈라진다.
-- 세 모듈은 `api.docstore` 를 최상위에서 import 하지 않는다. docstore 가 세 모듈을 최상위에서
+- 네 모듈은 `api.docstore` 를 최상위에서 import 하지 않는다. docstore 가 네 모듈을 최상위에서
   다시 내보내므로, 거꾸로도 최상위에서 읽으면 어느 쪽을 먼저 import 하느냐에 따라 깨진다.
 - docstore 쪽 이름은 호출 때 읽힌다: `docstore.get_doc` 을 바꿔 끼우면 옮긴 함수에도 닿는다.
 """
@@ -19,6 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from api import docembed  # noqa: E402
 from api import docevidence  # noqa: E402
 from api import docextract  # noqa: E402
 from api import docreader  # noqa: E402
@@ -36,7 +37,17 @@ MOVED = {
                  "_concept_shaped", "_one_liner", "extract_concepts", "_FM_DOMAIN_RE",
                  "_front_domain", "_doc_topic", "extract_doc", "_extract_body_doc"),
     docevidence: ("_EVIDENCE_MAX", "_sentences", "backfill_evidence"),
+    docembed: ("reembed_doc", "pending_embed_chunks", "_fair_pending_docs", "_vec_width",
+               "apply_embeddings", "_apply_embeddings", "_EMBED_MODEL_KEY", "stored_embed_model",
+               "_EMBED_APPLIED_KEY", "_EMBED_MIGRATING_KEY", "_MIGRATION_GATE_MIN",
+               "_MIGRATION_GATE_RATIO", "_EMBED_STALL_DEFAULT_S", "embed_model_state",
+               "switch_embed_model", "stale_docs"),
 }
+
+#: docembed 가 호출 때 부르는 docstore 의 공개 도우미 → docstore 의 사설 별칭.
+DOCSTORE_HELPERS = {"age_s": "_age_s", "doc_meta": "_meta",
+                    "drop_vector_index_if_any": "_drop_vector_index_if_any",
+                    "remnant_refusal": "_remnant_refusal"}
 
 
 def _top_level_defs(path: Path) -> set[str]:
@@ -68,6 +79,11 @@ class ReexportIdentityTest(unittest.TestCase):
                 with self.subTest(module=mod.__name__, name=name):
                     self.assertIn(name, defs)
                     self.assertNotIn(name, store_defs)
+
+    def test_docstore_helpers_have_public_names_and_the_old_aliases(self):
+        for public, private in DOCSTORE_HELPERS.items():
+            with self.subTest(name=public):
+                self.assertIs(getattr(docstore, public), getattr(docstore, private))
 
     def test_reader_parses_headings_with_the_extraction_parser(self):
         # 목차와 개념 후보가 같은 파서를 쓴다 — 사본이면 둘이 갈린다.
@@ -111,6 +127,16 @@ class CallTimeLookupTest(unittest.TestCase):
             got = docstore.extract_doc(None, "d1", owner="tenant:x")
         finally:
             docstore._meta = original
+        self.assertEqual((got["executed"], got["error"]), (False, "unknown doc_id"))
+
+    def test_patched_doc_meta_reaches_the_embedding_group(self):
+        # docembed 는 docstore 의 공개 도우미를 호출 때 읽는다. 바꿔 끼우면 재임베딩 큐잉에 닿는다.
+        original = docstore.doc_meta
+        docstore.doc_meta = lambda *a, **k: None
+        try:
+            got = docstore.reembed_doc(None, "d1", owner="tenant:x")
+        finally:
+            docstore.doc_meta = original
         self.assertEqual((got["executed"], got["error"]), (False, "unknown doc_id"))
 
     def test_patched_backfill_reaches_extraction(self):
