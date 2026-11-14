@@ -1025,7 +1025,7 @@ class _ReaderView:
     def graph_algo(self, algo: str, **kw) -> list[dict]:
         """그래프 알고리즘(E-G3 WCC·Louvain·PageRank) — **쓰기 지점으로 보낸다**(R4).
 
-        여태 `_ReaderView` 가 이걸 아예 노출하지 않았고, `api.query._run_algo` 는
+        여태 `_ReaderView` 가 이걸 아예 노출하지 않았고, `api.diagnose._run_algo` 는
         `getattr(store, "graph_algo", None)` 로 확인하므로 **조회 경로에서 상시
         `algo_unsupported` 로 강등**돼 있었다(2026-07-31 실측: 서버 read_diagnose 가
         `executed=False, components=[]`, 같은 데이터에 writer 로 직접 부르면 컴포넌트

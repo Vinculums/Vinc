@@ -450,7 +450,7 @@ EDGE_BIRTH_RELS: tuple[str, ...] = (
 # ([[vinc.spec.dataplane §2.4]]).
 _SEMANTIC_LABELS: tuple[str, ...] = ("Concept", "Decision")
 
-#: **개인·팀 그래프에서 RELATED_TO 는 개념↔개념에만 선다.** `api.query.communities` 가 이
+#: **개인·팀 그래프에서 RELATED_TO 는 개념↔개념에만 선다.** `api.diagnose.communities` 가 이
 #: rel 하나만 투영해 군집을 잡는다(계산은 `api/graph_algo.py` 의 Leiden). 결정이 개념에
 #: 닿는 자리는 느슨한 연관이 아니라 about 이고, 결정끼리는 계보다.
 #: v23 부터 표 자체는 공개 위키 쪽 끝점(`_PAGE_LABELS`)으로 넓다. 군집이 개념끼리로 남는
