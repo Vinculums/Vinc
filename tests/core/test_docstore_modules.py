@@ -24,18 +24,18 @@ from api import docevidence  # noqa: E402
 from api import docextract  # noqa: E402
 from api import docreader  # noqa: E402
 from api import docstore  # noqa: E402
+from engines import mentions_link as ml  # noqa: E402
 
 #: 모듈 → docstore 가 다시 내보내는 이름.
 MOVED = {
     docreader: ("_HL_TOKEN_RE", "highlight_ranges", "_editor_offsets", "_concept_terms",
-                "doc_highlights", "_MENTION_TARGETS", "_heading_level", "doc_sections",
-                "doc_context"),
+                "doc_highlights", "_heading_level", "doc_sections", "doc_context"),
     docextract: ("_SLUG_RE", "_slug", "_ATX_RE", "_UNDERLINE_RE", "_FENCE_RE", "_LIST_RE",
                  "_MAX_HEADING_LEN", "_headings", "_title_shaped", "_HEAD_NUM_RE", "_MD_LINK_RE",
                  "_MD_EMPH_RE", "_MD_PREFIX_RE", "_SENT_END_RE", "_ONE_LINER_MAX", "_strip_md",
-                 "_clean_heading", "_STRUCT_SLUGS", "_CLAUSE_OPENERS", "_MAX_TITLE_WORDS",
-                 "_concept_shaped", "_one_liner", "extract_concepts", "_FM_DOMAIN_RE",
-                 "_front_domain", "_doc_topic", "extract_doc", "_extract_body_doc"),
+                 "_clean_heading", "_STRUCT_SLUGS", "_CLAUSE_OPENERS", "_concept_shaped",
+                 "_one_liner", "extract_concepts", "_FM_DOMAIN_RE", "_front_domain", "_doc_topic",
+                 "extract_doc", "_extract_body_doc"),
     docevidence: ("_EVIDENCE_MAX", "_sentences", "backfill_evidence"),
     docembed: ("reembed_doc", "pending_embed_chunks", "_fair_pending_docs", "_vec_width",
                "apply_embeddings", "_apply_embeddings", "_EMBED_MODEL_KEY", "stored_embed_model",
@@ -88,6 +88,32 @@ class ReexportIdentityTest(unittest.TestCase):
     def test_reader_parses_headings_with_the_extraction_parser(self):
         # 목차와 개념 후보가 같은 파서를 쓴다 — 사본이면 둘이 갈린다.
         self.assertIs(docreader._headings, docextract._headings)
+
+
+class LinkerNamesTest(unittest.TestCase):
+    """링크 대상 표와 제목 토큰 상한의 정본은 링커 하나다. 읽기 쪽에 사본이 있으면 의미층이 늘 때
+    한쪽만 늘어 결정만 언급한 문서가 빈손이 된다."""
+
+    def test_the_linker_keeps_its_private_names_as_aliases(self):
+        self.assertIs(ml._LINK_TARGETS, ml.LINK_TARGETS)
+        self.assertIs(ml._tokens, ml.tokens)
+        self.assertIs(ml._fetch_concepts, ml.fetch_concepts)
+        self.assertEqual(ml._MAX_TITLE_TOKENS, ml.MAX_TITLE_TOKENS)
+
+    def test_the_readers_hold_the_linkers_objects_not_copies(self):
+        self.assertIs(docreader.LINK_TARGETS, ml.LINK_TARGETS)
+        self.assertIs(docreader.tokens, ml.tokens)
+        self.assertEqual(docreader.MAX_TITLE_TOKENS, ml.MAX_TITLE_TOKENS)
+        self.assertEqual(docextract.MAX_TITLE_TOKENS, ml.MAX_TITLE_TOKENS)
+
+    def test_no_second_target_table_or_title_limit_is_defined_in_api(self):
+        copies = {"_MENTION_TARGETS", "_MAX_TITLE_WORDS", "_MAX_TITLE_TOKENS", "_LINK_TARGETS"}
+        for path in sorted((ROOT / "api").glob("doc*.py")):
+            with self.subTest(module=path.name):
+                self.assertFalse(_top_level_defs(path) & copies)
+        for name in sorted(copies):
+            with self.subTest(docstore=name):
+                self.assertFalse(hasattr(docstore, name))
 
 
 class ImportDirectionTest(unittest.TestCase):

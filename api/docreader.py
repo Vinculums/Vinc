@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from engines.mentions_link import LINK_TARGETS, MAX_TITLE_TOKENS, tokens
 from store import pkns
 from store.chunking import _HEADING_RE
 
@@ -73,8 +74,7 @@ def _concept_terms(title: str, stem: str) -> set[str]:
     제목 토큰은 링커(`engines.mentions_link`)의 것을 그대로 쓴다. 여기서 사본을 두고
     집합의 해시 순서로 여섯을 골랐을 때, 밑줄 낱말이 실행마다 바뀌고 링커가 언급으로
     치는 낱말과도 어긋났다."""
-    from engines.mentions_link import _MAX_TITLE_TOKENS, _tokens
-    terms = set(_tokens(title)[:_MAX_TITLE_TOKENS])
+    terms = set(tokens(title)[:MAX_TITLE_TOKENS])
     s = (stem or "").lower().strip()
     if len(s) >= 2:
         terms.add(s)
@@ -115,14 +115,6 @@ def doc_highlights(store, doc_id: str, concept_id: str, *,
     base.update(executed=True, method="tokens", terms=sorted(terms),
                 ranges=[{k: at[v] for k, v in r.items()} for r in hl])
     return base
-
-
-#: MENTIONS 가 향할 수 있는 라벨. 정본은 ``engines.mentions_link._LINK_TARGETS`` 이고
-#: 여기 사본을 두는 이유는 그 모듈이 없어도 **조회는 서야** 하기 때문이다(docstore 는
-#: 링커를 선택 의존으로 다룬다 — `_relink_mentions` 의 지연 임포트 참조).
-#: ⚠ ``Concept`` 만 보면 **결정만 언급한 문서가 빈손이 된다** — 의미층이 늘 때 이
-#: 사본도 같이 는다: [[record:mention-targets-must-include-every-semantic-label]].
-_MENTION_TARGETS = (("Concept", "concept_id"), ("Decision", "decision_id"))
 
 
 def _heading_level(line: str) -> int:
@@ -201,7 +193,7 @@ def doc_context(store, doc_id: str, *, owner: str | None = None) -> dict:
     except Exception:
         pass          # 구스토어 — 목차와 개념은 그대로 유효하다(강등, 실패 아님)
     tally: dict[str, dict] = {}
-    for label, pk in _MENTION_TARGETS:
+    for label, pk, _ in LINK_TARGETS:
         where = "WHERE ch.doc_id = $d"
         params: dict[str, Any] = {"d": doc_id}
         if owner:
