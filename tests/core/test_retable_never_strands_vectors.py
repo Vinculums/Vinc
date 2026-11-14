@@ -32,8 +32,10 @@ def test_guard_exists_and_names_the_state():
 
 def test_switch_embed_model_skips_requeue_on_an_unchanged_model():
     """가드가 방어하는 그 동작이 실제로 존재하는지 — 없으면 가드는 사문이다."""
+    import inspect
     from api import docstore as ds
-    src = Path(ds.__file__).read_text(encoding="utf-8")
+    # 함수가 정의된 파일을 읽는다(`api.docembed`, docstore 는 같은 객체를 다시 내보낸다).
+    src = Path(inspect.getsourcefile(ds.switch_embed_model)).read_text(encoding="utf-8")
     body = src.split("def switch_embed_model")[1].split("\ndef ")[0]
     # 저장된 값과 같으면 일찍 빠져나가는 분기가 있다는 것을 확인한다.
     assert "requeued" in body
