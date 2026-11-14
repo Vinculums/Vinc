@@ -91,7 +91,7 @@ def state_dir() -> str:
     elif os.environ.get("VINC_MCP_STATE_SNAPSHOT"):
         root = os.path.dirname(os.environ["VINC_MCP_STATE_SNAPSHOT"])
     else:
-        from .store import resolve_state_dir
+        from .hub_state import resolve_state_dir
         root = resolve_state_dir()
     os.makedirs(root, exist_ok=True)
     return root

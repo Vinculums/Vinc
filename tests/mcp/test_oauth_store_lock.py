@@ -6,9 +6,9 @@ import threading
 import time
 from pathlib import Path
 
-from vinc_mcp.store import Store
+from vinc_mcp.hub_state import Store
 
-SOURCE = Path(__file__).resolve().parents[2] / "vinc_mcp" / "store.py"
+SOURCE = Path(__file__).resolve().parents[2] / "vinc_mcp" / "hub_state.py"
 #: 락 밖에서 커넥션을 만져도 되는 자리: 생성자(커넥션을 아직 아무도 못 본다), 생성자 안에서만
 #: 부르는 열 보강, 이미 락을 쥔 호출자만 부르는 함수(이름이 _locked 로 끝나거나 스냅샷 복사).
 ALLOWED = {"__init__", "_ensure_column", "_save_snapshot", "_restore_snapshot"}
