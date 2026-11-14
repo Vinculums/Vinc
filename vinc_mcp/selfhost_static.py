@@ -11,7 +11,7 @@
 - 경로는 번들 디렉터리 밖으로 못 나간다(실경로 비교).
 - 헤더는 호스티드 웹(vincs.io 의 `staticwebapp.config.json`)과 같은 정책이다: CSP, 해시 붙은
   `assets/*` 는 1년 immutable, `index.html` 은 no-store, 서비스 워커와 매니페스트는 no-cache.
-  View 의 배치 워커만 WebAssembly 를 쓰므로 그 파일에만 `'wasm-unsafe-eval'` 을 더한다.
+  어느 자산에도 `'wasm-unsafe-eval'` 을 주지 않는다(번들에 WebAssembly 가 없다).
 """
 from __future__ import annotations
 
