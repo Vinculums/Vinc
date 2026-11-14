@@ -308,7 +308,7 @@ def _t_diagnose(args, bridge):
     return bridge.request("GET", "/diagnose", params=params)
 
 
-#: 결정 문이 한 번에 받는 경로 수 — `api.query.DECIDE_PATHS_MAX` 의 미러(vinc_mcp 는 api 를
+#: 결정 문이 한 번에 받는 경로 수 — `api.decide_read.DECIDE_PATHS_MAX` 의 미러(vinc_mcp 는 api 를
 #: 임포트하지 않는다). 둘이 같은지는 tests/core/test_decide_paths.py 가 본다.
 DECIDE_PATHS_MAX = 200
 
