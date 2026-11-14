@@ -45,7 +45,7 @@ def main() -> int:
     from store.config import load_config
     from store.backend import open_store
     from api.server import VincApp, make_server
-    from vinc_mcp import tools
+    from vinc_mcp import toolcall
     from vinc_mcp.bridge import Bridge
     import seed_tooluse as S
 
@@ -64,7 +64,7 @@ def main() -> int:
     bridge = Bridge(base=f"http://127.0.0.1:{httpd.server_address[1]}",
                     token=getattr(app.auth, "token", None), owner=S.OWNER)
     try:
-        out = tools.call(tool, {**args, "owner": S.OWNER}, bridge)
+        out = toolcall.call(tool, {**args, "owner": S.OWNER}, bridge)
         err = None
     except Exception as e:                                          # noqa: BLE001
         out, err = None, f"{type(e).__name__}: {e}"

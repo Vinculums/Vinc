@@ -1919,8 +1919,13 @@ def _check_runs_args(args: dict) -> None:
 
 def validate_args(name: str, args: dict | None) -> None:
     """스키마 대조. 모르는 도구는 KeyError(프로토콜 오류로 남긴다), 인자 위반은
-    InvalidArgument. rpc 가 **쿼터를 세기 전에** 부르고, `call` 도 한 번 더 부른다
-    (rpc 를 안 지나는 호출자 — 테스트·평가 스크립트 — 도 같은 판정을 받게)."""
+    InvalidArgument. 부르는 자리는 `toolcall` 하나다: MCP·REST 는 `toolcall.execute` 가 **쿼터를
+    세기 전에**, 한도가 없는 호출자(CLI·이벤트 기록·평가 스크립트)는 `toolcall.call` 이 부른다.
+    `call` 은 검증하지 않으므로 검증 없이 도구를 돌리려면 `call` 을 직접 부르면 된다 — 실행
+    표면은 그러지 않는다.
+    ⚠ 검증은 호출자가 준 인자를 본다. `call` 이 벗기거나 덮는 라우팅 키(target · space · owner ·
+    theme_id · debug · _entitlements)는 어느 스키마에서도 필수·enum·범위가 아니어야 같은 답이
+    된다(`tests/mcp/test_toolcall_pipeline.py` 가 지킨다)."""
     tool = _BY_NAME.get(name)
     if tool is None:
         raise KeyError(f"unknown tool: {name}")
@@ -2022,6 +2027,8 @@ def call(name: str, args: dict | None, bridge: Bridge,
          hub: bool = False, community_write=None, community_read=None, *, ctx=None) -> dict:
     # ctx(`toolcall.CallContext`)가 오면 owner · 자격 · 커뮤니티 콜백을 거기서 읽는다. 따로 받는
     # 키워드는 그것을 쓰는 호출자(CLI · events · 테스트)의 길이고, 둘을 함께 주면 TypeError 다.
+    # 스키마 검증(`validate_args`)은 여기서 하지 않는다. 실행 표면은 `toolcall.execute` 나
+    # `toolcall.call` 로 들어와 검증을 먼저 받는다.
     if ctx is not None:
         if any(v is not None for v in (forced_owner, entitlements, community_write, community_read)):
             raise TypeError("pass ctx or the separate keywords, not both")
@@ -2100,7 +2107,6 @@ def call(name: str, args: dict | None, bridge: Bridge,
     if name == community.READ_TOOL and hub:
         # 이 도구는 계정 콜백만 부른다. 명시 주소를 검증할 때까지 보존하고 원문 질의에 흘리지 않는다.
         args["space"] = space
-    validate_args(name, args)
     if name == community.WRITE_TOOL and community_write is not None:
         out = community_write(args)
     elif name == community.READ_TOOL and community_read is not None:
