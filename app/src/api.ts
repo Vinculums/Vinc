@@ -80,6 +80,25 @@ function csrfToken(): string {
   return m ? decodeURIComponent(m[1]!) : "";
 }
 
+/** 계정 쿠키 세션의 같은 출처 라우트(`/api/me` · `/api/teams` · `/api/push/*` · `/logout` …)로 가는 문 하나.
+ *  웹 Vinc 와 셀프호스트 허브에서만 뜻이 있다. 쿠키를 싣고, POST 에는 CSRF 더블서브밋 표식을 붙이며, 본문(`json`)을
+ *  넘기면 JSON 으로 싣는다(넘긴 값이 undefined 여도 JSON 머리는 붙는다). 응답은 그대로 돌려준다: 상태 확인과
+ *  본문 해석은 부르는 쪽 몫이다. 경로와 메서드는 부르는 자리에 글자 그대로 쓴다: 계약 검사
+ *  (`app/dev/sidecar-contract-check.ts`)가 그 자리에서 읽는다. 그래프 평면(`/api/graph/*`)은 `localCall` 이 맡는다. */
+function webFetch(path: string, init: { method?: "GET" | "POST"; cache?: RequestCache; signal?: AbortSignal;
+                                        json?: unknown } = {}): Promise<Response> {
+  const post = init.method === "POST";
+  const json = "json" in init;
+  return fetch(new URL(path, location.origin), {
+    ...(post ? { method: "POST" } : {}),
+    credentials: "include",
+    ...("cache" in init ? { cache: init.cache } : {}),
+    ...("signal" in init ? { signal: init.signal } : {}),
+    ...(post ? { headers: { ...(json ? { "Content-Type": "application/json" } : {}), "X-CSRF-Token": csrfToken() } } : {}),
+    ...(json ? { body: JSON.stringify(init.json) } : {}),
+  });
+}
+
 export const cfg = {
   // 기본 = 셸에서는 고정 사이드카 주소, 브라우저에서는 same-origin(vite dev proxy 경유).
   get base(): string { return localStorage.getItem(BASE_KEY) || DEFAULT_BASE; },
@@ -942,10 +961,10 @@ export const api = {
   /** 웹 계정 세션(`/api/me`). 쿠키 세션이라 웹·같은 출처에서만 뜻이 있다.
    *  응답을 그대로 돌려준다 — 상태 확인과 본문 해석은 부르는 쪽 몫이다. */
   me: (init: { cache?: RequestCache; signal?: AbortSignal } = {}): Promise<Response> =>
-    fetch(new URL("/api/me", location.origin), { credentials: "include", ...init }),
+    webFetch("/api/me", init),
   /** 커뮤니티 공유 행선지(웹 전용 같은 출처). 응답을 그대로 돌려준다. */
   communityDestinations: (signal?: AbortSignal): Promise<Response> =>
-    fetch("/api/community/agents/destinations", { credentials: "include", cache: "no-store", signal }),
+    webFetch("/api/community/agents/destinations", { cache: "no-store", signal }),
   roleRoster: async (owner: string) => {
     const scope = { team: cfg.team || null };
     const nodes = new Map<string, any>();
@@ -983,22 +1002,13 @@ export const api = {
   /** 이 기기의 알림(계정 `/api/push/*`). 웹의 쿠키 세션 전용이라 같은 출처에서만 뜻이 있다.
    *  키는 기기를 구독시키지 못한다(계정이 Authorization 을 거절한다). 응답을 그대로 돌려준다. */
   pushDevices: (): Promise<Response> =>
-    fetch(new URL("/api/push/devices", location.origin), { credentials: "include", cache: "no-store" }),
+    webFetch("/api/push/devices", { cache: "no-store" }),
   // 경로와 메서드는 호출마다 글자 그대로 쓴다: 계약 검사(app/dev/sidecar-contract-check.ts)는 변수로 만든
   // 주소나 밖에서 받은 옵션을 읽지 못한다.
   pushPost: (op: "subscribe" | "unsubscribe" | "test", body: unknown): Promise<Response> => {
-    const headers = { "Content-Type": "application/json", "X-CSRF-Token": csrfToken() };
-    const json = JSON.stringify(body);
-    if (op === "subscribe") {
-      return fetch(new URL("/api/push/subscribe", location.origin),
-        { method: "POST", credentials: "include", cache: "no-store", headers, body: json });
-    }
-    if (op === "unsubscribe") {
-      return fetch(new URL("/api/push/unsubscribe", location.origin),
-        { method: "POST", credentials: "include", cache: "no-store", headers, body: json });
-    }
-    return fetch(new URL("/api/push/test", location.origin),
-      { method: "POST", credentials: "include", cache: "no-store", headers, body: json });
+    if (op === "subscribe") return webFetch("/api/push/subscribe", { method: "POST", cache: "no-store", json: body });
+    if (op === "unsubscribe") return webFetch("/api/push/unsubscribe", { method: "POST", cache: "no-store", json: body });
+    return webFetch("/api/push/test", { method: "POST", cache: "no-store", json: body });
   },
   viewL0: (owner: string) => call("/view", { owner }),
   //: `domains` 는 **주제 여럿**(쉼표 결합). 스코프는 하위 트리 포함이다 —
@@ -1300,7 +1310,7 @@ export const teamsApi = {
         return data.teams;
       }
       if (!WEB) return [];
-      const res = await fetch(new URL("/api/teams", location.origin), { credentials: "include" });
+      const res = await webFetch("/api/teams");
       if (!res.ok) throw new Error("team_list_unavailable");
       const data = await res.json() as { teams?: unknown };
       if (!Array.isArray(data.teams)) throw new Error("team_list_unavailable");
@@ -1475,8 +1485,7 @@ export async function ensureWebAuth(): Promise<boolean> {
  *  호스티드 웹은 계정 사이트가 로그아웃을 맡으므로 부르지 않는다. */
 export async function selfHostedSignOut(): Promise<void> {
   try {
-    await fetch(new URL("/logout", location.origin), {
-      method: "POST", credentials: "include", headers: { "X-CSRF-Token": csrfToken() } });
+    await webFetch("/logout", { method: "POST" });
   } catch { /* 세션이 남아도 아래에서 로그인 화면으로 간다 */ }
   viewSessionCache.purge();
   location.assign("/login");
@@ -1485,7 +1494,7 @@ export async function selfHostedSignOut(): Promise<void> {
 /** 셀프호스트 허브의 좌석 상태(`GET /api/selfhost/seats`). 못 읽으면 null 이고 화면은 그 줄을 비운다. */
 export async function selfHostedSeats(): Promise<any | null> {
   try {
-    const r = await fetch(new URL("/api/selfhost/seats", location.origin), { credentials: "include" });
+    const r = await webFetch("/api/selfhost/seats");
     return r.ok ? await r.json() : null;
   } catch { return null; }
 }
