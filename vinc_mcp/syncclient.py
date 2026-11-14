@@ -4,7 +4,7 @@
 `remote.py` 와 왜 분리하나: 그쪽은 `tools/call` 단건 프록시(60s, owner strip)이고,
 동기화는 **대량·다청크·긴 작업**이라 요구가 다르다. 특히:
 
-- **4MB 바디 상한**(http_server `MAX_BODY`) — 초과하면 서버가 빈 바디로 400 을 낸다.
+- **4MB 바디 상한**(`hub_http.MAX_BODY`) — 초과하면 서버가 빈 바디로 400 을 낸다.
   즉 **조용히 실패**한다. 그래서 청킹은 선택이 아니라 필수다(api/sync.chunk_bundle).
 - **쿼터 면제 경로** — `/sync/*` 는 Dispatcher 를 우회하므로 도구 쿼터를 안 먹는다.
 

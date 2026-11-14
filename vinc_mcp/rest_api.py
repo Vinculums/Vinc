@@ -7,10 +7,9 @@ import re
 import secrets
 from urllib.parse import parse_qs, urlparse
 
-from . import community, entitlement, rest_routes, spaces, toolcall, tools
+from . import community, entitlement, hub_http, rest_routes, spaces, toolcall, tools
 from store import request_timing
 from store.envflag import truthy_strict
-from .http_server import MAX_BODY
 
 #: v1 결과 상한. MCP 의 72,000자(rpc.MAX_RESULT_CHARS)는 모델 컨텍스트용 상한이라 스크립트가
 #: 받는 v1 에는 쓰지 않는다 — 쓰면 4 MB 로 넣은 문서를 되읽지 못하고, 이미 적용된 쓰기가
@@ -19,6 +18,13 @@ MAX_RESULT_BYTES = 16 * 1024 * 1024
 
 
 _SCHEMAS = {item["name"]: item["inputSchema"] for item in tools.specs(hub=True)}
+
+#: `hub_http.BodyRefused.reason` → (상태, 코드, 문장). 문장은 클라이언트가 읽는 계약이라 바꾸지 않는다.
+_BODY_REFUSALS = {
+    "too_large": (413, "payload_too_large", "The request body exceeds 4 MB."),
+    "bad_length": (400, "invalid_argument", "Invalid Content-Length."),
+    "not_object": (400, "invalid_argument", "The body must be a JSON object."),
+}
 
 
 def _message(result: dict | None) -> str:
@@ -304,22 +310,9 @@ def _handle(handler, method: str) -> bool:
     body = {}
     if method in ("POST", "PUT"):
         try:
-            length = int(handler.headers.get("Content-Length") or 0)
-        except ValueError:
-            length = -1
-        if length > MAX_BODY:
-            fail(413, "payload_too_large", "The request body exceeds 4 MB.")
-            return True
-        if length < 0:
-            fail(400, "invalid_argument", "Invalid Content-Length.")
-            return True
-        try:
-            body = json.loads(handler.rfile.read(length)) if length else {}
-        except (ValueError, UnicodeDecodeError):
-            fail(400, "invalid_argument", "The body must be a JSON object.")
-            return True
-        if not isinstance(body, dict):
-            fail(400, "invalid_argument", "The body must be a JSON object.")
+            body = hub_http.read_json_body(handler.headers, handler.rfile)
+        except hub_http.BodyRefused as exc:
+            fail(*_BODY_REFUSALS[exc.reason])
             return True
     try:
         args = _arguments(route, fields, query, body)
