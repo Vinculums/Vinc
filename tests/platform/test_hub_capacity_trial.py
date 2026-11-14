@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import hub_capacity_trial as trial
+from gate_app_config import ACCOUNT_APP
 
 
 _REAL_BASELINE = trial.BASELINE
@@ -42,7 +43,7 @@ def _one_cpu_baseline():
 
 def state():
     return {"baseline": _one_cpu_baseline(), "images": {
-        trial.HUB_APP: ["acr/image:fixed"], "vinc-account": ["acr/account:fixed"]}}
+        trial.HUB_APP: ["acr/image:fixed"], ACCOUNT_APP: ["acr/account:fixed"]}}
 
 
 def app(cpu=1, revision="old"):
@@ -97,7 +98,7 @@ class CapacitySafety(unittest.TestCase):
     def test_side_service_or_auth_drift_fails(self):
         saved = state()
         changed = trial.expected_profile(saved["baseline"], 2)
-        changed["vinc-account"]["scale"]["minReplicas"] += 1
+        changed[ACCOUNT_APP]["scale"]["minReplicas"] += 1
         with patch.object(trial, "public_state", return_value=(changed, saved["images"])):
             with self.assertRaises(RuntimeError):
                 trial.verify_profile(saved, 2)

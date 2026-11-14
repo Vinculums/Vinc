@@ -418,13 +418,17 @@ class WorkflowShape(unittest.TestCase):
         self.assertLess(ids.index("target"), ids.index("pick"))
         target = plan["steps"][ids.index("target")]["run"]
         self.assertIn(".github/container-apps-target.env", target)
-        self.assertIn("vinc-cae) app=vinc-hub ;;", target)
+        self.assertIn("vinc-cae) app=vinc-hub account=vinc-account ;;", target)
+        self.assertIn('echo "account_app=$account"', target)
         self.assertIn('*/managedEnvironments/"$cae")', target)
         self.assertEqual(plan["steps"][ids.index("pick")]["env"]["HUB_APP"],
                          "${{ steps.target.outputs.hub_app }}")
         job = self.doc["jobs"]["build-and-deploy"]
         self.assertEqual(job["env"]["HUB_APP"], "${{ needs.plan.outputs.hub_app }}")
         self.assertEqual(job["env"]["HUB_URL"], "${{ needs.plan.outputs.hub_url }}")
+        # 드리프트 게이트의 계정 앱도 같은 표의 같은 줄에서 plan 이 푼 값이다.
+        self.assertEqual(plan["outputs"]["account_app"], "${{ steps.target.outputs.account_app }}")
+        self.assertEqual(job["env"]["ACCOUNT_APP"], "${{ needs.plan.outputs.account_app }}")
         setting = (_ROOT / ".github" / "container-apps-target.env").read_text(encoding="utf-8")
         # 설정은 주석을 빼면 한 줄이고, 그 값은 plan 잡의 표에 있는 환경이어야 한다(어느 쪽인지는 전환 상태다).
         lines = [l for l in setting.splitlines() if not l.startswith("#")]
