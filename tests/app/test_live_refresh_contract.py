@@ -63,11 +63,13 @@ class WiringTest(unittest.TestCase):
         self.assertLess(MAIN.index("mountLiveRefresh();"), MAIN.rindex("route();"))
 
     def test_표면을_떠나면_갱신기를_푼다(self):
+        # 라우터는 표면이 건 손잡이를 한 번에 푼다. 갱신기도 그 문으로 걸리고 풀린다.
         route = func(MAIN, "route")
-        self.assertIn("setLiveRefresher(null);", route)
+        self.assertIn("unbindSurface();", route)
+        self.assertIn("liveRefresher: setLiveRefresher,", read("surface-binding"))
 
     def test_View_는_카메라를_잇고_다시_받는다(self):
-        i = VIEW.index("setLiveRefresher(async () => {")
+        i = VIEW.index("bindSurface({ liveRefresher: async () => {")
         block = VIEW[i:i + 400]
         self.assertIn("keepCamera: true", block)
         self.assertIn("keepPanel: true", block)

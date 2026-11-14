@@ -119,7 +119,7 @@ class HeaderEnd(unittest.TestCase):
 
     def test_graph_tools_stand_in_the_trail_not_the_lead(self):
         # 시간 · 범례는 나침반이 넘기고 머리가 전환 왼쪽 자리에 옮겨 붙인다. 앞자리(경로)에는 붙지 않는다.
-        self.assertIn("setTopbarTools(cmp.tools)", VIEW)
+        self.assertIn("topbarTools: cmp.tools", VIEW)   # 나침반이 넘긴다(surface-binding 의 한 문으로)
         self.assertIn('const slot = $("tb-graph-tools");', TOPBAR)
         self.assertNotIn("setTopbarLeadTools", TOPBAR + VIEW)
         self.assertNotIn("lensSlot", TOPBAR + VIEW)

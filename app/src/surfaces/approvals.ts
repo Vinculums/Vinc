@@ -15,7 +15,7 @@ import { api, cfg, WEB, accountMode, canWriteHere, remote, teamsApi, type ApiErr
 import { COPY } from "../copy";
 import { esc } from "../components";
 import { setTopbarLead } from "../topbar";
-import { setLiveRefresher } from "../live";
+import { bindSurface } from "../surface-binding";
 import { loaderRows } from "../vinc-loaders.js";
 import {
   ANSWER_TEXT_MAX, answerBody, approvalHash, canSend, isExpired, minutesLeft,
@@ -224,7 +224,7 @@ export async function renderApprovals(el: HTMLElement): Promise<void> {
   };
 
   // 저절로 새로워지는 갱신(VIN-129). 답글을 쓰는 중이면 live.ts 가 기다린다.
-  setLiveRefresher(async () => { if (live() && (await load())) draw(); });
+  bindSurface({ liveRefresher: async () => { if (live() && (await load())) draw(); } });
   // 만료 시계: 남은 분을 고치고, 막 만료된 카드는 답할 수 없는 모습으로 바꾼다. 쓰던 답글은 건드리지 않는다.
   ticker = window.setInterval(() => {
     if (!live()) { leaveApprovals(); return; }
