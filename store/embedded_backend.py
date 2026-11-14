@@ -1481,7 +1481,7 @@ class EmbeddedBackend:
         # 유일 writer 안에서, 서비스 시작 전에, 한 번 돈다.
         domain_links = 0
         if cur < DOMAIN_HIERARCHY_VERSION:
-            from engines.domain_hierarchy import backfill as _dh_backfill
+            from store.domain_hierarchy import backfill as _dh_backfill
             domain_links = int(_dh_backfill(self).get("linked") or 0)
         if cur < target:
             self.run("MERGE (m:_SchemaMeta {key: 'schema_version'}) SET m.value = $v",
