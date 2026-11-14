@@ -109,12 +109,21 @@ def docs_pull(*, since: int, token: str, base: str = DEFAULT_URL,
     return out
 
 
+def _docs_push_body(payload: dict) -> dict:
+    return {"payload": {**payload, **HANDLES}}
+
+
+def docs_push_bytes(payload: dict) -> int:
+    """`docs_push(payload)` 가 허브에 싣는 요청 본문의 바이트 수. 허브의 본문 상한(`hub_http.MAX_BODY`)과 견줄 때 쓴다."""
+    return len(hubhttp.encode_json(_docs_push_body(payload)))
+
+
 def docs_push(payload: dict, *, token: str, base: str = DEFAULT_URL,
               timeout: float = TIMEOUT) -> dict:
     """문서 정본 delta 전송. 조각내기는 호출부(api/sync._chunk_docs) 책임 —
-    4MB 바디 상한을 넘기면 허브가 413 으로 거절하고 `SyncError` 가 된다."""
-    out = _post(base, "/sync/docs-push", token, {"payload": {**payload, **HANDLES}},
-                timeout=timeout)
+    4MB 바디 상한을 넘기면 허브가 413 으로 거절하고 `SyncError` 가 된다. 문서 하나가 혼자서 상한을 넘으면
+    조각낼 수 없으므로 호출부가 보내지 않는다."""
+    out = _post(base, "/sync/docs-push", token, _docs_push_body(payload), timeout=timeout)
     if out.get("error"):
         raise SyncError(str(out["error"]))
     return out
