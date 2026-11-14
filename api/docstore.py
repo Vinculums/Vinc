@@ -46,6 +46,7 @@ from typing import Any, Callable
 
 from engines import domain_hierarchy
 from store import pkns
+from store.backend import flag, operation
 from store.embedded_backend import DDL_GUARD, keep_vector_index
 from store.lexical import lex_text
 from store.querybase import now_iso, validity_state
@@ -335,7 +336,7 @@ def _drop_vector_index_if_any(store) -> None:
     확장 미가용 환경에서는 로드가 실패하는데 그런 스토어엔 인덱스가 존재할 수도 없다 —
     **정본 쓰기를 막을 이유가 아니다**(SSoT 는 검색 확장 없이도 성립해야 한다).
     구 백엔드 호환: `drop_vector_index` 가 없으면 넓은 쪽으로 물러난다."""
-    fn = getattr(store, "drop_vector_index", None) or getattr(store, "drop_search_indexes", None)
+    fn = operation(store, "drop_vector_index") or operation(store, "drop_search_indexes")
     if fn is None:
         return
     try:
@@ -358,9 +359,9 @@ def _remnant_refusal(store, *, chunks: bool = True, vectors: bool = True) -> str
     던지므로 앞 문장들만 들어간 반쪽 쓰기가 남는다. 여기서 쓰기 전에 멈춘다. 수리는
     재기동이 하고(`heal_fts_index`·`heal_vector_index`), 그 뒤 같은 쓰기를 다시 하면 된다.
     근거: [[record:a-remnant-segfaults-every-write-to-its-table-not-only-inserts-2026-09-25]]"""
-    if chunks and getattr(store, "fts_index_remnant", False):
+    if chunks and flag(store, "fts_index_remnant"):
         return "fts_index_remnant"
-    if vectors and getattr(store, "vector_index_remnant", False):
+    if vectors and flag(store, "vector_index_remnant"):
         return "vector_index_remnant"
     return None
 
@@ -398,8 +399,8 @@ def _with_fts_repair(store, fn: Callable[[], Any]) -> Any:
     try:
         return fn()
     except Exception as exc:
-        checker = getattr(store, "is_fts_inconsistent", None)
-        rebuild = getattr(store, "rebuild_fts_index", None)
+        checker = operation(store, "is_fts_inconsistent")
+        rebuild = operation(store, "rebuild_fts_index")
         if rebuild is None or checker is None or not checker(exc):
             raise
         # 조용히 고치지 않는다 — 재빌드가 돌았다는 사실이 로그에 남아야 이 결함이
@@ -1416,7 +1417,7 @@ def _apply_embeddings(store, doc_id: str, embeddings: dict[str, Any],
     # 잔해 색인이 있는 `ChunkVec` 에 행을 넣으면 프로세스가 **세그폴트**로 죽는다(예외가
     # 아니다). 거절하면 needs_embed 가 남아 수리(다음 기동) 뒤에 워커가 다시 넣는다.
     # 근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]
-    if getattr(store, "vector_index_remnant", False):
+    if flag(store, "vector_index_remnant"):
         base["error"] = "vector_index_remnant"
         return base
     rows = store.run("MATCH (c:Chunk) WHERE c.doc_id = $d "

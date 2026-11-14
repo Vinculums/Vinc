@@ -24,6 +24,7 @@ import os
 import sys
 import threading
 
+from .backend import flag, operation
 from .envflag import truthy
 
 
@@ -73,7 +74,7 @@ class BatchSlot:
 
 def current(store) -> Batch | None:
     """``store`` 에 이 스레드의 열린 묶음이 있으면 그것. 세션 래퍼·가짜 스토어는 None."""
-    getter = getattr(store, "current_batch", None)
+    getter = operation(store, "current_batch")
     if getter is None:
         return None
     try:
@@ -122,11 +123,11 @@ def run_batched(store, fn, *, what: str):
     묶지 않는 경우: 어댑터에 `write_batch` 가 없거나(가짜 스토어·세션 래퍼), 이미 묶음 안이거나,
     호출부가 직접 연 트랜잭션 안이거나(`in_manual_transaction`), 읽기 전용이거나,
     `VINC_FRAGMENT_BATCH=off`."""
-    opener = getattr(store, "write_batch", None)
-    manual = getattr(store, "in_manual_transaction", None)
+    opener = operation(store, "write_batch")
+    manual = operation(store, "in_manual_transaction")
     # 읽기 전용으로 연 어댑터는 묶지 않는다: 이유를 말하는 오류(`StoreReadOnly`)는 묶음 밖의 `run` 이 만든다.
     if opener is None or current(store) is not None or (manual is not None and manual()) \
-            or getattr(store, "read_only", False) is True \
+            or flag(store, "read_only") is True \
             or not truthy(os.environ.get("VINC_FRAGMENT_BATCH"), default=True):
         return fn(), None
     seen: list[Batch] = []

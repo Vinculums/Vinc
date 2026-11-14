@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from engines import domain_hierarchy
 from store import pkns
-from store.backend import open_store
+from store.backend import flag, open_store, operation
 from store.config import load_config
 from store.querybase import _VALIDITY_EMPTY, _classify_chunk_error, _validity_cols, holds_during
 from vinc_rag import excerpt as _excerpt
@@ -589,7 +589,7 @@ def _owner_fts_ids(store, text: str, limit: int, *, owner: str | None
     색인이 없으면 청크가 있을 때 한 번 세우고 다시 묻는다. 그 밖의 실패는 사유를 돌려준다
     — 조용히 삼키면 "발췌 없음"과 "못 읽음"이 같아 보인다."""
     filters = {"owner_id": owner} if owner else None
-    if owner and not getattr(store, "scoped_chunk_search", False):
+    if owner and not flag(store, "scoped_chunk_search"):
         return [], ("owner_scope_unsupported: this store cannot filter full-text "
                     "search by owner")
     try:
@@ -598,9 +598,9 @@ def _owner_fts_ids(store, text: str, limit: int, *, owner: str | None
         kind = _classify_chunk_error(exc)
         if kind != "index_missing":
             return [], f"{kind}: {type(exc).__name__}: {exc}"
-        if getattr(store, "fts_index_remnant", False):
+        if flag(store, "fts_index_remnant"):
             return [], f"fts_index_remnant: {_FTS_REMNANT}"
-        builder = getattr(store, "ensure_search_indexes", None)
+        builder = operation(store, "ensure_search_indexes")
         if builder is None:
             return [], f"index_missing: {type(exc).__name__}: {exc}"
         if _chunk_count(store) == 0:

@@ -24,6 +24,7 @@ import re
 from typing import Any, Callable
 
 from . import embedded_schema as _schema
+from .backend import operation
 
 #: v2 — 메타(`_`-접두) 테이블 동봉. v1 덤프도 그대로 적재된다(meta 키 부재 = 없음).
 _DUMP_VERSION = 2
@@ -47,7 +48,7 @@ def _narrow_to_existing(store, table: str, wanted: list[str], probe: str) -> lis
     `probe` 는 "이 테이블이 있는가"를 묻는 질의다 — 있는데 열이 모자란 경우와
     아예 없는 경우를 가르는 것이 이 함수의 유일한 일이다.
     """
-    columns = getattr(store, "table_columns", None)
+    columns = operation(store, "table_columns")
     info = columns(table) if columns is not None else None
     if info:
         have = {name for name, _ in info}
@@ -324,7 +325,7 @@ def vector_dim(store, table: str = "ChunkVec") -> int | None:
 
     메타에 적힌 모델 이름으로 추정하지 않고 열을 직접 읽는다 — 이 값이 곧 "첫 쓰기가
     캐스팅 예외를 내는가"를 정하는 사실이고, 메타는 비어 있거나 낡을 수 있다."""
-    columns = getattr(store, "table_columns", None)
+    columns = operation(store, "table_columns")
     for name, typ in (columns(table) if columns is not None else None) or []:
         if name == "embedding":
             m = re.search(r"(\d+)", typ)

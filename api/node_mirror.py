@@ -39,6 +39,7 @@ import os
 import time
 from array import array
 
+from store.backend import flag
 from store.node_mirror_state import EXTRA_CHARS, extra_text, mirror_text as _mirror_text
 
 #: 미러에 담을 라벨과 그 텍스트. (라벨, PK, kind, 부가 텍스트 열 또는 None)
@@ -226,7 +227,7 @@ def replace(store, rows: list[dict], model: str, encoder_runtime: str = "",
     # 🔴 미러에 잔해 색인이 있으면 아래 삭제·삽입이 **세그폴트**다 — 이 재구축은 잔해를
     # 고치지 못한다. 고치는 것은 기동이다(`heal_node_vector_index`). 먼저 말하고 멈춘다.
     # 근거: [[record:a-remnant-segfaults-every-write-to-its-table-not-only-inserts-2026-09-25]]
-    if getattr(store, "node_vector_index_remnant", False):
+    if flag(store, "node_vector_index_remnant"):
         return {"kind": "node-mirror.replace", "rows": 0, "owners": owners, "model": model,
                 "index_ok": False, "error": "node_vector_index_remnant"}
     store.drop_node_vector_index()

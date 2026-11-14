@@ -45,6 +45,54 @@ class GraphStore(Protocol):
     def close(self) -> None: ...
 
 
+# ── 선택 능력 ─────────────────────────────────────────────────────────────────
+# `GraphStore` 밖의 연산은 백엔드마다 있을 수도 없을 수도 있다. 백엔드는 가진 것을
+# `capabilities`(frozenset) 로 선언하고, 호출부는 속성을 직접 더듬지 않고 아래 함수로 묻는다.
+# ⚠ 선언은 실제 메서드와 같아야 한다: `tests/core/test_store_capabilities.py` 가 백엔드마다 대조한다.
+
+#: 선택 연산. 있으면 호출하고 없으면 건너뛰는 메서드 이름이다.
+OPTIONAL_OPERATIONS = frozenset({
+    "current_batch", "write_batch", "in_manual_transaction",          # 쓰기 묶음
+    "drop_vector_index", "drop_search_indexes", "ensure_search_indexes",
+    "is_fts_inconsistent", "rebuild_fts_index",                       # 색인 수명
+    "heal_fts_index", "heal_vector_index", "heal_node_vector_index",  # 기동 수리
+    "migrate_lex_index", "table_columns", "snapshot",
+})
+
+#: 상태 표지. 없으면 False 로 읽는 속성이다(색인 잔해, 청크 팔의 owner 필터, 읽기 전용).
+STATE_FLAGS = frozenset({
+    "fts_index_remnant", "vector_index_remnant", "node_vector_index_remnant",
+    "scoped_chunk_search", "read_only",
+})
+
+
+def capabilities(store) -> frozenset[str]:
+    """``store`` 가 가진 선택 연산. 선언이 있으면 그것이고, 없으면(테스트 가짜·래퍼) 속성으로 센다."""
+    declared = getattr(store, "capabilities", None)
+    if isinstance(declared, frozenset):
+        return declared
+    return frozenset(n for n in OPTIONAL_OPERATIONS if getattr(store, n, None) is not None)
+
+
+def operation(store, name: str):
+    """선택 연산 ``name`` 의 바운드 메서드, 없으면 None. 모르는 이름은 던진다(오타가 조용히 '없음'이 되지 않게).
+
+    선언한 백엔드는 선언에 없는 연산을 없다고 답한다. 선언이 없으면 속성이 있는가를 본다."""
+    if name not in OPTIONAL_OPERATIONS:
+        raise KeyError(f"unknown optional store operation: {name}")
+    declared = getattr(store, "capabilities", None)
+    if isinstance(declared, frozenset) and name not in declared:
+        return None
+    return getattr(store, name, None)
+
+
+def flag(store, name: str):
+    """상태 표지 ``name`` 의 값, 없으면 False. 모르는 이름은 던진다."""
+    if name not in STATE_FLAGS:
+        raise KeyError(f"unknown store state flag: {name}")
+    return getattr(store, name, False)
+
+
 def open_store(cfg: StoreConfig | None = None) -> GraphStore | None:
     """cfg.backend 에 따라 스토어를 연다. 드라이버 미설치 등 도달 불가 시 None
     (호출부는 executed=False 로 강등). **스토어를 여는 유일한 지점**(설계 §4-1)."""

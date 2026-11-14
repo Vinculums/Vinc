@@ -16,6 +16,7 @@ from contextvars import ContextVar
 from dataclasses import replace
 from uuid import UUID
 
+from store.backend import flag
 from store.embedded_backend import DDL_GUARD
 from store.scoped_topic_inventory import read_scoped_inventory
 from store.topic_manifest import TopicManifest, ManifestLimit
@@ -347,7 +348,7 @@ def _conversion_budget(after, audit):
 
 
 def _index_inventory(store):
-    if any(getattr(store, attr, False) for attr in
+    if any(flag(store, attr) for attr in
            ("vector_index_remnant", "fts_index_remnant", "node_vector_index_remnant")):
         raise TransferRefused("search_index_repair_required")
     known = {("Chunk", store._FTS_INDEX), ("ChunkVec", store._VEC_INDEX),
