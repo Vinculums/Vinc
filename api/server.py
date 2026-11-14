@@ -615,7 +615,11 @@ class VincApp:
                 result["durability"] = "published_generation"
                 result["durable_sequence"] = durable.sequence
 
-    def _run_mutation(self, kind, body, apply):
+    def _run_mutation(self, kind, body, apply, *, required=()):
+        """뮤테이션 하나를 쓰기 잡으로 돈다. ``required`` 는 ``apply`` 가 잡 안에서 읽는 필수 필드다.
+
+        ⚠ 필수 필드는 잡에 넣기 **전에** 확인한다. 잡 안에서 `_Missing` 이 나면 잡 오류(500)로
+        감싸여, 라우터가 그 필드 누락을 400 으로 바꾸지 못한다."""
         from . import mutation_preview, operation_receipts
         if type(body.get("dry_run", False)) is not bool:
             return {"executed": False, "error": "invalid_dry_run"}
@@ -625,6 +629,8 @@ class VincApp:
         digest = body.get("preview_digest")
         if digest is not None and (not isinstance(digest, str) or len(digest) != 64):
             return {"executed": False, "error": "invalid_preview_digest"}
+        for key in required:
+            _req(body, key)
         # 미리보기 재검증과 조건 검사도 같은 writer 안에서 읽는다.
         def checked():
             if digest is not None:
@@ -1614,7 +1620,7 @@ class VincApp:
 
     def write_doc_delete(self, body):
         res = self._run_mutation("doc.delete", body, lambda: docstore.delete_doc(
-            self.store, _req(body, "id"), owner=body.get("owner") or None))
+            self.store, _req(body, "id"), owner=body.get("owner") or None), required=("id",))
         return 200, res
 
     def write_doc_reembed(self, body):
@@ -1644,7 +1650,7 @@ class VincApp:
         res = self._run_mutation("doc.extract", body, lambda: docstore.extract_doc(
             self.store, _req(body, "id"), owner=owner,
             apply=bool(body.get("apply")), candidates=body.get("candidates"),
-            approved_candidate_ids=body.get("approved_candidate_ids")))
+            approved_candidate_ids=body.get("approved_candidate_ids")), required=("id",))
         return 200, res
 
     def write_evidence_backfill(self, body):
@@ -1667,6 +1673,7 @@ class VincApp:
         owner = body.get("owner") or None
         if not owner:
             return 400, {"error": "owner required — 도메인 변경은 소유 스코프(SEC-1)"}
+        _req(body, "old")   # 잡에 넣기 전에 확인한다(`_run_mutation` 주석)
         res = self.jobs.run_sync("domain.rename", lambda: q.rename_domain(
             owner=owner, old=_req(body, "old"), new=body.get("new") or "",
             store=self.store))
