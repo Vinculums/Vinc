@@ -193,7 +193,7 @@ MCP_PROBE = {
 def via_mcp(evalset: dict) -> list[str]:
     """같은 정답을 **MCP 도구 표면**으로 다시 뽑아 대조한다.
 
-    사이드카를 인프로세스로 띄우고 `tools.call()` 로 부른다 — 도구 스키마·핸들러·
+    사이드카를 인프로세스로 띄우고 `toolcall.call()` 로 부른다 — 도구 스키마·핸들러·
     브리지·HTTP 라우트를 전부 지난다. `verify()` 가 통과해도 여기서 깨질 수 있고,
     그건 "데이터엔 답이 있는데 도구가 못 준다"는 뜻이라 사용자에게는 같은 고장이다.
     """
@@ -204,7 +204,7 @@ def via_mcp(evalset: dict) -> list[str]:
         from store.config import load_config
         from store.backend import open_store
         from api.server import VincApp, make_server
-        from vinc_mcp import tools
+        from vinc_mcp import toolcall
         from vinc_mcp.bridge import Bridge
         sys.path.insert(0, str(ROOT / "scripts"))
         import seed_tooluse as S
@@ -234,7 +234,7 @@ def via_mcp(evalset: dict) -> list[str]:
                         f"{item['id']}: probe 도구 {name} 가 requires{item['requires']} 에 없다")
                     continue
                 try:
-                    out = tools.call(name, {**args, "owner": S.OWNER}, bridge)
+                    out = toolcall.call(name, {**args, "owner": S.OWNER}, bridge)
                 except Exception as e:                      # noqa: BLE001
                     problems.append(f"{item['id']}: {name} 호출 실패 — {type(e).__name__}: {e}")
                     continue

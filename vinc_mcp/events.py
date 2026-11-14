@@ -582,10 +582,10 @@ class Runtime:
             sub.record_until = until
 
     def _ingest(self, owner: str, nodes: list, edges: list) -> bool:
-        from . import tools
+        from . import toolcall
         try:
-            out = tools.call("vinc_ingest", {"nodes": nodes, "edges": edges}, self.bridge,
-                             forced_owner=owner, hub=True)
+            out = toolcall.call("vinc_ingest", {"nodes": nodes, "edges": edges}, self.bridge,
+                                forced_owner=owner, hub=True)
         except Exception as exc:                       # noqa: BLE001 — 기록은 부가물이다
             print(f"[events] subscription record not written: {type(exc).__name__}",
                   file=sys.stderr, flush=True)

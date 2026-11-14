@@ -10,6 +10,8 @@ HTTP 셸이 이 바깥에서 한다(브리지는 그것을 하지 않는다).
 """
 from __future__ import annotations
 
+from store import topic_conversion_guard
+
 #: 인증 전에 HTTP 셸이 직접 받는 라우트 → 응답을 만드는 앱 메서드. None 이면 셸이 그 자리에서
 #: 답한다(`/health`, `api.server.health`). 아래 표는 인증 뒤에만 닿는다.
 UNAUTHENTICATED_ROUTES: dict[tuple[str, str], str | None] = {
@@ -174,7 +176,7 @@ def store_unavailable() -> dict:
 
 def route_get(app, path: str, params: dict):
     """GET 디스패치. 반환은 `(상태, 본문)` 이다."""
-    if app.store is not None and getattr(app.store, "_topic_conversion_guard", False):
+    if app.store is not None and topic_conversion_guard.guard_active(app.store):
         # Covers cached staged reads and remote layouts which bypass _read.
         from . import topic_conversion as conversion
         code, result = app._read(lambda r: conversion.check_read(r, params.get("owner")))

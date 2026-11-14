@@ -8,7 +8,7 @@ from api import fragment, packfile, share
 from api import roles as role_read
 from api.cli import _write_role_export
 from api.cli_tools import tool_request
-from vinc_mcp import roles, tools
+from vinc_mcp import roles, toolcall, tools
 from test_decision_type import _fresh_store, _restore
 
 OWNER = "user:u1"
@@ -113,9 +113,9 @@ def test_the_tool_asks_the_sidecar_once_and_the_schema_refuses_a_bad_format():
     result = tools.call("vinc_role_export", {"role": "agent-release", "format": "gpt"}, bridge)
     assert result["filename"] == "agent-release.gpt.md"
     assert bridge.calls == [("GET", "/roles/export", {"owner": OWNER, "role": "agent-release", "format": "gpt"})]
-    # 스키마의 enum 이 먼저 거절한다(호스트에는 인자 오류 결과로 간다).
+    # 스키마의 enum 이 먼저 거절한다(호스트에는 인자 오류 결과로 간다). 검증은 `toolcall` 의 문이 한다.
     with pytest.raises(tools.InvalidArgument):
-        tools.call("vinc_role_export", {"role": "agent-release", "format": "pdf"}, bridge)
+        toolcall.call("vinc_role_export", {"role": "agent-release", "format": "pdf"}, bridge)
     assert len(bridge.calls) == 1
 
 

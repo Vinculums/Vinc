@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
-from typing import Any, Callable
+from typing import Any, Callable, ContextManager
 
 from . import community, selfhost, tools, viewurl
 
@@ -147,13 +147,31 @@ def _whoami_quota(result: dict, owner: str | None, plan: str | None,
     return out
 
 
+def call(name: str, args: dict | None, bridge: Any = None, *,
+         open_bridge: Callable[[], ContextManager] | None = None, **keywords) -> dict:
+    """인증·한도 게이트가 없는 호출자(CLI · 이벤트 구독 기록 · 평가 스크립트)의 도구 호출 문.
+    `execute` 와 같은 검증(`tools.validate_args`)을 먼저 하고 `tools.call` 을 부른다. 거절은
+    `tools.InvalidArgument` 로 올린다 — 결과 봉투로 바꾸는 것은 호출자의 일이다.
+    `open_bridge` 는 브리지를 여는 컨텍스트 매니저를 내는 함수다. 주면 검증을 통과한 뒤에만
+    부르고 닫는다: 거절되는 인자로는 스토어를 열지 않는다(CLI). `bridge` 와 함께 주면 TypeError.
+    나머지 키워드는 `tools.call` 의 것을 그대로 넘긴다."""
+    if open_bridge is not None and bridge is not None:
+        raise TypeError("pass bridge or open_bridge, not both")
+    tools.validate_args(name, args)
+    if open_bridge is None:
+        return tools.call(name, args, bridge, **keywords)
+    with open_bridge() as opened:
+        return tools.call(name, args, opened, **keywords)
+
+
 def execute(name: str, args: dict | None, bridge: Any, ctx: CallContext | None = None, *,
             hub: bool = False, forced_owner: str | None = None, plan: str | None = None,
             quota: Callable[[str, str | None], dict | None] | None = None,
             quota_view: Callable[[str, str | None], dict | None] | None = None,
             entitlements: dict | None = None,
             community_write=None, community_read=None) -> Outcome:
-    """인자 검증은 한도 소비보다 앞선다. 실행 결과 봉투는 호출 표면이 만든다.
+    """인자 검증은 한도 소비보다 앞선다. `tools.call` 은 검증하지 않으므로 MCP·REST 의 인자
+    검증은 여기 한 번이다. 실행 결과 봉투는 호출 표면이 만든다.
 
     호출의 값은 `ctx` 하나로 받는다. 따로 받는 키워드(forced_owner … community_read)는 그것을
     아직 쓰는 호출자의 길이고, `ctx` 와 함께 주면 TypeError 다(`context_of`)."""

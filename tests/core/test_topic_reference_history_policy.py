@@ -11,7 +11,8 @@ from test_topic_transfer_boundaries import add_row, assert_blocked
 from store.embedded_schema import render_embedded_ddl
 from store.scoped_topic_inventory import read_scoped_inventory
 from store.topic_transfer import (fingerprint, read_snapshot, transformed_snapshot,
-                                  plan_transfer, retained_history_counts, _apply_rehearsal)
+                                  plan_transfer, retained_history_counts)
+from topic_rehearsal import apply_rehearsal  # noqa: E402
 
 
 def history(data):
@@ -98,8 +99,8 @@ def test_native_personal_history_exact_full_scoped_after_and_retry(tmp_path, mon
             "_Tombstone": 1, "_EdgeTombstone": 1, "_DocTombstone": 1}
         expected_scoped = transformed_snapshot(scoped.snapshot, chosen, stamp=STAMP)
         expected = transformed_snapshot(before, plan(before), stamp=STAMP)
-        assert _apply_rehearsal(store, plan(before), run_id="history-policy", stamp=STAMP) == "committed"
-        assert _apply_rehearsal(store, plan(before), run_id="history-policy", stamp=STAMP) == "already_committed"
+        assert apply_rehearsal(store, plan(before), run_id="history-policy", stamp=STAMP) == "committed"
+        assert apply_rehearsal(store, plan(before), run_id="history-policy", stamp=STAMP) == "already_committed"
         observed = read_snapshot(store)
         observed["meta"]["_SyncMeta"] = [r for r in observed["meta"]["_SyncMeta"]
                                            if not r["key"].startswith("topic-transfer:run:")]
@@ -175,7 +176,7 @@ def test_edge_deletion_between_selected_nodes_stays_personal(tmp_path):
         before = read_snapshot(store)
         scoped = read_scoped_inventory(store, source=SOURCE, target=TARGET, topic=TOPIC)
         assert not scoped.blockers, scoped.blockers
-        assert _apply_rehearsal(store, plan(before), run_id="edge-between", stamp=STAMP) == "committed"
+        assert apply_rehearsal(store, plan(before), run_id="edge-between", stamp=STAMP) == "committed"
         observed = read_snapshot(store)["meta"]["_EdgeTombstone"]
         assert observed == before["meta"]["_EdgeTombstone"]
     finally:
