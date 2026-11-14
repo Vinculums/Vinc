@@ -42,6 +42,7 @@ import hashlib
 import re
 import sys
 import time
+from dataclasses import dataclass
 from typing import Any, Callable
 
 from engines import domain_hierarchy
@@ -476,10 +477,66 @@ def _put_doc_once(store, *, owner: str, text: str, doc_id: str | None = None,
     ``boundaries`` (P2): 외부 청커(chonkie)의 시작 오프셋 후보 — 무손실 정규화 후
     검색 청크로 사용(없으면 내장 경계). ``layer``: 검색 pre-filter 태그(파일 배치
     이관 시 원 레이어 보존). ``updated_at`` (P3): 동기화 적용 시 원격 HLC 를 그대로
-    박기 위한 주입점(로컬 쓰기는 None → 스토어 HLC 스탬프)."""
+    박기 위한 주입점(로컬 쓰기는 None → 스토어 HLC 스탬프).
+
+    세 단계를 차례로 부른다: 준비(:func:`_put_prepare`), 청크 다시 쓰기
+    (:func:`_put_rewrite_chunks`), 미러와 링크(:func:`_put_mirror_and_links`). 본문이 그대로면
+    가운데 단계 대신 :func:`_put_unchanged_body` 가 답한다. 모두 이 호출 안에서 돌아
+    `put_doc` 의 쓰기 묶음 하나에 든다."""
     # 어느 소유자로 썼는지 밝힌다(fragment.merge_fragment 의 같은 주석 참조 —
     # 문서 정본도 owner 스코프이고 오배치가 조용하기는 마찬가지다).
     base: dict[str, Any] = {"kind": "doc.put", "executed": False, "owner": owner}
+    plan = _put_prepare(store, base, owner=owner, text=text, doc_id=doc_id, title=title,
+                        origin=origin, content_time=content_time, topic=topic,
+                        valid_from=valid_from, valid_until=valid_until,
+                        superseded_by=superseded_by,
+                        expected_content_hash=expected_content_hash, create_only=create_only)
+    if isinstance(plan, dict):
+        return plan
+    if plan.unchanged:
+        return _put_unchanged_body(store, base, plan, text=text, origin=origin, link=link,
+                                   updated_at=updated_at, topic=topic)
+    prev, n_live = plan.prev, plan.n_live
+
+    # 청크는 언제나 쓰고, 지울 옛 행이 있으면 자식 벡터도 지운다 — 그 표에 잔해가 있으면 멈춘다.
+    wipe = prev is not None or n_live > 0
+    refusal = _remnant_refusal(store, vectors=wipe)
+    if refusal:
+        base["error"] = refusal
+        return base
+
+    chunks, stamp, seq, removed, needs_embed = _put_rewrite_chunks(
+        store, plan, text=text, layer=layer, max_chars=max_chars, boundaries=boundaries,
+        updated_at=updated_at, created_at=created_at, wipe=wipe)
+    return _put_mirror_and_links(store, base, plan, text=text, title=title, topic=topic,
+                                 link=link, chunks=chunks, stamp=stamp, seq=seq,
+                                 removed=removed, needs_embed=needs_embed)
+
+
+@dataclass
+class _PutPlan:
+    """준비 단계(:func:`_put_prepare`)가 읽고 정한 값. 뒤 단계는 스토어를 다시 읽지 않고 이것을 쓴다."""
+    owner: str
+    doc_id: str
+    content_hash: str
+    prev: dict | None
+    n_live: int
+    kept_title: str
+    kept_origin: str
+    validity: dict
+    validity_changed: bool
+    ctime: str
+    ctime_changed: bool
+    ctime_warnings: list
+    unchanged: bool
+
+
+def _put_prepare(store, base: dict, *, owner, text, doc_id, title, origin, content_time, topic,
+                 valid_from, valid_until, superseded_by, expected_content_hash,
+                 create_only) -> "_PutPlan | dict":
+    """준비: 입구 검사, doc_id 확정, 저장된 메타·청크 읽기, 3값 필드(제목·출처·유효구간·내용 시점)
+    해석, 소유와 조건부 쓰기 검사. 거절이면 그 응답(dict)을, 아니면 계획을 돌려준다.
+    ``base`` 에 `doc_id` 를 적는다(거절 응답이 그 값을 싣는다)."""
     if not owner or not isinstance(owner, str):
         base["error"] = "owner is required — 정본(SSoT)은 무소유로 두지 않는다(SEC-1)"
         return base
@@ -581,80 +638,95 @@ def _put_doc_once(store, *, owner: str, text: str, doc_id: str | None = None,
                        expected_content_hash=expected_content_hash)
     except MutationConflict as exc:
         return {**base, **exc.result}
-    if prev is not None:
-        # 무변경 스킵은 살아 있는 행 수가 `chunk_count` 와 같을 때만이다. 쓰기 창 표식
-        # (-1, 아래 ⓪)·꼬리 청크·빠진 청크가 남은 문서는 get_doc 이 거절하는데, 스킵하면
-        # 같은 본문 re-put 이 성공을 답한 채 그 문서가 영영 안 읽힌다(RV-12).
-        if prev.get("content_hash") == content_hash and prev.get("title") == kept_title \
-                and n_live == int(prev.get("chunk_count") or 0):
-            origin_changed = origin is not None and origin != str(prev.get("origin") or "")
-            if origin_changed or validity_changed or ctime_changed:
-                # 출처·유효구간·내용 시점만 바뀌면 원문 청크와 임베딩을 다시 만들 필요가 없다.
-                # 쓰기 창 표식은 청크·메타 사이에서 끊겨도 다음 re-put 이 복구하게 한다.
-                stamp = updated_at or _stamp_updated_at(store)
-                seq = _next_doc_seq(store, owner)
-                count = int(prev.get("chunk_count") or 0)
-                store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id "
-                          "SET d.chunk_count = -1", {"id": doc_id})
-                linked = 0
-                if origin_changed:
-                    store.run("MATCH (c:Chunk) WHERE c.doc_id = $id "
-                              "SET c.source_file = $origin",
-                              {"id": doc_id, "origin": kept_origin})
-                    # source_file 은 MENTIONS 의 source 매칭에도 쓰인다. 옛 링크를
-                    # 지우고 같은 링커로 다시 만들되 청크 원문은 보존한다.
-                    from store.embedded_schema import body_mentions_ready
-                    keep_body = ("AND (m.method IS NULL OR m.method <> 'body') "
-                                 if body_mentions_ready(store) else "")
-                    store.run("MATCH (c:Chunk)-[m:MENTIONS]->() WHERE c.doc_id = $id "
-                              + keep_body + "DELETE m", {"id": doc_id})
-                    linked = _relink_mentions(store, doc_id, owner=owner,
-                                              origin=kept_origin) if link else 0
-                store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id "
-                          "SET d.origin = $origin, d.updated_at = $ts, "
-                          "d.sync_seq = $seq, d.chunk_count = $count, "
-                          "d.valid_from = $vf, d.valid_until = $vu, d.superseded_by = $sb, "
-                          "d.content_time = $ctime",
-                          {"id": doc_id, "origin": kept_origin, "ts": stamp,
-                           "seq": seq, "count": count, "vf": validity["valid_from"],
-                           "vu": validity["valid_until"], "sb": validity["superseded_by"],
-                           "ctime": ctime})
-                _clear_doc_tombstone(store, doc_id)
-                base.update(executed=True, skipped=False, created=False,
-                            chunks=count, replaced=0, title=kept_title,
-                            content_hash=content_hash, mentions=linked,
-                            updated_at=stamp, sync_seq=seq, **validity,
-                            warnings=_doc_id_warnings(text, doc_id) + ctime_warnings)
-                if topic:
-                    base["topic"] = _set_authored_topic(
-                        store, doc_id, topic, owner=owner, title=kept_title)
-                base["warnings"] += _no_mirror_warnings(store, text, doc_id, owner=owner)
-                base["needs_embed"] = None if prev.get("needs_embed") is None else bool(prev["needs_embed"])
-                base["retrieval"] = document_retrieval(prev.get("needs_embed"))
-                return base
-            base.update(executed=True, skipped=True, created=False,
-                        chunks=int(prev.get("chunk_count") or 0), title=kept_title,
-                        content_hash=content_hash,
-                        warnings=_doc_id_warnings(text, doc_id) + ctime_warnings)
-            # ⚠ 주제는 본문과 **독립**이다. 본문이 그대로라고 "이 문서를 X 밑에 둬라"를
-            # 버리면 그 지시가 조용히 사라진다 — 부르는 쪽에서 가장 흔한 형태가
-            # "본문은 그대로 두고 주제만 적는다" 인데 그것이 정확히 안 먹혔다
-            # (실측 2026-09-06, 라이브에서 skipped=True 이고 topic=None 이 돌아왔다).
-            if topic:
-                base["topic"] = _set_authored_topic(store, doc_id, topic, owner=owner,
-                                                    title=kept_title)
-            base["warnings"] += _no_mirror_warnings(store, text, doc_id, owner=owner)
-            base.update(**validity, needs_embed=None if prev.get("needs_embed") is None else bool(prev["needs_embed"]))
-            base["retrieval"] = document_retrieval(prev.get("needs_embed"))
-            return base
+    # 무변경 스킵은 살아 있는 행 수가 `chunk_count` 와 같을 때만이다. 쓰기 창 표식
+    # (-1, 아래 ⓪)·꼬리 청크·빠진 청크가 남은 문서는 get_doc 이 거절하는데, 스킵하면
+    # 같은 본문 re-put 이 성공을 답한 채 그 문서가 영영 안 읽힌다(RV-12).
+    unchanged = prev is not None and (prev.get("content_hash") == content_hash and prev.get("title") == kept_title
+                                      and n_live == int(prev.get("chunk_count") or 0))
+    return _PutPlan(owner=owner, doc_id=doc_id, content_hash=content_hash, prev=prev,
+                    n_live=n_live, kept_title=kept_title, kept_origin=kept_origin,
+                    validity=validity, validity_changed=validity_changed, ctime=ctime,
+                    ctime_changed=ctime_changed, ctime_warnings=ctime_warnings,
+                    unchanged=unchanged)
 
-    # 청크는 언제나 쓰고, 지울 옛 행이 있으면 자식 벡터도 지운다 — 그 표에 잔해가 있으면 멈춘다.
-    wipe = prev is not None or n_live > 0
-    refusal = _remnant_refusal(store, vectors=wipe)
-    if refusal:
-        base["error"] = refusal
+
+def _put_unchanged_body(store, base: dict, plan: _PutPlan, *, text, origin, link, updated_at,
+                        topic) -> dict:
+    """본문·제목·청크 수가 저장된 그대로인 re-put. 출처·유효구간·내용 시점만 바뀌었으면 메타만
+    고치고, 아무것도 안 바뀌었으면 건너뛴다(`skipped`). 청크와 임베딩은 다시 만들지 않는다."""
+    owner, doc_id, prev, content_hash = plan.owner, plan.doc_id, plan.prev, plan.content_hash
+    kept_title, kept_origin, validity = plan.kept_title, plan.kept_origin, plan.validity
+    validity_changed, ctime, ctime_changed = plan.validity_changed, plan.ctime, plan.ctime_changed
+    ctime_warnings = plan.ctime_warnings
+    origin_changed = origin is not None and origin != str(prev.get("origin") or "")
+    if origin_changed or validity_changed or ctime_changed:
+        # 출처·유효구간·내용 시점만 바뀌면 원문 청크와 임베딩을 다시 만들 필요가 없다.
+        # 쓰기 창 표식은 청크·메타 사이에서 끊겨도 다음 re-put 이 복구하게 한다.
+        stamp = updated_at or _stamp_updated_at(store)
+        seq = _next_doc_seq(store, owner)
+        count = int(prev.get("chunk_count") or 0)
+        store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id "
+                  "SET d.chunk_count = -1", {"id": doc_id})
+        linked = 0
+        if origin_changed:
+            store.run("MATCH (c:Chunk) WHERE c.doc_id = $id "
+                      "SET c.source_file = $origin",
+                      {"id": doc_id, "origin": kept_origin})
+            # source_file 은 MENTIONS 의 source 매칭에도 쓰인다. 옛 링크를
+            # 지우고 같은 링커로 다시 만들되 청크 원문은 보존한다.
+            from store.embedded_schema import body_mentions_ready
+            keep_body = ("AND (m.method IS NULL OR m.method <> 'body') "
+                         if body_mentions_ready(store) else "")
+            store.run("MATCH (c:Chunk)-[m:MENTIONS]->() WHERE c.doc_id = $id "
+                      + keep_body + "DELETE m", {"id": doc_id})
+            linked = _relink_mentions(store, doc_id, owner=owner,
+                                      origin=kept_origin) if link else 0
+        store.run("MATCH (d:_DocMeta) WHERE d.doc_id = $id "
+                  "SET d.origin = $origin, d.updated_at = $ts, "
+                  "d.sync_seq = $seq, d.chunk_count = $count, "
+                  "d.valid_from = $vf, d.valid_until = $vu, d.superseded_by = $sb, "
+                  "d.content_time = $ctime",
+                  {"id": doc_id, "origin": kept_origin, "ts": stamp,
+                   "seq": seq, "count": count, "vf": validity["valid_from"],
+                   "vu": validity["valid_until"], "sb": validity["superseded_by"],
+                   "ctime": ctime})
+        _clear_doc_tombstone(store, doc_id)
+        base.update(executed=True, skipped=False, created=False,
+                    chunks=count, replaced=0, title=kept_title,
+                    content_hash=content_hash, mentions=linked,
+                    updated_at=stamp, sync_seq=seq, **validity,
+                    warnings=_doc_id_warnings(text, doc_id) + ctime_warnings)
+        if topic:
+            base["topic"] = _set_authored_topic(
+                store, doc_id, topic, owner=owner, title=kept_title)
+        base["warnings"] += _no_mirror_warnings(store, text, doc_id, owner=owner)
+        base["needs_embed"] = None if prev.get("needs_embed") is None else bool(prev["needs_embed"])
+        base["retrieval"] = document_retrieval(prev.get("needs_embed"))
         return base
+    base.update(executed=True, skipped=True, created=False,
+                chunks=int(prev.get("chunk_count") or 0), title=kept_title,
+                content_hash=content_hash,
+                warnings=_doc_id_warnings(text, doc_id) + ctime_warnings)
+    # ⚠ 주제는 본문과 **독립**이다. 본문이 그대로라고 "이 문서를 X 밑에 둬라"를
+    # 버리면 그 지시가 조용히 사라진다 — 부르는 쪽에서 가장 흔한 형태가
+    # "본문은 그대로 두고 주제만 적는다" 인데 그것이 정확히 안 먹혔다
+    # (실측 2026-09-06, 라이브에서 skipped=True 이고 topic=None 이 돌아왔다).
+    if topic:
+        base["topic"] = _set_authored_topic(store, doc_id, topic, owner=owner,
+                                            title=kept_title)
+    base["warnings"] += _no_mirror_warnings(store, text, doc_id, owner=owner)
+    base.update(**validity, needs_embed=None if prev.get("needs_embed") is None else bool(prev["needs_embed"]))
+    base["retrieval"] = document_retrieval(prev.get("needs_embed"))
+    return base
 
+
+def _put_rewrite_chunks(store, plan: _PutPlan, *, text, layer, max_chars, boundaries,
+                        updated_at, created_at, wipe):
+    """청크 다시 쓰기: 저장된 청크·자식 벡터 지우기, 새 청크, 메타(해시), 문서 삭제 표식 상쇄.
+    반환은 `(청크, 스탬프, 순번, 지운 행 수, needs_embed)` 다."""
+    owner, doc_id, prev, n_live = plan.owner, plan.doc_id, plan.prev, plan.n_live
+    kept_title, kept_origin, content_hash = plan.kept_title, plan.kept_origin, plan.content_hash
+    validity, ctime = plan.validity, plan.ctime
     chunks = chunk_doc(text, max_chars=max_chars, boundaries=boundaries)
     stamp = updated_at or _stamp_updated_at(store)
     seq = _next_doc_seq(store, owner)
@@ -731,7 +803,15 @@ def _put_doc_once(store, *, owner: str, text: str, doc_id: str | None = None,
          "sb": validity["superseded_by"]})
     # 재생성 = 로컬 doc 툼스톤 상쇄(낡은 삭제가 동기화에서 재전파되지 않게, P3).
     _clear_doc_tombstone(store, doc_id)
+    return chunks, stamp, seq, removed, needs_embed
 
+
+def _put_mirror_and_links(store, base: dict, plan: _PutPlan, *, text, title, topic, link, chunks,
+                          stamp, seq, removed, needs_embed) -> dict:
+    """미러와 링크: 제목 따라가기, 주제 적기, 언급 다시 잇기, 응답 조립(경고 순서 포함)."""
+    owner, doc_id, prev = plan.owner, plan.doc_id, plan.prev
+    kept_title, kept_origin, content_hash = plan.kept_title, plan.kept_origin, plan.content_hash
+    validity, ctime_warnings = plan.validity, plan.ctime_warnings
     # 제목이 바뀌었으면 미러가 **물려받은 제목 그대로일 때만** 따라간다(아래 함수).
     # 주제 적기와 같은 이유로 링커보다 먼저다.
     if prev is not None and title is not None:
@@ -758,8 +838,6 @@ def _put_doc_once(store, *, owner: str, text: str, doc_id: str | None = None,
     base.update(**validity)
     base["retrieval"] = document_retrieval(bool(needs_embed))
     return base
-
-
 def _set_authored_topic(store, doc_id: str, topic: str, *, owner: str,
                         title: str) -> str:
     """문서의 주제를 **적는다** — `concept:doc.<doc_id>` 미러의 `domain` 에.
