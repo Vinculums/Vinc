@@ -227,8 +227,8 @@ def cached() -> Colbert | None:
 
 def rescore_on() -> bool:
     """`VINC_NODE_COLBERT` — 노드 후보 재채점 스위치. 기본 꺼짐: 토큰이 미러 전체에 찰 때까지 켜지 않는다."""
-    from store.envflag import truthy
-    return np is not None and truthy(os.environ.get("VINC_NODE_COLBERT"))
+    from store.envflag import default_off
+    return np is not None and default_off("VINC_NODE_COLBERT")
 
 
 if __name__ == "__main__":
