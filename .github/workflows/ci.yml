@@ -769,9 +769,8 @@ jobs:
       - name: Install
         working-directory: app
         run: npm ci --no-audit --no-fund
-      # View layout has separate worker and WASM assets. Check types, semantic
-      # regressions, and their production packaging before accepting the PR.
-      - name: Typecheck, layout tests and production build
+      # 타입, 노드 테스트, 프로덕션 번들을 한 번에 본다.
+      - name: Typecheck, node tests and production build
         working-directory: app
         run: npm run build
       # `app/dev/*-check.ts` 는 브라우저 없이 도는 순수 검사다(인과 폐포 · 주소 문법 ·

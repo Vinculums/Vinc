@@ -1,5 +1,4 @@
 import { viewSessionCache } from "./view-session-cache";
-import type { LayoutAnswer } from "./view-layout-wire";
 /** Sidecar client. Data plane is localhost HTTP + session token; in the shell the
  *  control plane (port, token, sidecar lifecycle) goes over Tauri IPC (`shellInvoke`).
  *  Graph/query logic never lives here. */
@@ -352,18 +351,6 @@ export async function viewAccess(scope: ReturnType<typeof viewScope>, signal?: A
   return { session: JSON.stringify([scope.key, identity]), revision: marker };
 }
 
-type GraphRootsAnswer = {
-  executed: boolean;
-  state: "off" | "pending" | "stale" | "ready" | "failed";
-  marker?: string;
-  nodes?: number;
-  /** 답을 만든 배치 코드의 판(`api.layout_remote`). 옛 허브는 싣지 않는다. */
-  version?: string;
-  /** 답 본문의 해시. 요청에 같은 값을 `have` 로 실으면 허브가 본문을 뺀다. */
-  digest?: string;
-  answer?: LayoutAnswer;
-};
-
 
 /** 미리보기(`dry_run`)를 받아 묶음을 만든다. 미리보기를 못 받으면(큰 노드라 미리보기가
  *  불완전함·종류 미지원·연결 실패) digest 없이 묶는다: 적용은 지금까지처럼 조건 없이 간다. */
@@ -480,11 +467,6 @@ export const api = {
       ? accountCall("/graph", params, undefined, scope, live)
       : localCall("/graph", params, undefined, scope, live);
   },
-  graphRoots: (owner: string, basis: "recorded" | "content", signal: AbortSignal,
-      scope: Scope = { team: cfg.team || null }, have?: string): Promise<GraphRootsAnswer> =>
-    accountMode() && !sidecarOnly("/graph/roots")
-      ? accountCall("/graph/roots", { owner, basis, ...(have ? { have } : {}) }, undefined, scope, signal)
-      : localCall("/graph/roots", { owner, basis, ...(have ? { have } : {}) }, undefined, scope, signal),
   recall: (owner: string, limit = 50) => call("/recall", { owner, limit, rank: "preference" }),
   search: (query: string, top_k = 20, options: SearchOptions = {}) => searchCall(query, top_k, options),
   // 정확한 제목은 저장된 메타에서 찾는다. 본문 색인·그래프 노드 유무와 무관하다.

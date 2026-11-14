@@ -6,8 +6,7 @@
  *  메커니즘도 하나여야 한다 — 두 벌이 되면 둘이 서로를 덮어쓰는 날이 온다.
  *
  *  지금 앱에서 `spotOf`·`causalCone` 을 부르는 곳은 없다(그것을 읽던 2D·3D 렌더러는
- *  걷었다). `edgeKey` 는 레이아웃 선(`view-layout-wire.ts`)이 쓰고, 셋 다
- *  `app/dev/cone-check.ts` 가 지킨다.
+ *  걷었다). 셋 다 `app/dev/cone-check.ts` 가 지킨다.
  *
  *  ⚠ **import 를 두지 않는다.** 이 파일만 `node --experimental-strip-types` 로 곧장
  *  돌릴 수 있어야 `app/dev/cone-check.ts` 가 브라우저 없이 폐포를 검사한다. 그래서
@@ -20,8 +19,7 @@ export type Spot = { nodes: Set<string>; edges: Set<string> };
 
 type E = { source: string; target: string; type: string };
 
-/** 관계 하나의 열쇠. 레이아웃 선(`view-layout-wire.ts`)과 허브에 저장된 레이아웃 답이
- *  이 열쇠로 관계를 짝짓는다.
+/** 관계 하나의 열쇠.
  *
  *  타입까지 넣는 이유: 같은 쌍의 평행 관계가 서로 다른 열쇠를 가져야 한다. 쌍만으로
  *  열쇠를 만들면 여러 선이 같은 열쇠를 갖게 되어 다른 선의 자리를 받는다. */

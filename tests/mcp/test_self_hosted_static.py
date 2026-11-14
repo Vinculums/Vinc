@@ -38,7 +38,6 @@ class StaticTests(unittest.TestCase):
         (self.root / "assets").mkdir()
         (self.root / "index.html").write_text("<!doctype html><title>Vinc</title>", encoding="utf-8")
         (self.root / "assets" / "main-abc123.js").write_text("console.log(1)", encoding="utf-8")
-        (self.root / "assets" / "view-layout.worker-x1.js").write_text("//w", encoding="utf-8")
         (self.root / "sw.js").write_text("//sw", encoding="utf-8")
         (self.root.parent / "secret.txt").write_text("no", encoding="utf-8")
         env = {"VINC_WEB_DIR": str(self.root), "VINC_SELF_HOSTED": self.flag, "VINC_OWNER": "tenant:local"}
@@ -91,9 +90,10 @@ class FlagOn(StaticTests):
         code, h, _ = self.get("/app/sw.js")
         self.assertEqual((code, h["Cache-Control"]), (200, "no-cache"))
 
-    def test_배치_워커에만_wasm(self):
-        _, h, _ = self.get("/app/assets/view-layout.worker-x1.js")
-        self.assertIn("'wasm-unsafe-eval'", h["Content-Security-Policy"])
+    def test_어느_자산에도_wasm_허용이_없다(self):
+        for path in ("/app/", "/app/assets/main-abc123.js", "/app/sw.js"):
+            _, h, _ = self.get(path)
+            self.assertNotIn("wasm-unsafe-eval", h["Content-Security-Policy"], path)
 
     def test_경로형_딥링크는_index(self):
         code, _, body = self.get("/app/approvals/run-1")

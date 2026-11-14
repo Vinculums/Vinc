@@ -18,8 +18,7 @@ export const VIEWPOINTS: Viewpoint[] = ["compass"];
  *  갈래를 새로 만들거나 순서를 바꾸면 세 곳이 함께 움직여야 한다 — 그래서
  *  판정 함수(`edgeKindOf`)를 여기 한 곳에 둔다. */
 export type EdgeKind = "directed" | "bridge" | "cross" | "related";
-/** 끝이 원천(조상)을 가리키는 관계 — "a 가 b 에서 나왔다". 시간순 배치는 이 둘만
- *  뒤집어 조상을 앞에 세운다(`view-layout.ts` 의 `ancestry`). */
+/** 끝이 원천(조상)을 가리키는 관계 — "a 가 b 에서 나왔다". */
 export const ANCESTRY_RELS = ["DERIVES_FROM", "INHERITS_FROM"];
 /** 화살촉이 붙는 방향 3종. `edgeKindOf` 가 읽는다. */
 const DIRECTED_RELS = ["PREREQUISITE_OF", ...ANCESTRY_RELS];

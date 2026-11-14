@@ -24,7 +24,7 @@ DEFAULT_DIR = "/srv/vinc/web"
 PREFIX = "/app/"
 
 _CSP = ("default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
-        "script-src 'self' 'unsafe-inline'{wasm}; frame-ancestors 'none'")
+        "script-src 'self' 'unsafe-inline'; frame-ancestors 'none'")
 
 _TYPES = {
     ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -70,10 +70,9 @@ def _headers(file: str, root: str) -> dict:
         cache = "public, max-age=31536000, immutable"
     else:
         cache = "no-cache"
-    wasm = " 'wasm-unsafe-eval'" if rel.startswith("assets/view-layout.worker-") else ""
     ext = os.path.splitext(name)[1].lower()
     return {"Content-Type": _TYPES.get(ext, "application/octet-stream"), "Cache-Control": cache,
-            "Content-Security-Policy": _CSP.format(wasm=wasm), "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": _CSP, "X-Content-Type-Options": "nosniff",
             "Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY"}
 
 

@@ -79,7 +79,6 @@ export type GraphEdge = {
   role?: string;        // CONNECTS.role / ATTACHES_TO.type 질화자 (F2)
   confidence?: number;  // D43 — 0..1. 상류 미저작이면 키 자체가 없다
   evidence?: string;    // D43 — 근거 문장. 툴팁 전용
-  route?: import("./view-route").ViewRoute;
   presentation?: boolean; // Topic membership guide, never a causal relation.
 };
 /** 상세 레일의 연결 요약 + 관계 목록(node-context ④). 세는 자리가 노드 자신이라

@@ -75,9 +75,8 @@ class AlwaysOnTests(unittest.TestCase):
 
     def test_영역이_보석_하나를_입고_주제는_그것을_조금_돌린다(self):
         tint = read("view-tint")
-        # 영역 판정은 레이아웃과 한 벌이다(갈리면 같은 영역의 주제가 다른 색으로 부피 밖에 선다).
+        # 영역 판정은 `area-key.ts` 한 자리다(`app/tests/area-key.test.mjs` 가 규칙을 지킨다).
         self.assertIn('import { areaKeys } from "./area-key";', tint)
-        self.assertIn('export { areaKeys };', read("view-layout-spatial"))
         self.assertIn("const TOPIC_TURN = [0, 4, -4, 8, -8, 12, -12];", tint)
         # 표를 짓는 길은 하나다(별칭이 있으면 호출측마다 다른 집합으로 표를 따로 지어 한 주제가 두 색이 된다).
         self.assertNotIn("export function tintMap(", tint)

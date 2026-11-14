@@ -211,11 +211,11 @@ GATES: tuple[Gate, ...] = (
          paths=(r"^pyproject\.toml$", r"^app/", r"^integrations/", r"^api/", r"^vinc_mcp/"),
          steps=("release.yml:version-gate",), marker="version_sync.py --check",
          note="every version site agrees"),
-    # 타입체크 · 레이아웃 테스트 · 프로덕션 빌드. `app (typecheck)` 잡이 경로 조건과 함께 돈다.
+    # 타입체크 · 노드 테스트 · 프로덕션 빌드. `app (typecheck)` 잡이 경로 조건과 함께 돈다.
     # 노드 빌드와 cargo 를 부르는 셋은 분 단위라 제한 시간을 그 잡의 제한(20분) 안에서 따로 둔다.
     Gate("app-build", (("npm", "run", "build"),), needs=("node",),
          paths=(r"^app/", r"^api/contract/"), steps=("ci.yml:app",), cwd="app",
-         timeout=900, marker="npm run build", note="app typecheck, layout tests and build"),
+         timeout=900, marker="npm run build", note="app typecheck, node tests and build"),
     # 브라우저 없이 도는 app/dev/*-check.ts. tsconfig include 밖이라 위 빌드가 덮지 않는다.
     Gate("app-dev-checks", (("bash", "-c", _DEV_CHECKS),), needs=("node", "tool:bash"),
          paths=(r"^app/", r"^api/contract/"), steps=("ci.yml:app", "verify-hosted.yml:app"),
