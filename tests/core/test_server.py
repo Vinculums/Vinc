@@ -105,10 +105,10 @@ class _EmptyStore:
     def close(self): pass
 
 
-#: CLI 쪽 읽기·쓰기가 스토어를 여는 모듈 전부. 이름은 호출하는 모듈의 이름공간에서 찾으므로 하나라도
-#: 빠지면 그 모듈은 대역 대신 실제 스토어를 연다. `api.query` 는 `open_store` 를 스스로 부르지 않지만
-#: `api/preference.py` 가 `query.open_store` 로 읽는다. 이 표가 실제 여는 지점과 같은지는
-#: :class:`CliStoreOpenersTests` 가 본다.
+#: CLI 쪽 읽기·쓰기가 스토어를 여는 모듈 전부. 모듈마다 `open_store` 를 부르거나 `_store_scope` 에 넘기는데,
+#: 어느 쪽이든 이름은 그 모듈의 이름공간에서 찾으므로 하나라도 빠지면 그 모듈은 대역 대신 실제 스토어를
+#: 연다. `api.query` 는 `open_store` 를 스스로 읽지 않지만 `api/preference.py` 가 `query.open_store` 로
+#: 읽는다. 이 표가 실제 읽는 모듈과 같은지는 :class:`CliStoreOpenersTests` 가 본다.
 CLI_OPENERS = (
     "api.brief", "api.decide_read", "api.diagnose", "api.graph_edit", "api.merge_candidates",
     "api.nav", "api.neighbors", "api.node_read", "api.query", "store.querybase",
@@ -140,14 +140,15 @@ def cli_store(store):
 class CliStoreOpenersTests(unittest.TestCase):
     """`cli_store` 가 CLI 쪽 여는 지점을 빠짐없이 덮는가.
 
-    `api/query.py` 는 이름을 다시 내보낼 뿐 `open_store` 를 스스로 부르지 않는다. 불러서 여는 쪽은
-    다시 내보내는 모듈들이고, 각자 제 이름공간에서 이름을 찾는다. 대역을 `api.query` 와
+    `api/query.py` 는 이름을 다시 내보낼 뿐 `open_store` 를 스스로 읽지 않는다. 읽어서 여는 쪽은
+    다시 내보내는 모듈들이고(직접 부르거나 `_store_scope` 에 넘긴다), 각자 제 이름공간에서 이름을 찾는다. 대역을 `api.query` 와
     `store.querybase` 에만 걸면 나머지 모듈은 시험이 초록인 채로 실제 스토어를 연다."""
 
     @staticmethod
     def _openers() -> set[str]:
-        """`open_store` 를 실제로 읽는 모듈 이름: `api/query.py` 가 다시 내보내는 모듈 중 `open_store(...)`
-        를 부르는 것, 그리고 `query.open_store` 를 속성으로 읽는 모듈이 있으면 `api.query`."""
+        """`open_store` 를 실제로 읽는 모듈 이름: `api/query.py` 가 다시 내보내는 모듈 중 자기 이름공간의
+        `open_store` 를 부르거나 `_store_scope` 에 넘기는 것(이름을 읽는 모든 자리), 그리고
+        `query.open_store` 를 속성으로 읽는 모듈이 있으면 `api.query`."""
         import ast
         import api.query as query_module
         root = Path(query_module.__file__).resolve().parents[1]
@@ -163,8 +164,8 @@ class CliStoreOpenersTests(unittest.TestCase):
         for name in sorted(sources):
             path = root.joinpath(*name.split(".")).with_suffix(".py")
             module = ast.parse(path.read_text(encoding="utf-8"))
-            if any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-                   and n.func.id == "open_store" for n in ast.walk(module)):
+            if any(isinstance(n, ast.Name) and n.id == "open_store" and isinstance(n.ctx, ast.Load)
+                   for n in ast.walk(module)):
                 found.add(name)
         for path in sorted((root / "api").glob("*.py")):
             module = ast.parse(path.read_text(encoding="utf-8"))
@@ -174,7 +175,7 @@ class CliStoreOpenersTests(unittest.TestCase):
                 found.add("api.query")
         return found
 
-    def test_the_table_is_exactly_the_modules_that_call_open_store(self):
+    def test_the_table_is_exactly_the_modules_that_read_open_store(self):
         self.assertEqual(set(CLI_OPENERS), self._openers())
 
     @staticmethod
