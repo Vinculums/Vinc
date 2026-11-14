@@ -37,6 +37,7 @@ import sys
 import time
 
 from . import durable_generation as dg
+from . import topic_conversion_guard
 from .backend import operation
 from .envflag import truthy
 
@@ -200,7 +201,7 @@ def restore_newest(live_path: str, snapshot_path: str | None = None) -> str:
     snapshot_path = snapshot_path if snapshot_path is not None else resolve_snapshot_path()
     # 전환 publisher는 전역 ACK가 꺼져도 영수증을 게시한다. 복원만 같은 범위를 따른다.
     # 일반 쓰기의 ACK 정책은 바꾸지 않는다. 양쪽이 꺼진 설치는 기존 스냅샷 복원이다.
-    scoped = bool(snapshot_path) and os.environ.get("VINC_TOPIC_CONVERSION") == "1"
+    scoped = bool(snapshot_path) and topic_conversion_guard.enabled_by_env()
     if not (durable_ack_enabled(snapshot_path) or scoped):
         return restore_if_missing(live_path, snapshot_path)
     if os.path.exists(live_path):

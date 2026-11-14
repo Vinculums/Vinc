@@ -10,7 +10,7 @@ from store import diagnostics
 from contextlib import contextmanager
 
 from store.config import load_config
-from vinc_mcp import tools
+from vinc_mcp import toolcall, tools
 from vinc_mcp.bridge import DEFAULT_OWNER
 
 from .cli_transport import attached_bridge, data_file
@@ -311,12 +311,8 @@ def run(args) -> tuple[dict | None, int | None]:
         return None, usage_error(str(exc))
     if destructive and not data.get("dry_run") and not confirm(args, destructive):
         return None, usage_error("confirmation required; pass --yes")
+    # 검증은 `toolcall.call` 이 브리지를 열기 전에 한다. 거절되는 인자로는 스토어를 열지 않는다.
     try:
-        tools.validate_args(name, data)
+        return toolcall.call(name, data, open_bridge=lambda: _bridge(args)), None
     except tools.InvalidArgument as exc:
         return None, usage_error(str(exc))
-    with _bridge(args) as bridge:
-        try:
-            return tools.call(name, data, bridge), None
-        except tools.InvalidArgument as exc:
-            return None, usage_error(str(exc))

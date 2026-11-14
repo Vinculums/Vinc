@@ -18,6 +18,7 @@ from uuid import UUID
 
 from store.backend import flag
 from store.canon import canonical_json_ascii_v1 as canonical
+from store import topic_conversion_guard
 from store.embedded_backend import DDL_GUARD
 from store.scoped_topic_inventory import read_scoped_inventory
 from store.topic_batch_manifest import PROTOCOL as PROTOCOL_V3
@@ -122,7 +123,7 @@ def _terminal_visible(store, journal):
         return True
     # 새 프로토콜은 영속 게시 증명이 확인된 이 프로세스에서만 울타리를 해제한다.
     # 재시작 뒤에는 봉인 파일과 같은 실행의 영수증을 다시 확인해야 한다.
-    return canonical(journal) in getattr(store, "_topic_conversion_terminals", set())
+    return canonical(journal) in topic_conversion_guard.terminals(store)
 
 
 def check_read(store, owner):
@@ -339,7 +340,7 @@ _get = get_journal
 def save_journal(store, run, journal):
     store.run("MERGE (m:_SyncMeta {key:$key}) SET m.value=$value",
               {"key": PREFIX + run, "value": json.dumps(journal, sort_keys=True)}, raw=True)
-    store._topic_conversion_guard = True
+    topic_conversion_guard.activate(store)
 
 
 _save = save_journal
@@ -497,7 +498,7 @@ def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None,
             _indexes(store, index_inventory)
             raise
         _indexes(store, index_inventory)
-        store._topic_conversion_guard = True
+        topic_conversion_guard.activate(store)
         return {"status": "graph_committed", "run": run}
 
 

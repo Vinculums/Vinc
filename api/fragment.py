@@ -37,6 +37,7 @@ from . import revstamp
 from . import role_contract
 from store import pkns, write_batch
 from store import querybase as _qb
+from store.topic_conversion_guard import guard_active
 # 근거 열을 가진 rel 의 정본 — 스키마가 표를 갖고 여기서는 읽기만 한다.
 from store.embedded_schema import EDGE_EVIDENCE_RELS, wiki_pairs_open
 
@@ -864,7 +865,7 @@ def merge_node(store, node: dict, owner: str, warnings: list[str],
     Entity 의 주제를 바꾼다."""
     ntype = (node.get("type") or "").strip()
     nid = (node.get("id") or "").strip()
-    if getattr(store, "_topic_conversion_guard", False):
+    if guard_active(store):
         from .topic_conversion import check_write
         check_write(store, owner, node)
     skip = _screen_node(node)
@@ -1796,7 +1797,7 @@ def _merge_fragment_once(fragment: dict, *, store, themes=None,
         edges = list(fragment.get("edges") or [])
     except MutationConflict as exc:
         return _finalize({"merged": None, **exc.result}, [exc.result["error"]])
-    if getattr(store, "_topic_conversion_guard", False):
+    if guard_active(store):
         from .topic_conversion import check_write
         check_write(store, owner, fragment)
     beliefs = []

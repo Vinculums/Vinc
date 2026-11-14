@@ -613,9 +613,10 @@ def test_delete_edge_refuses_a_type_outside_the_enum_before_the_bridge():
         def request(self, *a, **k):
             raise AssertionError("거절은 사이드카에 닿기 전이어야 한다")
 
+    from vinc_mcp import toolcall
     with pytest.raises(T.InvalidArgument) as err:
-        T.call("vinc_delete_edge", {"from_id": "concept:a", "to_id": "concept:b",
-                                    "type": "connects_via"}, _Bridge())
+        toolcall.call("vinc_delete_edge", {"from_id": "concept:a", "to_id": "concept:b",
+                                           "type": "connects_via"}, _Bridge())
     assert "ATTACHES_TO" in err.value.text
 
 

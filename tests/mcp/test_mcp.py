@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from vinc_mcp import tools  # noqa: E402
+from vinc_mcp import toolcall, tools  # noqa: E402
 from vinc_mcp.bridge import Bridge  # noqa: E402
 from vinc_mcp.http_server import MCPHTTPApp, make_server  # noqa: E402
 from vinc_mcp.install import (  # noqa: E402
@@ -110,7 +110,7 @@ class ToolContractTests(unittest.TestCase):
         for t in tools.TOOLS:                   # 레지스트리 전부: 목록에서 빠진 도구도 호출 경로는 있다
             if t["name"] == "vinc_community_read":
                 with self.assertRaises(tools.InvalidArgument):
-                    tools.call(t["name"], {"action": "agent_detail", "payload": {}}, b)
+                    toolcall.call(t["name"], {"action": "agent_detail", "payload": {}}, b)
                 continue
             if t["name"] == "vinc_community_write":
                 with self.assertRaises(PermissionError):
@@ -146,7 +146,7 @@ class ToolContractTests(unittest.TestCase):
     def test_required_argument_enforced(self):
         # D5: 필수 인자 누락은 ValueError(-32602)가 아니라 InvalidArgument(도구 결과).
         with self.assertRaises(tools.InvalidArgument):
-            tools.call("vinc_search", {}, _StubBridge())
+            toolcall.call("vinc_search", {}, _StubBridge())
         with self.assertRaises(KeyError):
             tools.call("vinc_nope", {}, _StubBridge())
 

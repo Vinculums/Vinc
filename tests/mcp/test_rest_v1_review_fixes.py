@@ -156,6 +156,19 @@ def test_every_routed_tool_has_a_pinned_failure_case():
     assert routed - pinned == set()
 
 
+def test_every_failure_code_the_inventory_names_has_a_row_in_the_table():
+    from pathlib import Path
+    path = Path(__file__).parent.parent / "fixtures" / "tool_failure_shapes.json"
+    inventory = json.loads(path.read_text(encoding="utf-8"))
+    named = {row["code"] for rows in inventory["tools"].values() for row in rows}
+    named |= {row["code"] for row in inventory["common"]}
+    # invalid_argument 는 `_failure` 앞의 검증 거절로도 나오지만 표에도 줄이 있다.
+    rows = {row.code for row in rest_api._FAILURES if isinstance(row.code, str)}
+    assert named - {"success"} <= rows
+    # 실패가 아닌 줄(status None)은 성공 봉투로 내는 두 모양뿐이다.
+    assert sum(row.status is None for row in rest_api._FAILURES) == 2
+
+
 def test_unconfirmed_write_says_it_may_have_applied():
     status, code, _msg, details = _failure(
         "vinc_doc_put", {"error": "sidecar write unconfirmed: x", "retryable": False})
