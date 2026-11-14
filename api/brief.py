@@ -14,13 +14,11 @@
 from __future__ import annotations
 
 import math
-import os
 import re
 
-from store import pkns
+from store import envflag, pkns
 from store.backend import open_store
 from store.config import load_config
-from store.envflag import truthy
 from store.querybase import holds_during, normalize_query_tokens, time_scope, validity_state
 from vinc_rag import excerpt as _excerpt
 from vinc_rag import retrieval as _retrieval
@@ -245,8 +243,7 @@ def _brief_strict_on() -> bool:
     오르고 함께여야 오른다**(팔은 후보 1위를 9건에서 17건으로 올려 놓는데, 옛 판정이
     그 위에 확신 오답을 얹고 목록을 감췄다).
     근거: [[record:the-confidence-bar-was-one-token-and-that-was-the-defect-2026-09-10]]"""
-    return str(os.environ.get("VINC_BRIEF_STRICT", "")).strip().lower() not in (
-        "0", "off", "false", "no")
+    return envflag.default_on("VINC_BRIEF_STRICT")
 
 
 #: 확신에 필요한 토큰 차. 옛 값 1 은 **토큰 하나 차이면 확신한다**는 뜻이라 사실상
@@ -259,8 +256,7 @@ def _brief_sem_promote_on() -> bool:
     `VINC_BRIEF_SEM_PROMOTE=off` 가 토큰 규칙만 쓰던 동작으로 되돌린다(측정용 비상구).
     끄면 brief 의 맞는 확정이 절반 아래로 줄고, 틀린 노드 확정은 줄지 않는다.
     근거: [[vinc.spec.retrieval-knobs]] §2"""
-    return str(os.environ.get("VINC_BRIEF_SEM_PROMOTE", "")).strip().lower() not in (
-        "0", "off", "false", "no")
+    return envflag.default_on("VINC_BRIEF_SEM_PROMOTE")
 
 
 #: 승격에 필요한 의미 우위: 의미 팔 원시 목록에서 1위가 나머지보다 가까운 거리(`sem_lead`,
@@ -383,8 +379,7 @@ def _brief_rank(rows: list[dict]) -> list[dict]:
 
 def _brief_rule() -> str:
     """`VINC_BRIEF_RULE` 의 값. `v3` 만 학습 규칙이고, 그 밖의 값과 빈 값은 production 이다."""
-    v = (os.environ.get("VINC_BRIEF_RULE") or "production").strip().lower()
-    return v if v == "v3" else "production"
+    return envflag.one_of("VINC_BRIEF_RULE", ("production", "v3"), "production")
 
 
 def _brief_rule_v3() -> bool:
@@ -606,15 +601,14 @@ def _brief_answerability_on() -> bool:
     끄고 켤 수 있어야 하는 이유: 이 문턱은 정답 81문항 중 **확정 18건** 위에서 골랐고,
     답 불가 21문항 중 15문항을 이 세션에 내가 썼다. 즉 시험지 절반이 이 신호를 편들
     수 있다. 기본값을 바꾸기 전에 남이 쓴 문항이 늘어나야 한다."""
-    return truthy(os.environ.get("VINC_BRIEF_ANSWERABILITY"))
+    return envflag.default_off("VINC_BRIEF_ANSWERABILITY")
 
 
 def _brief_section_on() -> bool:
     """질문으로 문서 미러에 닿은 brief 에 `section` 을 실을 것인가(`VINC_BRIEF_SECTION`).
     기본은 켜짐이고 ``off``·``0``·``false``·``no`` 가 끈다(끄면 이 키가 없던 때와 같다).
     근거: [[vinc.research.answer-material-section-ai-corpus-2026-10-17]]"""
-    v = str(os.environ.get("VINC_BRIEF_SECTION", "")).strip().lower()
-    return v not in ("off", "0", "false", "no")
+    return envflag.default_on("VINC_BRIEF_SECTION")
 
 
 def _brief_pick_chunk(store, chunks: list[dict], *, query: str, query_embedding,
@@ -692,8 +686,7 @@ def _brief_quotes_on() -> bool:
     """후보와 확정 노드에 `quotes`(글자 그대로의 인용 단위)를 실을 것인가(`VINC_BRIEF_QUOTES`).
     기본은 켜짐이고 ``off``·``0``·``false``·``no`` 가 끈다(끄면 이 키가 없던 때와 같다).
     근거: [[vinc.manual.rag]]"""
-    v = str(os.environ.get("VINC_BRIEF_QUOTES", "")).strip().lower()
-    return v not in ("off", "0", "false", "no")
+    return envflag.default_on("VINC_BRIEF_QUOTES")
 
 
 #: 노드마다 싣는 인용 단위 수와, 개념의 MENTIONS 청크에서 고를 후보 수.
@@ -758,11 +751,7 @@ def _brief_expose_n() -> int:
     `VINC_BRIEF_EXPOSE` 는 노출을 바꿔 재기 위한 손잡이다(X1). 기본값을 바꾸는 것은
     결정 노드로만 한다. 잘못된 값은 기본으로 읽는다.
     근거: [[vinc.plan.rag-eval-v2-0-9-6]]"""
-    raw = str(os.environ.get("VINC_BRIEF_EXPOSE", "")).strip()
-    try:
-        return max(1, int(raw)) if raw else _BRIEF_CANDIDATES
-    except ValueError:
-        return _BRIEF_CANDIDATES
+    return envflag.positive_int("VINC_BRIEF_EXPOSE", _BRIEF_CANDIDATES)
 
 
 def _brief_list_resolved_on() -> bool:
@@ -770,7 +759,7 @@ def _brief_list_resolved_on() -> bool:
     (`VINC_BRIEF_LIST_RESOLVED`). 확정이 틀렸을 때 그 뒤에 가려진 정답을 부르는 쪽이
     볼 수 있게 한다(X1). status 와 node 는 그대로다 — 목록이 답을 바꾸지 않는다.
     근거: [[vinc.plan.rag-eval-v2-0-9-6]]"""
-    return truthy(os.environ.get("VINC_BRIEF_LIST_RESOLVED"))
+    return envflag.default_off("VINC_BRIEF_LIST_RESOLVED")
 
 
 def _brief_candidate_rows(picked: list[dict]) -> list[dict]:
