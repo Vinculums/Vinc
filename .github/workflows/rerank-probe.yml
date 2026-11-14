@@ -65,9 +65,9 @@ on:
         type: string
         default: "8"
       app:
-        description: "어느 앱의 형상으로 가둘까. hub 는 대상 설정에서 푼 허브 앱, 그 밖은 scripts/app-config-baseline.json 의 키"
+        description: "어느 앱의 형상으로 가둘까. hub·account 는 대상 설정에서 푼 허브 앱·계정 앱(scripts/app-config-baseline.json 의 키)"
         type: choice
-        options: ["hub", "vinc-account"]
+        options: ["hub", "account"]
         default: "hub"
 
 permissions:
@@ -95,9 +95,12 @@ jobs:
           echo "::error::이 워크플로를 손으로 돌릴 수 있는 계정은 PROD_OPERATORS 에 있는 것뿐이다(지금 $ACTOR). 필요하면 소유자에게 요청할 것."
           exit 1
       - uses: actions/checkout@v4
-      # 기준선의 허브 항목 이름은 대상 설정(.github/container-apps-target.env)을 hub-deploy 의 표로 푼 이름이다.
-      - name: 허브 앱을 대상 설정에서 푼다
-        run: python3 scripts/hub_target.py >> "$GITHUB_ENV"
+      # 기준선의 허브·계정 항목 이름은 대상 설정(.github/container-apps-target.env)을 hub-deploy 의 표로 푼 이름이다.
+      - name: 허브 앱과 계정 앱을 대상 설정에서 푼다
+        run: |
+          set -euo pipefail
+          python3 scripts/hub_target.py >> "$GITHUB_ENV"
+          python3 scripts/hub_target.py account >> "$GITHUB_ENV"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -110,9 +113,7 @@ jobs:
           set -euo pipefail
           python - <<'PY' >> "$GITHUB_ENV"
           import json, os, re
-          app = os.environ["APP"]
-          if app == "hub":
-              app = os.environ["HUB_APP"]
+          app = {"hub": os.environ["HUB_APP"], "account": os.environ["ACCOUNT_APP"]}[os.environ["APP"]]
           d = json.load(open("scripts/app-config-baseline.json", encoding="utf-8"))
           res = d[app]["resources"]
           mem = str(res["memory"])

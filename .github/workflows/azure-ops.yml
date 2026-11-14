@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       app:
-        description: "대상. hub 는 대상 설정(.github/container-apps-target.env)에서 푼 허브 앱이다"
+        description: "대상. hub·account 는 대상 설정(.github/container-apps-target.env)에서 푼 허브 앱·계정 앱이다"
         type: choice
         options: [account, hub]
         default: account
@@ -23,7 +23,7 @@ on:
         options: [restart]
         default: restart
       confirm:
-        description: "풀린 대상 앱 이름을 그대로 적는다(실수 방지). 허브면 대상 설정의 앱 이름이다"
+        description: "풀린 대상 앱 이름을 그대로 적는다(실수 방지). 대상 설정이 가리키는 앱 이름이다"
         type: string
         default: ""
       reason:
@@ -51,7 +51,8 @@ jobs:
         run: |
           echo "::error::이 워크플로는 PROD_OPERATORS 에 있는 계정만 돌린다(지금 $ACTOR)."
           exit 1
-      # 허브 앱은 대상 설정을 hub-deploy 의 표로 푼 이름이다(HUB_APP). 그 계산에 드는 파일만 가져온다.
+      # 허브 앱(HUB_APP)과 계정 앱(ACCOUNT_APP)은 대상 설정을 hub-deploy 의 표 한 줄로 푼 이름이다.
+      # 그 계산에 드는 파일만 가져온다.
       - uses: actions/checkout@v4
         with:
           sparse-checkout: |
@@ -59,8 +60,11 @@ jobs:
             .github/workflows/hub-deploy.yml
             scripts/hub_target.py
           sparse-checkout-cone-mode: false
-      - name: 허브 앱을 대상 설정에서 푼다
-        run: python3 scripts/hub_target.py >> "$GITHUB_ENV"
+      - name: 허브 앱과 계정 앱을 대상 설정에서 푼다
+        run: |
+          set -euo pipefail
+          python3 scripts/hub_target.py >> "$GITHUB_ENV"
+          python3 scripts/hub_target.py account >> "$GITHUB_ENV"
       # 입력은 env 로만 넘긴다. 문자열 입력을 셸 본문에 바로 끼우면 그 값이 명령이 된다.
       # 대상 앱 이름(TARGET_APP)은 여기서 한 번 정하고 뒤 스텝은 그것만 쓴다. confirm 은 그 이름과 같아야 한다.
       - name: Guard
@@ -73,7 +77,7 @@ jobs:
           set -euo pipefail
           case "$APP" in
             hub) target="$HUB_APP" ;;
-            account) target=vinc-account ;;
+            account) target="$ACCOUNT_APP" ;;
             *) echo "::error::허용되지 않은 앱: $APP"; exit 1 ;;
           esac
           case "$ACTION" in restart) ;; *) echo "::error::허용되지 않은 동작: $ACTION"; exit 1 ;; esac
