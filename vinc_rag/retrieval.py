@@ -17,7 +17,7 @@ import re
 from collections import ChainMap
 from store.config import load_config
 from store.backend import flag, open_store, operation
-from store import pkns
+from store import envflag, pkns
 from store import search_temporal as temporal
 from store.embedded_backend import node_vector_generation, vector_generation
 from store.querybase import (
@@ -1183,8 +1183,7 @@ def _node_semantic_arm_on() -> bool:
     한 번 돈다(`api/server.py::write_node_mirror_rebuild`). 미러가 비어 있으면 이 팔은
     **빈 목록**이지 예외가 아니다 — 그래서 켜 두는 것이 안전하다.
     근거: [[decision:the-semantic-arm-ships-on-and-the-mirror-rebuilds-at-the-release-boundary]]"""
-    return str(os.environ.get("VINC_NODE_SEMANTIC_ARM", "")).strip().lower() not in (
-        "0", "off", "false", "no")
+    return envflag.default_on("VINC_NODE_SEMANTIC_ARM")
 
 
 def _node_sem_rank_on() -> bool:
@@ -1193,8 +1192,7 @@ def _node_sem_rank_on() -> bool:
     팔과 **한 몸이다** — 위의 0.4833 은 둘 다 켠 값이고, 팔만 켜면 0.2833 으로 돌아간다.
     따로 끌 수 있게 둔 이유는 격차 문턱(`_SEM_GAP`)을 다시 잴 때 순서 기여만 떼어
     보기 위해서다."""
-    return str(os.environ.get("VINC_NODE_SEM_RANK", "")).strip().lower() not in (
-        "0", "off", "false", "no")
+    return envflag.default_on("VINC_NODE_SEM_RANK")
 
 
 #: 의미 팔이 **자기 기준으로 단호하다**고 볼 1-2위 거리 격차.

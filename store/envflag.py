@@ -10,8 +10,8 @@
 여기서만 바꾼다.
 
 값 하나를 읽는 함수(``truthy``·``truthy_strict``)와, 환경변수 이름을 받아 읽는 함수
-(``default_on``·``default_off``·``one_of``·``positive_int``)가 있다. 이름을 받는 쪽은
-환경변수가 없을 때와 비었을 때의 답을 한 곳에 못 박아 둔다.
+(``default_on``·``default_off``·``strict``·``one_of``·``positive_int``)가 있다. 이름을 받는
+쪽은 환경변수가 없을 때와 비었을 때의 답을 한 곳에 못 박아 둔다.
 
 ``store/`` 는 맨 아래 층이라(``scripts/gate_ownership.py`` 의 ``LAYER_BANS``) 어느
 패키지든 이것을 가져다 쓸 수 있다.
@@ -72,6 +72,24 @@ def default_on(name: str) -> bool:
 def default_off(name: str) -> bool:
     """환경변수 ``name`` 이 참 집합에 들 때만 참. 없거나 비었거나 오타면 거짓이다."""
     return truthy(os.environ.get(name))
+
+
+def strict(name: str, default: bool) -> bool:
+    """환경변수 ``name`` 을 참/거짓 집합으로만 읽는다. 없으면 ``default``, 집합 밖의 값은 ``ValueError``.
+
+    오타가 조용히 한쪽으로 기울면 안 되는 설정용이다(``default_on`` 은 오타를 켬으로,
+    ``default_off`` 는 끔으로 읽는다). 비어 있거나 공백뿐인 값도 설정된 값이므로 오류다.
+    메시지가 변수 이름과 받는 값을 말한다."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    parsed = truthy_strict(raw)
+    if parsed is None:
+        raise ValueError(
+            f"{name}={raw!r} 는 알 수 없는 값이다 — 켜려면 {'/'.join(sorted(TRUE_VALUES))}, "
+            f"끄려면 {'/'.join(sorted(FALSE_VALUES))} 중 하나를 준다(대소문자·앞뒤 공백 무시). "
+            f"설정하지 않으면 {'켜짐' if default else '꺼짐'}이다")
+    return parsed
 
 
 def one_of(name: str, allowed: Collection[str], default: str) -> str:
