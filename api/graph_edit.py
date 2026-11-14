@@ -453,10 +453,10 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
     if owns:
         store = open_store(cfg)
     base = {"kind": "merge", "executed": False, "keep": keep_id, "drop": drop_id}
+    if store is None:
+        base["note"] = base["error"] = "no reachable store"
+        return base
     try:
-        if store is None:
-            base["note"] = base["error"] = "no reachable store"
-            return base
         kp = keep_id.split(":", 1)[0] if ":" in keep_id else ""
         dp = drop_id.split(":", 1)[0] if ":" in drop_id else ""
         if kp != "concept" or dp != "concept":

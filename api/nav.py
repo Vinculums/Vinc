@@ -555,6 +555,9 @@ def _ledger_by_concept(by_id: dict, *, owner: str, scope: str, cfg, store) -> di
     owns = store is None
     if owns:
         store = open_store(cfg or load_config())
+    if store is None:
+        return {"executed": False, "rows": [], "scope": scope, "population": 0,
+                "by": "concept", "note": "no reachable store"}
     try:
         got = store.run(
             "MATCH (c:Concept) WHERE c.concept_id IN $ids AND c.owner_id = $owner "
@@ -562,7 +565,7 @@ def _ledger_by_concept(by_id: dict, *, owner: str, scope: str, cfg, store) -> di
             {"ids": pkns.keys(owner, ids), "owner": owner}) or []
         title = {r["id"]: (r.get("title") or r["id"]) for r in got}
     finally:
-        if owns and store is not None:
+        if owns:
             store.close()
     rows = []
     for cid in ids:
@@ -677,6 +680,9 @@ def ledger_drilldown(*, owner: str, domain: str, mark: str, seed: str | None = N
     owns = store is None
     if owns:
         store = open_store(cfg)
+    if store is None:
+        base["note"] = "no reachable store"
+        return base
     try:
         rows = store.run(
             "MATCH (c:Concept) WHERE c.concept_id IN $ids AND c.owner_id = $owner "
@@ -689,5 +695,5 @@ def ledger_drilldown(*, owner: str, domain: str, mark: str, seed: str | None = N
         base.update(executed=True, items=items, total=len(items))
         return base
     finally:
-        if owns and store is not None:
+        if owns:
             store.close()
