@@ -29,7 +29,7 @@ The tool rule is new in 0.1.7; 0.1.6 did not apply `disallowed_tools`. With `exp
 
 ## Helpers
 
-The functions take an `AsyncVincClient` first and are awaited.
+The functions take an `AsyncVincClient` first and are awaited. A function that wraps a client method passes the keyword arguments it does not name straight to that method, so it takes exactly the method's parameters.
 
 | Helper | Parameters | What it does |
 |---|---|---|
@@ -38,7 +38,7 @@ The functions take an `AsyncVincClient` first and are awaited.
 | `create_vinc_tools` | `client`, `max_chars`, `cap=None` (a `ToolCallCap`) | the read only tools `vinc_brief` and `vinc_search` |
 | `prefetch` | `client`, `role_id`, `task`, `space`, `max_chars`, `pin` | the role's required reading and task evidence |
 | `record_episode` | `client`, `title`, `summary`, `about`, `date`, `domain`, `tags`, `space`, `episode_id`, `create_only`, `operation_id` | one Episode, `vinc_sk_` key |
-| `write_package` | `client`, `question`, `conclusion`, `claims`, `produced_by`, `run_id`, `space` (required), `package_id`, `create_only`, `operation_id` | one handoff Record, `vinc_sk_` key |
+| `write_package` | `client`, `question`, `conclusion`, `claims`, `produced_by`, `run_id`, `space` (required), `title`, `package_id`, `create_only`, `operation_id` | one handoff Record, `vinc_sk_` key |
 | `run_review` | `agent`, `messages`, `native_structured=True`, `options` | a `ReviewOutput` with one parse retry |
 | `VincOutputGateMiddleware` | `gate`, `evidence` | checks the final response of a non streaming run |
 | `VincPersonOnlyExecutor` | `gate`, `role_id`, `run_id`, `evidence`, `id` | an approval executor with a native `request_info` event |

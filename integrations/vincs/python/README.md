@@ -271,7 +271,8 @@ record_run(Vinc(api_key=WRITE_KEY), run_id, role=role["id"], outcome="success",
 
 `record_episode`, `write_package` and the `a` prefixed async forms take the
 LangGraph adapter's parameters and send the same bodies; so do `prefetch` and
-`get_vinc_package_context`.
+`get_vinc_package_context`. Each passes the keyword arguments it does not name
+straight to the client method, so `write_package` also takes `title`.
 
 Where CrewAI behaves differently from the other two adapters:
 
@@ -351,7 +352,10 @@ The LangGraph and Agent Framework adapters are the exception to step 1. Their
 source stays in `integrations/langgraph/python` and
 `integrations/agent-framework/python`, because `vinc-langgraph` and
 `vinc-agent-framework` still publish from it, and `hatch_build.py` copies it in
-at build time with its `vinc_client` imports pointed at `vinc.sdk`.
+at build time with its `vinc_client` imports pointed at `vinc.sdk`. The hook does the same
+for the bundled CLI runtime, at any indentation, and stops the build on a `vinc_client` import it cannot
+point at `vinc.sdk` (a bare `import vinc_client`, or one inside a string). `tests/test_wheel_imports.py`
+scans every module of the installed wheel for what is left.
 
 ## Versions
 

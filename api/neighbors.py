@@ -11,6 +11,9 @@
 두 이름은 같은 객체다. 여기 함수가 부르는 이름(`execute`·`seed_lookup_plan`·`near_nodes`·계획 함수)은
 이 모듈에서 찾으므로, `neighbors()` 안의 호출을 바꾸려면 `api.query` 가 아니라 이 모듈의 이름을 패치한다.
 
+스토어를 안 받으면 `_store_scope`(`api/query_base.py`)가 열고 닫는다. 열 수 없을 때의 규칙: 읽기는 `executed:False`
+에 `note` 만 싣는다(`node_edges`). `_domain_neighbors` 만 읽기인데도 `error` 를 같이 싣는다.
+
 이 모듈은 `api.query` 를 import 하지 않는다. 바닥은 `api/query_base.py`, 존재 조회 계획은
 `api/graph_read.py` 에서 읽는다(`tests/core/test_neighbors.py` 가 둘을 본다).
 """
@@ -30,6 +33,7 @@ from .query_base import (
     _SEMANTIC_PK,
     _bridge_owner_pred,
     _seed_table,
+    _store_scope,
     _track_cols,
     execute,
     near_nodes,
@@ -219,13 +223,10 @@ def _domain_neighbors(node: str, *, owner: str | None, limit: int | None,
                           "스코프 없이 펼치면 남의 하위 도메인이 노출된다")
         return base
     cfg = cfg or load_config()
-    owns = store is None
-    if owns:
-        store = open_store(cfg)
-    if store is None:
-        base["note"] = base["error"] = "no reachable store"
-        return base
-    try:
+    with _store_scope(store, cfg, open_store) as store:
+        if store is None:
+            base["note"] = base["error"] = "no reachable store"
+            return base
         params = {"domain": domain, "owner": owner}
         members = store.run(domain_hierarchy.members_cypher(), params) or []
         kids = store.run(domain_hierarchy.child_domains_cypher(), params) or []
@@ -253,9 +254,6 @@ def _domain_neighbors(node: str, *, owner: str | None, limit: int | None,
                            "from the `domain` field on your nodes — set it (e.g. "
                            f"'{domain}/subtopic') and the hierarchy follows.")
         return out
-    finally:
-        if owns:
-            store.close()
 
 
 def neighbors(node: str, *, owner: str | None = None, limit: int = 50,
@@ -411,16 +409,13 @@ def node_edges(node: str | None = None, *, nodes: list[str] | None = None,
         grouped.setdefault(label, []).append(domain if domain else pkns.key(owner, nid))
     params = {"owner": owner, **{label: values for label, values in grouped.items()}}
     cfg = cfg or load_config()
-    owns = store is None
-    if owns:
-        store = open_store(cfg)
-    if store is None:
-        return {**base, "note": "no reachable store"}
+    with _store_scope(store, cfg, open_store) as store:
+        if store is None:
+            return {**base, "note": "no reachable store"}
 
-    def read(cypher, args):
-        return execute(QueryPlan("edges", cypher, args), cfg, store=store)
+        def read(cypher, args):
+            return execute(QueryPlan("edges", cypher, args), cfg, store=store)
 
-    try:
         visible: set[str] = set()
         if "Domain" in grouped:
             # Domain은 무소유 좌표다. 소유한 노드를 기준으로 범위를 좁혀
@@ -506,6 +501,3 @@ def node_edges(node: str | None = None, *, nodes: list[str] | None = None,
                 **({"node": node, "found": node in found} if node is not None else {}),
                 "edges": edges[:limit], "count": len(edges),
                 "edges_truncated": len(edges) > limit}
-    finally:
-        if owns:
-            store.close()

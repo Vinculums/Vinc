@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from api import fragment, roles as role_read
-from vinc_mcp import roles, tools
+from vinc_mcp import roles, toolcall, tools
 from test_decision_type import _fresh_store, _restore
 
 OWNER = 'user:u1'
@@ -289,7 +289,7 @@ def test_an_invalid_rev_pin_is_refused_before_any_read(rev):
     # 지나므로 핸들러가 정수만 받는다.
     if isinstance(rev, bool) or rev == -1:
         with pytest.raises(tools.InvalidArgument):
-            tools.call('vinc_role', {'role':'agent-maker', 'expected_rev':rev}, _Never())
+            toolcall.call('vinc_role', {'role':'agent-maker', 'expected_rev':rev}, _Never())
     else:
         result = tools.call('vinc_role', {'role':'agent-maker', 'expected_rev':rev}, _Never())
         assert result['error'] == 'invalid_role_pin'

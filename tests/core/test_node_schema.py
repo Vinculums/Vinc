@@ -2,7 +2,7 @@
 """`api.node_schema` 가 스키마 상수의 정본이고, 옛 사설 이름은 같은 객체를 가리키는가.
 
 잠그는 것:
-- `api.fragment` 의 사설 이름(`_NODE_MAP` …)과 `api.docstore._norm_content_time`,
+- `api.fragment` 의 사설 이름(`_NODE_MAP`·`_split_subject` …)과 `api.docstore._norm_content_time`,
   `api.query`(`api.query_base`)의 `_OWNER_SCOPED_LABELS` 가 `api.node_schema` 의 공개
   이름과 **같은 객체**다. 사본이 생기면 한쪽만 고친 값이 조용히 갈라진다.
 - `api.node_schema` 는 잎이다: 표준 라이브러리 밖의 모듈을 import 하지 않는다.
@@ -39,6 +39,8 @@ ALIASES = (
     (fragment, "_KEPT_FIELDS", "KEPT_FIELDS"),
     (fragment, "_CONTRACT_FIELDS", "CONTRACT_FIELDS"),
     (fragment, "_INTERVAL_FIELDS", "INTERVAL_FIELDS"),
+    (fragment, "_split_subject", "split_subject"),
+    (fragment, "_norm_subject_path", "normalize_subject_path"),
     (docstore, "_norm_content_time", "normalize_time"),
     (query_base, "_OWNER_SCOPED_LABELS", "OWNER_SCOPED_LABELS"),
     (query, "_OWNER_SCOPED_LABELS", "OWNER_SCOPED_LABELS"),

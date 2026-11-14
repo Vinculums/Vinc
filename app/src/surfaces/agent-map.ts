@@ -8,10 +8,11 @@
 import { api, cfg, isCommunitySpace, isWriteConflict } from "../api";
 import { COPY } from "../copy";
 import { esc } from "../components";
+import { AGENT_ID_PREFIX, POLICY_ID_PREFIX, PROCEDURE_ID_PREFIX } from "../agent-ids";
 import { edgeKindOf } from "../view-prefs";
 import { palette as signal, hexStr } from "../theme";
 import { planColour } from "../view-tint";
-import { layoutMap, mapHeight, policySlug, type MapAgent, type MapPolicy, type MapProcedure, type Props } from "../agent-ontology";
+import { idSlugOf, layoutMap, mapHeight, policySlug, type MapAgent, type MapPolicy, type MapProcedure, type Props } from "../agent-ontology";
 import type { AgentRole } from "../agent-roster";
 import { announceRolesChanged } from "../role-composer";
 
@@ -71,7 +72,7 @@ async function readAgentMap(roles: AgentRole[]): Promise<MapData | null> {
   try {
     const tree: any = await api.navTree(cfg.owner, { nodes: true, kind: "decision" });
     const loose = ([] as any[]).concat(...((tree?.domains || []).map((d: any) => d.nodes || [])), tree?.unfiled || [])
-      .map((n: any) => String(n?.id || "")).filter((id: string) => id.startsWith("decision:policy-") && !policies.has(id));
+      .map((n: any) => String(n?.id || "")).filter((id: string) => id.startsWith(POLICY_ID_PREFIX) && !policies.has(id));
     const got = await Promise.all(loose.map((id: string) => api.nodeContext(cfg.owner, id, 1).catch(() => null)));
     got.forEach((n: any, i: number) => {
       if (n && n.executed !== false) policies.set(loose[i], { id: loose[i], title: String(n.title || policySlug(loose[i])),
@@ -318,8 +319,7 @@ export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: 
   };
   // 만들기 쓰기는 노드가 실제로 들어갔는지로 판정한다(경고는 안내일 수 있다: 막 만든 정책은 아직 붙은 절차가 없어 'about 엣지 없음'을 알린다)
   const wrote = (r: any) => r?.executed !== false && ((r?.merged?.nodes?.created || 0) + (r?.merged?.nodes?.matched || 0)) > 0;
-  const slugOf = (t: string) => t.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
-  const freshId = (prefix: string, title: string, taken: Set<string>) => { const base = slugOf(title) || Date.now().toString(36); let id = prefix + base, k = 2;
+  const freshId = (prefix: string, title: string, taken: Set<string>) => { const base = idSlugOf(title) || Date.now().toString(36); let id = prefix + base, k = 2;
     while (taken.has(id)) id = `${prefix}${base}-${k++}`; return id; };
   const known = new Set([...data.agents, ...data.procedures, ...data.policies].map((x) => x.id));
   function openAdd(kind: string) {
@@ -340,7 +340,7 @@ export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: 
       try {
         if (kind === "add-agent") {
           // Agent = 절차 목록을 가진 역할(concept:agent-*). 처음엔 절차가 없다
-          const id = freshId("concept:agent-", name, known), dom = data.agents[0]?.domain || "vinc/agent";
+          const id = freshId(AGENT_ID_PREFIX, name, known), dom = data.agents[0]?.domain || "vinc/agent";
           // 새 Agent 는 곧바로 로스터에 든다: 실행 계약이 막지 않게 필수 검사 셋과 빈 목록을 처음부터 싣는다(이름 · 하는 일은 옆 칸에서 채운다)
           const seed = { procedures: [], mission: "", tier: "execute", never: [], person_only: [],
             gates: [{ id: "person_only", check: { type: "person_only" }, on_fail: "interrupt" }, { id: "side_effect_evidence", check: { type: "side_effect_evidence" }, on_fail: "block" },
@@ -352,7 +352,7 @@ export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: 
         } else if (kind === "add-proc") {
           // 절차를 만들고 그 Agent 의 절차 목록 끝에 붙인다(목록은 통째로 보낸다: 배열은 합쳐지지 않는다)
           const agentId = f.querySelector<HTMLSelectElement>('[name="agent"]')?.value || data.agents[0].id, a = ag.get(agentId)!;
-          const id = freshId("concept:procedure-", name, known);
+          const id = freshId(PROCEDURE_ID_PREFIX, name, known);
           const r: any = await api.ingestFragment({ owner: cfg.owner, create_only: true, nodes: [{ id, type: "concept", title: name, domain: a.domain || "vinc/agent", props: { kind: "procedure", agent: agentId } }], edges: [] });
           if (isWriteConflict(r)) throw new Error("conflict");
           if (!wrote(r)) throw new Error("write");
@@ -363,7 +363,7 @@ export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: 
           picked = { kind: "procedure", id };
         } else {
           // 정책 = decision:policy-*. 처음엔 막는 것도 다스리는 절차도 없다(카드에서 채운다)
-          const id = freshId("decision:policy-", name, known), dom = data.policies[0]?.domain || data.agents[0]?.domain || "vinc/agent";
+          const id = freshId(POLICY_ID_PREFIX, name, known), dom = data.policies[0]?.domain || data.agents[0]?.domain || "vinc/agent";
           const r: any = await api.ingestFragment({ owner: cfg.owner, create_only: true, nodes: [{ id, type: "decision", title: name, domain: dom, props: { rule: { disallowed_tools: [], capabilities: { deny: [] } } } }], edges: [] });
           if (isWriteConflict(r)) throw new Error("conflict");
           if (!wrote(r)) throw new Error("write");

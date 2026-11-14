@@ -26,7 +26,6 @@ import os
 import pathlib
 import shutil
 import stat
-import subprocess
 import sys
 import time
 import urllib.request
@@ -41,14 +40,6 @@ sys.path.insert(0, str(ROOT))   # 채점용 토크나이저·전송이 코어 �
 UNION_POOL = 5
 #: 경로 사이에 같아야 하는 필드 — 채점이 쓰는 것 전부.
 PARITY_KEYS = ("status", "node", "rank", "union_rank", "unreadable", "fell_through")
-
-
-def _commit() -> str:
-    try:
-        return subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
-                              capture_output=True, text=True).stdout.strip()
-    except OSError:
-        return ""
 
 
 def _flags() -> dict:
@@ -245,7 +236,7 @@ def main(argv: list[str] | None = None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     fp = runtime.fingerprint()
     header: dict = {"kind": "eval.nodes.v2", "at": dt.datetime.now(dt.timezone.utc).isoformat(),
-                    "commit": _commit(), "flags": _flags(), "runtime": fp,
+                    "commit": runtime.git_head(ROOT), "flags": _flags(), "runtime": fp,
                     "constants": _constants(),
                     "openapi_sha256": runtime.file_sha256(ROOT / "vinc_mcp/openapi_v1.json")}
     base = None

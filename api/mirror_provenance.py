@@ -12,6 +12,7 @@ from hashlib import sha256
 from engines.mentions_link import MENTIONS_RULE, compute_links
 from store import pkns
 from store.envflag import truthy_strict
+from store.querybase import DOC_MIRROR_PREFIX, doc_id_of
 
 MAX_MIRRORS = 32
 MAX_CHUNKS = 256
@@ -25,8 +26,8 @@ def graph_with_mirror_review(*, review_mirror=False, **kwargs):
     if type(review_mirror) is not bool:
         raise ValueError("review_mirror must be a boolean")
     seed = kwargs.get("seed") or ""
-    if review_mirror and (not isinstance(seed, str) or not seed.startswith("concept:doc.")
-                          or not seed[len("concept:doc."):] or pkns.SEP in seed):
+    if review_mirror and (not isinstance(seed, str) or not seed.startswith(DOC_MIRROR_PREFIX)
+                          or not doc_id_of(seed) or pkns.SEP in seed):
         raise ValueError("review_mirror requires one exact logical concept:doc.<doc_id> seed")
     if review_mirror and (kwargs.get("store") is None or not kwargs.get("owner")):
         raise ValueError("mirror review requires an existing reader and explicit owner")
@@ -65,9 +66,9 @@ def review_mirrors(store, *, owner: str, isolated_mirror_ids: list[str],
     if len(set(isolated_mirror_ids)) != len(isolated_mirror_ids):
         raise ValueError("duplicate mirror IDs")
     for mid in isolated_mirror_ids:
-        if not isinstance(mid, str) or not mid.startswith("concept:doc.") or pkns.SEP in mid:
+        if not isinstance(mid, str) or not mid.startswith(DOC_MIRROR_PREFIX) or pkns.SEP in mid:
             raise ValueError("logical concept:doc.<doc_id> IDs required")
-        if not mid[len("concept:doc."):]:
+        if not doc_id_of(mid):
             raise ValueError("empty source document ID")
     findings = [_review_one(store, owner, mid, max_chunks) for mid in isolated_mirror_ids]
     return {"kind": "mirror.provenance.review", "read_only": True,
@@ -84,7 +85,7 @@ def _review_one(store, owner, mid, cap):
                     "RETURN n.concept_id AS concept_id, n.title AS title, "
                     "n.stem AS stem, n.source_file AS source_file")
     mirrors = store.run(mirror_query, params) or []
-    base = {"mirror_id": mid, "doc_id": mid[len("concept:doc."):],
+    base = {"mirror_id": mid, "doc_id": doc_id_of(mid),
             "classification": "incomplete_or_unverified_evidence"}
     if not mirrors:
         return dict(base, reason="mirror unavailable in owner scope")

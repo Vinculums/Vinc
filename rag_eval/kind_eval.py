@@ -44,6 +44,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from rag_eval.evalkit.stats import boot_means   # noqa: E402
+
 #: 노드 종류 → (라벨, PK 열). 목록 정답과 대체 계보를 읽을 때 쓴다.
 LABELS = {"concept": ("Concept", "concept_id"), "record": ("Record", "record_id"),
           "decision": ("Decision", "decision_id"), "episode": ("Episode", "episode_id")}
@@ -200,9 +202,7 @@ def bootstrap_mean(xs: list[float], n: int = 2000, seed: int = 0) -> list[float]
     """평균의 백분위 부트스트랩 95% 구간. 표본이 없으면 빈 목록."""
     if not xs:
         return []
-    rnd = random.Random(seed)
-    m = len(xs)
-    means = sorted(sum(xs[rnd.randrange(m)] for _ in range(m)) / m for _ in range(n))
+    means = boot_means(xs, n, random.Random(seed))
     return [round(means[int(0.025 * n)], 4), round(means[int(0.975 * n) - 1], 4)]
 
 

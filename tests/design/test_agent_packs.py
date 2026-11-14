@@ -27,7 +27,6 @@ sys.path.insert(0, str(ROOT / "starter-packs" / "tools"))
 
 import validate_pack                     # noqa: E402
 from api import fragment as frag         # noqa: E402
-from api import query                    # noqa: E402
 from engines import domain_hierarchy     # noqa: E402
 from vinc_mcp import roles               # noqa: E402
 from vinc_mcp.bridge import Bridge       # noqa: E402
@@ -323,12 +322,12 @@ class DefaultPackAndTheFreeCap(unittest.TestCase):
     def test_the_default_pack_lands_in_a_graph_whose_topic_cap_is_full(self):
         """무료 그래프가 이미 다섯 주제라도 기본 팩은 들어간다 — 그 주제는 제품의 것이다."""
         full = {"work", "research", "home", "study", "family"}
-        with mock.patch.object(query, "domain_names", lambda **kw: set(full)):
+        with mock.patch.object(frag, "domain_names", lambda **kw: set(full)):
             denial = frag._domain_gate(_nodes(DEFAULT), store=object(), owner="user:new",
                                        max_domains=5)
         self.assertIsNone(denial)
         # 그리고 그 뒤에도 사용자의 다섯은 그대로 다섯이다: 여섯째 일반 주제만 막힌다.
-        with mock.patch.object(query, "domain_names", lambda **kw: set(full) | {roles.DOMAIN}):
+        with mock.patch.object(frag, "domain_names", lambda **kw: set(full) | {roles.DOMAIN}):
             denial = frag._domain_gate([{"id": "concept:x", "type": "concept", "domain": "sixth"}],
                                        store=object(), owner="user:new", max_domains=5)
         self.assertTrue(denial and denial["current"] == 5)

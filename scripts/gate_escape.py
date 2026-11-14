@@ -8,9 +8,11 @@
 오늘 그것이 코드 실행이 아닌 이유는 CSP 에 `script-src` 가 없고 `withGlobalTauri:false`
 이기 때문이다. **즉 그 두 설정이 하중을 받고 있다.** 하중을 받는 것은 게이트로 고정한다.
 
-범위를 `view*.ts` 로 좁힌 것은 의도다: 거기가 그래프 값이 흐르는 표면이고, 넓히면
-정적 COPY 라벨(탭·명령·모드)까지 걸려 거짓 양성이 진짜를 덮는다. 무시당하는 게이트는
-게이트가 아니다.
+범위는 `app/src` 아래 모든 `.ts` 다. 그래프 값은 그래프 표면 밖(문서 편집기·시트·에이전트
+화면·첫 실행·명령 팔레트)에서도 템플릿으로 들어간다. 정적 COPY 라벨이 필드 이름처럼 읽혀
+걸리는 줄은 `ALLOW` 에 (파일, 줄)과 이유를 적어 하나씩 푼다. 파일 통째로 풀지 않는다:
+그 파일에 나중에 들어오는 진짜 구멍까지 덮기 때문이다. 거짓 양성이 진짜를 덮으면 게이트는
+무시당한다.
   근거: [[decision:escape-once-at-the-boundary]]
 """
 from __future__ import annotations
@@ -22,7 +24,8 @@ try:
     from scripts._root import ROOT
 except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
     from _root import ROOT
-SURFACES = sorted((ROOT / "app" / "src" / "surfaces").glob("view*.ts"))
+APP_SRC = ROOT / "app" / "src"
+FILES = sorted(APP_SRC.rglob("*.ts"))
 
 #: 그래프에서 온 값. `.tags`·`.title` 처럼 **필드 접근**만 본다(지역 변수명은 안 본다).
 #  \w* 는 접두사를 흡수한다 — 실제로 놓쳤던 것이 s.shared_tags 였다.
@@ -43,10 +46,31 @@ INTERP = re.compile(r"\$\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}")
 #: 템플릿 리터럴이 닫히는 줄(대략적이지만 이 파일들에선 충분하다).
 CLOSES = re.compile(r"`\s*(\)\s*)?;\s*$")
 
+#: 읽어서 안전한 줄. 키는 (리포 기준 경로, 앞뒤 공백을 뺀 줄 전체)이고 값은 안전한 이유다.
+#: 줄의 글자가 바뀌면 키가 맞지 않아 다시 걸린다 — 고친 사람이 다시 읽게 하려는 것이다.
+#: 새 항목은 값이 어디서 오는지 읽고 적는다. 줄을 지나는 값이 그래프에서 온 것이면 여기가 아니라
+#: 코드에서 `esc()` 로 고친다. 시험(`test_allow_entries_are_live`)이 죽은 항목을 막는다.
+ALLOW: dict[tuple[str, str], str] = {
+    ("app/src/agent-writes.ts",
+     '? `${A.relation(i.type || "")} → ${i.title}` : i.title)}</button>'):
+        "앞 줄의 `${esc(` 가 이 삼항 전체를 감싼다. 줄이 나뉘어 이 게이트 눈에만 안 보인다",
+    ("app/src/firstrun.ts", '<h1 class="si-title" id="signin-title">${c.title}</h1>'):
+        "c 는 COPY.firstRun 이다. 정적 문구라 그래프 값이 아니다",
+    ("app/src/main.ts", '<span>${c.label}</span><span class="hint">${c.hint}</span>'):
+        "c 는 COMMANDS 의 항목이고 label·hint 는 전부 COPY 문구와 고정 글자다",
+    ("app/src/node-basics.ts", '${f("nb-title", A.fTitle, cur.title)}'):
+        "f 가 안에서 label·value·placeholder·hint 를 전부 esc() 한다",
+    ("app/src/node-basics.ts", '${f("nb-tags", A.fTags, cur.tags.join(", "), "", A.tagsHint, !extras.ok)}'):
+        "f 가 안에서 label·value·placeholder·hint 를 전부 esc() 한다",
+}
 
-def scan_lines(label: str, lines: list[str]) -> list[str]:
+
+def scan_lines(label: str, lines: list[str],
+               allow: dict[tuple[str, str], str] | None = None) -> list[str]:
     """한 파일치를 훑는다. 파일 읽기와 분리해 둔 것은 **테스트가 고치기 전 코드를 먹여**
-    이 게이트가 진짜로 그 버그를 잡는지 증명할 수 있게 하려는 것이다."""
+    이 게이트가 진짜로 그 버그를 잡는지 증명할 수 있게 하려는 것이다.
+    `allow` 를 빈 사전으로 주면 허용 없이 훑는다(허용 항목이 아직 살아 있는지 보는 시험용)."""
+    allowed = ALLOW if allow is None else allow
     bad: list[str] = []
     live = False
     for n, line in enumerate(lines, 1):
@@ -55,7 +79,8 @@ def scan_lines(label: str, lines: list[str]) -> list[str]:
         if live:
             for m in INTERP.finditer(line):
                 seg = m.group(0)
-                if FIELD.search(seg) and not SAFE.search(seg):
+                if FIELD.search(seg) and not SAFE.search(seg) \
+                        and (label, line.strip()) not in allowed:
                     bad.append("%s:%d  %s" % (label, n, seg[:70]))
         if live and CLOSES.search(line):
             live = False
@@ -64,7 +89,7 @@ def scan_lines(label: str, lines: list[str]) -> list[str]:
 
 def scan() -> list[str]:
     bad: list[str] = []
-    for path in SURFACES:
+    for path in FILES:
         bad += scan_lines(path.relative_to(ROOT).as_posix(),
                           path.read_text(encoding="utf-8").split("\n"))
     return bad
@@ -77,8 +102,9 @@ def main() -> int:
         for b in bad:
             print("  " + b)
         print("\n  고치는 법: `esc()` 로 감싼다(components.ts 에서 import). 속성값에도 쓸 수 있다.")
+        print("  정적 문구라 안전하면 ALLOW 에 (파일, 줄)과 이유를 적는다.")
         return 1
-    print("[gate_escape] PASS — 그래프 표면 %d개, 이스케이프 누락 0건" % len(SURFACES))
+    print("[gate_escape] PASS — app/src 파일 %d개, 이스케이프 누락 0건(허용 %d줄)" % (len(FILES), len(ALLOW)))
     return 0
 
 

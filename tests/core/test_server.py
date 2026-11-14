@@ -105,19 +105,28 @@ class _EmptyStore:
     def close(self): pass
 
 
+#: CLI 쪽 읽기·쓰기가 스토어를 여는 모듈 전부. 모듈마다 `open_store` 를 부르거나 `_store_scope` 에 넘기는데,
+#: 어느 쪽이든 이름은 그 모듈의 이름공간에서 찾으므로 하나라도 빠지면 그 모듈은 대역 대신 실제 스토어를
+#: 연다. `api.query` 는 `open_store` 를 스스로 읽지 않지만 `api/preference.py` 가 `query.open_store` 로
+#: 읽는다. 이 표가 실제 읽는 모듈과 같은지는 :class:`CliStoreOpenersTests` 가 본다.
+CLI_OPENERS = (
+    "api.brief", "api.decide_read", "api.diagnose", "api.graph_edit", "api.merge_candidates",
+    "api.nav", "api.neighbors", "api.node_read", "api.query", "store.querybase",
+    "vinc_rag.retrieval",
+)
+
+
 @contextlib.contextmanager
 def cli_store(store):
     """CLI 쪽(별도 프로세스 모형)이 열 스토어를 못박는다 — 게이트① 동등성 대조용.
 
     사이드카는 공유 스토어를 들고 있고 CLI 는 매 호출 자기가 연다. 동등성을 보려면
     **양쪽이 같은 내용을 읽어야** 하는데, 임베디드 DB 는 단일 writer 라 실파일로는
-    동시에 못 연다. 그래서 CLI 가 여는 지점(`api.query.open_store`)을 서버에 주입한
-    것과 같은 대역으로 바꾼다. 여는 지점은 셋이다 — `execute` 는 `store.querybase` 에서,
-    검색 코어는 `vinc_rag.retrieval` 에서 `open_store` 를 찾는다(VIN-243)."""
-    import api.query as _query
-    import store.querybase as _base
-    import vinc_rag.retrieval as _retrieval
-    mods = (_query, _base, _retrieval)
+    동시에 못 연다. 그래서 CLI 가 여는 지점을 서버에 주입한 것과 같은 대역으로 바꾼다.
+    여는 지점은 :data:`CLI_OPENERS` 의 모듈마다 하나씩이다 — 각 모듈이 `open_store` 를
+    자기 이름공간에서 찾는다."""
+    import importlib
+    mods = [importlib.import_module(name) for name in CLI_OPENERS]
     old = [m.open_store for m in mods]
     for m in mods:
         m.open_store = lambda *a, **k: store
@@ -126,6 +135,95 @@ def cli_store(store):
     finally:
         for m, o in zip(mods, old):
             m.open_store = o
+
+
+class CliStoreOpenersTests(unittest.TestCase):
+    """`cli_store` 가 CLI 쪽 여는 지점을 빠짐없이 덮는가.
+
+    `api/query.py` 는 이름을 다시 내보낼 뿐 `open_store` 를 스스로 읽지 않는다. 읽어서 여는 쪽은
+    다시 내보내는 모듈들이고(직접 부르거나 `_store_scope` 에 넘긴다), 각자 제 이름공간에서 이름을 찾는다. 대역을 `api.query` 와
+    `store.querybase` 에만 걸면 나머지 모듈은 시험이 초록인 채로 실제 스토어를 연다."""
+
+    @staticmethod
+    def _openers() -> set[str]:
+        """`open_store` 를 실제로 읽는 모듈 이름: `api/query.py` 가 다시 내보내는 모듈 중 자기 이름공간의
+        `open_store` 를 부르거나 `_store_scope` 에 넘기는 것(이름을 읽는 모든 자리), 그리고
+        `query.open_store` 를 속성으로 읽는 모듈이 있으면 `api.query`."""
+        import ast
+        import api.query as query_module
+        root = Path(query_module.__file__).resolve().parents[1]
+        tree = ast.parse(Path(query_module.__file__).read_text(encoding="utf-8"))
+        sources = set()
+        for node in tree.body:
+            if isinstance(node, ast.ImportFrom):
+                if node.level == 1 and node.module:
+                    sources.add(f"api.{node.module}")
+                elif node.level == 0 and node.module in ("store.querybase", "vinc_rag.retrieval"):
+                    sources.add(node.module)
+        found = set()
+        for name in sorted(sources):
+            path = root.joinpath(*name.split(".")).with_suffix(".py")
+            module = ast.parse(path.read_text(encoding="utf-8"))
+            if any(isinstance(n, ast.Name) and n.id == "open_store" and isinstance(n.ctx, ast.Load)
+                   for n in ast.walk(module)):
+                found.add(name)
+        for path in sorted((root / "api").glob("*.py")):
+            module = ast.parse(path.read_text(encoding="utf-8"))
+            if any(isinstance(n, ast.Attribute) and n.attr == "open_store"
+                   and isinstance(n.value, ast.Name) and n.value.id in ("query", "_query", "q")
+                   for n in ast.walk(module)):
+                found.add("api.query")
+        return found
+
+    def test_the_table_is_exactly_the_modules_that_read_open_store(self):
+        self.assertEqual(set(CLI_OPENERS), self._openers())
+
+    @staticmethod
+    def _public_calls():
+        """모듈 이름 -> 스토어를 안 받은 채 그 모듈의 `open_store` 를 거치는 공개 호출."""
+        from api import (brief, decide_read, diagnose, graph_edit, merge_candidates, nav,
+                         neighbors, node_read, preference)
+        from store import querybase
+        from vinc_rag import retrieval
+        owner = "user:opener"
+        return {
+            "api.brief": lambda: brief.brief("x", owner=owner),
+            "api.decide_read": lambda: decide_read.decide_paths(["repo:path"], owner=owner),
+            "api.diagnose": lambda: diagnose.communities(owner=owner),
+            "api.graph_edit": lambda: graph_edit.owner_stats(),
+            "api.merge_candidates": lambda: merge_candidates.list_merge_rejections(owner=owner),
+            "api.nav": lambda: nav.nav_tree(owner=owner),
+            "api.neighbors": lambda: neighbors.node_edges(node="concept:a", owner=owner),
+            "api.node_read": lambda: node_read._node_context(owner=owner, node="concept:a"),
+            "api.query": lambda: preference.tag("episode:e", ["t"], owner=owner),
+            "store.querybase": lambda: querybase.execute(
+                querybase.QueryPlan("probe", "RETURN 1 AS one", {})),
+            "vinc_rag.retrieval": lambda: retrieval.search("probe", owner=owner),
+        }
+
+    def test_a_public_call_in_each_listed_module_reaches_that_modules_open_store(self):
+        import importlib
+        from unittest import mock
+        calls = self._public_calls()
+        self.assertEqual(set(calls), set(CLI_OPENERS))
+        for name, call in calls.items():
+            seen: list[str] = []
+            module = importlib.import_module(name)
+            with mock.patch.object(module, "open_store", lambda *a, **k: seen.append(name)):
+                try:
+                    call()
+                except Exception:       # 스토어가 없을 때 본문이 어떻게 끝나든 여는 자리만 본다
+                    pass
+            self.assertTrue(seen, f"{name}.open_store 는 이 호출이 거치는 자리가 아니다")
+
+    def test_every_listed_module_gets_the_stand_in_and_gets_its_own_name_back(self):
+        import importlib
+        mods = [importlib.import_module(name) for name in CLI_OPENERS]
+        before = [m.open_store for m in mods]
+        sentinel = object()
+        with cli_store(sentinel):
+            self.assertTrue(all(m.open_store(None) is sentinel for m in mods))
+        self.assertEqual([m.open_store for m in mods], before)
 
 
 class AuthTests(unittest.TestCase):
@@ -404,8 +502,8 @@ class StoreUnavailableReadTests(unittest.TestCase):
     ]
 
     def test_read_routes_refuse_instead_of_answering_empty(self):
-        # `api.query.open_store` 도 막는다 — 안 그러면 조회가 **자기 스토어를 다시
-        # 열어** 우회한다(그게 원래 이 버그가 200 으로 보이던 이유다). 락 충돌
+        # 조회 모듈의 `open_store`(`CLI_OPENERS`)도 막는다 — 안 그러면 조회가 **자기
+        # 스토어를 다시 열어** 우회한다(그게 원래 이 버그가 200 으로 보이던 이유다). 락 충돌
         # 상황에서는 그 재열기도 실패하므로, 이 대역이 실측 상황과 같은 조건이다.
         with cli_store(None), running_server(_app(store=None)) as base:
             for path in self.READ_ROUTES:

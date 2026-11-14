@@ -11,15 +11,14 @@
 import { COPY } from "./copy";
 import { esc } from "./components";
 
-export const GATE_TYPES = ["command_success", "forbidden_actions", "rendered_copy", "person_only", "side_effect_evidence",
+const GATE_TYPES = ["command_success", "forbidden_actions", "rendered_copy", "person_only", "side_effect_evidence",
   "handoff_manifest", "korean_comment_allowed"] as const;
 type GateType = (typeof GATE_TYPES)[number];
 /** 서버가 받는 리포(command_success.repos). 서버의 허용 목록과 같아야 한다. */
-export const GATE_REPOS = ["Vinc", "Vinc-homepage"] as const;
+const GATE_REPOS = ["Vinc", "Vinc-homepage"] as const;
 const ACTIONS = ["merge", "commit", "push", "edit", "sign_off", "deploy", "english_value", "graph_delete", "graph_merge", "migration"] as const;
 const COPY_RULES = ["variable_particle", "em_dash", "second_person", "object_honorific", "english_value"] as const;
 const REQUIRED: Record<string, "block" | "interrupt"> = { person_only: "interrupt", side_effect_evidence: "block", handoff_manifest: "block" };
-const BARE = new Set(["person_only", "side_effect_evidence", "handoff_manifest", "korean_comment_allowed"]);
 const ID_RE = /^[a-z][a-z0-9_]{0,63}$/;
 
 type Check = { type: string; command?: string; repos?: string[]; actions?: string[]; rules?: string[] };
@@ -121,5 +120,3 @@ export function canon(v: unknown): string {
     ? Object.fromEntries(Object.keys(x as object).sort().map((k) => [k, walk((x as Record<string, unknown>)[k])])) : x;
   return JSON.stringify(walk(v ?? []));
 }
-
-export const isBareCheck = (t: string): boolean => BARE.has(t);

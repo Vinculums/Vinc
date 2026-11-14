@@ -12,6 +12,10 @@
 는 그대로다. 두 이름은 같은 객체다. 여기 함수가 부르는 이름(`execute`·`open_store`·`_merge_rejection_rows` 등)은
 이 모듈에서 찾으므로, 그 호출을 바꾸려면 `api.query` 가 아니라 이 모듈의 이름을 패치한다.
 
+스토어를 안 받으면 `_store_scope`(`api/query_base.py`)가 열고 닫는다. 열 수 없을 때의 규칙: 읽기
+(`suggest_merge_candidates`·`list_merge_rejections`)는 `executed:False` 에 `note` 만 싣고, 쓰기(`reject_merge_pair`)는
+`note` 와 `error` 를 같이 싣는다.
+
 이 모듈은 `api.query` 를 import 하지 않는다(`tests/core/test_merge_candidates_module.py` 가 본다).
 """
 from __future__ import annotations
@@ -19,10 +23,9 @@ from __future__ import annotations
 import re
 
 from store.backend import open_store
-from store.config import load_config
-from store.querybase import QueryPlan, execute
+from store.querybase import DOC_MIRROR_PREFIX, QueryPlan, execute
 
-from .query_base import _DOC_CONCEPT_PREFIX
+from .query_base import _store_scope
 
 
 # ── ER 병합 후보 제안 (E-G4) — 조회 전용, 자동 병합 금지(THESIS T1) ────────────
@@ -66,7 +69,7 @@ def _norm_title(title: str) -> tuple[str, frozenset]:
 # `MATCH (c:Concept)` 이라 애초에 안 긁어온다(타입이 생기면 관례는 물러난다).
 def _structural_role(cid: str) -> str:
     """개념 id 의 구조 역할 — ``"doc"`` | ``""``(보통)."""
-    return "doc" if cid.startswith(_DOC_CONCEPT_PREFIX) else ""
+    return "doc" if cid.startswith(DOC_MIRROR_PREFIX) else ""
 
 
 def _is_structural_nonduplicate(a_id: str, b_id: str) -> bool:
@@ -201,19 +204,13 @@ def _merge_rejection_rows(store, owner: str | None) -> list[dict]:
 
 def list_merge_rejections(*, owner: str | None = None, cfg=None, store=None) -> dict:
     """기각된 병합 후보쌍 목록(조회 전용). 반환 {executed, rejections:[…], count}."""
-    owns = store is None
-    if owns:
-        store = open_store(cfg or load_config())
-    try:
+    with _store_scope(store, cfg, open_store) as store:
         if store is None:
             return {"kind": "merge_rejections", "executed": False, "rejections": [],
                     "count": 0, "note": "no reachable store"}
         rows = _merge_rejection_rows(store, owner)
         return {"kind": "merge_rejections", "executed": True,
                 "rejections": [dict(r) for r in rows], "count": len(rows)}
-    finally:
-        if owns and store is not None:
-            store.close()
 
 
 def reject_merge_pair(*, owner: str, a_id: str, b_id: str, note: str = "",
@@ -230,32 +227,27 @@ def reject_merge_pair(*, owner: str, a_id: str, b_id: str, note: str = "",
     if not a_id or not b_id or a_id == b_id:
         base["error"] = base["note"] = "two distinct node ids are required"
         return base
-    owns = store is None
-    if owns:
-        store = open_store(cfg or load_config())
-    try:
-        if store is None:
-            base["error"] = base["note"] = "no reachable store"
-            return base
-        key = rejection_pair_key(owner, a_id, b_id)
-        lo, hi = sorted((a_id, b_id))
-        if undo:
-            store.run("MATCH (r:_MergeRejection) WHERE r.pair_key = $k DELETE r", {"k": key})
-        else:
-            import datetime as _dt
-            ts = _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="milliseconds")
-            store.run(
-                "MERGE (r:_MergeRejection {pair_key: $k}) SET r.owner_id = $o, "
-                "r.a_id = $a, r.b_id = $b, r.rejected_at = $ts, r.note = $n",
-                {"k": key, "o": owner, "a": lo, "b": hi, "ts": ts, "n": str(note or "")})
-        base["executed"] = True
-        base["pair_key"] = key
-        base["count"] = len(_merge_rejection_rows(store, owner))
-    except Exception as exc:
-        base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
-    finally:
-        if owns and store is not None:
-            store.close()
+    with _store_scope(store, cfg, open_store) as store:
+        try:
+            if store is None:
+                base["error"] = base["note"] = "no reachable store"
+                return base
+            key = rejection_pair_key(owner, a_id, b_id)
+            lo, hi = sorted((a_id, b_id))
+            if undo:
+                store.run("MATCH (r:_MergeRejection) WHERE r.pair_key = $k DELETE r", {"k": key})
+            else:
+                import datetime as _dt
+                ts = _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="milliseconds")
+                store.run(
+                    "MERGE (r:_MergeRejection {pair_key: $k}) SET r.owner_id = $o, "
+                    "r.a_id = $a, r.b_id = $b, r.rejected_at = $ts, r.note = $n",
+                    {"k": key, "o": owner, "a": lo, "b": hi, "ts": ts, "n": str(note or "")})
+            base["executed"] = True
+            base["pair_key"] = key
+            base["count"] = len(_merge_rejection_rows(store, owner))
+        except Exception as exc:
+            base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
     return base
 
 
@@ -280,10 +272,7 @@ def suggest_merge_candidates(*, owner: str | None = None, min_score: float = 0.6
     # ⚠ 스토어를 **여기서** 소유한다. `execute(store=None)` 은 자기 커넥션을 열고
     # 닫으므로, 기각 조회에 넘길 store 가 None 으로 남아 필터가 조용히 무동작이 된다.
     # 두 조회가 같은 커넥션을 봐야 한다.
-    owns = store is None
-    if owns:
-        store = open_store(cfg or load_config())
-    try:
+    with _store_scope(store, cfg, open_store) as store:
         res = execute(plan, cfg, store=store)
         if not res.get("executed"):
             return {"kind": "merge_candidates", "executed": False,
@@ -294,9 +283,6 @@ def suggest_merge_candidates(*, owner: str | None = None, min_score: float = 0.6
             res.get("rows", []), min_score=min_score, limit=limit,
             include_structural=include_structural,
             rejected=_merge_rejection_rows(store, owner))
-    finally:
-        if owns and store is not None:
-            store.close()
     return {"kind": "merge_candidates", "executed": True,
             "candidates": det["candidates"], "count": len(det["candidates"]),
             "total": det["total"], "suppressed": det["suppressed"]}

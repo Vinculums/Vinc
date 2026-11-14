@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from vinc_mcp import entitlement                     # noqa: E402
 from vinc_mcp.bridge import Bridge                   # noqa: E402
 from vinc_mcp.http_server import MCPHTTPApp          # noqa: E402
-from vinc_mcp.store import Store                     # noqa: E402
+from vinc_mcp.hub_state import Store                     # noqa: E402
 
 
 class _StubBridge(Bridge):

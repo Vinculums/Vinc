@@ -1,13 +1,13 @@
 // Agent 역할 로스터: 역할 id 판별 · 표시 이름 · 팀 순서, `/graph` 의 역할 노드로 로스터를 짓는 일, LNB 가 마지막으로 읽은 로스터.
 // LNB(Agent 레일) · Agents 보드 · 역할 편집 · 그래프 표면이 여기서 읽는다. 로스터를 다시 읽어 바꾸는 것은 LNB 하나다.
 import type { GraphEdge, GraphNode } from "./api";
+import { AGENT_ID_PREFIX } from "./agent-ids";
 
 /** 새 역할의 기본 주제와 기존 호환 주제. 목록 발견은 이 주제로 제한하지 않는다. */
 export const AGENT_TOPICS = ["agent", "vinc/agent"] as const;
 
-/** 역할 id 접두. 로스터 개념 `concept:agent-orchestration` 은 접두가 같아
+/** 로스터 개념은 역할 id 접두(`AGENT_ID_PREFIX`)가 같아도
  *  역할이 아니다(`vinc_mcp.roles.is_role_id`). */
-const AGENT_ID_PREFIX = "concept:agent-";
 const AGENT_ROSTER_CONCEPT = "concept:agent-orchestration";
 const isRoleId = (id: string): boolean =>
   id.startsWith(AGENT_ID_PREFIX) && id !== AGENT_ROSTER_CONCEPT;

@@ -129,7 +129,7 @@ def _read(bridge, owner: str, tid) -> tuple[str, int, dict]:
     if parsed is None:
         raise TaskError("Failed to retrieve task: Task not found")
     eid, ask = parsed
-    props = run_protocol._load(bridge, owner, eid)
+    props = run_protocol.load(bridge, owner, eid)
     if props is not None and "_error" in props:
         raise RuntimeError(str(props["_error"].get("error") or "run could not be read"))
     if props is None or ask > int(props.get("asks") or 0):
@@ -156,7 +156,7 @@ def get(bridge, owner: str, params: dict, wrap) -> dict:
         question = run_protocol.decision(pending)["question"]
         return _task(props, eid, ask, "input_required", statusMessage=question,
                      inputRequests=input_requests(question))
-    view = run_protocol._view(props, eid)
+    view = run_protocol.view(props, eid)
     return _task(props, eid, ask, "completed", statusMessage=f"The run is {props.get('state')}.",
                  result=wrap(view))
 
@@ -179,7 +179,7 @@ def cancel(bridge, owner: str, params: dict) -> dict:
     eid, ask, props = _read(bridge, owner, params.get("taskId"))
     if _current(props, ask) and props.get("task_cancelled") != ask:
         props["task_cancelled"] = ask
-        failed = run_protocol._saved(bridge, owner, eid, props)
+        failed = run_protocol.saved(bridge, owner, eid, props)
         if failed:
             raise RuntimeError(str(failed.get("error") or "task was not cancelled"))
     return {}

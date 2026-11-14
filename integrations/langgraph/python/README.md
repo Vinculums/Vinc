@@ -31,17 +31,18 @@ The per-run read and the tool rule arrived on PyPI in 0.1.8; 0.1.6 read the role
 ## Helpers
 
 Every helper takes the client first. The `a` prefixed twins take an `AsyncVincClient` and are awaited.
+A helper that wraps a client method passes the keyword arguments it does not name straight to that method, so it takes exactly the method's parameters.
 
 | Helper | Parameters | What it does |
 |---|---|---|
-| `get_vinc_context`, `aget_vinc_context` | `client`, `messages`, `search_fallback=True`, `max_chars`, `max_excerpts=3` | a fenced block for the newest human message, or `None` |
+| `get_vinc_context`, `aget_vinc_context` | `client`, `messages`, `search_fallback=True`, `max_chars`, `max_excerpts=3`, `min_query_chars=3`, `space` | a fenced block for the newest human message, or `None` |
 | `prefetch`, `aprefetch` | `client`, `role_id`, `task`, `space`, `max_chars`, `pin` | the role's required reading and task evidence |
 | `get_vinc_package_context`, `aget_vinc_package_context` | `client`, `package_id`, `space` (required), `max_chars` | a handoff package, rechecked with this key |
 | `build_system_message` | `block`, `base` | a `SystemMessage` with the block added |
 | `last_user_text` | `messages` | the newest human message text |
 | `create_vinc_tools` | `client`, `async_client`, `max_chars` | the read only tools `vinc_brief` and `vinc_search` |
 | `record_episode`, `arecord_episode` | `client`, `title`, `summary`, `about`, `date`, `domain`, `tags`, `space`, `episode_id`, `create_only`, `operation_id` | one Episode, `vinc_sk_` key |
-| `write_package`, `awrite_package` | `client`, `question`, `conclusion`, `claims`, `produced_by`, `run_id`, `space` (required), `package_id`, `create_only`, `operation_id` | one handoff Record, `vinc_sk_` key |
+| `write_package`, `awrite_package` | `client`, `question`, `conclusion`, `claims`, `produced_by`, `run_id`, `space` (required), `title`, `package_id`, `create_only`, `operation_id` | one handoff Record, `vinc_sk_` key |
 | `VincContextMiddleware` | `client`, `async_client`, `api_key`, `base_url`, `space`, `search_fallback=True`, `max_chars`, `max_excerpts=3`, `cache_seconds=60`, `prefetch_role`, `prefetch_max_chars`, `tool_calls_per_run=4`, `prefetch_pin` | context for each `create_agent` model call (`agents` extra) |
 | `PackageProvider` | `package_id`, `space` (required), `client`, `async_client`, `api_key`, `base_url`, `max_chars` | a handoff package for each model call (`agents` extra) |
 | `run_review`, `arun_review` | `model`, `messages`, `native_structured=True`, `config`, `options` | a `ReviewOutput` with one parse retry |

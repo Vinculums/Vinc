@@ -12,8 +12,6 @@ from langchain_core.tools import StructuredTool
 from vinc_client import (AsyncVincClient, VincClient, VincNotFound, VincQuotaExceeded,
                          VincUnavailable, format_brief, format_search)
 from vinc_client.context import DEFAULT_MAX_CHARS
-from vinc_client.package import DEFAULT_PACKAGE_MAX_CHARS
-from vinc_client.prefetch import DEFAULT_PREFETCH_MAX_CHARS
 from vinc_client.doc_tool import aread_document, read_document
 from vinc_client.tools import (BRIEF_DESCRIPTION, BRIEF_NAME, DOC_DESCRIPTION, DOC_NAME,
                                SEARCH_DESCRIPTION, SEARCH_LIMIT_DEFAULT, SEARCH_NAME, BriefArgs,
@@ -38,35 +36,38 @@ def last_user_text(messages: str | Sequence[Any]) -> str:
 
 
 def get_vinc_context(client: VincClient, messages: str | Sequence[Any], *,
-                     search_fallback: bool = True, max_chars: int = DEFAULT_MAX_CHARS,
-                     max_excerpts: int = 3) -> str | None:
+                     search_fallback: bool = True, **fields: Any) -> str | None:
     """A fenced context block for the newest human message, or ``None``.
 
     ``None`` also when Vinc is unavailable or the quota is spent; a key or space
-    problem raises.
+    problem raises. ``fields`` are the other keyword arguments of
+    :meth:`vinc_client.VincClient.get_context` (``max_chars``, ``max_excerpts``,
+    ``min_query_chars``, ``space``). ``search_fallback`` is on here, off in the client.
     """
-    return client.get_context(last_user_text(messages), search_fallback=search_fallback,
-                              max_chars=max_chars, max_excerpts=max_excerpts)
+    return client.get_context(last_user_text(messages), search_fallback=search_fallback, **fields)
 
 
 async def aget_vinc_context(client: AsyncVincClient, messages: str | Sequence[Any], *,
-                            search_fallback: bool = True, max_chars: int = DEFAULT_MAX_CHARS,
-                            max_excerpts: int = 3) -> str | None:
+                            search_fallback: bool = True, **fields: Any) -> str | None:
     """Async :func:`get_vinc_context`."""
     return await client.get_context(last_user_text(messages), search_fallback=search_fallback,
-                                    max_chars=max_chars, max_excerpts=max_excerpts)
+                                    **fields)
 
 
 def get_vinc_package_context(client: VincClient, package_id: str, *, space: str,
-                             max_chars: int = DEFAULT_PACKAGE_MAX_CHARS) -> str:
-    """Read a handoff by id from graph state, checking current source access on every call."""
-    return client.get_package_context(package_id, space=space, max_chars=max_chars)
+                             **fields: Any) -> str:
+    """Read a handoff by id from graph state, checking current source access on every call.
+
+    ``fields`` are :meth:`vinc_client.VincClient.get_package_context`'s other keyword
+    arguments (``max_chars``).
+    """
+    return client.get_package_context(package_id, space=space, **fields)
 
 
 async def aget_vinc_package_context(client: AsyncVincClient, package_id: str, *, space: str,
-                                   max_chars: int = DEFAULT_PACKAGE_MAX_CHARS) -> str:
+                                    **fields: Any) -> str:
     """Async :func:`get_vinc_package_context`; missing packages fail explicitly."""
-    return await client.get_package_context(package_id, space=space, max_chars=max_chars)
+    return await client.get_package_context(package_id, space=space, **fields)
 
 
 def build_system_message(block: str | None, base: SystemMessage | str | None = None
@@ -87,19 +88,18 @@ def build_system_message(block: str | None, base: SystemMessage | str | None = N
     return base.model_copy(update={"content": content})
 
 
-def prefetch(client: VincClient, role_id: str, task: str, *, space: str | None = None,
-             max_chars: int = DEFAULT_PREFETCH_MAX_CHARS, pin: str | None = None) -> str:
+def prefetch(client: VincClient, role_id: str, task: str, **fields: Any) -> str:
     """Fetch a chosen role's reading list and task evidence before a graph model node.
 
-    With ``pin`` a role that changed raises ``VincRoleChanged`` instead.
+    ``fields`` are :meth:`vinc_client.VincClient.prefetch`'s keyword arguments (``space``,
+    ``max_chars``, ``pin``). With ``pin`` a role that changed raises ``VincRoleChanged`` instead.
     """
-    return client.prefetch(role_id, task, space=space, max_chars=max_chars, pin=pin)
+    return client.prefetch(role_id, task, **fields)
 
 
-async def aprefetch(client: AsyncVincClient, role_id: str, task: str, *, space: str | None = None,
-                    max_chars: int = DEFAULT_PREFETCH_MAX_CHARS, pin: str | None = None) -> str:
+async def aprefetch(client: AsyncVincClient, role_id: str, task: str, **fields: Any) -> str:
     """Async :func:`prefetch`."""
-    return await client.prefetch(role_id, task, space=space, max_chars=max_chars, pin=pin)
+    return await client.prefetch(role_id, task, **fields)
 
 
 _DOWN = "Vinc is not available right now ({code}); answer without it."
@@ -227,32 +227,21 @@ def _write_tools(client: VincClient | None, async_client: AsyncVincClient | None
     ]
 
 
-def record_episode(client: VincClient, title: str, *, summary: str = "",
-                   about: Iterable[str] = (), date: str | None = None,
-                   domain: str | None = None, tags: Iterable[str] | None = None,
-                   space: str | None = None, episode_id: str | None = None,
-                   create_only: bool | None = None,
-                   operation_id: str | None = None) -> dict[str, Any]:
+def record_episode(client: VincClient, title: str, **fields: Any) -> dict[str, Any]:
     """Write one Episode about existing concepts or decisions (needs a ``vinc_sk_`` key).
 
+    ``fields`` are :meth:`vinc_client.VincClient.record_episode`'s keyword arguments
+    (``summary``, ``about``, ``date``, ``domain``, ``tags``, ``space``, ``episode_id``,
+    ``create_only``, ``operation_id``).
     Put it in the node that runs after a person resumed an ``interrupt()``.
     Save episode_id in host state before that boundary and reuse it only for this event's retries.
     """
-    return client.record_episode(title, summary=summary, about=about, date=date,
-                                 domain=domain, tags=tags, space=space, episode_id=episode_id,
-                                 create_only=create_only, operation_id=operation_id)
+    return client.record_episode(title, **fields)
 
 
-async def arecord_episode(client: AsyncVincClient, title: str, *, summary: str = "",
-                          about: Iterable[str] = (), date: str | None = None,
-                          domain: str | None = None, tags: Iterable[str] | None = None,
-                          space: str | None = None, episode_id: str | None = None,
-                          create_only: bool | None = None,
-                          operation_id: str | None = None) -> dict[str, Any]:
+async def arecord_episode(client: AsyncVincClient, title: str, **fields: Any) -> dict[str, Any]:
     """Async :func:`record_episode`."""
-    return await client.record_episode(title, summary=summary, about=about, date=date,
-                                       domain=domain, tags=tags, space=space, episode_id=episode_id,
-                                       create_only=create_only, operation_id=operation_id)
+    return await client.record_episode(title, **fields)
 
 
 def record_run(client: VincClient, run_id: str, *, role: str, outcome: str,
@@ -280,23 +269,19 @@ __all__ = ["last_user_text", "get_vinc_context", "aget_vinc_context",
 
 def write_package(client: VincClient, question: str, conclusion: str, *,
                   claims: Iterable[dict[str, Any]], produced_by: str, run_id: str,
-                  space: str, package_id: str | None = None,
-                  create_only: bool | None = None,
-                  operation_id: str | None = None) -> dict[str, Any]:
-    """Explicit producer write; keep it in a graph node reached after review."""
-    return client.write_package(question, conclusion, claims=claims,
-                                produced_by=produced_by, run_id=run_id,
-                                space=space, package_id=package_id,
-                                create_only=create_only, operation_id=operation_id)
+                  space: str, **fields: Any) -> dict[str, Any]:
+    """Explicit producer write; keep it in a graph node reached after review.
+
+    ``fields`` are :meth:`vinc_client.VincClient.write_package`'s other keyword arguments
+    (``title``, ``package_id``, ``create_only``, ``operation_id``).
+    """
+    return client.write_package(question, conclusion, claims=claims, produced_by=produced_by,
+                                run_id=run_id, space=space, **fields)
 
 
 async def awrite_package(client: AsyncVincClient, question: str, conclusion: str, *,
                          claims: Iterable[dict[str, Any]], produced_by: str, run_id: str,
-                         space: str, package_id: str | None = None,
-                         create_only: bool | None = None,
-                         operation_id: str | None = None) -> dict[str, Any]:
+                         space: str, **fields: Any) -> dict[str, Any]:
     """Async :func:`write_package`."""
-    return await client.write_package(question, conclusion, claims=claims,
-                                      produced_by=produced_by, run_id=run_id,
-                                      space=space, package_id=package_id,
-                                      create_only=create_only, operation_id=operation_id)
+    return await client.write_package(question, conclusion, claims=claims, produced_by=produced_by,
+                                      run_id=run_id, space=space, **fields)

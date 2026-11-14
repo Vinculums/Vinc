@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
 """노드 종류·엣지 타입·라벨별 필드 표 — 쓰기·공유·동기화·문서 경로가 같이 읽는 스키마 상수.
+값 형식 검사기 셋(`normalize_time`·`split_subject`·`normalize_subject_path`)도 여기 산다:
+쓰는 쪽과 읽는 쪽이 같은 함수를 불러야 저장한 값과 비교하는 값이 갈라지지 않는다.
 
 이 모듈은 잎이다: 표준 라이브러리 밖에서는 아무것도 import 하지 않는다. 그래서 `api` 의
 어느 모듈이든 지연 import 없이 최상위에서 이 모듈을 읽을 수 있다.
 
 `api/fragment.py` 와 `api/docstore.py` 는 사설 이름(`_NODE_MAP`·`_KEPT_FIELDS`·
-`_norm_content_time` …)을 이 모듈의 이름으로 그대로 가리키므로 두 이름은 같은 객체다.
+`_norm_content_time`·`_split_subject`·`_norm_subject_path` …)을 이 모듈의 이름으로 그대로
+가리키므로 두 이름은 같은 객체다.
 값은 여기서 고친다. 따로 적힌 사본(`sync._REL_TO_FRAGMENT`·`query._OWNER_SCOPED_LABELS`)은
 `tests/core/test_node_schema.py` 가 이 값과 대조하고, 필드 표는
 `tests/core/test_node_field_tables.py` 가 다른 표·실제 열과 대조한다.
@@ -186,3 +189,35 @@ def normalize_time(v: str | None) -> str:
     미지원이고, 불합격은 던지지 않고 **비운다** — 저장은 성공하되 축에서 빠진다."""
     s = str(v or "").strip()
     return s if _TIME_RE.match(s) else ""
+
+
+def split_subject(v: str) -> tuple[str, str]:
+    """`repo:path` → (repo, path). 한정자가 없으면 repo 는 빈 문자열.
+
+    윈도 드라이브 문자(`D:/x`)를 한정자로 오인하지 않는다 — 한 글자짜리는 리포가 아니다."""
+    head, sep, tail = v.partition(":")
+    if not sep or len(head) < 2 or "/" in head:
+        return "", v
+    return head.lower(), tail
+
+
+def normalize_subject_path(v) -> str:
+    r"""`subject_path` 정규화 — 이 값은 **조인 키**다.
+
+    `api\sync.py` · `./api/sync.py` · `/api/sync.py` 가 서로 다른 주제로 남으면
+    "같은 파일을 두고 어긋난 두 주장"을 찾는 질의가 조용히 0건을 낸다. 필드를 두는
+    것만으로 R4 는 성립하지 않는다 — **값이 비교 가능해야** 성립한다. 그래서 여기서
+    한 번 접는다(쓰기 시점 정규화는 `domain` 이 이미 쓰는 처방이다).
+
+    형식은 `repo:path` 다. **경로만으로는 부족하다** — 이 그래프는 리포 셋에 대한
+    기록을 갖는데 `subject_path` 가 리포를 안 담으면 동명 파일 둘이 한 키에 묶여
+    **짝이 아닌 것이 짝으로** 제시된다. 닻이 빠진 것보다 비싼 고장이다
+    ([[record:subject-path-carries-no-repository-so-two-repos-can-collide]]).
+
+    한정자가 없으면 **지어내지 않는다.** 어느 리포인지는 값이 말해야 하고, 서버는
+    모른다. 없는 채로 두고 경고한다."""
+    repo, path = split_subject(str(v or "").strip().replace("\\", "/"))
+    while path.startswith("./"):
+        path = path[2:]
+    path = path.strip().lstrip("/")
+    return f"{repo}:{path}" if repo and path else path

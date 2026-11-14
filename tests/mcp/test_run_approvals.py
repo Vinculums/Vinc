@@ -29,7 +29,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from vinc_mcp import edverify, rest_api, run_protocol, tools  # noqa: E402
+from vinc_mcp import edverify, rest_api, run_protocol, toolcall, tools  # noqa: E402
 from vinc_mcp.bridge import Bridge  # noqa: E402
 from vinc_mcp.http_server import MCPHTTPApp  # noqa: E402
 
@@ -72,7 +72,8 @@ class _Bridge(Bridge):
 
 
 def call(bridge, name, **args):
-    return tools.call(name, args, bridge)
+    # 실행 표면처럼 `toolcall` 의 문으로 부른다: 스키마 검증이 먼저 돈다.
+    return toolcall.call(name, args, bridge)
 
 
 def waiting(bridge, run_id, action="merge", **extra):

@@ -147,6 +147,52 @@ def domains(*, owner: str | None = None, cfg=None, store=None,
     return res
 
 
+def domain_names_plan(*, owner: str | None = None) -> QueryPlan:
+    """소유자의 **주제 이름 집합**(개수·집계 없음).
+
+    :func:`domain_counts_plan` 과 같은 3개 라벨을 보되 카운트를 세지 않는다 —
+    무료 등급 주제 상한이 **매 적재마다** 도는 경로라 집계·정렬이 순수 낭비다.
+
+    라벨 집합을 `domains()` 와 **일부러 일치**시켰다(Episode·Concept·Record·Decision).
+    상한이 다른 집합을 세면 사용자가 `vinc_domains` 로 4개를 보면서 "5개 상한에
+    걸렸다"는 말을 듣게 된다 — 그 불일치가 곧 지원 문의가 된다."""
+    if owner:
+        where_e = "WHERE e.owner_id = $owner AND e.domain IS NOT NULL"
+        where_c = "WHERE c.owner_id = $owner AND c.domain IS NOT NULL"
+        where_r = "WHERE r.owner_id = $owner AND r.domain IS NOT NULL"
+        where_d = "WHERE d.owner_id = $owner AND d.domain IS NOT NULL"
+        params: dict = {"owner": owner}
+    else:
+        where_e = "WHERE e.domain IS NOT NULL"
+        where_c = "WHERE c.domain IS NOT NULL"
+        where_r = "WHERE r.domain IS NOT NULL"
+        where_d = "WHERE d.domain IS NOT NULL"
+        params = {}
+    cypher = (
+        f"MATCH (e:Episode) {where_e} RETURN DISTINCT e.domain AS domain "
+        "UNION ALL "
+        f"MATCH (c:Concept) {where_c} RETURN DISTINCT c.domain AS domain "
+        "UNION ALL "
+        f"MATCH (r:Record) {where_r} RETURN DISTINCT r.domain AS domain "
+        "UNION ALL "
+        f"MATCH (d:Decision) {where_d} RETURN DISTINCT d.domain AS domain"
+    )
+    return QueryPlan("domain_names", cypher, params,
+                     note="주제 이름 집합 (상한 검사용 — 집계 없음)")
+
+
+def domain_names(*, owner: str | None = None, cfg=None, store=None) -> set[str] | None:
+    """소유자가 지금 쓰는 주제 이름 집합. 스토어에 못 닿으면 **None**.
+
+    None 과 빈 집합은 다르다 — 빈 집합은 "주제가 없다"(상한 검사 통과)이고 None 은
+    "모른다"다. 모르는 채로 상한을 따지면 스토어 장애가 곧 전면 쓰기 거부가 된다.
+    호출부가 이 구분을 보고 결정해야 한다."""
+    res = execute(domain_names_plan(owner=owner), cfg, store=store)
+    if not res.get("executed"):
+        return None
+    return {d for d in (row.get("domain") for row in res.get("rows", [])) if d}
+
+
 #: 주제 스코프 = **하위 트리**다(정확일치 OR `d + "/"` 접두 — 슬래시가 요점이다:
 #: `STARTS WITH 'vinc'` 는 `vincent` 도 잡는다). 다섯 플랜이 각자 도메인을 걸러서
 #: 판정은 여기 **한 벌**만 둔다 — 한 곳만 고치면 축끼리 모집단이 어긋난다.
@@ -456,6 +502,12 @@ def _strip_ko_suffix(tok: str) -> str:
     return tok
 
 
+#: 질문을 낱말로 가르는 경계 문자류. 질의 쪽(`normalize_query_tokens`)과 색인 쪽 조사 벗기기
+#: (`rag_eval.rerank.ko_stripped_text`)가 **이 한 벌**을 쓴다 — 두 쪽이 다르게 자르면 그
+#: 차이가 곧 결과를 바꾼다.
+QUERY_SPLIT_RE = re.compile(r"[\s,./?!;:()\[\]{}\"'`~]+")
+
+
 def normalize_query_tokens(query: str, *, cap: int = 8) -> list[str]:
     """질문 → 검색 토큰(순수·결정론). 구두점 제거 → 소문자 → 조사 절단 → 불용어 제거.
 
@@ -463,7 +515,7 @@ def normalize_query_tokens(query: str, *, cap: int = 8) -> list[str]:
     마디만 물었을 때 질의가 통째로 사라져 전 노드를 삼키는 것을 막는다(빈 토큰은
     호출부가 조기 반환한다). 조사 절단본과 원형을 **둘 다** 남기지는 않는다:
     중복 토큰은 매치 수 집계를 왜곡한다."""
-    raw = [t for t in re.split(r"[\s,./?!;:()\[\]{}\"'`~]+", (query or "").lower()) if t]
+    raw = [t for t in QUERY_SPLIT_RE.split((query or "").lower()) if t]
     stemmed = [_strip_ko_suffix(t) for t in raw]
     # 불용어는 원형과 절단형 **둘 다** 본다 — 절단이 먼저면 '무엇인가'가 '무엇인'이 되어
     # 목록을 빠져나간다.
@@ -504,6 +556,20 @@ def is_conventions_doc_id(doc_id: str) -> bool:
         return False
     # 접두만 보면 `graph.md~notes` 같은 남의 문서를 삼킨다 — 꼬리가 해시인지까지 본다.
     return bool(_OWNER_TAG_RE.match(doc_id[len(_CONVENTIONS_PREFIX):]))
+
+#: 문서 미러 개념의 id 접두. 문서 `<doc_id>` 의 미러는 `concept:doc.<doc_id>` 다.
+#: 미러 id 를 만들고 푸는 일은 아래 두 함수가 하고, 접두만 보는 곳은 이 상수를 쓴다.
+DOC_MIRROR_PREFIX = "concept:doc."
+
+def mirror_id(doc_id: str) -> str:
+    """문서 id → 그 문서 미러 개념의 논리 id(`pkns.key` 로 소유자를 입히기 전의 값)."""
+    return DOC_MIRROR_PREFIX + doc_id
+
+def doc_id_of(node_id: str) -> str:
+    """미러 개념의 논리 id → 문서 id. 접두 길이만큼 앞을 잘라 낼 뿐 접두를 **확인하지
+    않는다** — 접두가 없는 id 에는 앞 글자를 잃은 꼬리가 나온다. 부르는 쪽이 먼저
+    `node_id.startswith(DOC_MIRROR_PREFIX)` 로 가른다."""
+    return node_id[len(DOC_MIRROR_PREFIX):]
 
 def is_conventions_chunk_id(chunk_id: str) -> bool:
     """관례 문서의 청크인가(`docstore.chunk_id_of` 규약: ``{doc_id}#{index:05d}``).

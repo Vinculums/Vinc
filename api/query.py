@@ -44,6 +44,8 @@ from store.querybase import (  # noqa: E402,F401  (재수출)
     _today,
     _validity_cols,
     domain_counts_plan,
+    domain_names,
+    domain_names_plan,
     domain_subtree_where,
     domains as _domain_rows,
     execute,
@@ -110,7 +112,6 @@ from .query_base import (  # noqa: E402,F401  (재수출)
     _CC_RELS,
     _CONCEPT_READ_PATTERN,
     _DIRECTED_RELS,
-    _DOC_CONCEPT_PREFIX,
     _FRAGMENT_EDGE_TO_REL,
     _GRAPH_READ_PAIRS,
     _OWNER_SCOPED_LABELS,
@@ -126,6 +127,7 @@ from .query_base import (  # noqa: E402,F401  (재수출)
     _graph_read_pairs,
     _seed_table,
     _stamp_validity,
+    _store_scope,
     _topic_description_mirrors_by_domain,
     _track_cols,
     _wiki_read_pairs,
@@ -314,8 +316,10 @@ from .brief import (  # noqa: E402,F401  (재수출)
     _BRIEF_QUOTES_N,
     _BRIEF_QUOTE_POOL,
     _BRIEF_RESOLVE_N,
+    _BRIEF_RULES,
     _BRIEF_SEMANTIC_NONE_DISTANCE,
     _BRIEF_TOP_K,
+    _BriefRule,
     _HANGUL,
     _ORPHAN_BLOCK,
     _SEM_PROMOTE,
@@ -329,12 +333,15 @@ from .brief import (  # noqa: E402,F401  (재수출)
     _brief_answerability_on,
     _brief_attach_section,
     _brief_body,
+    _brief_by_id,
     _brief_candidate_material,
     _brief_candidate_rows,
     _brief_current_uncertain,
     _brief_entity_ids,
     _brief_excerpt_kept,
     _brief_expose_n,
+    _brief_finish_choose,
+    _brief_finish_resolved,
     _brief_grounds,
     _brief_hidden_ties,
     _brief_holds,
@@ -352,11 +359,13 @@ from .brief import (  # noqa: E402,F401  (재수출)
     _brief_query_ids,
     _brief_quotes_on,
     _brief_rank,
+    _brief_rank_path,
     _brief_resolve,
+    _brief_resolve_by_production,
+    _brief_resolve_by_v3,
     _brief_resolve_v3,
     _brief_rule,
-    _brief_rule_colbert,
-    _brief_rule_v3,
+    _brief_rule_in_force,
     _brief_scope_material,
     _brief_section,
     _brief_section_on,
@@ -523,52 +532,6 @@ def decide_plan(topic: str, *, depth: int = 2, owner: str | None = None) -> Quer
 # 열고 plan.cypher 를 store.run 으로 실행할 뿐 — 드라이버를 직접 열지 않는다.
 
 # ── Public entry points ──────────────────────────────────────────────────────
-
-def domain_names_plan(*, owner: str | None = None) -> QueryPlan:
-    """소유자의 **주제 이름 집합**(개수·집계 없음).
-
-    :func:`domain_counts_plan` 과 같은 3개 라벨을 보되 카운트를 세지 않는다 —
-    무료 등급 주제 상한이 **매 적재마다** 도는 경로라 집계·정렬이 순수 낭비다.
-
-    라벨 집합을 `domains()` 와 **일부러 일치**시켰다(Episode·Concept·Record·Decision).
-    상한이 다른 집합을 세면 사용자가 `vinc_domains` 로 4개를 보면서 "5개 상한에
-    걸렸다"는 말을 듣게 된다 — 그 불일치가 곧 지원 문의가 된다."""
-    if owner:
-        where_e = "WHERE e.owner_id = $owner AND e.domain IS NOT NULL"
-        where_c = "WHERE c.owner_id = $owner AND c.domain IS NOT NULL"
-        where_r = "WHERE r.owner_id = $owner AND r.domain IS NOT NULL"
-        where_d = "WHERE d.owner_id = $owner AND d.domain IS NOT NULL"
-        params: dict = {"owner": owner}
-    else:
-        where_e = "WHERE e.domain IS NOT NULL"
-        where_c = "WHERE c.domain IS NOT NULL"
-        where_r = "WHERE r.domain IS NOT NULL"
-        where_d = "WHERE d.domain IS NOT NULL"
-        params = {}
-    cypher = (
-        f"MATCH (e:Episode) {where_e} RETURN DISTINCT e.domain AS domain "
-        "UNION ALL "
-        f"MATCH (c:Concept) {where_c} RETURN DISTINCT c.domain AS domain "
-        "UNION ALL "
-        f"MATCH (r:Record) {where_r} RETURN DISTINCT r.domain AS domain "
-        "UNION ALL "
-        f"MATCH (d:Decision) {where_d} RETURN DISTINCT d.domain AS domain"
-    )
-    return QueryPlan("domain_names", cypher, params,
-                     note="주제 이름 집합 (상한 검사용 — 집계 없음)")
-
-
-def domain_names(*, owner: str | None = None, cfg=None, store=None) -> set[str] | None:
-    """소유자가 지금 쓰는 주제 이름 집합. 스토어에 못 닿으면 **None**.
-
-    None 과 빈 집합은 다르다 — 빈 집합은 "주제가 없다"(상한 검사 통과)이고 None 은
-    "모른다"다. 모르는 채로 상한을 판정하면 스토어 장애가 곧 전면 쓰기 거부가 된다.
-    호출부가 이 구분을 보고 결정해야 한다."""
-    res = execute(domain_names_plan(owner=owner), cfg, store=store)
-    if not res.get("executed"):
-        return None
-    return {d for d in (row.get("domain") for row in res.get("rows", [])) if d}
-
 
 def learner_model_plan(*, owner: str) -> QueryPlan:
     """Fetch an individual's *learning method* — their LearnerPattern nodes (how

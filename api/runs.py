@@ -10,13 +10,14 @@
 from __future__ import annotations
 
 from store import pkns, run_state
+from store.querybase import DOC_MIRROR_PREFIX
 
 from . import events, query as q, readkit
 
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 200
 #: 문서 인용은 두 별칭 중 하나로 적힌다(이벤트 계산과 같은 규칙).
-_DOC_ALIASES = ("doc:", "concept:doc.")
+_DOC_ALIASES = ("doc:", DOC_MIRROR_PREFIX)
 
 
 def clamp_limit(value) -> int:

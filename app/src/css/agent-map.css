@@ -1,0 +1,137 @@
+/* A5 에이전트 쓰기 검토 — Agent 보드의 역할 목록 아래(agent-writes.ts). */
+.agent-writes { margin: 1.5rem 0 1rem; display: flex; flex-direction: column; gap: .6rem; }
+.aw-head { display: flex; align-items: baseline; gap: .6rem; }
+.aw-head h2 { font-size: var(--fs-lg); margin: 0; }
+.aw-group { border: 1px solid hsl(var(--border)); border-radius: .6rem; padding: .6rem .75rem; }
+.aw-group-head { display: flex; align-items: center; gap: .6rem; }
+.aw-group-head .btn { margin-left: auto; }
+.aw-list { list-style: none; margin: .4rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .2rem; }
+.aw-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; }
+.aw-go { border: none; background: none; padding: 0; font: inherit; color: hsl(var(--link)); cursor: pointer; text-align: left; }
+.aw-go:hover { text-decoration: underline; }
+
+/* Agent 관계 그래프(surfaces/agent-map.ts) — 그래프는 왼쪽, 고른 항목(절차면 편집 칸)은 오른쪽 칸.
+   값은 전부 디자인 토큰이다(글자 --fs-* · 간격 --space-* · 반경 --radius-* · 시간 --dur-* · 곡선 --ease-* · 글꼴 --font-*).
+   토큰이 없는 것은 둘뿐: 칸 폭(배치 치수)과 선의 굵기·불투명도·파선. */
+.agent-map .am-stage { display: grid; grid-template-columns: minmax(0, 1fr) 24rem; gap: var(--space-4); align-items: start; }
+@media (max-width: 1180px) { .agent-map .am-stage { grid-template-columns: minmax(0, 1fr); }
+  /* 쌓일 때 차례: 지도 → 옆 칸(고른 것의 편집) → 정책. 편집 칸이 정책 칸 아래로 밀려 내려가지 않게 */
+  .agent-map .am-main { display: contents; } .agent-map .am-canvas-wrap { order: 1; } .agent-map .am-side { order: 2; position: static; max-height: 70dvh; } .agent-map .am-policies { order: 3; } }   /* 지도가 옆 칸(24rem) 옆에서 너무 좁아지기 전에 위아래로 쌓는다 */
+.am-canvas-wrap { position: relative; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--card)); overflow: hidden; }
+.am-svg { position: relative; display: block; width: 100%; height: auto; }
+/* 그래프 나침반과 같은 그림(agent-map.ts): 노드는 종류 모양(원 · 마름모)에 주제 색(--c), Agent 는 둘레 고리를 두른 큰 원.
+   선은 틈을 두고 시작해 가늘어지는 빛살(채움 = 두 끝의 주제 색 그러데이션). 짚거나 고르면 닿은 빛살만 진하고 나머지는 물러난다.
+   끈(정책 ABOUT)은 닿을 때만 보인다. */
+.am-l { stroke: none; opacity: .9; transition: opacity var(--dur-fast) var(--ease-out); }
+.has-focus .am-l { opacity: .16; }
+.has-focus .am-l.is-near { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .am-l { transition: none; } }
+.am-node { cursor: pointer; outline: none; }
+.am-node text { fill: hsl(var(--foreground)); font: var(--fs-sm) var(--font-ui); paint-order: stroke; stroke: hsl(var(--card)); stroke-width: 4px; stroke-linejoin: round; }
+.am-node .am-shape { fill: var(--c, hsl(var(--muted-foreground))); stroke: none; }
+.am-node .am-ring { fill: none; stroke: var(--c, hsl(var(--point))); stroke-width: 1.8; opacity: 0; }
+.am-node:hover .am-shape, .am-node:focus-visible .am-shape { filter: brightness(1.15); }
+.am-node:hover .am-ring, .am-node:focus-visible .am-ring, .am-node.is-sel .am-ring { opacity: 1; }
+.am-agent .am-halo { fill: none; stroke: var(--c); stroke-width: 2; opacity: .55; }   /* 나침반 허브의 고리(점선은 주제를 뜻하므로 쓰지 않는다) */
+.am-agent .am-shape { fill: var(--c); }
+.am-agent text { font-weight: 600; }
+.am-mark { fill: hsl(var(--muted-foreground)); stroke: hsl(var(--card)); stroke-width: 1; pointer-events: none; }   /* 정책이 붙은 절차 */
+/* 정책을 고르면 그 정책이 다스리는 절차만 진하다 */
+.has-gov .am-node:not(.is-gov):not(.am-agent) { opacity: .3; } .has-gov .am-node.is-gov .am-ring { opacity: 1; }
+/* 정책 칸(지도 아래). 정책마다 카드: 이름 · 막는 도구 · 막는 권한 · 다스리는 절차(뗄 수 있다) · 붙이기 · 저장 */
+.am-main { display: grid; gap: var(--space-4); min-width: 0; }   /* 지도 + 그 아래 정책 칸(옆 칸이 길어져도 밀리지 않는다) */
+.am-policies { display: grid; gap: var(--space-3); min-width: 0; }
+.am-pol-head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; } .am-pol-head h2 { margin: 0; font-size: var(--fs-lg); line-height: var(--lh-tight); }
+.am-pol-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+.am-pol-card { min-width: 0; box-sizing: border-box; display: grid; gap: var(--space-2); padding: var(--space-3) var(--space-4); border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--card)); }
+.am-pol-card { cursor: default; } .am-pol-card.is-sel { border-color: var(--pc); box-shadow: 0 0 0 1px color-mix(in srgb, var(--pc) 40%, transparent); }
+.am-pol-row { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.am-pol-mark { flex: none; width: var(--space-2); height: var(--space-2); margin: 0 var(--space-1); transform: rotate(45deg); background: var(--pc, hsl(var(--muted-foreground))); border-radius: 1px; }
+.pe-field .am-pol-title { flex: 1; font-weight: 600; }
+.am-pol-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-2); }
+.am-pol-sub { margin: var(--space-1) 0 0; font-size: var(--fs-sm); color: hsl(var(--caption-foreground)); }   /* 칸 이름(pe-field label)과 같은 급 */
+.am-pol-card .am-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0; min-width: 0; }
+.am-chip.am-gov { display: inline-flex; align-items: center; gap: var(--space-2); max-width: 100%; font: var(--fs-sm)/var(--lh-tight) var(--font-ui); }
+.am-gdot { flex: none; width: var(--space-2); height: var(--space-2); border-radius: 50%; background: var(--c); }   /* 절차 노드 모양(원) · Agent 색 */
+.am-gov .am-link { text-decoration: none; } .am-gov .am-link:hover { text-decoration: underline; }
+.am-x { border: 0; background: none; color: hsl(var(--caption-foreground)); cursor: pointer; font-size: var(--fs-sm); line-height: 1; padding: 0; } .am-x:hover { color: hsl(var(--foreground)); }
+.am-pol-acts { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; } .am-pol-acts .btn:last-child { margin-left: auto; }
+.am-pol-status { font-size: var(--fs-sm); color: hsl(var(--muted-foreground)); }
+.am-pol-acts select { min-width: 0; max-width: 100%; }
+/* 제목 아래 추가 단추와 그 자리에서 열리는 입력 줄 */
+.agent-map .home-head { margin-bottom: var(--space-3); }
+.am-adds { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-4); }
+/* 이 화면의 단추는 한 규격: 높이 --ctl-h · 글자 --fs-sm(절차 칸의 저장 단추와 같다) */
+.agent-map .btn { display: inline-flex; align-items: center; gap: var(--space-1); height: var(--ctl-h); padding: 0 var(--space-3); font-size: var(--fs-sm); }
+.am-addform { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); } .am-addform[hidden] { display: none; }
+.am-addform input { height: var(--ctl-h); min-width: 12rem; box-sizing: border-box; font: var(--fs-sm) var(--font-ui); color: hsl(var(--foreground)); background: hsl(var(--background)); border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); padding: 0 var(--space-2); }
+.am-addform select, .am-attach-pick { height: var(--ctl-h); min-width: 12rem; }   /* 드롭다운의 모양은 공용 select 규칙 하나가 정한다(배치만 여기서) */
+/* 옆 칸 */
+.am-side { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); min-width: 0;
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--card));
+  max-height: calc(100vh - var(--space-8) * 2); overflow-y: auto; position: sticky; top: var(--space-4); }
+.am-side h2 { margin: 0; font-size: var(--fs-lg); line-height: var(--lh-tight); }
+.am-side h3 { margin: var(--space-2) 0 0; font-size: var(--fs-sm); color: hsl(var(--muted-foreground)); }
+.am-side p { margin: 0; font-size: var(--fs-sm); line-height: var(--lh-normal); word-break: keep-all; overflow-wrap: anywhere; }
+.am-kind { color: hsl(var(--caption-foreground)); font-weight: 600; }
+.am-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.am-chip { display: inline-flex; align-items: center; padding: var(--space-1) var(--space-2); border-radius: var(--radius-pill);
+  border: 1px solid hsl(var(--border)); font: var(--fs-sm)/var(--lh-tight) var(--font-mono); color: hsl(var(--foreground)); background: none; }
+.am-chip-pol { font-family: var(--font-ui); border-style: dashed; border-radius: var(--radius-sm); cursor: pointer; text-align: left; }
+.am-link { background: none; border: 0; padding: 0; color: hsl(var(--foreground)); font: inherit; font-size: var(--fs-sm);
+  text-align: left; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
+/* 절차 편집 칸(procedure-panel.ts) — 옆 칸 안에서 칸들, 그 아래 실행할 때 적용되는 목록, 저장.
+   칸 모양은 앱 공용 입력칸(.ei-field)과 같다: 카드 배경 · 테두리 토큰 · --radius-sm · 본문 글꼴. */
+.pe-form { display: flex; flex-direction: column; gap: var(--space-3); }
+/* 편집 칸의 묶음(무엇 · 먼저 읽을 것 · 제한 · 코드 작업 · 남기는 것). 묶음 사이는 구분선, 묶음 이름은 칸 이름보다 한 단 위 */
+.pe-group { display: flex; flex-direction: column; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid hsl(var(--border)); }
+.pe-form > .pe-group:first-child { padding-top: 0; border-top: 0; }
+.pe-group-h { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: hsl(var(--foreground)); }
+details.pe-group > summary { cursor: pointer; list-style: none; } details.pe-group > summary::before { content: "› "; color: hsl(var(--caption-foreground)); display: inline-block; transition: transform var(--dur-fast) var(--ease-out); }
+details.pe-group[open] > summary::before { transform: rotate(90deg); }
+.pe-code > .hint { margin: 0; font-size: var(--fs-sm); }
+.pe-checks { border: 0; margin: 0; padding: 0; flex-direction: row; flex-wrap: wrap; gap: var(--space-2) var(--space-4); }
+.pe-checks legend { padding: 0; margin-bottom: var(--space-1); font-size: var(--fs-sm); color: hsl(var(--caption-foreground)); width: 100%; }
+/* 종류별 검사 편집기(gate-editor.ts) */
+.pe-label { font-size: var(--fs-sm); color: hsl(var(--caption-foreground)); }
+.ge { display: flex; flex-direction: column; gap: var(--space-2); }
+.ge-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.ge-row { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); background: hsl(var(--background)); }
+.ge-head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.ge-type { font-size: var(--fs-sm); font-weight: 600; color: hsl(var(--foreground)); }
+.ge-type-pick, .ge-fail-pick { height: var(--ctl-h); }   /* 드롭다운 모양은 공용 select 규칙 */
+.ge-cmd { height: var(--ctl-h); box-sizing: border-box; font: var(--fs-sm) var(--font-mono); color: hsl(var(--foreground)); background: hsl(var(--card)); border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); padding: 0 var(--space-2); }
+.ge-type-pick { flex: 1; min-width: 0; } .ge-cmd { width: 100%; }
+.ge-fail { font-size: var(--fs-sm); color: hsl(var(--caption-foreground)); }
+.ge-lock { margin-left: auto; font-size: var(--fs-sm); color: hsl(var(--caption-foreground)); }
+.ge-x { margin-left: auto; border: 0; background: none; color: hsl(var(--caption-foreground)); cursor: pointer; font-size: var(--fs-sm); padding: 0 var(--space-1); } .ge-x:hover { color: hsl(var(--foreground)); }
+.ge-hint, .ge-warn, .ge-err { margin: 0; font-size: var(--fs-sm); color: hsl(var(--caption-foreground)); }
+.ge-warn { color: hsl(var(--warning, var(--caption-foreground))); } .ge-err { color: hsl(var(--danger)); }
+.ge-opts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); } .ge-opts .pe-check span { white-space: nowrap; } .ge-k { font-size: var(--fs-sm); color: hsl(var(--caption-foreground)); }
+.ge-add { align-self: flex-start; display: inline-flex; align-items: center; height: var(--ctl-h); padding: 0 var(--space-3); font-size: var(--fs-sm); }
+.pe-check { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--fs-sm); color: hsl(var(--foreground)); cursor: pointer; }
+.pe-field { display: flex; flex-direction: column; gap: var(--space-1); }
+.pe-field label { font-size: var(--fs-sm); color: hsl(var(--caption-foreground)); }
+.pe-field input, .pe-field textarea { width: 100%; padding: var(--space-2); border-radius: var(--radius-sm);
+  border: 1px solid hsl(var(--border)); background: hsl(var(--card)); color: hsl(var(--foreground));
+  font: var(--fs-sm)/var(--lh-normal) var(--font-ui); }
+.pe-field textarea { resize: vertical; }
+.pe-field input:focus-visible, .pe-field textarea:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.pe-repeat { margin: 0; padding: var(--space-1) var(--space-2); border-radius: var(--radius-xs); font-size: var(--fs-sm);
+  border: 1px solid hsl(var(--point) / .6); color: hsl(var(--point-text)); word-break: keep-all; }
+.pe-eff { display: flex; flex-direction: column; gap: var(--space-2); padding-top: var(--space-3); border-top: 1px solid hsl(var(--border)); }
+.pe-eff .pe-eff-h { margin: 0; font-size: var(--fs-base); color: hsl(var(--foreground)); }
+.pe-eff h3 { margin: var(--space-2) 0 0; font-size: var(--fs-sm); color: hsl(var(--muted-foreground)); }
+.pe-eff-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.pe-eff-list li { display: flex; justify-content: space-between; gap: var(--space-2); align-items: center; font-size: var(--fs-sm); }
+.pe-eff-list code { flex: 1; min-width: 0; font-family: var(--font-mono); overflow-wrap: anywhere; }
+.pe-origin { flex: none; max-width: 11rem; padding: 0 var(--space-2); display: inline-flex; align-items: center; border-radius: var(--radius-pill);
+  font-size: var(--fs-sm); line-height: var(--lh-normal); border: 1px solid hsl(var(--border)); color: hsl(var(--muted-foreground));
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pe-origin-procedure { border-color: hsl(var(--point) / .6); color: hsl(var(--point-text)); }
+.pe-origin-policy { border-style: dashed; color: hsl(var(--foreground)); }
+.pe-save-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); position: sticky; bottom: 0;
+  padding-top: var(--space-2); background: hsl(var(--card)); }
+.pe-status { font-size: var(--fs-sm); color: hsl(var(--muted-foreground)); }
+

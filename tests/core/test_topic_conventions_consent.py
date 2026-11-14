@@ -12,6 +12,7 @@ from api import docstore, graphmd, topic_conversion as tc
 from store.embedded_schema import render_embedded_ddl
 from store.scoped_topic_inventory import read_scoped_inventory
 from store.topic_transfer import plan_transfer, TransferRefused
+from topic_rehearsal import injected_failure
 
 RUN = "00000000-0000-4000-8000-000000000099"
 
@@ -36,8 +37,8 @@ def test_native_explicit_consent_moves_original_lookup_and_personal_fallback(tmp
                                           "personal_defaults_after_move": True}
         args = dict(source=SOURCE, target=TARGET, topic=TOPIC, run=RUN,
                     expected=consent["fingerprint"], stamp=STAMP, conventions_policy="move_original")
-        with pytest.raises(RuntimeError, match="injected_before_commit"):
-            tc.stage(store, **args, fail_at="journal")
+        with pytest.raises(RuntimeError, match="injected_before_commit"), injected_failure("journal"):
+            tc.stage(store, **args)
         assert docstore.get_doc(store, doc, owner=SOURCE)["text"] == original["text"]
         assert tc.stage(store, **args)["status"] == "graph_committed"
         store.close()

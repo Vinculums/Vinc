@@ -6,7 +6,15 @@ import json
 import re
 
 from store import pkns
-from store.querybase import _props_to_obj, holds_during, resolve_as_of, time_scope
+from store.querybase import (
+    DOC_MIRROR_PREFIX,
+    _props_to_obj,
+    doc_id_of,
+    holds_during,
+    mirror_id,
+    resolve_as_of,
+    time_scope,
+)
 
 FIELDS = ("created_at", "updated_at", "content_time", "valid_from", "valid_until",
           "superseded_by")
@@ -156,7 +164,7 @@ def node_sources(store, ids, *, owner=None):
             row = dict(row)
             nid = pkns.strip(row.get("id") or "")
             out[nid] = {**row, "kind": kind}
-    mirrors = {nid: nid[len("concept:doc."):] for nid in out if nid.startswith("concept:doc.")}
+    mirrors = {nid: doc_id_of(nid) for nid in out if nid.startswith(DOC_MIRROR_PREFIX)}
     docs = doc_sources(store, mirrors.values(), owner=owner)
     for nid, doc_id in mirrors.items():
         if doc_id in docs:
@@ -190,7 +198,7 @@ def supersession_edges(store, sources, *, owner=None):
                            f"RETURN a.{pk} AS new, b.{pk} AS old, e.evidence AS evidence",
                            {"ids": pkns.keys(owner, ids), "owner": owner or ""}) or []:
             new, old = pkns.strip(r.get("new") or ""), pkns.strip(r.get("old") or "")
-            if kind == "concept" and not all(i.startswith("concept:doc.") for i in (new, old)):
+            if kind == "concept" and not all(i.startswith(DOC_MIRROR_PREFIX) for i in (new, old)):
                 continue
             edges.append({"new": new, "old": old, "evidence": str(r.get("evidence") or "").strip()})
     return edges
@@ -415,11 +423,11 @@ def finish_nodes(store, hits, *, owner=None, scope=None, current=False, known_at
 def finish_docs(store, rows, *, owner=None, scope=None, current=False, known_at=None):
     """Carry the document mirror's evidenced lineage to every chunk of that document."""
     docs = {r.get("doc_id"): r for r in rows if r.get("doc_id")}
-    hits = [{"id": "concept:doc." + did, "kind": "concept",
+    hits = [{"id": mirror_id(did), "kind": "concept",
              **{key: row.get("temporal", row).get(key) for key in FIELDS}}
             for did, row in docs.items()]
     finish_nodes(store, hits, owner=owner, scope=scope, current=current, known_at=known_at)
-    states = {h["id"][len("concept:doc."):]: h["temporal"] for h in hits}
+    states = {doc_id_of(h["id"]): h["temporal"] for h in hits}
     if current:
         rows[:] = [r for r in rows if r.get("doc_id") in states]
     for row in rows:

@@ -37,6 +37,8 @@ import re
 from dataclasses import dataclass
 from typing import Callable
 
+from store.querybase import DOC_MIRROR_PREFIX, doc_id_of
+
 #: 노드 id 의 모양. 접두가 테이블을 정한다. 본문 글자는 유니코드 낱말 글자다: 한국어 제목에서
 #: 만든 id 가 그래프에 남아 있어서, ASCII 만 받으면 그 id 가 접두 앞부분에서 잘린다.
 #: 도메인 id 는 경로다(``domain:vinc/engineering/mcp-server``). ``/`` 도 본문 글자로 받는다.
@@ -47,7 +49,6 @@ _BRACKETED = re.compile(r"\[([^\[\]]+)\]")
 _BARE = re.compile(r"\w[\w.:/\-]*\w(?:#\d+)?")
 #: 청크 id 꼬리(`api/docstore.py` 규약 ``{doc_id}#{index:05d}``). 청크를 대면 그 문서를 댄 것이다.
 _CHUNK = re.compile(r"#\d+$")
-DOC_MIRROR = "concept:doc."
 #: 모른다고 말하는 문장. 영어와 한국어. 지어낸 답과 기권을 가르는 데만 쓴다.
 ABSTAIN = re.compile(
     r"\b(?:i\s+(?:do\s+not|don't|cannot|can't|could\s+not|couldn't)\s+(?:know|find|tell|answer|determine|confirm)"
@@ -185,8 +186,8 @@ def routed(body: str) -> str | None:
 def canon_id(raw: str) -> str:
     """근거 id 를 비교 가능한 꼴로. 문서는 ``doc:<doc_id>``, 노드는 그대로."""
     s = _CHUNK.sub("", raw.strip().strip("`'\"").rstrip(".,;)"))
-    if s.startswith(DOC_MIRROR):
-        return "doc:" + s[len(DOC_MIRROR):]
+    if s.startswith(DOC_MIRROR_PREFIX):
+        return "doc:" + doc_id_of(s)
     if NODE_ID.fullmatch(s) or s.startswith("doc:"):
         return s
     return "doc:" + s

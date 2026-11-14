@@ -13,6 +13,8 @@ import pathlib
 import statistics
 from collections import Counter
 
+from rag_eval.evalkit.stats import mean4
+
 #: 후보 순위를 이만큼까지 본다. R@10 이 계획의 마지막 칸이다.
 RANKS = (1, 3, 10)
 
@@ -173,27 +175,24 @@ def summarize(rows: list[dict]) -> dict:
     ans = [r for r in rows if r["answerable"]]
     una = [r for r in rows if not r["answerable"]]
 
-    def mean(xs):
-        return round(statistics.fmean(xs), 4) if xs else None
-
     out: dict = {
         "n": len(rows), "answerable": len(ans), "unanswerable": len(una),
-        "node_recall": {f"R@{k}": mean([r["hit"][k] for r in ans]) for k in RANKS},
+        "node_recall": {f"R@{k}": mean4([r["hit"][k] for r in ans]) for k in RANKS},
         # 합집합 회수율 — 이 파이프라인의 천장. 노출 회수율과의 차이가 곧 "확정 뒤에
         # 가려진 정답"의 크기다. R@10 은 후보 목록이 top_k 로 잘리므로 그 길이가 상한이다.
-        "union_recall": {f"R@{k}": mean([r["uhit"][k] for r in ans]) for k in RANKS},
-        "gold_in_union_rate": mean([1.0 if r["union_rank"] else 0.0 for r in ans]),
-        "wrong_node_rate": mean([r["wrong_node"] for r in ans]),
-        "false_resolved_rate": mean([r["false_resolved"] for r in una]),
+        "union_recall": {f"R@{k}": mean4([r["uhit"][k] for r in ans]) for k in RANKS},
+        "gold_in_union_rate": mean4([1.0 if r["union_rank"] else 0.0 for r in ans]),
+        "wrong_node_rate": mean4([r["wrong_node"] for r in ans]),
+        "false_resolved_rate": mean4([r["false_resolved"] for r in una]),
         # 종류별로 갈라 낸다 — 합친 수는 두 고장의 가중평균이라 어느 쪽이 움직였는지 못 본다.
         "false_resolved_by_kind": {
             k: {"n": len([r for r in una if r["unanswerable_kind"] == k]),
-                "rate": mean([r["false_resolved"] for r in una
+                "rate": mean4([r["false_resolved"] for r in una
                               if r["unanswerable_kind"] == k])}
             for k in sorted(UNANSWERABLE_KINDS)},
-        "choose_rate": mean([r["chose"] for r in rows]),
-        "unreadable_rate": mean([1.0 if r["unreadable"] else 0.0 for r in rows]),
-        "fell_through_rate": mean([1.0 if r["fell_through"] else 0.0 for r in rows]),
+        "choose_rate": mean4([r["chose"] for r in rows]),
+        "unreadable_rate": mean4([1.0 if r["unreadable"] else 0.0 for r in rows]),
+        "fell_through_rate": mean4([1.0 if r["fell_through"] else 0.0 for r in rows]),
         "status_census": dict(Counter(r["status"] for r in rows)),
     }
     # 계층별 — 계획이 요구하는 축 둘. 종류별은 Episode 후보성이 여기서 드러난다.
@@ -204,7 +203,7 @@ def summarize(rows: list[dict]) -> dict:
             b["n"] += 1
             for k in RANKS:
                 b[f"R@{k}"].append(r["hit"][k])
-        out[label] = {k: {"n": v["n"], **{f"R@{r}": mean(v[f"R@{r}"]) for r in RANKS}}
+        out[label] = {k: {"n": v["n"], **{f"R@{r}": mean4(v[f"R@{r}"]) for r in RANKS}}
                       for k, v in sorted(d.items())}
     # 축을 비교하려면 겹침을 함께 봐야 한다 — 이 둘이 떨어져 있으면 교란이 숨는다.
     reuse: dict = {}

@@ -12,6 +12,8 @@ import { build } from "esbuild";
 
 const SRC = new URL("../src/", import.meta.url);
 const read = (f) => readFileSync(fileURLToPath(new URL(f, SRC)), "utf8");
+// app.css 는 src/css/*.css 를 @import 로 잇는 목차다. @import 자리에 그 파일을 펴서 캐스케이드 순서 그대로 한 글로 읽는다.
+const readCss = (f) => read(f).replace(/^@import "\.\/(css\/[\w-]+\.css)";.*$/gm, (_, rel) => readCss(rel));
 const source = async (entry) => {
   const r = await build({ entryPoints: [fileURLToPath(new URL(entry, SRC))], bundle: true, platform: "node", format: "esm", write: false });
   return import(`data:text/javascript;base64,${Buffer.from(r.outputFiles[0].text).toString("base64")}`);
@@ -35,7 +37,7 @@ const hex = (n) => `#${n.toString(16).padStart(6, "0")}`;
 /** The floors, written here and not read from the plan: tinted marks 3:1, marks without a topic colour 4.5:1. */
 const FLOOR = 3, TEXT_FLOOR = 4.5;
 
-const APP = read("app.css");
+const APP = readCss("app.css");
 const fill = (sel) => {
   const m = APP.match(new RegExp(`${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{[^}]*?hsl\\(var\\(--([\\w-]+)\\)\\s*/\\s*([\\d.]+)\\)`));
   assert.ok(m, `no fill rule for ${sel} in app.css`);

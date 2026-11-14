@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from . import pkns
 from .canon import canonical_json_ascii_v1 as canonical
 from .embedded_schema import SCHEMA_VERSION, meta_table_specs, node_table_specs, rel_table_specs
+from .querybase import DOC_MIRROR_PREFIX, doc_id_of, mirror_id
 from .topic_transfer import (
     MAX_INVENTORY_BYTES, MAX_INVENTORY_ROWS, TransferRefused, KINDS,
     check_inventory_budget, referenced_ids, verify_store_shape, mapped_rejection_key,
@@ -219,8 +220,8 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
             raise TransferRefused("incomplete_inventory")
 
     selected = set(retained)
-    docs = {pkns.strip(nid)[len("concept:doc."):] for label, nid in selected
-            if label == "Concept" and pkns.strip(nid).startswith("concept:doc.")}
+    docs = {doc_id_of(pkns.strip(nid)) for label, nid in selected
+            if label == "Concept" and pkns.strip(nid).startswith(DOC_MIRROR_PREFIX)}
     # 문서 목록과 같은 언급 집계다. 명시한 외부 주제는 추론으로 덮지 않는다.
     from .document_topic import ranked_topics
     def include_derived(doc, primary):
@@ -230,7 +231,7 @@ def read_scoped_inventory(store, *, source: str, target: str, topic: str,
         if meta is None or meta["owner_id"] != owner:
             return
         authored = ""
-        for key in (owner + pkns.SEP + "concept:doc." + doc, "concept:doc." + doc):
+        for key in (owner + pkns.SEP + mirror_id(doc), mirror_id(doc)):
             mirror = exact("Concept", key)
             if mirror is not None and mirror["owner_id"] == owner and mirror.get("domain"):
                 authored = mirror["domain"].strip()
