@@ -42,9 +42,10 @@ def row(rid: str, score: float) -> dict:
     return {"id": rid, "score": score, "text": f"text of {rid}"}
 
 
-def chunk_stage(store, base=None, **over):
+def chunk_stage(store, seed=None, **over):
+    """`seed` 는 앞 단계(제목 팔)가 이미 쌓아 둔 `validity_*` 로, 누산기를 그 값으로 시작시킨다."""
     args = dict(filters=None, owner=None, kinds=None, top_k=5, cfg=Cfg(), _vstats={}, known_at=None,
-                mode=None, _until=None, _scope=None, base=base if base is not None else {})
+                mode=None, _until=None, _scope=None, _validity=R.Validity(seed))
     args.update(over)
     return R._chunk_stage(store, "q", args.pop("query_embedding", None), **args)
 
@@ -57,7 +58,8 @@ def arms_ok(pool=None, vnote="", ran=("keyword",), capped=False, gated=False):
 class TitleArm(unittest.TestCase):
     def arm(self, **over):
         args = dict(continuation=False, owner="u", mode=None, historical=True, known_at=None, _wide=False,
-                    _nk=5, _kw={}, _scope=None, _until=None, _vstats={}, _vnote="note")
+                    _nk=5, _kw={}, _scope=None, _until=None, _vstats={}, _vnote="note",
+                    _validity=R.Validity())
         args.update(over)
         return R._title_arm(object(), "q", **args)
 
@@ -95,16 +97,15 @@ class TitleArm(unittest.TestCase):
 
 
 class ChunkStage(unittest.TestCase):
-    def test_the_arm_result_is_a_patch_and_base_is_read_only(self):
-        base = {"kind": "search", "validity_filtered": 4}
-        before = copy.deepcopy(base)
+    def test_the_arm_result_is_a_patch_and_the_tally_is_left_alone_outside_current(self):
+        acc = R.Validity({"validity_filtered": 4})
         with arms_ok([row("d#00001", 0.5), row("d#00003", 0.9), row("d#00002", 0.9)]):
-            pool, withheld, hidden, patch = chunk_stage(FakeStore(), base)
+            pool, withheld, hidden, patch = chunk_stage(FakeStore(), _validity=acc)
         self.assertEqual([r["id"] for r in pool], ["d#00002", "d#00003", "d#00001"])
         self.assertEqual((withheld, hidden), (False, 0))
         self.assertEqual(list(patch), ["node_window", "executed", "arms", "total_count"])
         self.assertEqual((patch["arms"], patch["total_count"]), ("fts", 3))
-        self.assertEqual(base, before)
+        self.assertEqual(acc.get("validity_filtered"), 4)
 
     def test_owner_scope_the_store_cannot_apply_fails_closed(self):
         with arms_ok() as arms:
@@ -179,8 +180,8 @@ class ChunkStage(unittest.TestCase):
         self.assertEqual(patch["vector_note"], R._VECTOR_REMNANT)
         self.assertNotIn("vector_rebuilding", patch)
 
-    def test_current_adds_to_what_the_title_arm_counted_and_base_stays_put(self):
-        base = {"validity_filtered": 3}
+    def test_current_adds_to_what_the_title_arm_counted(self):
+        acc = R.Validity({"validity_filtered": 3})
 
         def stamp(r, meta, scope=None):
             r["temporal"] = {"validity": "historical" if r["id"].startswith("old") else "current"}
@@ -189,13 +190,13 @@ class ChunkStage(unittest.TestCase):
                 mock.patch.object(R.temporal, "doc_sources", return_value={}), \
                 mock.patch.object(R.temporal, "stamp", side_effect=stamp), \
                 mock.patch.object(R.temporal, "finish_docs"), mock.patch.object(R.temporal, "current_order"):
-            pool, withheld, _, patch = chunk_stage(FakeStore(), base, mode="current")
+            pool, withheld, _, patch = chunk_stage(FakeStore(), mode="current", _validity=acc)
         self.assertEqual([r["id"] for r in pool], ["new#00001"])
         self.assertFalse(withheld)
         self.assertEqual((patch["validity_filtered"], patch["doc_validity_filtered"]), (4, 1))
+        self.assertEqual((acc.get("validity_filtered"), acc.get("doc_validity_filtered")), (4, 1))
         self.assertEqual(list(patch["_current_doc_temporal"]), ["new"])
         self.assertEqual(patch["total_count"], 1)
-        self.assertEqual(base, {"validity_filtered": 3})
 
     def test_current_fails_closed_when_document_meta_cannot_be_read(self):
         with arms_ok(), mock.patch.object(R.temporal, "doc_sources", side_effect=RuntimeError("meta")):
@@ -224,9 +225,11 @@ class Paginate(unittest.TestCase):
     POOL = [row(f"doc#{i:05d}", 1.0 - i / 10) for i in range(5)]
 
     def page(self, base=None, titles=None, **over):
+        """`base` 가 이미 실은 `validity_*` 는 앞 단계가 쌓아 둔 것이라 누산기도 그 값으로 시작한다."""
         args = dict(cursor=None, off=0, want_eid=None, want_arms=None, qh="qh", top_k=2, detail="summary",
                     owner="u", mode=None, historical=False, _scope=None, _withheld=False,
                     base=base if base is not None else {"arms": "fts"})
+        args.setdefault("_validity", R.Validity(args["base"]))
         args.update(over)
         pool = args.pop("pool", self.POOL)
         with mock.patch.object(R, "_attach_doc_titles", return_value=titles or {}):
@@ -298,10 +301,12 @@ class Paginate(unittest.TestCase):
         with mock.patch.object(R, "_attach_doc_titles", side_effect=RuntimeError("meta")):
             _, patch = R._paginate(object(), "q", self.POOL, cursor=None, off=0, want_eid=None, want_arms=None,
                                    qh="qh", top_k=2, detail="summary", owner="u", mode=None, historical=False,
-                                   _scope=None, _withheld=False, base={"arms": "fts"})
+                                   _scope=None, _withheld=False, base={"arms": "fts"},
+                                   _validity=R.Validity())
             _, cur = R._paginate(object(), "q", self.POOL, cursor=None, off=0, want_eid=None, want_arms=None,
                                  qh="qh", top_k=2, detail="summary", owner="u", mode="current", historical=False,
-                                 _scope=None, _withheld=False, base={"arms": "fts"})
+                                 _scope=None, _withheld=False, base={"arms": "fts"},
+                                 _validity=R.Validity())
         self.assertEqual((patch["rows"], patch["partial"], patch["temporal_error"]),
                          ([], True, "RuntimeError: meta"))
         self.assertEqual(len(cur["rows"]), 2)
@@ -371,18 +376,24 @@ class FuseGraphArm(unittest.TestCase):
 
 class SearchAppliesEachPatchAtOnce(unittest.TestCase):
     """`_search` 는 단계를 부른 바로 뒤에 patch 를 얹는다. 같은 키(`validity_filtered`)를 여러 단계가
-    쓰므로 이 순서가 곧 마지막에 쓴 값을 정한다."""
+    쓰므로 이 순서가 곧 마지막에 쓴 값을 정한다. 값은 단계 사이를 누산기가 나른다."""
 
     def run_search(self, page_result=(False, {"rows": []})):
         seen = {}
 
-        def title(*a, **k):
-            seen["title"] = None
-            return [], {"validity_filtered": 1, "node_hits": []}
+        def title(*a, _validity, **k):
+            seen["title"] = _validity.get("validity_filtered")
+            patch = {}
+            _validity.set("validity_filtered", 1)
+            _validity.flush(patch)
+            return [], dict(patch, node_hits=[])
 
-        def chunk(*a, base, **k):
-            seen["chunk"] = base.get("validity_filtered")
-            return [], False, 0, {"validity_filtered": 2, "total_count": 0}
+        def chunk(*a, _validity, **k):
+            seen["chunk"] = _validity.get("validity_filtered")
+            patch = {}
+            _validity.set("validity_filtered", 2)
+            _validity.flush(patch)
+            return [], False, 0, dict(patch, total_count=0)
 
         def paginate(*a, base, **k):
             seen["paginate"] = base.get("validity_filtered")
