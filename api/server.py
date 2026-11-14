@@ -2347,7 +2347,7 @@ class _Handler(BaseHTTPRequestHandler):
     def _body(self) -> dict:
         try:
             raw = httpbody.read_body(self.headers, self.rfile, MAX_BODY)
-        except httpbody.BodyTooLarge:
+        except (httpbody.BodyTooLarge, httpbody.BadContentLength):
             # 읽지 않은 바이트가 소켓에 남는다. 이 서버는 HTTP/1.1 keep-alive 라 연결을
             # 닫지 않으면 그 잔여물이 다음 요청으로 파싱된다(요청 밀수).
             self.close_connection = True
@@ -2409,6 +2409,8 @@ class _Handler(BaseHTTPRequestHandler):
                 code, obj = 400, {"error": f"invalid JSON body: {exc}"}
             except httpbody.BodyTooLarge as exc:
                 code, obj = 413, {"error": str(exc)}
+            except httpbody.BadContentLength as exc:
+                code, obj = 400, {"error": str(exc)}
             return self._send(code, obj)
 
         # 인증(F4): Bearer 세션 토큰 필수.
@@ -2443,6 +2445,8 @@ class _Handler(BaseHTTPRequestHandler):
             code, obj = 400, {"error": f"invalid JSON body: {exc}"}
         except httpbody.BodyTooLarge as exc:
             code, obj = 413, {"error": str(exc)}
+        except httpbody.BadContentLength as exc:
+            code, obj = 400, {"error": str(exc)}
         except JobError as exc:
             code, obj = 500, {"error": str(exc)}
             if exc.write_may_have_applied:

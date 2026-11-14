@@ -83,3 +83,51 @@ def test_무인증_콜백도_상한을_넘으면_413(sidecar):
 def test_상한_안의_본문은_그대로_라우트에_간다(sidecar):
     code, _, obj = _post(sidecar, "/ingest", b"{\"owner\": \"user:a\"}")
     assert code != 413, obj
+
+
+class _Unread(io.BytesIO):
+    def read(self, *_args):
+        raise AssertionError("길이를 모르는 본문은 읽으면 안 된다")
+
+
+@pytest.mark.parametrize("value", ["abc", "1.5", "-5", "0x10"])
+def test_정수가_아니거나_음수인_길이는_읽지_않고_거절한다(value):
+    with pytest.raises(httpbody.BadContentLength):
+        httpbody.read_body({"Content-Length": value}, _Unread(), 10)
+    with pytest.raises(httpbody.BadContentLength):
+        httpbody.content_length({"Content-Length": value})
+
+
+def test_없거나_빈_길이와_0_은_빈_본문이다():
+    for headers in ({}, {"Content-Length": ""}, {"Content-Length": "0"}, {"Content-Length": "-0"}):
+        assert httpbody.content_length(headers) == 0
+        assert httpbody.read_body(headers, _Unread(), 10) == b""
+
+
+def _post_length(port, path, length: str, payload: bytes = b"{}"):
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    try:
+        conn.putrequest("POST", path)
+        conn.putheader("Authorization", f"Bearer {_TOKEN}")
+        conn.putheader("Content-Type", "application/json")
+        conn.putheader("Content-Length", length)
+        conn.endheaders(payload)
+        resp = conn.getresponse()
+        return resp.status, resp.getheader("Connection"), json.loads(resp.read() or b"{}")
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("path", ["/ingest", "/connect/callback"])
+@pytest.mark.parametrize("length", ["abc", "1.5", "-5"])
+def test_사이드카는_잘못된_길이에_400_으로_답하고_연결을_닫는다(sidecar, path, length):
+    code, connection, obj = _post_length(sidecar, path, length)
+    assert code == 400, obj
+    assert obj == {"error": "invalid Content-Length"}
+    assert connection == "close"
+
+
+def test_사이드카는_아주_큰_길이를_읽지_않고_413_으로_답한다(sidecar):
+    code, connection, obj = _post_length(sidecar, "/ingest", "9" * 30)
+    assert code == 413, obj
+    assert connection == "close"
