@@ -21,32 +21,12 @@ import time
 
 from store import write_batch
 
+from . import node_schema
 from .syncmerge import _norm
 
-# 라벨별 **추적필드**(동기화되는 콘텐츠). owner_id(스코프)·created·source_file,
-# 그리고 추적열 자신(updated_at/rev/sync_seq)과 preference 신호(access_count/
-# last_access)는 제외 — recall 때마다 델타가 생기는 것을 막는다.
-# ⚠ `content_time`(D72)은 여기 **있어야** 한다: 내용 시점만 고친 편집도 변경이고,
-# 안 세면 sync_seq 가 안 올라 그 편집이 이 기기를 못 떠난다. 열이 있는 라벨에만 넣는다
-# (Concept·Record. Decision·Episode·Entity 에는 열이 없어 넣으면 조회가 Binder 로 죽는다
-# — 2026-08-17 실엔진 확인).
-# ⚠ 반대로 `created`(출생)는 **넣으면 안 된다**. 그것은 편집이 아니라서, 추적하면
-# 출생 백필이 전 노드를 내용 변경으로 보이게 만들어 그래프 전체를 스탬프한다.
-TRACKED: dict[str, tuple[str, ...]] = {
-    "Concept": ("title", "domain", "tags", "props", "topic", "one_liner", "status", "stem",
-                "content_time"),
-    # props 도 추적한다. 동기화가 Episode props 를 나르므로, 안 세면 props 만 고친
-    # 편집이 sync_seq 를 못 올려 이 기기를 못 떠난다.
-    "Episode": ("title", "date", "domain", "summary", "tags", "pinned", "props"),
-    # v15(W13) — 유효구간 둘도 추적한다. content_time 과 같은 이유다: 구간만 고친
-    # 편집(무효화가 정확히 그 모양이다)도 변경이고, 안 세면 그 무효화가 기기를 못 떠난다.
-    "Record": ("title", "domain", "tags", "props", "content_time",
-               "valid_from", "valid_until"),
-    "Bridge": ("title", "status", "source_domain", "target_domain", "props"),
-    "Entity": ("type", "title", "tags", "theme_id"),
-    # v12 — 결정. 열이 Record 와 같은 집합이다(제목·주제·태그·자유 속성).
-    "Decision": ("title", "domain", "tags", "props"),
-}
+# 라벨별 **추적필드**(동기화되는 콘텐츠). 정본은 `api.node_schema.NODE_FIELDS` 이고 넣는 규칙과
+# 근거도 그 표에 있다. 여기는 그 기록에서 만든 표다(`node_schema.tracked_fields_table`).
+TRACKED: dict[str, tuple[str, ...]] = node_schema.tracked_fields_table()
 
 
 def tracked_fields(label: str) -> tuple[str, ...]:
