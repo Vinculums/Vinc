@@ -295,7 +295,7 @@ class HealthStateTests(unittest.TestCase):
             return r.status, json.loads(r.read().decode())
 
     def test_health_reports_snapshot_state(self):
-        from vinc_mcp.store import Store
+        from vinc_mcp.hub_state import Store
         tmp = tempfile.mkdtemp()
         store = Store(os.path.join(tmp, "work", "oauth.db"),
                       snapshot=os.path.join(tmp, "persist", "oauth.db"))

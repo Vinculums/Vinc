@@ -308,21 +308,16 @@ class VincContextProvider(ContextProvider):
             await self.client.aclose()
 
 
-async def record_episode(client: AsyncVincClient, title: str, *, summary: str = "",
-                         about: Iterable[str] = (), date: str | None = None,
-                         domain: str | None = None, tags: Iterable[str] | None = None,
-                         space: str | None = None, episode_id: str | None = None,
-                         create_only: bool | None = None,
-                         operation_id: str | None = None) -> dict[str, Any]:
+async def record_episode(client: AsyncVincClient, title: str, **fields: Any) -> dict[str, Any]:
     """Write one Episode about existing concepts or decisions. Needs a ``vinc_sk_`` key.
 
-    Call it after a person approved what the agent did; see
-    :meth:`vinc_client.AsyncVincClient.record_episode`.
+    Call it after a person approved what the agent did. ``fields`` are
+    :meth:`vinc_client.AsyncVincClient.record_episode`'s keyword arguments (``summary``,
+    ``about``, ``date``, ``domain``, ``tags``, ``space``, ``episode_id``, ``create_only``,
+    ``operation_id``).
     Save episode_id in host state before approval and reuse it only for this event's retries.
     """
-    return await client.record_episode(title, summary=summary, about=about, date=date,
-                                       domain=domain, tags=tags, space=space, episode_id=episode_id,
-                                       create_only=create_only, operation_id=operation_id)
+    return await client.record_episode(title, **fields)
 
 
 async def record_run(client: AsyncVincClient, run_id: str, *, role: str, outcome: str,
@@ -367,20 +362,20 @@ class PackageProvider(ContextProvider):
 
 async def write_package(client: AsyncVincClient, question: str, conclusion: str, *,
                         claims: Iterable[dict[str, Any]], produced_by: str, run_id: str,
-                        space: str, package_id: str | None = None,
-                        create_only: bool | None = None,
-                        operation_id: str | None = None) -> dict[str, Any]:
-    """Explicit producer write; invoke after reviewing its conclusion and claim evidence."""
-    return await client.write_package(question, conclusion, claims=claims,
-                                      produced_by=produced_by, run_id=run_id,
-                                      space=space, package_id=package_id,
-                                      create_only=create_only, operation_id=operation_id)
+                        space: str, **fields: Any) -> dict[str, Any]:
+    """Explicit producer write; invoke after reviewing its conclusion and claim evidence.
+
+    ``fields`` are :meth:`vinc_client.AsyncVincClient.write_package`'s other keyword arguments
+    (``title``, ``package_id``, ``create_only``, ``operation_id``).
+    """
+    return await client.write_package(question, conclusion, claims=claims, produced_by=produced_by,
+                                      run_id=run_id, space=space, **fields)
 
 
-async def prefetch(client: AsyncVincClient, role_id: str, task: str, *, space: str | None = None,
-                   max_chars: int = DEFAULT_PREFETCH_MAX_CHARS, pin: str | None = None) -> str:
+async def prefetch(client: AsyncVincClient, role_id: str, task: str, **fields: Any) -> str:
     """Read the selected role and its required/task evidence before a model call; never write.
 
-    With ``pin`` a role that changed raises ``VincRoleChanged`` instead.
+    ``fields`` are :meth:`vinc_client.AsyncVincClient.prefetch`'s keyword arguments (``space``,
+    ``max_chars``, ``pin``). With ``pin`` a role that changed raises ``VincRoleChanged`` instead.
     """
-    return await client.prefetch(role_id, task, space=space, max_chars=max_chars, pin=pin)
+    return await client.prefetch(role_id, task, **fields)

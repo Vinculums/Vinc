@@ -28,7 +28,7 @@ from vinc_mcp import edverify as ev                    # noqa: E402
 from vinc_mcp.bridge import Bridge                     # noqa: E402
 from vinc_mcp.http_server import MCPHTTPApp, make_server  # noqa: E402
 from vinc_mcp.oauth import OAuthGate, _s256            # noqa: E402
-from vinc_mcp.store import REFRESH_REUSE_GRACE_S, Store  # noqa: E402
+from vinc_mcp.hub_state import REFRESH_REUSE_GRACE_S, Store  # noqa: E402
 
 ISSUER = "https://mcp.example"
 CIMD_URL = "https://chatgpt.com/oauth/client.json"

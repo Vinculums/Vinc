@@ -11,8 +11,7 @@
 모듈에서 찾으므로, 그 호출을 바꾸려면 `api.query` 가 아니라 이 모듈의 이름을 패치한다.
 
 스토어를 안 받으면 `_store_scope`(`api/query_base.py`)가 열고 닫는다. 열 수 없을 때의 규칙: 읽기는 `executed:False`
-에 `note` 만 싣는다. `_ledger_by_concept` 와 `ledger_drilldown` 의 꼬리는 None 검사가 없다. 앞 단계
-`_ledger_classify` 가 먼저 강등 응답을 돌려주므로 공개 경로는 거기에 닿지 않는다.
+에 `note` 만 싣는다.
 
 이 모듈은 `api.query` 를 import 하지 않는다(`tests/core/test_nav_module.py` 가 본다).
 """
@@ -549,6 +548,9 @@ def _ledger_by_concept(by_id: dict, *, owner: str, scope: str, cfg, store) -> di
         return {"executed": True, "rows": [], "scope": scope, "population": 0,
                 "by": "concept"}
     with _store_scope(store, cfg, open_store) as store:
+        if store is None:
+            return {"executed": False, "rows": [], "scope": scope, "population": 0,
+                    "by": "concept", "note": "no reachable store"}
         got = store.run(
             "MATCH (c:Concept) WHERE c.concept_id IN $ids AND c.owner_id = $owner "
             "RETURN c.concept_id AS id, c.title AS title",
@@ -665,6 +667,9 @@ def ledger_drilldown(*, owner: str, domain: str, mark: str, seed: str | None = N
         base["total"] = 0
         return base
     with _store_scope(store, cfg, open_store) as store:
+        if store is None:
+            base["note"] = "no reachable store"
+            return base
         rows = store.run(
             "MATCH (c:Concept) WHERE c.concept_id IN $ids AND c.owner_id = $owner "
             "RETURN c.concept_id AS id, c.title AS title, c.one_liner AS ol",

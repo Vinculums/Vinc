@@ -136,6 +136,16 @@ class Layers(unittest.TestCase):
         got = G.layer_violations(list(src), src.__getitem__)
         self.assertEqual(sorted(got), [("store/x.py", "api"), ("vinc_mcp/y.py", "api")])
 
+    def test_store_may_not_import_engines_in_any_form(self):
+        src = {"store/a.py": "from engines import domain_hierarchy\n",
+               "store/b.py": "def f():\n    from engines.mentions_link import link_nodes\n",
+               "store/c.py": "import engines.recall_ingest\n",
+               "api/d.py": "from engines import domain_hierarchy\n",
+               "engines/e.py": "from store import pkns\n"}
+        got = G.layer_violations(list(src), src.__getitem__)
+        self.assertEqual(sorted(got), [("store/a.py", "engines"), ("store/b.py", "engines"),
+                                       ("store/c.py", "engines")])
+
     def test_a_name_that_merely_starts_with_api_is_not_a_hit(self):
         src = {"store/x.py": "import apixyz\nfrom apiary import bee\n"}
         self.assertEqual(G.layer_violations(list(src), src.__getitem__), [])

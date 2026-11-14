@@ -24,7 +24,15 @@ from engines import domain_hierarchy
 from store import pkns
 from store.backend import flag, open_store, operation
 from store.config import load_config
-from store.querybase import _VALIDITY_EMPTY, _classify_chunk_error, _validity_cols, holds_during
+from store.querybase import (
+    _VALIDITY_EMPTY,
+    DOC_MIRROR_PREFIX,
+    _classify_chunk_error,
+    _validity_cols,
+    doc_id_of,
+    holds_during,
+    mirror_id,
+)
 from vinc_rag import excerpt as _excerpt
 from vinc_rag import retrieval as _retrieval
 from vinc_rag.retrieval import _FTS_REMNANT, _chunk_count
@@ -92,7 +100,7 @@ def _drop_unstarted_episodes(result: dict, query: str, *, as_of, mode, historica
 
 def _doc_cite_ids(store, owner: str | None, doc_ids) -> dict[str, str]:
     """문서 키와 인용할 노드 id는 다르다. 읽을 수 있는 미러만 인용한다."""
-    ids = {f"concept:doc.{doc_id}" for doc_id in doc_ids if doc_id}
+    ids = {mirror_id(str(doc_id)) for doc_id in doc_ids if doc_id}
     if not ids or store is None:
         return {}
     where = "c.concept_id IN $ids"
@@ -102,7 +110,7 @@ def _doc_cite_ids(store, owner: str | None, doc_ids) -> dict[str, str]:
         params["owner"] = owner
     rows = store.run(f"MATCH (c:Concept) WHERE {where} "
                      "RETURN c.concept_id AS id", params) or []
-    return {nid[len("concept:doc."):]: nid for row in rows
+    return {doc_id_of(nid): nid for row in rows
             if (nid := pkns.strip(str(row.get("id") or ""))) in ids}
 
 
@@ -323,7 +331,7 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
                 # 구간이 없고, 미기재는 current 다.
                 _p = base["props"] if meta_label == "Decision" else {}
                 _stamp_validity(base, _p.get("valid_from"), _p.get("valid_until"))
-                if meta_label == "Concept" and node.startswith("concept:doc."):
+                if meta_label == "Concept" and node.startswith(DOC_MIRROR_PREFIX):
                     # 문서 미러의 구간은 문서의 것이다(F13). 문서가 없으면 개념 규칙 그대로다.
                     # 구간 열이 없는 v22 이전 스토어에서는 이 조회만 실패하고 개념 규칙으로
                     # 남는다 — 발췌·관계까지 함께 잃으면 안 된다. 사유는 싣는다.
@@ -331,7 +339,7 @@ def _node_context(*, owner: str, node: str, limit: int = 4,
                         dm = store.run(
                             "MATCH (d:_DocMeta) WHERE d.doc_id = $doc AND d.owner_id = $owner "
                             "RETURN d.valid_from AS vf, d.valid_until AS vu, d.superseded_by AS sb",
-                            {"doc": node[len("concept:doc."):], "owner": owner}) or []
+                            {"doc": doc_id_of(node), "owner": owner}) or []
                     except Exception as exc:
                         dm = []
                         base["doc_validity_error"] = f"{type(exc).__name__}: {exc}"

@@ -16,7 +16,7 @@ from test_rest_v1 import Server                      # noqa: E402
 from vinc_mcp.bridge import Bridge                   # noqa: E402
 from vinc_mcp.burst import BurstLimiter              # noqa: E402
 from vinc_mcp.http_server import MCPHTTPApp          # noqa: E402
-from vinc_mcp.store import Store                     # noqa: E402
+from vinc_mcp.hub_state import Store                     # noqa: E402
 
 
 class _StubBridge(Bridge):

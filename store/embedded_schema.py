@@ -288,7 +288,7 @@ NODE_VEC_REKEY_VERSION = 18
 EPISODE_TIME_BACKFILL_VERSION = 9
 
 #: v11 — **데이터 마이그레이션**(DDL 아님). `domain` 열 → Domain 노드·PARENT_OF·
-#: IN_DOMAIN 파생. 구현은 `engines.domain_hierarchy.backfill`. 부팅에서 도는 이유는
+#: IN_DOMAIN 파생. 구현은 `store.domain_hierarchy.backfill`. 부팅에서 도는 이유는
 #: v9 와 같다(사이드카가 DB 락을 쥐고 있어 별도 프로세스로는 스토어를 못 연다).
 #: 멱등이라 중간에 죽어도 다음 기동이 마무리한다.
 #: ⚠ **의미층이 늘 때마다 이 상수를 올린다.** v12 가 Decision 을 늘렸는데 백필의 라벨

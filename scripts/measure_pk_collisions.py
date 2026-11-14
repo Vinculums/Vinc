@@ -55,12 +55,12 @@ except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없�
 from store.backend import open_store          # noqa: E402
 from store.config import load_config           # noqa: E402
 from store.embedded_schema import _NODE_TABLES  # noqa: E402  (schema SSoT, script-internal use)
+from store.querybase import DOC_MIRROR_PREFIX, doc_id_of  # noqa: E402
 
 LABELS = ["Concept", "Record", "Episode", "Decision", "Bridge", "Entity"]
 LEGACY_OWNERS = ["tenant:local", "user:local", "tenant:shared"]
 SEP = "\x1f"
 _HASHED_DOC_ID = re.compile(r"^d[0-9a-f]{16}$")
-_DOC_CONCEPT_PREFIX = "concept:doc."
 
 
 def _pk_col(label: str) -> str:
@@ -136,10 +136,10 @@ def bridge_empty_domain(store) -> int:
 def doc_mirror_id_formats(store) -> dict:
     rows = store.run(
         "MATCH (n:Concept) WHERE n.concept_id STARTS WITH $prefix RETURN n.concept_id AS id",
-        {"prefix": _DOC_CONCEPT_PREFIX})
+        {"prefix": DOC_MIRROR_PREFIX})
     hashed = unhashed = 0
     for r in rows:
-        rest = r["id"][len(_DOC_CONCEPT_PREFIX):]
+        rest = doc_id_of(r["id"])
         if _HASHED_DOC_ID.match(rest):
             hashed += 1
         else:

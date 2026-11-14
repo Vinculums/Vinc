@@ -1412,8 +1412,8 @@ def _merge_supersedes_edge(c: _EdgeCall, st: str, dt: str) -> str | None:
     stamp_edges, changed = c.stamp_edges, c.changed
     _o, _birth_set, _ev_set, _end = c.o, c.birth_set, c.ev_set, _edge_end
     ok = (st == dt and st in _SUPERSEDES_KINDS and src != dst
-          and (st != "concept" or (src.startswith("concept:doc.")
-                                   and dst.startswith("concept:doc.")))
+          and (st != "concept" or (src.startswith(_qb.DOC_MIRROR_PREFIX)
+                                   and dst.startswith(_qb.DOC_MIRROR_PREFIX)))
           and isinstance(edge.get("evidence"), str) and edge["evidence"].strip())
     if not ok:
         warnings.append(

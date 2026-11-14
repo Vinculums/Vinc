@@ -16,7 +16,9 @@ import re
 from typing import Any
 
 from engines import domain_hierarchy
+from engines.mentions_link import MAX_TITLE_TOKENS
 from store import pkns
+from store.querybase import mirror_id
 
 from .node_schema import normalize_time
 
@@ -153,16 +155,14 @@ _CLAUSE_OPENERS = frozenset({
     "what", "how", "why", "when", "where", "whether", "if", "is", "are", "was",
     "were", "does", "do", "did", "can", "should", "it", "this", "that", "these",
 })
-# 멘션 링커의 제목 토큰 상한(engines/mentions_link 의 6)과 같은 값. 그보다 긴
-# 제목의 개념은 링커가 영영 못 맞춰 MENTIONS 가 생기지 않는다 — 주제 유도에
-# 죽은 무게라서 애초에 후보로 내지 않는다.
-_MAX_TITLE_WORDS = 6
 
 
 def _concept_shaped(clean: str, slug: str) -> bool:
     """헤딩이 **개념 이름**으로 설 수 있는가. 구조어·절 문장·과길이 제목은 아니다."""
     words = clean.split()
-    if not words or len(words) > _MAX_TITLE_WORDS:
+    # 멘션 링커의 제목 토큰 상한(`MAX_TITLE_TOKENS`)을 그대로 쓴다. 그보다 긴 제목의 개념은
+    # 링커가 영영 못 맞춰 MENTIONS 가 생기지 않는다 — 주제 유도에 죽은 무게라서 후보로 내지 않는다.
+    if not words or len(words) > MAX_TITLE_TOKENS:
         return False
     if slug in _STRUCT_SLUGS:
         return False
@@ -259,14 +259,11 @@ def _doc_topic(store, doc_id: str, *, owner: str) -> str:
     """이 문서의 주제 하나. 적힌 주제(미러 domain)가 있으면 그것, 없으면 파생.
     :func:`mention_tally` 와 **같은 규칙**의 단일 문서판이어야 한다 — 두 경로가
     갈리면 목록과 상세가 서로를 반박한다(MentionTally 클래스 주석의 이유)."""
-    # docstore 가 이 모듈을 다시 내보내므로 docstore 쪽 이름은 호출 때 읽는다. 그래서
-    # docstore 의 이름을 바꿔 끼우면(테스트의 monkeypatch) 여기에도 그대로 닿는다.
-    from .docstore import _DOC_MIRROR_PREFIX
     try:
         arow = store.run(
             "MATCH (c:Concept) WHERE c.concept_id = $id AND c.owner_id = $o "
             "AND c.domain IS NOT NULL AND c.domain <> '' RETURN c.domain AS domain",
-            {"id": pkns.key(owner, _DOC_MIRROR_PREFIX + doc_id), "o": owner}) or []
+            {"id": pkns.key(owner, mirror_id(doc_id)), "o": owner}) or []
         if arow:
             return (arow[0].get("domain") or "").strip()
     except Exception:
