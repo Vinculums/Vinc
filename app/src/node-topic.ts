@@ -4,7 +4,7 @@
  *
  *  주제 노드(`domain:<경로>`)는 자기 id 가 곧 경로이고, 나머지는 `domain` 열이 경로다.
  *  둘 다 없으면 빈 문자열. */
-export const DOMAIN_PREFIX = "domain:";
+const DOMAIN_PREFIX = "domain:";
 
 export const topicOf = (n: { id: string; kind?: string; domain?: string }): string =>
   n.kind === "domain" || n.id.startsWith(DOMAIN_PREFIX) ? n.id.slice(DOMAIN_PREFIX.length) : n.domain || "";

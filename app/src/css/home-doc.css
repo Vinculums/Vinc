@@ -1,0 +1,101 @@
+/* 문서 면 — 본문 칸 + 옆 칸. 본문이 남는 폭을 다 쓰고 옆 칸은 16rem 으로 고정한다(옆 칸이
+   남는 폭을 가져가면 넓은 창에서도 본문의 표가 짓눌린다). 좁으면(1000 아래) 옆 칸이 본문
+   아래로 간다. */
+.home-read-grid { display: grid; grid-template-columns: minmax(0, 1fr) var(--aside-w); gap: var(--space-8, 2rem); align-items: start; }
+.home-write { grid-template-columns: minmax(0, 52rem); }
+.home-doc { min-width: 0; }
+/* 옆 칸은 상자가 아니라 본문 옆의 조용한 열이다 — 동작 한 줄 · 목차 · 개념 · 메타 순.
+   읽는 동안 따라오고(sticky), 목차가 길면 자기 안에서 굴린다. */
+.home-aside {
+  /* 바(검색 알약 · 그래프 버튼) 아래에 붙는다 — 표면 칸 위쪽 여백만큼 내려와야 굴린 뒤에도
+     동작 줄이 바에 덮이지 않는다. */
+  position: sticky; top: var(--space-4, 1rem);
+  max-height: calc(100vh - var(--head-h) - var(--shell-gap) * 2 - var(--space-8, 2rem)); overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--space-5, 1.25rem);
+  padding: var(--space-1, .25rem) 0 var(--space-4, 1rem) var(--space-4, 1rem);
+  border-left: 1px solid hsl(var(--border) / .7);
+  font-size: var(--fs-sm); scrollbar-width: thin;
+}
+.ha-acts { display: flex; flex-wrap: wrap; gap: var(--space-2, .5rem); }
+.ha-btn { height: 2rem; padding: 0 .7rem; font-size: var(--fs-sm); }
+.ha-sec { display: flex; flex-direction: column; gap: var(--space-2, .5rem); min-width: 0; }
+.ha-sec[hidden] { display: none; }
+/* A1 그래프에서 — 결정 한 줄씩, 잇지 않은 것은 경고 띠와 함께. */
+.ha-graph { display: flex; flex-direction: column; gap: .15rem; }
+.ha-graph-i { display: flex; flex-direction: column; align-items: flex-start; gap: .05rem; border: none;
+  background: none; font: inherit; text-align: left; padding: .3rem .25rem; border-radius: .4rem; cursor: pointer; min-width: 0; }
+.ha-graph-i:hover { background: hsl(var(--muted-foreground) / .08); }
+.ha-graph-i > span:first-child { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ha-graph-i.is-loose > span:first-child { color: hsl(var(--caption-foreground)); }
+.ha-graph-warn { display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  margin-top: .35rem; padding: .5rem .6rem; border-radius: .5rem; background: hsl(var(--warning) / .16);
+  font-size: var(--fs-sm); }
+.ha-h {
+  margin: 0; font-size: var(--fs-xs); font-weight: 600; letter-spacing: .02em;
+  color: hsl(var(--caption-foreground));
+}
+.ha-toc { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.ha-toc-i {
+  display: block; width: 100%; text-align: left; border: none; background: none; cursor: pointer;
+  font: inherit; color: hsl(var(--muted-foreground)); line-height: 1.35;
+  padding: .28rem .5rem .28rem calc(.6rem + var(--lv, 0) * .8rem);
+  border-left: 2px solid transparent; margin-left: -1px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ha-toc-i:hover { color: hsl(var(--foreground)); background: hsl(var(--muted-foreground) / .08); }
+.ha-toc-i.on { color: hsl(var(--foreground)); font-weight: 600; border-left-color: hsl(var(--foreground)); }
+.ha-toc-i:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+.ha-chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.ha-chip {
+  display: inline-flex; align-items: center; gap: .35rem; max-width: 100%;
+  height: 1.6rem; padding: 0 .55rem; border: 1px solid hsl(var(--border)); border-radius: 999px;
+  background: none; color: hsl(var(--foreground)); font: inherit; font-size: var(--fs-xs); cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ha-chip:hover { border-color: hsl(var(--muted-foreground)); }
+.ha-chip.on { background: hsl(var(--foreground)); color: hsl(var(--background)); border-color: hsl(var(--foreground)); }
+.ha-chip-n { font-family: var(--font-mono); font-size: var(--fs-xs); opacity: .65; }
+.ha-meta {
+  margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .35rem .75rem;
+  padding-top: var(--space-3, .75rem); border-top: 1px solid hsl(var(--border) / .7);
+}
+.ha-meta dt { color: hsl(var(--caption-foreground)); }
+.ha-meta dd { margin: 0; overflow-wrap: break-word; }
+/* 옆 칸의 주제 바꾸기 — 값 옆의 글자 단추, 누르면 그 자리가 입력줄이 된다. */
+.ha-link {
+  border: none; background: none; padding: 0; margin-left: .25rem; cursor: pointer;
+  font: inherit; font-size: var(--fs-xs); color: hsl(var(--muted-foreground)); text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ha-link:hover { color: hsl(var(--foreground)); }
+.ha-topic-form { display: grid; gap: var(--space-2, .5rem); }
+.ha-topic-in { height: 2rem; font-size: var(--fs-sm); }
+.ha-topic-acts { display: flex; justify-content: flex-end; gap: var(--space-1, .25rem); }
+.ha-topic-acts .btn { height: 1.875rem; padding: 0 .65rem; font-size: var(--fs-xs); }
+.ha-topic-msg { margin: 0; font-size: var(--fs-xs); }
+.ha-topic-msg:empty { display: none; }
+/* 지우기는 맨 아래 글자 하나로 둔다 — 가장 덜 쓰고 가장 무거운 동작이 버튼 줄에 같은 무게로
+   서 있을 이유가 없다. 확인 대화는 그대로다. */
+.ha-del {
+  align-self: flex-start; border: none; background: none; padding: 0; cursor: pointer;
+  font: inherit; font-size: var(--fs-xs); color: hsl(var(--caption-foreground));
+}
+.ha-del:hover { color: hsl(var(--destructive, 0 70% 50%)); text-decoration: underline; }
+@media (max-width: 1000px) {
+  .home-read-grid { grid-template-columns: minmax(0, 1fr); }
+  .home-aside { position: static; max-height: none; border-left: none; padding-left: 0;
+    border-top: 1px solid hsl(var(--border) / .7); padding-top: var(--space-4, 1rem); }
+}
+/* 표면 칸의 기본 여백(1.5rem)은 그래프 밖 표면의 것이다. 문서 홈은 자기 여백을 쓴다. */
+/* 문서 홈은 좌우 여백을 칼럼(`.home`)이 갖는다 — 표면이 또 주면 칼럼이 머리보다 좁아진다.
+   첫 줄은 머리 선에서 32 아래다. */
+#shell[data-surface="home"] #surface { padding: var(--space-8, 2rem) 0 0; container-type: inline-size; }
+/* 편집기 머리 줄(제목 · 내용 시점 · 저장 상태)은 좁은 문서 면에서 접힌다 — 한 줄로 두면
+   본문 칸을 가로로 밀어 표면에 가로 스크롤이 생겼다(창 420 실측). 제목은 한 줄을 다 쓴다. */
+.home-doc .doc-ed-bar { flex-wrap: wrap; }
+.home-doc .doc-ed-bar > #ed-title { min-width: min(100%, 14rem); }
+/* 문서 홈의 본문 칸은 쓰는 자리라 처음부터 넉넉하다(빈 새 문서가 한 줄짜리 상자로 뜨지 않게). */
+.home-doc .cm-editor { min-height: 40vh; }
+/* 문서 홈은 한 면이 곧 문서라 본문을 상자에 가두지 않는다(시트·Tools 는 상자를 둔다). */
+.home-doc .doc-cm-box { border-color: transparent; padding: 0; }
+

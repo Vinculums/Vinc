@@ -14,13 +14,13 @@
 from __future__ import annotations
 
 import math
-import os
 import re
+from collections.abc import Callable
+from dataclasses import dataclass
 
-from store import pkns
+from store import envflag, pkns
 from store.backend import open_store
 from store.config import load_config
-from store.envflag import truthy
 from store.querybase import holds_during, normalize_query_tokens, time_scope, validity_state
 from vinc_rag import excerpt as _excerpt
 from vinc_rag import retrieval as _retrieval
@@ -245,8 +245,7 @@ def _brief_strict_on() -> bool:
     오르고 함께여야 오른다**(팔은 후보 1위를 9건에서 17건으로 올려 놓는데, 옛 판정이
     그 위에 확신 오답을 얹고 목록을 감췄다).
     근거: [[record:the-confidence-bar-was-one-token-and-that-was-the-defect-2026-09-10]]"""
-    return str(os.environ.get("VINC_BRIEF_STRICT", "")).strip().lower() not in (
-        "0", "off", "false", "no")
+    return envflag.default_on("VINC_BRIEF_STRICT")
 
 
 #: 확신에 필요한 토큰 차. 옛 값 1 은 **토큰 하나 차이면 확신한다**는 뜻이라 사실상
@@ -259,8 +258,7 @@ def _brief_sem_promote_on() -> bool:
     `VINC_BRIEF_SEM_PROMOTE=off` 가 토큰 규칙만 쓰던 동작으로 되돌린다(측정용 비상구).
     끄면 brief 의 맞는 확정이 절반 아래로 줄고, 틀린 노드 확정은 줄지 않는다.
     근거: [[vinc.spec.retrieval-knobs]] §2"""
-    return str(os.environ.get("VINC_BRIEF_SEM_PROMOTE", "")).strip().lower() not in (
-        "0", "off", "false", "no")
+    return envflag.default_on("VINC_BRIEF_SEM_PROMOTE")
 
 
 #: 승격에 필요한 의미 우위: 의미 팔 원시 목록에서 1위가 나머지보다 가까운 거리(`sem_lead`,
@@ -382,19 +380,8 @@ def _brief_rank(rows: list[dict]) -> list[dict]:
 
 
 def _brief_rule() -> str:
-    """`VINC_BRIEF_RULE` 의 값. `v3` 만 학습 규칙이고, 그 밖의 값과 빈 값은 production 이다."""
-    v = (os.environ.get("VINC_BRIEF_RULE") or "production").strip().lower()
-    return v if v == "v3" else "production"
-
-
-def _brief_rule_v3() -> bool:
-    """`VINC_BRIEF_RULE=v3` — brief 경로 전체로 다시 맞춘 v3 학습 규칙(:func:`_brief_resolve_v3`)."""
-    return _brief_rule() == "v3"
-
-
-def _brief_rule_colbert() -> bool:
-    """학습 규칙(v3)이면 ColBERT 로 다시 선 후보 위에서 해소한다. 기존 규칙은 그 순서를 안 본다."""
-    return _brief_rule() != "production"
+    """`VINC_BRIEF_RULE` 의 값. 규칙 표(:data:`_BRIEF_RULES`)에 있는 이름이면 그 값이고, 그 밖의 값과 빈 값은 production 이다."""
+    return envflag.one_of("VINC_BRIEF_RULE", tuple(_BRIEF_RULES), "production")
 
 
 def _brief_learned_features(query: str, hits: list[dict]) -> list[float] | None:
@@ -558,6 +545,61 @@ def _brief_resolve(query: str, hits: list[dict],
             else ("choose", ranked[:_brief_expose_n()]))
 
 
+@dataclass(frozen=True)
+class _BriefRule:
+    """해소 규칙 하나. 규칙마다 다른 것은 이 칸이 전부이고, brief 는 규칙 이름을 직접 가르지 않는다.
+
+    - `uses_colbert`: search 에 ColBERT 질의 토큰을 넘겨 재채점된 순서의 후보를 받는다.
+    - `needs_rescore`: 노드 재채점이 적용되고 후보가 있는 질의에서만 이 규칙이 답한다. 아니면 production 이 답한다.
+    - `abstain_hits`: 의미만 기권(:func:`_brief_semantic_none`)이 볼 후보. 인자는 search 가 준 노드 후보 전체다.
+    - `resolve`: `(질문, 앞 _BRIEF_RESOLVE_N 개를 담은 search 응답, 미러 텍스트 읽기)` → `(상태, 고른 노드, resolution)`.
+      `resolution` 은 답의 `resolution` 키에 싣는 기록이고 싣지 않는 규칙은 None 이다.
+    - `tie_guard`: 확정에 유효구간 필터가 감춘 행과의 동점 가드를 건다.
+    - `list_rank`: 되묻기 목록의 후보 순서를 세운다.
+    """
+    uses_colbert: bool
+    needs_rescore: bool
+    abstain_hits: Callable[[list[dict]], list[dict]]
+    resolve: Callable[[str, dict, Callable | None], tuple[str, list[dict], dict | None]]
+    tie_guard: bool
+    list_rank: Callable[[list[dict]], list[dict]]
+
+
+def _brief_resolve_by_production(query: str, res: dict, mirror_text) -> tuple[str, list[dict], dict | None]:
+    """production 규칙(:func:`_brief_resolve`)으로 해소한다. 답에 싣는 `resolution` 은 없다."""
+    status, picked = _brief_resolve(query, res.get("node_hits") or [], mirror_text=mirror_text)
+    return status, picked, None
+
+
+def _brief_resolve_by_v3(query: str, res: dict, mirror_text) -> tuple[str, list[dict], dict | None]:
+    """v3 규칙(:func:`_brief_resolve_v3`)으로 해소하고 확정 확률을 `resolution` 으로 낸다. 미러 텍스트는 안 읽는다."""
+    status, picked, p = _brief_resolve_v3(query, res.get("node_hits") or [], res)
+    return status, picked, {"rule": "v3", "p": None if p is None else round(p, 4)}
+
+
+#: 규칙 이름 → 규칙. `VINC_BRIEF_RULE` 이 받는 값이 이 키들이다.
+#: - production: 융합 순서의 앞 `_BRIEF_RESOLVE_N` 개 위에서 토큰·의미 규칙으로 해소하고 동점 가드를 건다.
+#: - v3: ColBERT 순서 위에서 해소한다. 의미만 기권은 재채점 전 순서로 보고, 동점 가드는 특징이 대신한다.
+#:   되묻기 목록은 ColBERT 순서 그대로다 — 의미 순서로 다시 세우면 재채점을 되돌린다.
+_BRIEF_RULES = {
+    "production": _BriefRule(
+        uses_colbert=False, needs_rescore=False,
+        abstain_hits=lambda full: full[:_BRIEF_RESOLVE_N],
+        resolve=_brief_resolve_by_production, tie_guard=True, list_rank=_brief_list_rank),
+    "v3": _BriefRule(
+        uses_colbert=True, needs_rescore=True,
+        abstain_hits=_brief_v3_prod_head,
+        resolve=_brief_resolve_by_v3, tie_guard=False, list_rank=list),
+}
+
+
+def _brief_rule_in_force(configured: str, rescored: bool) -> str:
+    """이 질의에 실제로 답하는 규칙의 이름. 재채점이 필요한 규칙은 재채점된 후보가 없으면 production 에 넘긴다."""
+    if _BRIEF_RULES[configured].needs_rescore and not rescored:
+        return "production"
+    return configured
+
+
 def _brief_body(ctx: dict) -> dict:
     """본문 고르기 — one_liner → props → 정본 발췌. ask.ts pickBody 의 이식.
 
@@ -606,15 +648,14 @@ def _brief_answerability_on() -> bool:
     끄고 켤 수 있어야 하는 이유: 이 문턱은 정답 81문항 중 **확정 18건** 위에서 골랐고,
     답 불가 21문항 중 15문항을 이 세션에 내가 썼다. 즉 시험지 절반이 이 신호를 편들
     수 있다. 기본값을 바꾸기 전에 남이 쓴 문항이 늘어나야 한다."""
-    return truthy(os.environ.get("VINC_BRIEF_ANSWERABILITY"))
+    return envflag.default_off("VINC_BRIEF_ANSWERABILITY")
 
 
 def _brief_section_on() -> bool:
     """질문으로 문서 미러에 닿은 brief 에 `section` 을 실을 것인가(`VINC_BRIEF_SECTION`).
     기본은 켜짐이고 ``off``·``0``·``false``·``no`` 가 끈다(끄면 이 키가 없던 때와 같다).
     근거: [[vinc.research.answer-material-section-ai-corpus-2026-10-17]]"""
-    v = str(os.environ.get("VINC_BRIEF_SECTION", "")).strip().lower()
-    return v not in ("off", "0", "false", "no")
+    return envflag.default_on("VINC_BRIEF_SECTION")
 
 
 def _brief_pick_chunk(store, chunks: list[dict], *, query: str, query_embedding,
@@ -692,8 +733,7 @@ def _brief_quotes_on() -> bool:
     """후보와 확정 노드에 `quotes`(글자 그대로의 인용 단위)를 실을 것인가(`VINC_BRIEF_QUOTES`).
     기본은 켜짐이고 ``off``·``0``·``false``·``no`` 가 끈다(끄면 이 키가 없던 때와 같다).
     근거: [[vinc.manual.rag]]"""
-    v = str(os.environ.get("VINC_BRIEF_QUOTES", "")).strip().lower()
-    return v not in ("off", "0", "false", "no")
+    return envflag.default_on("VINC_BRIEF_QUOTES")
 
 
 #: 노드마다 싣는 인용 단위 수와, 개념의 MENTIONS 청크에서 고를 후보 수.
@@ -758,11 +798,7 @@ def _brief_expose_n() -> int:
     `VINC_BRIEF_EXPOSE` 는 노출을 바꿔 재기 위한 손잡이다(X1). 기본값을 바꾸는 것은
     결정 노드로만 한다. 잘못된 값은 기본으로 읽는다.
     근거: [[vinc.plan.rag-eval-v2-0-9-6]]"""
-    raw = str(os.environ.get("VINC_BRIEF_EXPOSE", "")).strip()
-    try:
-        return max(1, int(raw)) if raw else _BRIEF_CANDIDATES
-    except ValueError:
-        return _BRIEF_CANDIDATES
+    return envflag.positive_int("VINC_BRIEF_EXPOSE", _BRIEF_CANDIDATES)
 
 
 def _brief_list_resolved_on() -> bool:
@@ -770,7 +806,7 @@ def _brief_list_resolved_on() -> bool:
     (`VINC_BRIEF_LIST_RESOLVED`). 확정이 틀렸을 때 그 뒤에 가려진 정답을 부르는 쪽이
     볼 수 있게 한다(X1). status 와 node 는 그대로다 — 목록이 답을 바꾸지 않는다.
     근거: [[vinc.plan.rag-eval-v2-0-9-6]]"""
-    return truthy(os.environ.get("VINC_BRIEF_LIST_RESOLVED"))
+    return envflag.default_off("VINC_BRIEF_LIST_RESOLVED")
 
 
 def _brief_candidate_rows(picked: list[dict]) -> list[dict]:
@@ -1142,13 +1178,15 @@ def _brief_rank_path(query: str, base: dict, store, *, owner: str, query_embeddi
     """검색으로 후보를 찾아 규칙(production·v3)으로 해소하고 가드를 건다. `base` 에 검색 쪽 키와 `status` 를 채운다.
 
     반환 `(응답, 해소)`. 응답이 None 이 아니면 그대로 돌려줄 답이다(노드 결과 없는 청크 팔 오류, 의미만 기권).
-    아니면 해소가 `(status, picked, pool, res, v3)` 이고, 부르는 쪽이 그것으로 답을 마무리한다."""
+    아니면 해소가 `(status, picked, pool, res, in_force)` 이고, 부르는 쪽이 그것으로 답을 마무리한다.
+    `in_force` 는 이 질의에 실제로 답한 규칙(:class:`_BriefRule`)이다."""
+    configured = _brief_rule()
     res = search(query, query_embedding=query_embedding, top_k=_BRIEF_TOP_K,
                  owner=owner, store=store, historical=historical,
                  as_of=as_of, mode=mode, known_at=known_at,
                  query_runtime=query_runtime, query_model=query_model,
-                 # 기존 규칙은 ColBERT 순서 위에서 잰 적이 없다 — 학습 규칙일 때만 재채점된 후보로 해소한다.
-                 query_colbert=query_colbert if _brief_rule_colbert() else None,
+                 # ColBERT 순서를 쓰는 규칙일 때만 재채점된 후보를 받는다.
+                 query_colbert=query_colbert if _BRIEF_RULES[configured].uses_colbert else None,
                  **({"kinds": kinds} if kinds else {}))
     # executed 는 노드 팔 기준이다 — 청크 팔만 죽어도 노드 팔은 owner 스코프 결과를 낸다.
     base["executed"] = bool(res.get("executed") or res.get("node_hits"))
@@ -1188,30 +1226,26 @@ def _brief_rank_path(query: str, base: dict, store, *, owner: str, query_embeddi
     pool = [h for h in res.get("node_hits") or [] if isinstance(h, dict) and h.get("id")]
     full = res.get("node_hits") or []
     res = {**res, "node_hits": full[:_BRIEF_RESOLVE_N]}
-    rescored = (res.get("node_rescore") or {}).get("state") == "applied"
-    # v3 는 의미만 기권을 재채점 **전** 순서의 앞 다섯으로 본다(재채점이 기권 대상을 바꾸지 않게).
-    # 재채점이 안 된 질의는 기존 규칙 그대로 간다.
-    v3 = _brief_rule_v3() and rescored and bool(full)
-    configured = _brief_rule()
-    if configured != "production" and not v3:
-        # 학습 규칙이 설정돼 있어도 재채점이 안 된 질의는 기존 규칙이 답한다. 그 사실을 답에 싣는다:
+    rescored = (res.get("node_rescore") or {}).get("state") == "applied" and bool(full)
+    # 답하는 규칙을 표에서 고른다. 재채점이 필요한 규칙(v3)은 재채점이 안 된 질의에서 production 에 넘긴다.
+    in_force_name = _brief_rule_in_force(configured, rescored)
+    in_force = _BRIEF_RULES[in_force_name]
+    if in_force_name != configured:
+        # 설정한 규칙이 아니라 production 이 답한 사실을 답에 싣는다:
         # 없으면 평가도 사람도 어느 규칙의 답인지 가를 수 없다(토큰이 빠진 노드 하나로도 재채점이 빠진다).
         # 근거: [[vinc.canon.rag-production-state]]
         _rs = res.get("node_rescore") or {}
-        base["resolution"] = {"rule": "production", "configured": configured,
+        base["resolution"] = {"rule": in_force_name, "configured": configured,
                               "rescore": _rs.get("state") or "missing"}
         if _rs.get("reason"):
             base["resolution"]["reason"] = _rs["reason"]
-    if _brief_semantic_none({**res, "node_hits": _brief_v3_prod_head(full)} if v3 else res):
+    if _brief_semantic_none({**res, "node_hits": in_force.abstain_hits(full)}):
         base["note"] = "no sufficiently close semantic candidate"
         return base, None
-    if v3:
-        status, picked, _p = _brief_resolve_v3(query, res.get("node_hits") or [], res)
-        base["resolution"] = {"rule": "v3", "p": None if _p is None else round(_p, 4)}
-    else:
-        status, picked = _brief_resolve(
-            query, res.get("node_hits") or [],
-            mirror_text=lambda h: _brief_mirror_text(store, owner, h))
+    status, picked, resolution = in_force.resolve(
+        query, res, lambda h: _brief_mirror_text(store, owner, h))
+    if resolution is not None:
+        base["resolution"] = resolution
     # B5 — current 의 기권은 답(1위)과 그 주장 키를 공유하는 후보만 본다. 후보 아무나
     # 보면 구간이 없어 늘 unknown 인 개념 후보 하나가 다른 주장의 답을 막는다.
     if mode == "current" and picked and _brief_current_uncertain(
@@ -1230,8 +1264,8 @@ def _brief_rank_path(query: str, base: dict, store, *, owner: str, query_embeddi
     # 확정됐다(정직성 0.0 → 0.1667). 동점이던 Record 둘 중 하나가 걸러지면서 남은
     # 하나가 단독 승자가 된 모양이었다.
     # 근거: [[record:the-validity-filter-broke-a-tie-and-manufactured-confidence-2026-09-09]]
-    # v3 확정에는 돌지 않는다: 감춘 행의 점수는 v3 특징(:func:`_brief_v3_features`)에 이미 있다.
-    if status == "resolved" and picked and base.get("validity_filtered") and not v3:
+    # 동점 가드가 꺼진 규칙(v3)의 확정에는 돌지 않는다: 감춘 행의 점수는 v3 특징(:func:`_brief_v3_features`)에 이미 있다.
+    if status == "resolved" and picked and base.get("validity_filtered") and in_force.tie_guard:
         _bd = tuple(base.get("validity_best_dropped") or (0, 0))
         if (_brief_hidden_ties(query, picked[0], _bd)
                 and not _brief_semantic_tie_clear(picked, res)):
@@ -1268,17 +1302,16 @@ def _brief_rank_path(query: str, base: dict, store, *, owner: str, query_embeddi
                 "the topic matched but the question asks for something this graph "
                 "does not hold, so this was not resolved")
     base["status"] = status
-    return None, (status, picked, pool, res, v3)
+    return None, (status, picked, pool, res, in_force)
 
 
 def _brief_finish_choose(base: dict, store, *, owner: str, query: str, query_embedding, res: dict, pool: list,
-                         v3: bool, max_excerpts: int, rule: dict) -> dict:
+                         in_force: _BriefRule, max_excerpts: int, rule: dict) -> dict:
     """되묻기 답: 넓은 풀을 노출 수만큼 후보로 싣고 인용·절·첫 후보의 재료를 붙여 `base` 를 돌려준다."""
-    # 되묻기 목록은 넓은 풀 전체를 의미 순서(`_brief_list_rank`)로 세워 노출 수에서
-    # **한 번** 자른다. 확정용 순위(팔 개수 → 토큰)는 의미 팔에만 걸린 후보를 맨 뒤로
-    # 미는데, 넓은 풀에 새로 들어오는 정답은 대부분 그런 후보다.
-    # v3 는 ColBERT 순서를 그대로 보인다 — 의미 순서로 다시 세우면 재채점을 되돌린다.
-    picked = list(pool) if v3 else _brief_list_rank(pool)
+    # 되묻기 목록은 넓은 풀 전체를 답한 규칙의 순서(`list_rank`)로 세워 노출 수에서
+    # **한 번** 자른다. production 은 의미 순서(`_brief_list_rank`)다. 확정용 순위(팔 개수 → 토큰)는
+    # 의미 팔에만 걸린 후보를 맨 뒤로 미는데, 넓은 풀에 새로 들어오는 정답은 대부분 그런 후보다.
+    picked = in_force.list_rank(pool)
     base["candidates"] = _brief_candidate_rows(picked[:_brief_expose_n()])
     if _brief_quotes_on():
         for _c in base["candidates"]:
@@ -1427,10 +1460,11 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             query_model=query_model, query_colbert=query_colbert, kinds=kinds)
         if out is not None:
             return out
-        status, picked, pool, res, v3 = resolved
+        status, picked, pool, res, in_force = resolved
         if status == "choose":
             return _brief_finish_choose(base, store, owner=owner, query=query, query_embedding=query_embedding,
-                                        res=res, pool=pool, v3=v3, max_excerpts=max_excerpts, rule=rule)
+                                        res=res, pool=pool, in_force=in_force, max_excerpts=max_excerpts,
+                                        rule=rule)
         if status == "none":
             return base
         return _brief_finish_resolved(base, picked, store, owner=owner, query=query,

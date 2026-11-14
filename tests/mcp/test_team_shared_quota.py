@@ -10,7 +10,7 @@ import urllib.error
 
 from vinc_mcp.bridge import Bridge
 from vinc_mcp.http_server import MCPHTTPApp, make_server
-from vinc_mcp.store import Store
+from vinc_mcp.hub_state import Store
 
 
 TEAM = "12345678-1234-1234-1234-123456789abc"

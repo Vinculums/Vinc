@@ -27,7 +27,7 @@ from vinc_mcp import entitlement, toolcall           # noqa: E402
 from vinc_mcp import http_server as hs               # noqa: E402
 from vinc_mcp.bridge import Bridge                   # noqa: E402
 from vinc_mcp.http_server import MCPHTTPApp          # noqa: E402
-from vinc_mcp.store import Store                     # noqa: E402
+from vinc_mcp.hub_state import Store                     # noqa: E402
 
 _QCFG = {"free_limit": 10, "exempt_owners": frozenset({"user:me"})}
 ACCT_SEED = bytes((i * 7 + 3) & 0xFF for i in range(32))

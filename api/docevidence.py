@@ -119,9 +119,9 @@ def backfill_evidence(store, *, owner: str, doc_id: str | None = None,
             continue
         # ② 완화 판정용 제목 토큰 — mentions_link 의 어휘·상한을 그대로 재사용한다
         #    (규칙 분기 금지). 토큰셋이 같으면 아무 문장이나 잡히므로 완화는 건너뛴다.
-        from engines.mentions_link import _MAX_TITLE_TOKENS, _tokens as _ml_tokens
-        ta = set(_ml_tokens(at)[:_MAX_TITLE_TOKENS])
-        tb = set(_ml_tokens(bt)[:_MAX_TITLE_TOKENS])
+        from engines.mentions_link import MAX_TITLE_TOKENS, tokens as _ml_tokens
+        ta = set(_ml_tokens(at)[:MAX_TITLE_TOKENS])
+        tb = set(_ml_tokens(bt)[:MAX_TITLE_TOKENS])
         relaxable = bool(ta) and bool(tb) and ta != tb
         found: tuple[str, float] | None = None
         for ch in chunks:

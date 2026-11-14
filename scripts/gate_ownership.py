@@ -200,16 +200,16 @@ def roster_drift(teams: dict, roles: dict, rules, exists) -> list[str]:
 #: 아래 층은 위 층을 import 하지 않는다(`procutil` 은 store 에 있고, 재구축의 재큐는
 #: 인자로 주입된다). 함수 안 지연 import 도 잡는다: 순환을 피하려고 지연시킨 import 가
 #: 정확히 그 방향을 숨긴다.
-#: `engines` 는 이 층 표의 어느 쪽에도 없다(키로도, 금지 대상으로도). 소유 팀과는 별개다:
-#: `agents/teams.json` 은 `engines/` 를 core, `engines/recall_ingest.py` 를 rag 에 둔다.
-#: `engines/recall_ingest.py` 가 `api` 를 써서 `vinc_rag` 로 옮길 수 없고, 반대로
-#: `store/embedded_backend.py` 가 `engines.domain_hierarchy` 를 쓴다. 그 import 를 정리한 뒤
-#: `store/` 의 금지에 `engines` 를 더한다.
+#: `engines` 는 `store/` 의 금지 대상이다. `store` 가 쓰는 도메인 계층은 `store/domain_hierarchy.py`
+#: 에 있고 `engines/domain_hierarchy.py` 는 `engines.domain_hierarchy` 로 읽는 호출부를 위한
+#: 별칭이다. `engines` 자신은 이 표의 키가 아니다. 소유 팀과는 별개다: `agents/teams.json` 은
+#: `engines/` 를 core, `engines/recall_ingest.py` 를 rag 에 둔다. `engines/recall_ingest.py` 가
+#: `api` 를 써서 `vinc_rag` 로 옮길 수 없다.
 #: `vinc_rag` 는 검색 코어다. `api` 가 그것을 부르고, 그것은 `store`·`engines` 만
 #: 부른다. 공용 바닥 함수를 `store/querybase.py` 로 내린 이유가 이 한 줄이다.
 #: 근거: [[vinc.plan.team-split]]
 LAYER_BANS: dict[str, tuple[str, ...]] = {
-    "store/": ("api", "vinc_mcp", "vinc_rag"),
+    "store/": ("api", "engines", "vinc_mcp", "vinc_rag"),
     "vinc_mcp/": ("api",),
     "vinc_rag/": ("api", "vinc_mcp"),
 }

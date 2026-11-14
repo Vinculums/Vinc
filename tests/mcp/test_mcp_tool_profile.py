@@ -23,7 +23,7 @@ from vinc_mcp import toolcall, tools  # noqa: E402
 from vinc_mcp.bridge import Bridge  # noqa: E402
 from vinc_mcp.oauth import OAuthGate  # noqa: E402
 from vinc_mcp.rpc import Dispatcher  # noqa: E402
-from vinc_mcp.store import Store  # noqa: E402
+from vinc_mcp.hub_state import Store  # noqa: E402
 
 TEAM = "0198c0de-1111-7222-8333-444455556666"
 CORE = ["vinc_search", "vinc_brief", "vinc_node", "vinc_neighbors", "vinc_doc_get", "vinc_ingest"]

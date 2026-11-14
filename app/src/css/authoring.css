@@ -1,0 +1,251 @@
+/* ── 작업하는 자리에서 만들기(authoring · node-composer · connect · extract-list ·
+      node-basics · cm-assist). 새 부품은 없다: 시트 · 카드면 · 세그 · 칩 · rail-x 를
+      그대로 쓰고, 자리와 간격만 여기서 준다. 포인트색은 초점 링에만 쓴다(면에 안 쓴다). ── */
+
+/* 트리 머리의 `+` — 절 제목 줄 끝, 개수 옆. */
+.lnb-sec-end { display: inline-flex; align-items: center; gap: var(--space-1, .25rem); }
+.lnb-sec-end.no-add { padding-right: calc(var(--pad-row) + var(--space-1) / 2); }   /* + 가 없으면 수가 아래 줄의 수와 같은 오른쪽 세로선에 선다 */
+.lnb-add { font-size: 1rem; line-height: 1; padding: .1rem .4rem; }  /* fs-allow: 글씨가 아니라 기호(+) 크기 */
+/* 판 위의 기호라 캡션(light 3.13:1)이 아니라 muted 다(6.0:1). 손이 오르면 `.rail-x:hover` 가 글자색으로 바꾼다. */
+.lnb-add { color: hsl(var(--muted-foreground)); }
+
+/* 흐름 B — 문서 열의 새 문서: 주제 칩 + id 미리보기가 편집기 위에 한 줄로 선다. */
+.writer-meta {
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2, .5rem);
+  margin: 0 0 var(--space-2, .5rem);
+}
+.writer-topic {
+  display: inline-flex; align-items: center; gap: .35rem;
+  border: 1px solid hsl(var(--border)); border-radius: 999px; padding: 0 .2rem 0 .6rem;
+  font-size: var(--fs-sm);
+}
+/* 라벨은 줄지 않는다. 입력칸이 폭을 가져가면 두 글자 라벨이 "주 / 제"로 쌓였다(VIN-255). */
+.writer-topic > span { color: hsl(var(--caption-foreground)); flex: none; white-space: nowrap; }
+.writer-topic input {
+  border: 0; background: none; color: hsl(var(--foreground)); font: inherit;
+  padding: .2rem .3rem; min-width: 9rem; outline: none;
+}
+.writer-topic:focus-within { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.writer-id { font-family: var(--font-mono); font-size: var(--fs-xs); }
+/* 옆 칸은 좁다 — 제목 줄(제목 · 시점 · 저장 상태)이 넘치지 않고 접힌다. */
+#wr-host .doc-ed-bar { flex-wrap: wrap; }
+#wr-host #ed-title { min-width: 10rem; }
+.writer-note { margin: var(--space-2, .5rem) 0 0; }
+.writer-note:empty { display: none; }
+
+/* 흐름 E — 컴포저. 필드는 초대 폼과 같은 `.ei-field` 한 벌이다. */
+.nc-kinds { margin: 0; }
+.nc-kind-hint { margin: 0; font-size: var(--fs-sm); }
+.nc-id {
+  margin: calc(var(--space-2, .5rem) * -1) 0 var(--space-3, .75rem);
+  font-family: var(--font-mono); font-size: var(--fs-xs);
+  display: flex; align-items: center; flex-wrap: wrap; gap: .35rem;
+}
+.nc-more, .nc-links { margin: 0 0 var(--space-3, .75rem); }
+.nc-more > summary, .nc-links > summary {
+  cursor: pointer; font-size: .85em; color: hsl(var(--caption-foreground));
+  margin-bottom: var(--space-2, .5rem);
+}
+.nc-more[hidden] { display: none; }
+.nc-rel {
+  display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-2, .5rem);
+  align-items: center; margin-bottom: var(--space-2, .5rem);
+}
+.nc-rel-target { position: relative; min-width: 0; }
+.nc-rel-target input, .pick-bar input, .ex-topic-row input {
+  width: 100%; padding: var(--space-2, .5rem); border-radius: var(--radius-sm, .625rem);
+  border: 1px solid hsl(var(--border)); background: hsl(var(--card)); color: hsl(var(--foreground));
+  font: inherit;
+}
+.nc-rel-why { grid-column: 1 / -1; margin: 0; }
+.nc-keep { display: inline-flex; align-items: center; gap: .4rem; font-size: .85em; }
+.nc-keys { margin: var(--space-2, .5rem) 0 0; font-size: var(--fs-xs); }
+.nc-msg { flex: 1 1 auto; min-width: 0; font-size: var(--fs-sm); line-height: 1.4; }
+.nc-msg .error-banner { font-size: var(--fs-sm); padding: var(--space-2, .5rem) var(--space-3, .75rem); }
+
+/* 흐름 C — `[[` 목록 · 연결 대상 검색 목록(같은 모양). 카드면이지 유리가 아니다. */
+.cm-assist-menu {
+  position: fixed; z-index: 70; min-width: 14rem; max-width: 22rem;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--card));
+  box-shadow: var(--shadow-elev-2, none); font-size: var(--fs-sm);
+}
+.cm-assist-menu[hidden] { display: none; }
+/* 폼 안의 목록은 칸 아래 **흐름 안에** 선다 — 시트 몸이 스크롤 상자라 떠 있게 두면 잘린다. */
+.nc-rel-hits.cm-assist-menu { position: static; margin-top: 4px; max-width: none; box-shadow: none; }
+.pick-hits.cm-assist-menu { position: absolute; left: var(--space-3, .75rem); right: var(--space-3, .75rem);
+  top: calc(100% - var(--space-2, .5rem)); max-width: none; }
+.cm-assist-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: .6rem;
+  padding: .35rem .5rem; border-radius: .45rem; cursor: pointer;
+}
+.cm-assist-row.sel, .cm-assist-row:hover { background: hsl(var(--muted-foreground) / .12); }
+.cm-assist-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-assist-sub { flex: none; font-size: var(--fs-xs); color: hsl(var(--caption-foreground)); }
+.cm-assist-create { border-top: 1px solid hsl(var(--border) / .6); margin-top: 2px; }
+.cm-assist-note { margin: .2rem .5rem; font-size: var(--fs-xs); color: hsl(var(--caption-foreground)); }
+
+/* 흐름 D — 고른 글 위의 작은 줄. */
+.cm-selbar {
+  position: fixed; z-index: 70; display: inline-flex; gap: 2px; padding: 3px;
+  border: 1px solid hsl(var(--border)); border-radius: 10px; background: hsl(var(--card));
+  box-shadow: var(--shadow-elev-2, none);
+}
+.cm-selbar[hidden] { display: none; }
+
+/* 편집기 상자 — 시트·Tools 의 문서. 문서 홈은 걷는다(.home-doc .doc-cm-box). */
+.doc-cm-box {
+  border: 1px solid hsl(var(--border)); border-radius: 6px;
+  padding: .25rem; margin-top: .4rem;
+}
+/* 머리 줄의 넣기 버튼 — 우클릭을 모르는 손을 위한 같은 메뉴의 문. */
+.ed-insert {
+  flex: none; display: inline-flex; align-items: center; gap: .3rem;
+  height: 1.75rem; padding: 0 .55rem; font-size: var(--fs-sm);
+}
+.ed-insert > span:first-child { font-size: 1rem; line-height: 1; }  /* fs-allow: 글씨가 아니라 기호(+) 크기 */
+
+/* 삽입 메뉴 — 우클릭 · 넣기 버튼 · 슬래시가 같은 생김새다. */
+.cm-insert {
+  position: fixed; z-index: 80; width: 15.5rem; max-height: min(70vh, 34rem); overflow-y: auto;
+  display: flex; flex-direction: column; gap: 1px; padding: 6px;
+  border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--card));
+  box-shadow: var(--shadow-elev-2, 0 8px 24px hsl(0 0% 0% / .28)); font-size: var(--fs-sm);
+  scrollbar-width: thin;
+}
+.cm-insert[hidden] { display: none; }
+.cm-insert:focus { outline: none; }
+.cm-ins-sec {
+  padding: .4rem .5rem .2rem; font-size: var(--fs-xs); font-weight: 600; letter-spacing: .02em;
+  color: hsl(var(--caption-foreground));
+}
+.cm-ins-row {
+  display: grid; grid-template-columns: 1.75rem minmax(0, 1fr) auto; align-items: center; gap: .55rem;
+  width: 100%; padding: .3rem .4rem; border: none; border-radius: .5rem; background: none;
+  color: hsl(var(--foreground)); font: inherit; text-align: left; cursor: pointer;
+}
+.cm-ins-row.on, .cm-ins-row:focus-visible { background: hsl(var(--muted-foreground) / .14); outline: none; }
+.cm-ins-glyph {
+  display: grid; place-items: center; width: 1.75rem; height: 1.75rem;
+  border: 1px solid hsl(var(--border)); border-radius: .4rem; background: hsl(var(--background));
+  font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 600; color: hsl(var(--muted-foreground));
+}
+.cm-ins-glyph:empty { border-color: transparent; background: none; }
+.cm-ins-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-ins-hint { font-family: var(--font-mono); font-size: var(--fs-xs); color: hsl(var(--caption-foreground)); }
+.cm-ins-sep { height: 1px; margin: .3rem .25rem; background: hsl(var(--border) / .7); }
+.cm-ins-fmt { display: flex; gap: 2px; padding: 0 .25rem .2rem; }
+.cm-ins-fbtn {
+  flex: 1; height: 1.9rem; border: none; border-radius: .45rem; background: none; cursor: pointer;
+  color: hsl(var(--foreground)); font: inherit; font-size: var(--fs-sm);
+}
+.cm-ins-fbtn:hover { background: hsl(var(--muted-foreground) / .14); }
+.cm-ins-f-bold { font-weight: 700; }
+.cm-ins-f-italic { font-style: italic; font-family: Georgia, serif; }
+.cm-ins-f-strike { text-decoration: line-through; }
+.cm-ins-f-code { font-family: var(--font-mono); font-size: var(--fs-xs); }
+/* 표 크기 격자 — 표 줄 옆에 편다. 메뉴가 굴러도 따라가도록 메뉴 안의 절대 위치다. */
+.cm-ins-grid {
+  position: fixed; z-index: 81; padding: 8px;
+  border: 1px solid hsl(var(--border)); border-radius: 10px; background: hsl(var(--card));
+  box-shadow: var(--shadow-elev-2, 0 8px 24px hsl(0 0% 0% / .28));
+}
+.cm-ins-grid[hidden] { display: none; }
+.cm-ins-cells { display: grid; grid-template-columns: repeat(var(--gc, 8), 14px); gap: 3px; }
+.cm-ins-cell {
+  width: 14px; height: 14px; border: 1px solid hsl(var(--border)); border-radius: 3px; cursor: pointer;
+}
+.cm-ins-cell.on { background: hsl(var(--foreground) / .75); border-color: hsl(var(--foreground) / .75); }
+.cm-ins-gridlabel {
+  margin-top: 6px; text-align: center; font-size: var(--fs-xs); color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+/* 체크리스트 상자 — 원문 `- [ ]` 를 대신한다. 누르면 원문의 칸 한 글자가 뒤집힌다. */
+.cm-r-task {
+  display: inline-grid; place-items: center; width: 1em; height: 1em; margin-right: .45em;
+  vertical-align: -.14em; border: 1.5px solid hsl(var(--muted-foreground)); border-radius: .22em;
+  cursor: pointer; line-height: 1;
+}
+.cm-r-task.on { background: hsl(var(--foreground)); border-color: hsl(var(--foreground)); }
+.cm-r-task.on::after { content: "\2713"; font-size: .72em; font-weight: 700; color: hsl(var(--background)); }
+.cm-r-done { color: hsl(var(--muted-foreground)); text-decoration: line-through; }
+.cm-selbar > button {
+  border: 0; background: none; font: inherit; font-size: var(--fs-sm); cursor: pointer;
+  padding: .25rem .55rem; border-radius: .45rem; color: hsl(var(--foreground));
+}
+.cm-selbar > button:hover { background: hsl(var(--muted-foreground) / .12); }
+.cm-selbar > button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+
+/* 흐름 F — 대상 고르기 띠(지도 위 가운데) · 관계 고르기. */
+.pick-bar {
+  position: absolute; z-index: 30; top: calc(var(--chrome-top) + var(--space-2, .5rem)); left: 50%;
+  transform: translateX(-50%); width: min(26rem, calc(100% - 2rem));
+  padding: var(--space-3, .75rem); border: 1px solid hsl(var(--border));
+  border-radius: var(--radius); background: hsl(var(--card)); box-shadow: var(--shadow-elev-3, none);
+}
+.pick-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.pick-lead { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-hint { margin: .2rem 0 .5rem; }
+.pick-msg { margin: .35rem 0 0; }
+.pick-msg:empty { display: none; }
+.cx-arrow {
+  display: flex; align-items: center; flex-wrap: wrap; gap: .5rem;
+  margin: 0 0 var(--space-3, .75rem); font-weight: 600;
+}
+.cx-end { min-width: 0; overflow-wrap: anywhere; }
+.cx-dir { color: hsl(var(--caption-foreground)); }
+.cx-swap { margin-left: auto; font-weight: 400; }
+.cx-rels { display: flex; flex-direction: column; gap: 4px; margin-bottom: var(--space-3, .75rem); }
+.cx-rel {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+  padding: .45rem .65rem; border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
+  background: none; color: hsl(var(--foreground)); font: inherit; cursor: pointer;
+}
+.cx-rel:hover { background: hsl(var(--muted-foreground) / .08); }
+.cx-rel.on { border-color: hsl(var(--foreground)); box-shadow: inset 0 0 0 1px hsl(var(--foreground)); }
+.cx-rel[aria-disabled="true"] { cursor: default; color: hsl(var(--caption-foreground)); }
+.cx-rel[aria-disabled="true"]:hover { background: none; }
+.cx-rel:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.cx-rel-name { font-weight: 600; }
+.cx-rel-sub { font-size: var(--fs-sm); }
+/* 관계 이름 = 관계 상세로 가는 문(근거가 없어도). */
+.link-tag--open { cursor: pointer; }
+.link-tag--open:hover { color: hsl(var(--foreground)); text-decoration: underline; }
+
+/* 흐름 G — 이 문서에서 찾은 개념. */
+.ex-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  margin-top: var(--space-2, .5rem);
+}
+.ex-list { border-top: 1px solid hsl(var(--border)); margin-top: var(--space-2, .5rem); }
+.ex-row {
+  display: flex; align-items: flex-start; gap: .5rem; padding: .4rem 0;
+  border-bottom: 1px solid hsl(var(--border) / .55);
+}
+.ex-check { margin-top: .45rem; flex: none; }
+.ex-main { flex: 1 1 auto; min-width: 0; }
+.ex-title {
+  width: 100%; border: 1px solid transparent; border-radius: .4rem; background: none;
+  color: hsl(var(--foreground)); font: inherit; padding: .2rem .3rem;
+}
+.ex-title:hover, .ex-title:focus { border-color: hsl(var(--border)); }
+.ex-title:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 0; }
+.ex-ol { margin: .1rem .3rem 0; font-size: var(--fs-sm); }
+.ex-badge {
+  flex: none; margin-top: .3rem; font-size: var(--fs-xs); color: hsl(var(--caption-foreground));
+  border: 1px solid hsl(var(--border)); border-radius: 999px; padding: 0 .45rem;
+}
+.ex-rest { margin: .4rem 0; font-size: var(--fs-xs); }
+.ex-acts { display: flex; justify-content: flex-end; gap: var(--space-2, .5rem); }
+.ex-msg:not(:empty) { margin-top: var(--space-2, .5rem); }
+.ex-msg .error-banner { font-size: var(--fs-sm); padding: var(--space-2, .5rem) var(--space-3, .75rem); }
+.ex-topic { margin: .4rem 0; }
+.ex-topic-row { display: flex; gap: var(--space-2, .5rem); }
+.ex-topic-row input { flex: 1 1 auto; min-width: 0; }
+.ex-done { margin: var(--space-2, .5rem) 0 0; }
+
+/* 흐름 H — 기본 정보. 읽기 모습은 속성 절(`.props-dl`)과 같고, 편집은 초대 폼의 필드다. */
+.node-basics { margin-top: var(--space-3, .75rem); }
+.node-basics .ei-field small { font-size: var(--fs-xs); }
+

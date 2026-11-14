@@ -1,6 +1,6 @@
 """VIN-138 내부 읽기 준비: 조회가 소비·리셋·잠금을 저장하지 않는지 검증한다."""
 import pytest
-from vinc_mcp.store import Store
+from vinc_mcp.hub_state import Store
 
 
 @pytest.fixture

@@ -79,9 +79,10 @@ def test_merge_candidates_does_not_import_api_query():
 def test_imported_names_are_their_home_modules_objects():
     assert mc.re is re and query.re is re
     for name, home in (("execute", querybase), ("QueryPlan", querybase), ("open_store", backend),
-                       ("load_config", config), ("_DOC_CONCEPT_PREFIX", query_base)):
+                       ("_DOC_CONCEPT_PREFIX", query_base), ("_store_scope", query_base)):
         assert getattr(mc, name) is getattr(home, name), name
         assert getattr(query, name) is getattr(home, name), name
+    assert query.load_config is config.load_config
 
 
 def _codes(code):

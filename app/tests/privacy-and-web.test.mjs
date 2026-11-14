@@ -32,9 +32,13 @@ async function sources(dir = 'src') {
 const api = await read('src/api.ts');
 // 실행 자리(IN_SHELL · WEB)와 `cfg` 는 `api-config.ts` 에 있다.
 const config = await read('src/api-config.ts');
+// 전송(검색 실패 기록 · 쿠키 라우트의 문 · 그래프 평면의 주소)은 `api-transport.ts` 에 있다.
+const transport = await read('src/api-transport.ts');
+// 팀 목록(`/api/teams`)은 스페이스 쪽(`api-space.ts`)이 부른다.
+const space = await read('src/api-space.ts');
 
 test('a failed search is logged with status and duration only', async () => {
-  const fn = slice(api, 'async function logSearchFailure', '\n}\n') + '\n}\n';
+  const fn = slice(transport, 'async function logSearchFailure', '\n}\n') + '\n}\n';
   const logSearchFailure = await run(`const sent = []; const warned = [];
     const console = { warn: (m) => warned.push(m) };
     async function shellInvoke() { return async (cmd, args) => { sent.push([cmd, args]); }; }
@@ -44,7 +48,7 @@ test('a failed search is logged with status and duration only', async () => {
   assert.deepEqual(sent, [['plugin:log|log', { level: 4, message: 'GET /api/graph/search failed status=503 duration_ms=12', location: 'search' }]]);
   assert.deepEqual(warned, ['[search] GET /api/graph/search failed status=503 duration_ms=12']);
   // 부르는 자리마다 넘기는 것은 상태와 걸린 시간뿐이다(질의 문자열이 인자로 들어갈 자리가 없다).
-  const args = [...api.matchAll(/await logSearchFailure\(([^;]*)\);/g)].map((m) => m[1]);
+  const args = [...transport.matchAll(/await logSearchFailure\(([^;]*)\);/g)].map((m) => m[1]);
   assert.ok(args.length >= 3);
   for (const a of args) assert.match(a, /^(0|200|response\.status), performance\.now\(\) - started$/);
 });
@@ -87,9 +91,9 @@ test('outbound addresses are the graph and the site pages only', async () => {
   }
   assert.ok(fetches >= 5);
   // 계정 쿠키 라우트는 `webFetch` 로 같은 오리진에 간다. 경로는 부르는 자리의 글자 그대로다(같은 오리진의 절대 경로).
-  const doors = [...api.matchAll(/\bwebFetch\(([^)]*?)[,)]/g)].map((m) => m[1]).filter((a) => !a.startsWith('path: string'));
+  const doors = [...(api + space).matchAll(/\bwebFetch\(([^)]*?)[,)]/g)].map((m) => m[1]).filter((a) => !a.startsWith('path: string'));
   assert.ok(doors.length >= 9 && doors.every((a) => /^"\/[^"]+"$/.test(a)), doors.join(' | '));
-  assert.match(api, /const url = new URL\(WEB \? "\/api\/graph" \+ path : path, cfg\.base\);/);
+  assert.match(transport, /const url = new URL\(WEB \? "\/api\/graph" \+ path : path, cfg\.base\);/);
 });
 
 test('the web build has no Storage, connections or Advanced in Settings', async () => {
@@ -178,7 +182,7 @@ test('the space name is kept next to the space id and never names another space'
 
 // 계정 쿠키 라우트의 문(api.ts `webFetch`): 쿠키 · CSRF · JSON 을 거기 한 곳에서 싣는다. 함수를 소스에서 잘라 가짜 fetch 로 돌린다.
 test('the account-cookie routes go through one door: the cookie always, the CSRF mark on writes, JSON when a body is given', async () => {
-  const fn = slice(api, 'function webFetch(', '\n}\n') + '\n}\n';
+  const fn = slice(transport, 'function webFetch(', '\n}\n') + '\n}\n';
   const webFetch = await run(`const sent = []; const location = { origin: 'https://vincs.io' };
     const fetch = async (url, init) => { sent.push([String(url), init]); return { ok: true }; };
     const csrfToken = () => 'tok';
@@ -201,11 +205,12 @@ test('the account-cookie routes go through one door: the cookie always, the CSRF
     ['https://vincs.io/logout', { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': 'tok' } }]);
 });
 
-test('api.ts sends the account cookie only through webFetch and the graph transport', () => {
+test('api.ts and its transport send the account cookie only through webFetch and the graph transport', () => {
   // `credentials: "include"` 는 두 자리뿐이다: 계정 쿠키 라우트의 문과, 웹의 그래프 평면(localCall).
-  assert.equal([...api.matchAll(/credentials: "include"/g)].length, 2);
+  assert.equal([...transport.matchAll(/credentials: "include"/g)].length, 2);
+  assert.equal([...(api + space).matchAll(/credentials: "include"/g)].length, 0);
   for (const route of ['/api/me', '/api/teams', '/api/push/devices', '/api/push/subscribe', '/api/push/unsubscribe',
     '/api/push/test', '/api/community/agents/destinations', '/logout', '/api/selfhost/seats'])
-    assert.match(api, new RegExp(`webFetch\\("${route.replace(/\//g, '\\/')}"`), route);
-  assert.doesNotMatch(api, /fetch\(new URL\("\/api\/(?!graph)/, 'no raw fetch to an account route');
+    assert.match(api + space, new RegExp(`webFetch\\("${route.replace(/\//g, '\\/')}"`), route);
+  assert.doesNotMatch(api + space, /fetch\(new URL\("\/api\/(?!graph)/, 'no raw fetch to an account route');
 });

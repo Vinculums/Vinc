@@ -11,6 +11,9 @@
 같은 객체다. 여기 함수가 부르는 이름(`execute`·`_order_graph_result`·`shape_graph`·`_retired_claim` 등)은 이 모듈에서
 찾으므로, 그 호출을 바꾸려면 `api.query` 가 아니라 이 모듈의 이름을 패치한다.
 
+스토어를 안 받으면 `_store_scope`(`api/query_base.py`)가 열고 닫는다. 열 수 없을 때의 규칙: 읽기는 `executed:False`
+에 `note` 만 싣는다.
+
 이 모듈은 `api.query` 를 import 하지 않는다(`tests/core/test_decide_read_module.py` 가 본다).
 """
 from __future__ import annotations
@@ -34,7 +37,14 @@ from .graph_read import (
     shape_graph,
     subgraph_ids_plan,
 )
-from .query_base import _DIRECTED_RELS, _GRAPH_READ_PAIRS, _REVERSED_RELS, _SEMANTIC_PK, near_nodes
+from .query_base import (
+    _DIRECTED_RELS,
+    _GRAPH_READ_PAIRS,
+    _REVERSED_RELS,
+    _SEMANTIC_PK,
+    _store_scope,
+    near_nodes,
+)
 
 
 #: 결정 문이 한 번에 받는 경로 수. 경로 목록은 사이드카 GET 질의 문자열에 JSON 으로
@@ -98,13 +108,10 @@ def decide_paths(paths, *, owner: str | None = None, cfg=None, store=None,
                          "split the list")
         return base
     cfg = cfg or load_config()
-    owns = store is None
-    if owns:
-        store = open_store(cfg)
-    if store is None:
-        base["note"] = "no reachable store"
-        return base
-    try:
+    with _store_scope(store, cfg, open_store) as store:
+        if store is None:
+            base["note"] = "no reachable store"
+            return base
         today = _dt.date.today().isoformat()
         params = {"owner": owner} if owner else {}
         anchors: list[dict] = []
@@ -197,9 +204,6 @@ def decide_paths(paths, *, owner: str | None = None, cfg=None, store=None,
         if base["unqualified_paths"]:
             base["unqualified_note"] = ("these paths name no repository, so they only match "
                                         "claims that name none either; send repo:path")
-    finally:
-        if owns:
-            store.close()
     return base
 
 

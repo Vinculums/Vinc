@@ -15,7 +15,7 @@ export type DocWidth = "narrow" | "standard" | "wide";
 export type DocLines = "compact" | "standard" | "relaxed";
 export type DocPrefs = { text: DocText; width: DocWidth; lines: DocLines };
 
-export const DOC_PREFS_KEY = "vinc.doc.prefs";
+const DOC_PREFS_KEY = "vinc.doc.prefs";
 /** 옵션·범례 단추를 내지 않는다(발주자 지시). 단추와 패널 코드는 지우는 중이다. */
 const DOC_OPTIONS_OFF = true;
 export const DOC_DEFAULTS: DocPrefs = { text: "medium", width: "standard", lines: "standard" };
@@ -200,4 +200,4 @@ async function close(opts?: { outside?: boolean }) {
 }
 
 /** 밖에서 닫는다(표면이 바뀔 때 · 닫기 버튼). */
-export const closeDocOptions = (): Promise<void> => close();
+const closeDocOptions = (): Promise<void> => close();

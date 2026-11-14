@@ -59,8 +59,6 @@ PERSON_ANSWERS = ("approve", "decline", "reply")
 ANSWER_TEXT_MAX = 2000
 #: 대기의 종류. person_only 는 사람 세션만, ask_first 는 호스트가 사람에게 물어 답해도 된다.
 DECISION_KINDS = ("person_only", "ask_first")
-#: 답이 어느 길로 왔는가. person 은 서명된 세션 프록시, agent 는 도구 호출이다.
-ANSWER_VIA = ("person", "agent")
 #: 사람에게 묻는 요청의 수명(초). 호스트가 `expires_in_s` 로 고르고, 안 주면 기본값이다.
 EXPIRES_DEFAULT_S = _run_rule.EXPIRES_DEFAULT_S
 EXPIRES_MIN_S = 60
@@ -97,8 +95,6 @@ USAGE_KEYS = ("tool_calls", "tokens_in", "tokens_out", "cost_usd")
 _CAPABILITY_ID = re.compile(r"[a-z][a-z0-9_-]*(?:\.[a-z0-9_-]+)*")
 CAPABILITIES_PER_STEP = 64
 CAPABILITIES_MAX = 200
-#: 능력 감사의 표지. denied 는 역할이 막은 것, outside_allow 는 허용 목록 밖, unapproved 는 승인 없이 쓴 것.
-CAPABILITY_FLAGS = ("denied", "outside_allow", "unapproved")
 _RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 #: 완료 주장 대신 통과하는 말. MCP 제출에는 호스트가 관측한 증거(ToolProof)가 닿는 통로가 없어서
 #: "했다"는 문장은 늘 막힌다. 실행 계약(next)과 막힌 결과가 같은 문구를 쓴다.
@@ -294,7 +290,7 @@ def _resolve(run) -> str | None:
     return episode_id(text) if _RUN_ID.fullmatch(text) else None
 
 
-def _load(bridge, owner: str, eid: str) -> dict | None:
+def load(bridge, owner: str, eid: str) -> dict | None:
     # 저장된 행 그대로 읽는다(stored). 만료를 읽기에서 계산하면 제출·답이 `_expire` 를 못 지난다.
     got = bridge.request("GET", "/runs", params={"owner": owner, "run": eid, "limit": 1,
                                                  "stored": "1"})
@@ -309,6 +305,10 @@ def _load(bridge, owner: str, eid: str) -> dict | None:
                 props["outcome"] = OPEN_OUTCOME
             return props
     return None
+
+
+#: 같은 객체의 별칭이다. 모듈 안의 호출과 기존 호출처가 이 이름으로 부른다.
+_load = load
 
 
 def _save(bridge, owner: str, eid: str, props: dict, *, title: str) -> dict:
@@ -338,7 +338,7 @@ def reading(props: dict) -> str:
     return said if tail in ("", SUCCESS) else f"{tail}, {said}"
 
 
-def _title(props: dict, eid: str = "") -> str:
+def title(props: dict, eid: str = "") -> str:
     """실행 기록의 제목. run_id·역할·상태를 못 읽어도 만든다(run_id 모양이 아니면 episode id).
 
     길이는 `TITLE_CHARS` 안이다: 저장은 너무 긴 제목의 노드를 경고 하나만 남기고 건너뛴다."""
@@ -350,7 +350,11 @@ def _title(props: dict, eid: str = "") -> str:
     return title[:TITLE_CHARS]
 
 
-def _saved(bridge, owner: str, eid: str, props: dict) -> dict | None:
+#: 같은 객체의 별칭이다. 모듈 안의 호출과 기존 호출처가 이 이름으로 부른다.
+_title = title
+
+
+def saved(bridge, owner: str, eid: str, props: dict) -> dict | None:
     """저장하고, 실패하면 그 결과를 돌려준다. 성공은 None.
 
     저장은 크기 상한을 넘는 노드를 거절하지 않고 건너뛰며 경고에 그 id 를 적는다. 그 경고가 이
@@ -363,6 +367,10 @@ def _saved(bridge, owner: str, eid: str, props: dict) -> dict | None:
         return _failure("run_not_saved", "The run state could not be saved, so nothing advanced. "
                         "Call again with the same arguments.", detail=detail)
     return None
+
+
+#: 같은 객체의 별칭이다. 모듈 안의 호출과 기존 호출처가 이 이름으로 부른다.
+_saved = saved
 
 
 def _budget_left(policy: dict, props: dict) -> dict:
@@ -379,7 +387,7 @@ def _budget_left(policy: dict, props: dict) -> dict:
     return left
 
 
-def _view(props: dict, eid: str, policy: dict | None = None, **extra) -> dict:
+def view(props: dict, eid: str, policy: dict | None = None, **extra) -> dict:
     # 저장된 값을 못 읽어도 보기는 만든다: run_id 는 episode id 로, outcome 은 열린 실행의 것으로 읽는다.
     # 보기는 도구 결과의 상한 안에 든다: run_id 는 그 모양(`_RUN_ID`)일 때만 싣고 task 는 `TASK_MAX` 에서 자른다.
     state = props.get("state")
@@ -435,6 +443,10 @@ def _view(props: dict, eid: str, policy: dict | None = None, **extra) -> dict:
         out["ended_at"] = props.get("ended_at", "")
         out["end_reason"] = props.get("end_reason", "")
     return out
+
+
+#: 같은 객체의 별칭이다. 모듈 안의 호출과 기존 호출처가 이 이름으로 부른다.
+_view = view
 
 
 def _fresh_role(bridge, owner: str, role: str) -> dict:

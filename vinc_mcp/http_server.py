@@ -468,7 +468,7 @@ class MCPHTTPApp:
 
     #: 이미 쓴 어서션 id → 만료 시각. **프로세스 안에만 둔다.**
     #: 유효 창이 120초뿐이라 재시작으로 잃는 것은 그 창 하나이고, 파일에 두면 쓰기마다
-    #: DB 를 복사하는 경로(store.py)에 무인증 트래픽이 걸린다. 허브가 레플리카 하나로
+    #: DB 를 복사하는 경로(hub_state.py)에 무인증 트래픽이 걸린다. 허브가 레플리카 하나로
     #: 고정돼 있어서 성립한다 — 여러 개로 늘리면 이 방어가 레플리카마다 갈라진다.
     _seen_jti: dict
 
@@ -811,15 +811,20 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _body(self) -> dict:
         self._raw_body = b""
+        self._body_too_large = False
         try:
             rawb = httpbody.read_body(self.headers, self.rfile, MAX_BODY)
         except httpbody.BodyTooLarge:
+            self._body_too_large = True
+            self.close_connection = True
             # 상한 초과는 본문을 **읽지 않고** 빈 dict 를 돌려준다. 상태 코드는 이 함수가 정하지
-            # 않는다 — 초과를 오류로 알려야 하는 라우트는 부르기 전에 스스로 본다(`_internal_graph`).
-            # 미수신 바이트가 남지만 무해하다 — `protocol_version` 이 HTTP/1.0(기본)이라 매 응답 뒤
-            # 커넥션이 닫히기 때문이다.
-            # ⚠ `protocol_version = "HTTP/1.1"` 로 올리면 keep-alive 가 살아나 이 잔여물이
-            # 다음 요청으로 파싱된다(요청 밀수). 그때는 여기서 `close_connection = True`.
+            # 않는다 — 초과를 오류로 알려야 하는 라우트는 `_body_too_large` 를 보거나(`_sync`),
+            # 부르기 전에 길이를 본다(`_internal_graph`). 빈 dict 를 빈 요청으로 처리하면 보낸 쪽은
+            # 성공 답을 받는데 아무것도 저장되지 않는다.
+            # 읽지 않은 바이트가 소켓에 남으므로 위에서 연결을 닫는다. `protocol_version` 이 HTTP/1.0(기본)이면
+            # 응답 뒤 어차피 닫힌다.
+            # ⚠ `protocol_version = "HTTP/1.1"` 로 올려도 이 닫기를 빼면 안 된다. keep-alive 가 살아나 그
+            # 잔여물이 다음 요청으로 파싱된다(요청 밀수).
             # 정수가 아니거나 음수인 길이(`httpbody.BadContentLength`)는 강등하지 않고 올린다:
             # `do_POST` 가 400 으로 답한다.
             return {}
@@ -1289,6 +1294,11 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(403, {"error": "this key is read-only: sync push "
                                              "writes to the graph"})
         body = self._body()
+        if self._body_too_large:
+            # 읽지 않은 본문은 빈 dict 라서, 사이드카로 넘기면 빈 묶음이 적용돼 200 이 나간다. 보낸 쪽은
+            # 올라간 줄 알고 커서를 옮긴다.
+            return self._json(413, {"error": "request body is too large"},
+                              headers={"Connection": "close"})
         try:
             if path == "/sync/pull":
                 params = {"owner": owner, "since": int(body.get("since") or 0)}

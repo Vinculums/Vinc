@@ -64,12 +64,12 @@ from .authoring import document_retrieval
 # 같은 객체를 다시 내보낸다. 두 모듈은 이 모듈을 최상위에서 import 하지 않는다(순환 방지).
 from .docextract import (  # noqa: F401
     _ATX_RE, _CLAUSE_OPENERS, _FENCE_RE, _FM_DOMAIN_RE, _HEAD_NUM_RE, _LIST_RE,
-    _MAX_HEADING_LEN, _MAX_TITLE_WORDS, _MD_EMPH_RE, _MD_LINK_RE, _MD_PREFIX_RE,
+    _MAX_HEADING_LEN, _MD_EMPH_RE, _MD_LINK_RE, _MD_PREFIX_RE,
     _ONE_LINER_MAX, _SENT_END_RE, _SLUG_RE, _STRUCT_SLUGS, _UNDERLINE_RE, _clean_heading,
     _concept_shaped, _doc_topic, _extract_body_doc, _front_domain, _headings, _one_liner,
     _slug, _strip_md, _title_shaped, extract_concepts, extract_doc)
 from .docreader import (  # noqa: F401
-    _HL_TOKEN_RE, _MENTION_TARGETS, _concept_terms, _editor_offsets, _heading_level,
+    _HL_TOKEN_RE, _concept_terms, _editor_offsets, _heading_level,
     doc_context, doc_highlights, doc_sections, highlight_ranges)
 # 관계 근거 백필은 `api.docevidence` 에 산다. 같은 규칙으로 다시 내보낸다.
 from .docevidence import _EVIDENCE_MAX, _sentences, backfill_evidence  # noqa: F401
@@ -936,13 +936,13 @@ def _relink_mentions(store, doc_id: str, *, owner: str, origin: str) -> int:
     구 링크는 put_doc 의 DETACH DELETE 가 이미 지웠다. 실패는 적재를 무효화하지
     않는다(증강)."""
     try:
-        from engines.mentions_link import compute_links, merge_links, _fetch_concepts
+        from engines.mentions_link import compute_links, fetch_concepts, merge_links
         rows = store.run(
             "MATCH (c:Chunk) WHERE c.doc_id = $d RETURN c.chunk_id AS chunk_id, "
             "c.text AS text", {"d": doc_id})
         chunks = [{"chunk_id": r["chunk_id"], "source_file": origin,
                    "text": r.get("text") or ""} for r in rows or []]
-        concepts = _fetch_concepts(store, owner=owner)
+        concepts = fetch_concepts(store, owner=owner)
         links = compute_links(chunks, concepts)
         # 쓰기도 링커의 것을 쓴다 — 여기 MERGE 를 복제하고 있었고, 그 사본에
         # `(co:Concept)` 이 박혀 있어 결정으로 향하는 링크가 조용히 0건이 됐다.

@@ -1,0 +1,273 @@
+/* ── 시트(D63) — 화면 위에 뜨는 것의 단일 규격 ─────────────────────────────
+   머리(제목·부제·✕) / 몸 / 발(주 액션 오른쪽). 닫힘은 Esc·✕·바깥 클릭 하나로 통일. */
+/* 가운데 정렬 변형 — 확인·프롬프트처럼 짧은 시트는 위쪽 8vh 대신 화면 중앙. */
+.sheet-center { place-items: center; padding: 1rem; }
+.sheet-scrim {
+  position: fixed; inset: 0; z-index: 70;
+  /* 딤은 설정 모달과 **같은 값**이다(발주자 지시 2026-09-09: 모달 셋을 설정 모달로
+     통일). 여태 시트는 `--foreground / .22` 였고 설정은 `0 0% 0% / .5` 라, 같은 층에
+     뜨는 상자인데 뒤가 다른 깊이로 어두워졌다. */
+  background: hsl(0 0% 0% / .5);
+  /* `overflow: hidden` 이 중요하다(2026-08-05 버그). auto 였던 동안에는 딤 자체에
+     스크롤바가 생겼고, 그 스크롤바를 잡으면 클릭 대상이 **딤**이라 바깥 클릭으로
+     읽혀 시트가 닫혔다("스크롤하다 갑자기 닫힘"의 정체). 시트는 84vh 로 묶여 있고
+     내용은 .sheet-body 가 스크롤하므로 딤이 스크롤할 이유가 없다(8+84+2 = 94vh). */
+  /* 설정 모달과 **같은 자리**다: 화면 중앙(2026-09-09). 여태 위에서 8vh 였고,
+     그래서 같은 손잡이 묶음에서 여는 창 셋이 서로 다른 높이에 떴다.
+     ⚠ `overflow: hidden` 이 중요하다(위 주석) — 중앙 정렬로 바꿔도 그대로 둔다. */
+  display: grid; place-items: center; padding: 2rem 1rem; overflow: hidden;
+}
+.sheet {
+  /* 크기 단계는 셋뿐이다(내용의 종류 = 크기). 시트가 임의 폭을 쓰지 못하게
+     여기서만 정의한다 — 열 때마다 화면이 출렁이는 것을 막는 규율. */
+  width: 38rem; max-width: 94vw; background: hsl(var(--card));
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  box-shadow: var(--shadow-elev-3, none);
+  display: flex; flex-direction: column; max-height: 84vh; max-height: 84dvh;
+  /* 등·퇴장 모션은 CSS 가 아니라 motion.ts 가 준다(WAAPI). 여기서 `animation` 을
+     함께 걸면 두 겹으로 움직이고, 무엇보다 **닫기를 기다릴 수 없다** — 옛 규칙은
+     들어오는 0.18s 만 있고 나가는 모션이 없어 시트가 뚝 사라졌다. */
+}
+.sheet-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
+  padding: var(--space-4, 1rem) var(--space-4, 1rem) var(--space-2, .5rem);
+}
+.sheet-titles { min-width: 0; }
+.sheet-titles h2 { margin: 0 0 .15rem; font-size: var(--fs-lg); }
+.sheet-titles .hint { margin: 0; font-size: var(--fs-sm); line-height: 1.5; }
+.sheet-body { padding: 0 var(--space-4, 1rem); overflow: auto; flex: 1 1 auto; min-height: 0; }
+.sheet-foot {
+  display: flex; align-items: center; gap: var(--space-2, .5rem);
+  padding: var(--space-3, .75rem) var(--space-4, 1rem) var(--space-4, 1rem);
+}
+.sheet-foot:empty { display: none; }
+/* 시트 상자는 열릴 때 초점을 받는다(tabindex=-1). 상자 테두리에 초점 고리를 그리지 않는다. */
+.sheet:focus { outline: none; }
+/* 쓰는 자리도 높이 **고정** — 시트가 내용(52vh 편집기)에 맞춰 크기를 잡던 역전을
+   끊는다. 문서는 패널에 맞춰 흐르고 스크롤은 .sheet-body 가 진다(doc-editor.ts). */
+.sheet[data-size="write"]  { width: 52rem; height: 84vh; }
+/* **설정 모달과 같은 상자**(2026-09-09). 도구(만들기·가져오기·공유)와 GRAPH.md 가
+   이 단계를 쓴다 — 그 둘과 설정은 "앱을 다루는 창" 한 종류인데 여태 상자가 셋이었다
+   (설정 42×34rem 중앙 · 도구 68vw×72vh 상단 · GRAPH.md 52rem×84vh 상단).
+   값의 정본은 `--modal-w`·`--modal-h` 이고 설정 모달도 그 둘을 읽는다. */
+.sheet[data-size="panel"] { width: var(--modal-w); height: var(--modal-h); }
+/* 훑는 자리 — 목록은 한 번에 많이 보여야 훑을 수 있다(화면의 2/3 남짓).
+   높이도 **고정**이다: 주제 5줄 → 문서 44줄로 드릴할 때 상자가 같이 커지면
+   방금 누른 줄이 눈앞에서 달아난다. 상자는 가만히 두고 안쪽만 스크롤한다.
+   폭에 상한을 둬 초widescreen 에서 한 줄이 지나치게 길어지지 않게 한다. */
+.sheet[data-size="browse"] { width: min(68vw, 72rem); height: 72vh; }
+.sheet-gap { flex: 1 1 auto; }
+/* 문서 목록(D66) — 주제 → 문서 2단. 검색은 이 목록만 좁힌다(지도 착지 아님). */
+.dl-head {
+  display: flex; align-items: center; gap: var(--space-3, .75rem);
+  position: sticky; top: 0; z-index: 1;
+  background: hsl(var(--card)); padding-bottom: .5rem;
+}
+#dl-q {
+  flex: 1 1 auto; min-width: 0; height: 2.15rem; padding: 0 .7rem;
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--background) / .8); color: hsl(var(--foreground)); font: inherit;
+}
+#dl-q:focus { outline: none; border-color: hsl(var(--ring)); }
+#dl-count { white-space: nowrap; font-size: var(--fs-sm); }
+.dl-back {
+  border: none; background: none; font: inherit; cursor: pointer; padding: .35rem 0;
+  color: hsl(var(--link));
+}
+.dl-back:hover { text-decoration: underline; }
+.dl-sec {
+  margin: .2rem 0 .3rem; font-size: var(--fs-2xs); letter-spacing: .075em; text-transform: uppercase;
+}
+.dl-topic { cursor: pointer; }
+.dl-topic:hover { background: hsl(var(--muted-foreground) / .08); }
+.dl-topic .title { font-weight: 600; }
+.dl-topic:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+/* 시트 안 공통 블록 — 스펙 표(이름/값)와 목록. 모든 시트가 같은 모양을 쓴다. */
+.sheet-spec {
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
+  padding: .25rem .75rem; margin-bottom: var(--space-3, .75rem);
+}
+.sheet-spec > div {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
+  padding: .4rem 0;
+}
+.sheet-spec > div + div { border-top: 1px solid hsl(var(--border) / .55); }
+.sheet-spec b { font-variant-numeric: tabular-nums; }
+.sheet-list {
+  max-height: 16rem; overflow: auto; margin-bottom: var(--space-3, .75rem);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
+  padding: .1rem .6rem;
+}
+/* 목적지 고르기(공유 시트 2단계) — 갈림길은 목록이 아니라 **고르는 카드**다.
+   여태 이 자리는 `<button class="list-row">` 였는데, `.list-row` 는 버튼용 재설정을
+   갖지 않고 이 파일에 `button {}` 기본 규칙도 없다. 그래서 시트 안에서 이 셋만
+   OS 기본 테두리·배경·글꼴을 입고 떴다(설명 줄도 제목과 한 줄에 밀려 붙었다).
+   설명을 제목 아래로 내리는 것은 읽는 순서가 곧 고르는 순서이기 때문이다. */
+.dest-pick {
+  display: flex; flex-direction: column; gap: var(--space-2, .5rem);
+  margin-bottom: var(--space-3, .75rem);
+}
+.dest-pick button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: .15rem;
+  width: 100%; text-align: left; cursor: pointer; font: inherit;
+  padding: var(--space-3, .75rem);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--card)); color: hsl(var(--foreground));
+}
+.dest-pick button:hover { border-color: hsl(var(--muted-foreground)); background: hsl(var(--muted-foreground) / .08); }
+.dest-pick .title { font-weight: 600; }
+.dest-pick .meta { color: hsl(var(--muted-foreground)); font-size: var(--fs-sm); line-height: 1.45; }
+/* 진행 표시 — 공유 시트의 기다림과 스페이스로 보내기의 노드·연결·문서 셋이 쓴다. 모양과
+   움직임은 로딩 모션의 track 이다(vinc-loaders.css, 근거 [[vinc.design.loading-motions]]).
+   개수를 모를 때는 머리가 왕복하고, 셀 단계가 있는 보내기만 수치를 싣는다(sheets.ts
+   `mountGauges`). 여기 남은 것은 시트 안의 간격뿐이다. */
+.sheet-progress { margin-bottom: var(--space-3, .75rem); }
+.sheet-progress > p { margin: 0 0 .55rem; }
+.sheet-gauge { margin-top: var(--space-2, .5rem); }
+
+/* Command palette / cheatsheet overlay */
+#palette {
+  position: fixed; inset: 0; z-index: 50;
+  background: hsl(var(--foreground) / .18);
+  display: grid; place-items: start center; padding-top: 14vh;
+}
+.palette-card {
+  width: 34rem; max-width: 90vw;
+  background: hsl(var(--card)); border: 1px solid hsl(var(--border));
+  border-radius: var(--radius); box-shadow: var(--shadow-elev-3, none);
+  padding: var(--space-3, .75rem);
+}
+.palette-card input {
+  width: 100%; font: inherit; padding: var(--space-3, .75rem);
+  border: 1px solid hsl(var(--input)); border-radius: var(--radius);
+  background: hsl(var(--background)); color: hsl(var(--foreground));
+  margin-bottom: var(--space-2, .5rem);
+}
+.palette-row {
+  display: flex; justify-content: space-between; gap: var(--space-3, .75rem);
+  padding: var(--space-2, .5rem) var(--space-3, .75rem);
+  border-radius: var(--radius); cursor: pointer;
+}
+.palette-row.sel, .palette-row:hover { background: hsl(var(--background)); font-weight: 700; }
+
+/* Domain badge (Figma 6:57 detail rail: "domain: research" chip) */
+.badge {
+  display: inline-block; border: 1px solid hsl(var(--border));
+  border-radius: 999px; padding: 0 var(--space-2, .5rem);
+  font-size: var(--fs-sm); color: hsl(var(--muted-foreground));
+  background: hsl(var(--background));
+}
+
+#surface { padding: var(--space-6, 1.5rem); overflow: auto; position: relative; }
+
+h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.15); margin-top: 0; }
+.hint { color: hsl(var(--muted-foreground)); }
+
+.btn {
+  display: inline-block; font: inherit; cursor: pointer;
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  background: hsl(var(--card)); color: hsl(var(--foreground));
+  padding: var(--space-2, .5rem) var(--space-4, 1rem);
+}
+.btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
+
+.empty {
+  border: 1px dashed hsl(var(--border)); border-radius: var(--radius);
+  padding: var(--space-8, 2rem); text-align: center;
+}
+/* 빈 상태 = 초대(2026-08-19). `.empty` 위에 드롭 대상과 행동 두 개를 얹는다.
+   ⚠ 지도 위에서는 `#view-msg` 가 `pointer-events:none` 이라 이 블록이 드래그 이벤트를
+   못 받는다 — 블록만 되살린다(같은 파일의 `#view-msg a, button` 규칙과 같은 이유). */
+/* 첫 실행 카드의 이유 목록. 불릿을 지우고 여백으로만 가르는 것은 이 셋이 순서도
+   우선순위도 아니어서다(번호를 붙이면 1번이 제일 중요해 보인다). */
+.fr-why { list-style: none; margin: 0 0 var(--space-4, 1rem); padding: 0; display: grid; gap: var(--space-2, .5rem); }
+.fr-why li { color: hsl(var(--foreground)); font-size: var(--fs-base); line-height: 1.5; }
+/* 풀화면 로그인(2026-09-26) — 창 전체가 로그인이다. 웹 로그인 페이지
+   (`Vinc-homepage/site/login`)와 같은 카드 치수를 쓴다: 26rem · 모서리 1.25rem ·
+   카드 70% · elev-2 · 안쪽 2.6/2.2rem · 로고 48px. 두 표면에서 같은 계정에 들어가는
+   문이므로 같은 모양이어야 한다.
+   ⚠ 셸에서는 타이틀바 아래에서 시작한다 — 덮으면 창을 옮기고 닫을 손잡이가 사라진다.
+   근거: [[decision:the-desktop-sign-in-fills-the-window-instead-of-a-modal-2026-09-26]] */
+/* 로그인 뒤 한 번 묻는 "이 기기의 그래프" 화면(VIN-131)도 같은 모양이다 — 로그인의
+   다음 문이고, 둘 다 답하기 전에는 앱을 쓸 수 없다. */
+#signin-screen, #device-graph-screen {
+  position: fixed; inset: 0; z-index: 90;
+  display: grid; place-items: center; overflow-y: auto;
+  padding: var(--space-8, 2rem) var(--space-4, 1rem);
+  background: hsl(var(--background));
+}
+[data-shell] #signin-screen, [data-shell] #device-graph-screen { top: var(--titlebar-h); }
+.si-card {
+  width: min(26rem, 100%); text-align: center;
+  border: 1px solid hsl(var(--border)); border-radius: 1.25rem;
+  background: hsl(var(--card) / .7); box-shadow: var(--shadow-elev-2);
+  padding: 2.6rem 2.2rem;
+}
+.si-mark { display: block; width: 48px; height: 48px; margin: 0 auto 1.2rem; }
+.si-title {
+  margin: 0; font-size: var(--fs-title); font-weight: 700; letter-spacing: -.01em;
+  word-break: keep-all;
+}
+.si-lead {
+  margin: .6rem auto 0; max-width: 22rem; font-size: var(--fs-base); line-height: 1.55;
+  color: hsl(var(--muted-foreground)); word-break: keep-all;
+}
+/* 이유 목록은 카드 가운데 정렬 안에서도 왼쪽 정렬이다 — 여러 줄이 가운데로 흔들리면 못 읽는다. */
+.si-card .fr-why { margin: 1.4rem 0; text-align: left; }
+.si-cta { width: 100%; padding: .7rem 1rem; font-weight: 600; }
+/* 이 기기의 그래프 화면은 안내문 바로 아래에 단추가 온다. 로그인 카드는 사이에 `.fr-why`(위아래 1.4rem)가
+   끼어 있어 간격이 생기지만, 여기엔 그 블록이 없어 0px 로 붙었다. 같은 간격을 준다. */
+#device-graph-screen .si-cta { margin-top: 1.4rem; }
+/* "또는" 구분선 + Google 단추 — 웹 로그인의 것과 같은 치수(선 1px · 글자 .8rem · 단추
+   외곽선에 배경 60%). Google 로고 네 색은 firstrun.ts 에서 면제로 적어 둔다. */
+.si-or {
+  display: flex; align-items: center; gap: .7rem; margin: 1.1rem 0 0;
+  font-size: var(--fs-sm); color: hsl(var(--muted-foreground));
+}
+.si-or::before, .si-or::after { content: ""; flex: 1; height: 1px; background: hsl(var(--border)); }
+.si-card .si-google {
+  display: flex; align-items: center; justify-content: center; gap: .6rem;
+  width: 100%; margin-top: .9rem; padding: .7rem 1rem; font-weight: 600;
+  border: 1px solid hsl(var(--border)); background: hsl(var(--background) / .6);
+  color: hsl(var(--foreground));
+}
+.si-card .si-google:hover { background: hsl(var(--background)); }
+.si-google svg { flex: 0 0 auto; }
+.si-state {
+  margin: .7rem 0 0; min-height: 1.35em; font-size: var(--fs-sm);
+  color: hsl(var(--caption-foreground));
+}
+.si-state:empty { visibility: hidden; }
+.si-progress { margin-top: var(--space-3, .75rem); }
+.si-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2, .5rem); margin-top: var(--space-3, .75rem); }
+.si-actions[hidden] { display: none; }
+.si-note { margin: .8rem 0 0; font-size: var(--fs-sm); word-break: keep-all; }
+.si-note a { color: hsl(var(--foreground)); text-underline-offset: .15em; }
+.empty-invite { pointer-events: auto; display: grid; gap: var(--space-3, .75rem); justify-items: center; }
+.empty-invite.drag { border-style: solid; border-color: hsl(var(--ring)); }
+.empty-invite .ei-lead { margin: 0; }
+.empty-invite .ei-drop { margin: 0; }
+.empty-invite .ei-actions { display: flex; gap: var(--space-2, .5rem); flex-wrap: wrap; justify-content: center; }
+/* 노드 만들기 시트 — 라벨 위, 입력 아래. 시트 폭(action)에 맞춘 한 벌. */
+.ei-field { display: grid; gap: var(--space-1, .25rem); margin-bottom: var(--space-3, .75rem); }
+.ei-field > span { font-size: .85em; color: hsl(var(--caption-foreground)); }
+.ei-field input, .ei-field textarea {
+  /* ⚠ radius 를 --radius(0.875rem) 에서 내렸다. 이 시트가 이 앱에서 <select> 와
+     텍스트 입력이 **나란히 서는 유일한 자리**라서다 — 드롭다운을 공홈 기준
+     (0.625rem)으로 옮기고 여기만 두면 한 폼 안에서 모서리가 갈린다.
+     앱의 radius 척도는 원래 갈려 있다(입력 네 곳 중 둘은 sm, 둘은 --radius).
+     그 전부를 여기서 통일하지는 않는다 — 붙어 서는 한 쌍만 맞춘다. */
+  width: 100%; padding: var(--space-2, .5rem); border-radius: var(--radius-sm, .625rem);
+  border: 1px solid hsl(var(--border)); background: hsl(var(--card)); color: hsl(var(--foreground));
+  font: inherit;
+}
+.ei-field select { width: 100%; }   /* 모양은 공용 select 규칙 */
+.ei-field textarea { resize: vertical; }
+
+.error-banner {
+  border: 1px solid hsl(var(--danger)); border-radius: var(--radius);
+  padding: var(--space-3, .75rem) var(--space-4, 1rem);
+  font-weight: 700;  /* bold ink, not color */
+}
+.error-banner::before { content: "△ "; }
+
