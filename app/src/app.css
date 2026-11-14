@@ -1428,7 +1428,6 @@ button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px;
 .surface-title { display: flex; gap: var(--space-3, .75rem); align-items: flex-start; }
 .surface-title h1 { margin: 0; }
 .surface-meta { margin: .15rem 0 0; }
-.header-cta { display: inline-flex; align-items: center; gap: .4rem; }
 
 /* 공간 메뉴(`.space-menu`)도 같은 판이다. 클래스가 다른 이유는 그 규칙 쪽 주석. */
 .ctx-menu, .space-menu {
@@ -1840,11 +1839,6 @@ h1 { font-family: var(--font-heading, inherit); line-height: var(--lh-tight, 1.1
   border-bottom: 1px solid hsl(var(--border));
 }
 .list-row .title { flex: 1; }
-/* 연결 목록은 제목 한 줄을 자르고, 상태 칸은 남겨 둔다. 전체 제목은 title로 읽는다. */
-#tl-docs .list-row .title {
-  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-#tl-docs .list-row .meta { flex-shrink: 0; }
 .list-row .meta { color: hsl(var(--muted-foreground)); font-size: var(--fs-base); }
 .list-row .actions { visibility: hidden; display: flex; gap: var(--space-2, .5rem); }
 .list-row:hover .actions { visibility: visible; }
@@ -2387,15 +2381,6 @@ body[data-doc-size="full"] .float-card { visibility: hidden; }
 }
 .lens-close:hover { color: hsl(var(--foreground)); background: hsl(var(--muted-foreground) / .1); }
 .lens-close:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
-.lg-tabrow-title { flex: 1 1 auto; font-size: var(--fs-sm); font-weight: 600; }
-.lg-body { display: flex; flex-direction: column; gap: .18rem; }
-.lg-cap {
-  margin: .45rem 0 .15rem; font-size: var(--fs-2xs); letter-spacing: .075em;
-  text-transform: uppercase;
-}
-.lg-item { display: flex; align-items: center; gap: .5rem; font-size: var(--fs-sm); }
-.lg-focus { display: flex; align-items: center; gap: .45rem; text-transform: none; letter-spacing: 0; font-size: var(--fs-sm); }
-.lg-dot { width: 9px; height: 9px; border-radius: 50%; background: hsl(var(--ring)); flex: 0 0 auto; }
 
 /* 메시지 층은 캔버스를 통째로 덮는 오버레이(inset:0)다. 문구만 얹는 층이 그 아래
    그려진 차트의 hover·click 을 전부 삼키면(예: 씨앗 혼자일 때 점 하나 + 안내 문구)
@@ -3524,7 +3509,6 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 }
 .agents-team-head h2 { margin: 0; font-size: var(--fs-lg); font-weight: 600; }
 .agents-team-head .home-count { margin-left: 0; }
-.agents-add { margin-left: auto; }
 .agents-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: var(--space-3, .75rem); }
 .agent-card {
   display: flex; flex-direction: column; gap: var(--space-2, .5rem); min-width: 0;
@@ -3735,7 +3719,6 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
    선은 틈을 두고 시작해 가늘어지는 빛살(채움 = 두 끝의 주제 색 그러데이션). 짚거나 고르면 닿은 빛살만 진하고 나머지는 물러난다.
    끈(정책 ABOUT)은 닿을 때만 보인다. */
 .am-l { stroke: none; opacity: .9; transition: opacity var(--dur-fast) var(--ease-out); }
-.am-l.am-tether { opacity: 0; }
 .has-focus .am-l { opacity: .16; }
 .has-focus .am-l.is-near { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .am-l { transition: none; } }
@@ -3779,8 +3762,6 @@ input.slider:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset
 .am-addform { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); } .am-addform[hidden] { display: none; }
 .am-addform input { height: var(--ctl-h); min-width: 12rem; box-sizing: border-box; font: var(--fs-sm) var(--font-ui); color: hsl(var(--foreground)); background: hsl(var(--background)); border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); padding: 0 var(--space-2); }
 .am-addform select, .am-attach-pick { height: var(--ctl-h); min-width: 12rem; }   /* 드롭다운의 모양은 공용 select 규칙 하나가 정한다(배치만 여기서) */
-/* Agent 옆 칸 편집 */
-.am-agent-edit { display: grid; gap: var(--space-3); }
 /* 옆 칸 */
 .am-side { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); min-width: 0;
   border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--card));
