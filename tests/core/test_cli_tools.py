@@ -83,6 +83,50 @@ class ToolVerbTests(unittest.TestCase):
                 self.assertEqual(data, {})
                 self.assertEqual(bool(destructive), name in guarded)
 
+    def test_call_asks_for_confirmation_exactly_for_the_admin_tier(self):
+        # 확인을 거는 기준은 MCP 호스트가 쓰는 `tool_tier` 하나다. CLI 가 목록을 따로 들고 있으면
+        # 도구에 `destructiveHint` 가 붙어도 CLI 만 확인 없이 지운다.
+        admin = {item["name"] for item in tools.TOOLS if tools.tool_tier(item["name"]) == "admin"}
+        self.assertTrue(admin, "the registry has no admin tool")
+        for item in tools.TOOLS:
+            name = item["name"]
+            with self.subTest(name=name):
+                _, _, destructive = tool_request(SimpleNamespace(
+                    cmd="call", tool=name, args="{}", args_file=None))
+                self.assertEqual(destructive, name if name in admin else None)
+
+    def test_a_tool_marked_destructive_asks_for_confirmation_without_a_cli_change(self):
+        marked = {**tools._ANNOTATIONS["vinc_search"], "readOnlyHint": False, "destructiveHint": True}
+        with patch.dict(tools._ANNOTATIONS, {"vinc_search": marked}):
+            self.assertEqual(tools.tool_tier("vinc_search"), "admin")
+            _, _, destructive = tool_request(SimpleNamespace(
+                cmd="call", tool="vinc_search", args="{}", args_file=None))
+        self.assertEqual(destructive, "vinc_search")
+
+    def test_a_verb_asks_for_confirmation_exactly_when_it_runs_an_admin_tool(self):
+        verbs = [
+            {"cmd": "delete", "id": "concept:x"},
+            {"cmd": "edge", "edgecmd": "delete", "from_id": "concept:a", "to_id": "concept:b",
+             "type": "relates_to"},
+            {"cmd": "merge", "mergecmd": "nodes", "keep": "concept:a", "drop": "concept:b"},
+            {"cmd": "doc", "doccmd": "rm", "id": "d"},
+            {"cmd": "doc", "doccmd": "get", "id": "d"},
+            {"cmd": "doc", "doccmd": "ls"},
+            {"cmd": "merge", "mergecmd": "candidates", "limit": 5},
+            {"cmd": "merge", "mergecmd": "rejections"},
+            {"cmd": "node", "nodecmd": "get", "id": "concept:x"},
+            {"cmd": "whoami"},
+        ]
+        asked = set()
+        for verb in verbs:
+            with self.subTest(verb=verb):
+                name, _, destructive = tool_request(SimpleNamespace(owner=None, **verb))
+                self.assertEqual(destructive is not None, tools.tool_tier(name) == "admin")
+                if destructive is not None:
+                    asked.add(name)
+        self.assertEqual(asked, {"vinc_delete", "vinc_delete_edge", "vinc_merge_nodes",
+                                 "vinc_doc_delete"})
+
     def test_confirmation_required_in_pipe(self):
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err), patch("sys.stdin", io.StringIO()):
