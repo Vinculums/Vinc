@@ -14,13 +14,11 @@
 from __future__ import annotations
 
 import math
-import os
 import re
 
-from store import pkns
+from store import envflag, pkns
 from store.backend import open_store
 from store.config import load_config
-from store.envflag import truthy
 from store.querybase import holds_during, normalize_query_tokens, time_scope, validity_state
 from vinc_rag import excerpt as _excerpt
 from vinc_rag import retrieval as _retrieval
@@ -245,8 +243,7 @@ def _brief_strict_on() -> bool:
     오르고 함께여야 오른다**(팔은 후보 1위를 9건에서 17건으로 올려 놓는데, 옛 판정이
     그 위에 확신 오답을 얹고 목록을 감췄다).
     근거: [[record:the-confidence-bar-was-one-token-and-that-was-the-defect-2026-09-10]]"""
-    return str(os.environ.get("VINC_BRIEF_STRICT", "")).strip().lower() not in (
-        "0", "off", "false", "no")
+    return envflag.default_on("VINC_BRIEF_STRICT")
 
 
 #: 확신에 필요한 토큰 차. 옛 값 1 은 **토큰 하나 차이면 확신한다**는 뜻이라 사실상
@@ -259,8 +256,7 @@ def _brief_sem_promote_on() -> bool:
     `VINC_BRIEF_SEM_PROMOTE=off` 가 토큰 규칙만 쓰던 동작으로 되돌린다(측정용 비상구).
     끄면 brief 의 맞는 확정이 절반 아래로 줄고, 틀린 노드 확정은 줄지 않는다.
     근거: [[vinc.spec.retrieval-knobs]] §2"""
-    return str(os.environ.get("VINC_BRIEF_SEM_PROMOTE", "")).strip().lower() not in (
-        "0", "off", "false", "no")
+    return envflag.default_on("VINC_BRIEF_SEM_PROMOTE")
 
 
 #: 승격에 필요한 의미 우위: 의미 팔 원시 목록에서 1위가 나머지보다 가까운 거리(`sem_lead`,
@@ -383,8 +379,7 @@ def _brief_rank(rows: list[dict]) -> list[dict]:
 
 def _brief_rule() -> str:
     """`VINC_BRIEF_RULE` 의 값. `v3` 만 학습 규칙이고, 그 밖의 값과 빈 값은 production 이다."""
-    v = (os.environ.get("VINC_BRIEF_RULE") or "production").strip().lower()
-    return v if v == "v3" else "production"
+    return envflag.one_of("VINC_BRIEF_RULE", ("production", "v3"), "production")
 
 
 def _brief_rule_v3() -> bool:
@@ -606,15 +601,14 @@ def _brief_answerability_on() -> bool:
     끄고 켤 수 있어야 하는 이유: 이 문턱은 정답 81문항 중 **확정 18건** 위에서 골랐고,
     답 불가 21문항 중 15문항을 이 세션에 내가 썼다. 즉 시험지 절반이 이 신호를 편들
     수 있다. 기본값을 바꾸기 전에 남이 쓴 문항이 늘어나야 한다."""
-    return truthy(os.environ.get("VINC_BRIEF_ANSWERABILITY"))
+    return envflag.default_off("VINC_BRIEF_ANSWERABILITY")
 
 
 def _brief_section_on() -> bool:
     """질문으로 문서 미러에 닿은 brief 에 `section` 을 실을 것인가(`VINC_BRIEF_SECTION`).
     기본은 켜짐이고 ``off``·``0``·``false``·``no`` 가 끈다(끄면 이 키가 없던 때와 같다).
     근거: [[vinc.research.answer-material-section-ai-corpus-2026-10-17]]"""
-    v = str(os.environ.get("VINC_BRIEF_SECTION", "")).strip().lower()
-    return v not in ("off", "0", "false", "no")
+    return envflag.default_on("VINC_BRIEF_SECTION")
 
 
 def _brief_pick_chunk(store, chunks: list[dict], *, query: str, query_embedding,
@@ -692,8 +686,7 @@ def _brief_quotes_on() -> bool:
     """후보와 확정 노드에 `quotes`(글자 그대로의 인용 단위)를 실을 것인가(`VINC_BRIEF_QUOTES`).
     기본은 켜짐이고 ``off``·``0``·``false``·``no`` 가 끈다(끄면 이 키가 없던 때와 같다).
     근거: [[vinc.manual.rag]]"""
-    v = str(os.environ.get("VINC_BRIEF_QUOTES", "")).strip().lower()
-    return v not in ("off", "0", "false", "no")
+    return envflag.default_on("VINC_BRIEF_QUOTES")
 
 
 #: 노드마다 싣는 인용 단위 수와, 개념의 MENTIONS 청크에서 고를 후보 수.
@@ -758,11 +751,7 @@ def _brief_expose_n() -> int:
     `VINC_BRIEF_EXPOSE` 는 노출을 바꿔 재기 위한 손잡이다(X1). 기본값을 바꾸는 것은
     결정 노드로만 한다. 잘못된 값은 기본으로 읽는다.
     근거: [[vinc.plan.rag-eval-v2-0-9-6]]"""
-    raw = str(os.environ.get("VINC_BRIEF_EXPOSE", "")).strip()
-    try:
-        return max(1, int(raw)) if raw else _BRIEF_CANDIDATES
-    except ValueError:
-        return _BRIEF_CANDIDATES
+    return envflag.positive_int("VINC_BRIEF_EXPOSE", _BRIEF_CANDIDATES)
 
 
 def _brief_list_resolved_on() -> bool:
@@ -770,7 +759,7 @@ def _brief_list_resolved_on() -> bool:
     (`VINC_BRIEF_LIST_RESOLVED`). 확정이 틀렸을 때 그 뒤에 가려진 정답을 부르는 쪽이
     볼 수 있게 한다(X1). status 와 node 는 그대로다 — 목록이 답을 바꾸지 않는다.
     근거: [[vinc.plan.rag-eval-v2-0-9-6]]"""
-    return truthy(os.environ.get("VINC_BRIEF_LIST_RESOLVED"))
+    return envflag.default_off("VINC_BRIEF_LIST_RESOLVED")
 
 
 def _brief_candidate_rows(picked: list[dict]) -> list[dict]:
@@ -1048,6 +1037,305 @@ def _brief_answer(base: dict, cand: dict, ctx: dict, store, *, owner: str, mode,
     return out
 
 
+def _brief_by_id(query: str, base: dict, store, *, owner: str, kinds, mode, direct_scope, direct_scope_info,
+                 known_scope, known_at, max_excerpts: int, rule: dict) -> dict | None:
+    """질문에 노드 id 가 있으면 검색 없이 그 노드를 연다(직참조). 답을 돌려주고, 질문에 id 가 없으면 None 이다.
+
+    답은 `base` 에 키를 채운 것이거나 `_brief_answer` 의 답이다. 질문 속 id 가 하나도 안 열리거나 시간·종류
+    규칙 밖이면 랭킹으로 넘어가지 않고 그렇다고 답한다."""
+    # 질문이 노드 id 를 그대로 담고 있으면 검색·랭킹을 거치지 않고 그 노드를
+    # 연다 — 재측정 체인 arm 의 v1.1 수정("묻는 쪽이 이미 준 id 를 검색하는
+    # 것은 낭비")을 도구 안으로 옮긴 것. 태스크 C 가 잰 실패가 정확히 이
+    # 모양이었다: id 가 질문에 있는데 긴 제목의 기록이 랭킹을 이겨 **조용한
+    # 오답**이 났다. 랭킹 자체는 여기서 건드리지 않는다 — id 없는 질의의
+    # 동점 처리(제목 언어 갭)는 열린 결정으로 남는다:
+    # [[record:title-language-gap-survives-the-vector-arm-2026-08-30]]
+    unread_ids: list[dict] = []
+    out_of_scope_ids: list[str] = []
+    known_out: list[str] = []
+    # 개방 타입 id 는 네 접두 id 가 없을 때만, 실재하는 것만 연다(F12).
+    qids = _brief_query_ids(query) or _brief_entity_ids(store, query, owner=owner)
+    if kinds and qids:
+        kept = [i for i in qids if i.split(":", 1)[0] in kinds]
+        if not kept:
+            base["executed"] = True
+            base["kinds_filtered"] = len(qids)
+            base["note"] = "the referenced node is not of the requested kinds"
+            return base
+        qids = kept
+    for qid in qids:
+        got = node_context(owner=owner, node=qid, limit=max_excerpts,
+                           with_evidence=True, store=store)
+        if got.get("executed"):
+            if mode == "current" and got.get("temporal", {}).get("validity") in ("future", "historical"):
+                out_of_scope_ids.append(qid)
+                continue
+            if mode != "current" and direct_scope is not None and not _brief_holds(
+                    got, direct_scope):
+                out_of_scope_ids.append(qid)
+                continue
+            if known_scope is not None:
+                # B1 — 컷오프 뒤에 저장된 노드는 그 시점의 그래프에 없었다. 저장 시각을
+                # 모르면 감추지 않고 센다(검색과 같다).
+                known = _brief_known(got, known_scope)
+                if known is False:
+                    known_out.append(qid)
+                    continue
+                if known is None:
+                    base["known_at_unknown"] = int(base.get("known_at_unknown") or 0) + 1
+            base["executed"] = True
+            base["status"] = "resolved"
+            if mode == "current" and (got.get("temporal", {}).get("validity") == "unknown" or got.get("temporal", {}).get("claim_status") in ("conflict", "cycle", "superseded", "unknown")):
+                base["status"] = "choose"
+                base["candidates"] = _brief_candidate_rows([{"id": qid, "kind": got.get("node_kind"), "title": got.get("title"), "temporal": got.get("temporal")}])
+                base["validity_note"] = "the current claim is uncertain; no current state was chosen"
+                return base
+            base["resolved_via"] = "id"
+            # 앞선 후보가 안 열려 ASCII 접두나 다음 id 로 열었으면 그 대체를
+            # 밝힌다 — 잘린 접두는 우연히 실재하는 다른 노드일 수 있다.
+            if unread_ids:
+                base["fell_through"] = list(unread_ids)
+            if known_scope is not None:
+                base.setdefault("known_at_filtered", 0)
+            return _brief_answer(base, {"id": qid}, got, store, **rule)
+        unread_ids.append({"id": qid,
+                           "note": got.get("note") or ("node not found: " + qid)})
+    # 질문이 준 id 가 하나도 안 열리면 **없다고 답한다**(status="none" + unreadable).
+    # 랭킹으로 넘어가면 다른 노드가 resolved 로 나오고, 호출부는 그것을 자기가
+    # 물은 노드로 읽는다 — fell_through 한 줄로는 그 대체를 막지 못했다.
+    # 접두 되물림(위 루프)은 여전히 id 경로 안에서의 대체라 그대로 둔다.
+    # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]]
+    if unread_ids:
+        base["executed"] = True
+        base["unreadable"] = list(unread_ids)
+        base["note"] = unread_ids[0]["note"]
+        return base
+    if out_of_scope_ids or known_out:
+        base["executed"] = True
+        if out_of_scope_ids:
+            base["validity_filtered"] = len(out_of_scope_ids)
+            base["validity_note"] = (
+                "the referenced node is not current" if mode == "current" else
+                f"the referenced node did not hold during {direct_scope_info['as_of']}")
+        if known_out:
+            base["known_at_filtered"] = len(known_out)
+            base["known_at_node_note"] = (
+                f"the referenced node was recorded after {known_at.strip()}; "
+                "the graph did not hold it then")
+        return base
+    return None
+
+
+def _brief_rank_path(query: str, base: dict, store, *, owner: str, query_embedding, historical: bool, as_of,
+                     mode, known_at, known_scope, query_runtime, query_model, query_colbert, kinds):
+    """검색으로 후보를 찾아 규칙(production·v3)으로 해소하고 가드를 건다. `base` 에 검색 쪽 키와 `status` 를 채운다.
+
+    반환 `(응답, 해소)`. 응답이 None 이 아니면 그대로 돌려줄 답이다(노드 결과 없는 청크 팔 오류, 의미만 기권).
+    아니면 해소가 `(status, picked, pool, res, v3)` 이고, 부르는 쪽이 그것으로 답을 마무리한다."""
+    res = search(query, query_embedding=query_embedding, top_k=_BRIEF_TOP_K,
+                 owner=owner, store=store, historical=historical,
+                 as_of=as_of, mode=mode, known_at=known_at,
+                 query_runtime=query_runtime, query_model=query_model,
+                 # 기존 규칙은 ColBERT 순서 위에서 잰 적이 없다 — 학습 규칙일 때만 재채점된 후보로 해소한다.
+                 query_colbert=query_colbert if _brief_rule_colbert() else None,
+                 **({"kinds": kinds} if kinds else {}))
+    # executed 는 노드 팔 기준이다 — 청크 팔만 죽어도 노드 팔은 owner 스코프 결과를 낸다.
+    base["executed"] = bool(res.get("executed") or res.get("node_hits"))
+    # 벡터 팔의 상태도 함께 나른다. 두 표면이 같은 임베딩 창구를 쓰는데 `/search`
+    # 만 강등을 말하면 같은 고장이 도구에 따라 보이거나 안 보인다. 규칙은 `/search`
+    # 와 같다 — **검색이 실제로 돈 경우에만** 싣는다(id 직참조는 이 줄에 오기 전에
+    # 반환하므로 안 돈 팔에 이름이 붙지 않는다. 게이트① 동등성은 q.brief 한 곳에서
+    # 세우는 것으로 지킨다 — HTTP 계층에서 붙이면 CLI 와 갈린다).
+    for k in ("note", "node_error",
+              "arms", "vector_note", "vector_rebuilding", "time_scope",
+              "encoder_runtime_warning",
+              "validity_filtered", "validity_note", "validity_best_dropped",
+              "temporal_error", "partial", "mode", "claim_assessment_scope"):
+        if res.get(k):
+            base[k] = res[k]
+    # 노드 의미 팔이 모델 불일치로 꺼졌으면 해소가 그 팔 없이 돌았다. 그 사실도 나른다.
+    if (res.get("node_semantic") or {}).get("state") == "model_mismatch":
+        base["node_semantic"] = res["node_semantic"]
+    if known_scope is not None:
+        # B1 — 검색이 known_at 으로 감춘 수를 그대로 잇는다(0 도 값이다: 거르기가 돌았다).
+        base["known_at_filtered"] = int(res.get("known_at_filtered") or 0)
+        base["known_at_unknown"] = int(res.get("known_at_unknown") or 0)
+    if mode == "current" and base.get("validity_note"):
+        # D15 — current 는 as_of 를 받지 않는다. 검색의 알림이 기간 문장("drop as_of")을
+        # 달고 와도 여기서는 상태로 말한다.
+        base["validity_note"] = ("hid claims that are not current; "
+                                 "use mode=historical to include them")
+    # 검색의 `error` 는 청크 팔 실패다(FTS 잔해·확장 미가용·색인 부재 …). 같은 검색의
+    # 노드 팔 결과로 해소를 계속하고 사유는 `search_error` 로 싣는다 — 최상위 `error` 는
+    # REST v1 이 HTTP 500 으로 바꾸므로 해소된 답에 쓸 수 없다. 노드 팔도 빈손일 때만
+    # 여기서 돌아온다. 근거: [[vinc.plan.rag-code-review-fixes-2026-09-29]]
+    if res.get("error"):
+        base["search_error"] = res["error"]
+        if not res.get("node_hits"):
+            return base, None
+    # 넓은 풀은 되묻기 목록용으로 따로 두고, 확정·기권·가드는 앞 `_BRIEF_RESOLVE_N` 개로 본다.
+    pool = [h for h in res.get("node_hits") or [] if isinstance(h, dict) and h.get("id")]
+    full = res.get("node_hits") or []
+    res = {**res, "node_hits": full[:_BRIEF_RESOLVE_N]}
+    rescored = (res.get("node_rescore") or {}).get("state") == "applied"
+    # v3 는 의미만 기권을 재채점 **전** 순서의 앞 다섯으로 본다(재채점이 기권 대상을 바꾸지 않게).
+    # 재채점이 안 된 질의는 기존 규칙 그대로 간다.
+    v3 = _brief_rule_v3() and rescored and bool(full)
+    configured = _brief_rule()
+    if configured != "production" and not v3:
+        # 학습 규칙이 설정돼 있어도 재채점이 안 된 질의는 기존 규칙이 답한다. 그 사실을 답에 싣는다:
+        # 없으면 평가도 사람도 어느 규칙의 답인지 가를 수 없다(토큰이 빠진 노드 하나로도 재채점이 빠진다).
+        # 근거: [[vinc.canon.rag-production-state]]
+        _rs = res.get("node_rescore") or {}
+        base["resolution"] = {"rule": "production", "configured": configured,
+                              "rescore": _rs.get("state") or "missing"}
+        if _rs.get("reason"):
+            base["resolution"]["reason"] = _rs["reason"]
+    if _brief_semantic_none({**res, "node_hits": _brief_v3_prod_head(full)} if v3 else res):
+        base["note"] = "no sufficiently close semantic candidate"
+        return base, None
+    if v3:
+        status, picked, _p = _brief_resolve_v3(query, res.get("node_hits") or [], res)
+        base["resolution"] = {"rule": "v3", "p": None if _p is None else round(_p, 4)}
+    else:
+        status, picked = _brief_resolve(
+            query, res.get("node_hits") or [],
+            mirror_text=lambda h: _brief_mirror_text(store, owner, h))
+    # B5 — current 의 기권은 답(1위)과 그 주장 키를 공유하는 후보만 본다. 후보 아무나
+    # 보면 구간이 없어 늘 unknown 인 개념 후보 하나가 다른 주장의 답을 막는다.
+    if mode == "current" and picked and _brief_current_uncertain(
+            store, owner=owner, answer=picked[0], hits=res.get("node_hits") or []):
+        status = "choose"
+        base["validity_note"] = "current claim evidence is conflicting or unknown; no current state was chosen"
+    # D11 — current 에서 동점이던 노드가 은퇴했으면 남은 노드로 확정한다. 의도된 뜻이다:
+    # current 는 "지금 성립하는 것"을 묻고, 은퇴한 노드는 그 질문의 경쟁자가 아니다.
+    # 아래 동점 가드는 일반 모드에서 감춘 행의 점수(validity_best_dropped)를 보는데,
+    # current 에서는 finish_nodes 가 은퇴한 노드를 감추며 그 점수를 남기지 않으므로
+    # 가드가 서지 않는다. 그 차이가 이 뜻을 구현한다(감사 D11).
+    # 🔴 **유효구간 필터가 동점을 깨서 확신을 만들면 안 된다.** 지운 행이 남은 1위와
+    # 같은 점수였다면, 원래 이 질문은 "모르겠다"(choose)였다. 그 자리에서 확정을
+    # 주면 필터가 **보이는 것**이 아니라 **답**을 바꾼 것이고, 그건 §4.2 가 의도한
+    # 바가 아니다. 실측(2026-09-09): 이 갈래가 없는 동안 답 불가 질문 6건 중 1건이
+    # 확정됐다(정직성 0.0 → 0.1667). 동점이던 Record 둘 중 하나가 걸러지면서 남은
+    # 하나가 단독 승자가 된 모양이었다.
+    # 근거: [[record:the-validity-filter-broke-a-tie-and-manufactured-confidence-2026-09-09]]
+    # v3 확정에는 돌지 않는다: 감춘 행의 점수는 v3 특징(:func:`_brief_v3_features`)에 이미 있다.
+    if status == "resolved" and picked and base.get("validity_filtered") and not v3:
+        _bd = tuple(base.get("validity_best_dropped") or (0, 0))
+        if (_brief_hidden_ties(query, picked[0], _bd)
+                and not _brief_semantic_tie_clear(picked, res)):
+            status = "choose"
+            # 시점 읽기(as_of)에서도 같은 가드다 — 그 기간 밖이라 감춘 것이 동점이었으면
+            # 확정하지 않는다(계획의 "tie guard applies unchanged"). 알림은 경우마다
+            # 다르다(D15): current 는 as_of 를 받지 않으므로 "drop as_of" 라고 말하지 않는다.
+            _ts = base.get("time_scope") or {}
+            if mode == "current":
+                base["validity_note"] = (
+                    "a claim that is not current tied with the leading candidate, "
+                    "so this was not resolved; use mode=historical to see it")
+            elif _ts.get("from"):
+                base["validity_note"] = (
+                    "a claim that did not hold during {} tied with the leading candidate, "
+                    "so this was not resolved; drop as_of to see it".format(_ts["as_of"]))
+            else:
+                base["validity_note"] = (
+                    "a claim that is no longer current tied with the leading candidate, "
+                    "so this was not resolved; pass historical=true to see it")
+    # 🔴 **주제를 찾은 것과 질문에 답하는 것은 다르다.** 질문이 노드 제목을 그대로
+    # 인용하고 그 **속성**을 물으면(“…는 문장은 누가 썼나”) 제목이 통째로 맞아
+    # 토큰 여유가 넘치고, 확신 문턱은 그것을 못 거른다 — 랭킹 문제가 아니기 때문이다.
+    # 실측(2026-09-10, 답 불가 21문항): 이 갈래가 없으면 '주제는 있는데 속성이 없는'
+    # 7건 중 3건을 확신했다. 이 게이트는 그 셋을 전부 막고(답불가 확정 0.1429 → 0.0000)
+    # 맞는 확신 하나를 잃는다. **노출 R@1 은 안 변한다** — 강등된 질문도 후보 목록에
+    # 정답을 1위로 싣기 때문이다.
+    # ⚠ 기본은 꺼져 있다 — 이유는 :func:`_brief_answerability_on` 에 있다.
+    if status == "resolved" and picked and _brief_answerability_on():
+        _orphan = _brief_orphan_residual(query, picked[0].get("title"), res)
+        if _orphan >= _ORPHAN_BLOCK:
+            status = "choose"
+            base["answerability_note"] = (
+                "the topic matched but the question asks for something this graph "
+                "does not hold, so this was not resolved")
+    base["status"] = status
+    return None, (status, picked, pool, res, v3)
+
+
+def _brief_finish_choose(base: dict, store, *, owner: str, query: str, query_embedding, res: dict, pool: list,
+                         v3: bool, max_excerpts: int, rule: dict) -> dict:
+    """되묻기 답: 넓은 풀을 노출 수만큼 후보로 싣고 인용·절·첫 후보의 재료를 붙여 `base` 를 돌려준다."""
+    # 되묻기 목록은 넓은 풀 전체를 의미 순서(`_brief_list_rank`)로 세워 노출 수에서
+    # **한 번** 자른다. 확정용 순위(팔 개수 → 토큰)는 의미 팔에만 걸린 후보를 맨 뒤로
+    # 미는데, 넓은 풀에 새로 들어오는 정답은 대부분 그런 후보다.
+    # v3 는 ColBERT 순서를 그대로 보인다 — 의미 순서로 다시 세우면 재채점을 되돌린다.
+    picked = list(pool) if v3 else _brief_list_rank(pool)
+    base["candidates"] = _brief_candidate_rows(picked[:_brief_expose_n()])
+    if _brief_quotes_on():
+        for _c in base["candidates"]:
+            _q = _brief_node_quotes(store, owner=owner, node_id=str(_c.get("id") or ""),
+                                    query=query, query_embedding=query_embedding)
+            if _q:
+                _c["quotes"] = _q
+    _brief_attach_section(base, store, owner=owner, query=query, res=res,
+                          query_embedding=query_embedding,
+                          nodes=[str(c.get("id") or "") for c in base["candidates"]])
+    # 첫 후보의 재료를 따로 한 키에 싣는다. status·candidates 는 그대로다 — 이 재료가
+    # 확정 답으로 읽히면 안 된다(재료의 꼴과 이유는 `_brief_candidate_material`).
+    if base["candidates"]:
+        _mat = _brief_candidate_material(store, base["candidates"][0],
+                                         max_excerpts=max_excerpts, **rule)
+        if _mat is not None:
+            base["candidate_material"] = _mat
+    return base
+
+
+def _brief_finish_resolved(base: dict, picked: list, store, *, owner: str, query: str, query_embedding,
+                           res: dict, max_excerpts: int, rule: dict) -> dict:
+    """확정 답: 고른 순위에서 열리는 첫 노드로 답을 조립하고 인용·절을 붙인다. 아무것도 안 열리면 none 이다."""
+    # 1위가 상세에서 안 열리면 다음 후보로 넘어간다. 그 전에는 곧장
+    # status="none" 을 냈는데, 계약상 none 은 "아무것도 안 맞았다"라서 **맞았는데
+    # 못 읽었다**를 안 맞은 것처럼 보고했다. 관계마다 근거 문장을 함께 받는다 —
+    # 에이전트는 그것을 인용해야 한다.
+    #
+    # ⚠ 폴스루는 밝혀서 한다. 조용히 다음 후보를 답하면 이 표면은 "질문에 맞는
+    # 노드"가 아니라 "열리기만 하는 노드"를 답하게 되고, 그것은 이 도구가 임의
+    # 임계값을 거부하며 지키려던 성질을 정반대로 뒤집는다.
+    hit = ctx = None
+    unread: list[dict] = []
+    for cand in picked[:_BRIEF_FALLTHROUGH]:
+        cid = str(cand.get("id") or "")
+        if not cid:
+            continue
+        got = node_context(owner=owner, node=cid, limit=max_excerpts,
+                           with_evidence=True, store=store)
+        if got.get("executed"):
+            hit, ctx = cand, got
+            break
+        unread.append({"id": cid,
+                       "note": got.get("note") or ("node not found: " + cid)})
+    if ctx is None:
+        base["status"] = "none"
+        base["note"] = (unread[0]["note"] if unread
+                        else "node not found: " + str(picked[0].get("id") or ""))
+        if unread:
+            base["unreadable"] = unread
+        return base
+    if unread:
+        base["fell_through"] = unread
+    out = _brief_answer(base, hit, ctx, store, **rule)
+    if _brief_quotes_on():
+        _q = _brief_node_quotes(store, owner=owner, node_id=str(hit.get("id") or ""),
+                                query=query, query_embedding=query_embedding)
+        if _q:
+            out["quotes"] = _q
+    _brief_attach_section(out, store, owner=owner, query=query, res=res,
+                          query_embedding=query_embedding,
+                          nodes=[str(hit.get("id") or "")])
+    if _brief_list_resolved_on():
+        # 확정은 그대로 두고 순위 목록을 곁에 싣는다. 첫 자리는 순위 1위다.
+        out["candidates"] = _brief_candidate_rows(picked[:_brief_expose_n()])
+    return out
+
+
 def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
           max_excerpts: int = 3, historical: bool = False, as_of: str | None = None,
           mode: str | None = None, known_at: str | None = None,
@@ -1117,280 +1405,26 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         base["note"] = "no reachable store"
         return base
     try:
-        # 질문이 노드 id 를 그대로 담고 있으면 검색·랭킹을 거치지 않고 그 노드를
-        # 연다 — 재측정 체인 arm 의 v1.1 수정("묻는 쪽이 이미 준 id 를 검색하는
-        # 것은 낭비")을 도구 안으로 옮긴 것. 태스크 C 가 잰 실패가 정확히 이
-        # 모양이었다: id 가 질문에 있는데 긴 제목의 기록이 랭킹을 이겨 **조용한
-        # 오답**이 났다. 랭킹 자체는 여기서 건드리지 않는다 — id 없는 질의의
-        # 동점 처리(제목 언어 갭)는 열린 결정으로 남는다:
-        # [[record:title-language-gap-survives-the-vector-arm-2026-08-30]]
-        unread_ids: list[dict] = []
-        out_of_scope_ids: list[str] = []
-        known_out: list[str] = []
-        # 개방 타입 id 는 네 접두 id 가 없을 때만, 실재하는 것만 연다(F12).
-        qids = _brief_query_ids(query) or _brief_entity_ids(store, query, owner=owner)
-        if kinds and qids:
-            kept = [i for i in qids if i.split(":", 1)[0] in kinds]
-            if not kept:
-                base["executed"] = True
-                base["kinds_filtered"] = len(qids)
-                base["note"] = "the referenced node is not of the requested kinds"
-                return base
-            qids = kept
-        for qid in qids:
-            got = node_context(owner=owner, node=qid, limit=max_excerpts,
-                               with_evidence=True, store=store)
-            if got.get("executed"):
-                if mode == "current" and got.get("temporal", {}).get("validity") in ("future", "historical"):
-                    out_of_scope_ids.append(qid)
-                    continue
-                if mode != "current" and direct_scope is not None and not _brief_holds(
-                        got, direct_scope):
-                    out_of_scope_ids.append(qid)
-                    continue
-                if known_scope is not None:
-                    # B1 — 컷오프 뒤에 저장된 노드는 그 시점의 그래프에 없었다. 저장 시각을
-                    # 모르면 감추지 않고 센다(검색과 같다).
-                    known = _brief_known(got, known_scope)
-                    if known is False:
-                        known_out.append(qid)
-                        continue
-                    if known is None:
-                        base["known_at_unknown"] = int(base.get("known_at_unknown") or 0) + 1
-                base["executed"] = True
-                base["status"] = "resolved"
-                if mode == "current" and (got.get("temporal", {}).get("validity") == "unknown" or got.get("temporal", {}).get("claim_status") in ("conflict", "cycle", "superseded", "unknown")):
-                    base["status"] = "choose"
-                    base["candidates"] = _brief_candidate_rows([{"id": qid, "kind": got.get("node_kind"), "title": got.get("title"), "temporal": got.get("temporal")}])
-                    base["validity_note"] = "the current claim is uncertain; no current state was chosen"
-                    return base
-                base["resolved_via"] = "id"
-                # 앞선 후보가 안 열려 ASCII 접두나 다음 id 로 열었으면 그 대체를
-                # 밝힌다 — 잘린 접두는 우연히 실재하는 다른 노드일 수 있다.
-                if unread_ids:
-                    base["fell_through"] = list(unread_ids)
-                if known_scope is not None:
-                    base.setdefault("known_at_filtered", 0)
-                return _brief_answer(base, {"id": qid}, got, store, **rule)
-            unread_ids.append({"id": qid,
-                               "note": got.get("note") or ("node not found: " + qid)})
-        # 질문이 준 id 가 하나도 안 열리면 **없다고 답한다**(status="none" + unreadable).
-        # 랭킹으로 넘어가면 다른 노드가 resolved 로 나오고, 호출부는 그것을 자기가
-        # 물은 노드로 읽는다 — fell_through 한 줄로는 그 대체를 막지 못했다.
-        # 접두 되물림(위 루프)은 여전히 id 경로 안에서의 대체라 그대로 둔다.
-        # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]]
-        if unread_ids:
-            base["executed"] = True
-            base["unreadable"] = list(unread_ids)
-            base["note"] = unread_ids[0]["note"]
-            return base
-        if out_of_scope_ids or known_out:
-            base["executed"] = True
-            if out_of_scope_ids:
-                base["validity_filtered"] = len(out_of_scope_ids)
-                base["validity_note"] = (
-                    "the referenced node is not current" if mode == "current" else
-                    f"the referenced node did not hold during {direct_scope_info['as_of']}")
-            if known_out:
-                base["known_at_filtered"] = len(known_out)
-                base["known_at_node_note"] = (
-                    f"the referenced node was recorded after {known_at.strip()}; "
-                    "the graph did not hold it then")
-            return base
-        res = search(query, query_embedding=query_embedding, top_k=_BRIEF_TOP_K,
-                     owner=owner, store=store, historical=historical,
-                     as_of=as_of, mode=mode, known_at=known_at,
-                     query_runtime=query_runtime, query_model=query_model,
-                     # 기존 규칙은 ColBERT 순서 위에서 잰 적이 없다 — 학습 규칙일 때만 재채점된 후보로 해소한다.
-                     query_colbert=query_colbert if _brief_rule_colbert() else None,
-                     **({"kinds": kinds} if kinds else {}))
-        # executed 는 노드 팔 기준이다 — 청크 팔만 죽어도 노드 팔은 owner 스코프 결과를 낸다.
-        base["executed"] = bool(res.get("executed") or res.get("node_hits"))
-        # 벡터 팔의 상태도 함께 나른다. 두 표면이 같은 임베딩 창구를 쓰는데 `/search`
-        # 만 강등을 말하면 같은 고장이 도구에 따라 보이거나 안 보인다. 규칙은 `/search`
-        # 와 같다 — **검색이 실제로 돈 경우에만** 싣는다(id 직참조는 이 줄에 오기 전에
-        # 반환하므로 안 돈 팔에 이름이 붙지 않는다. 게이트① 동등성은 q.brief 한 곳에서
-        # 세우는 것으로 지킨다 — HTTP 계층에서 붙이면 CLI 와 갈린다).
-        for k in ("note", "node_error",
-                  "arms", "vector_note", "vector_rebuilding", "time_scope",
-                  "encoder_runtime_warning",
-                  "validity_filtered", "validity_note", "validity_best_dropped",
-                  "temporal_error", "partial", "mode", "claim_assessment_scope"):
-            if res.get(k):
-                base[k] = res[k]
-        # 노드 의미 팔이 모델 불일치로 꺼졌으면 해소가 그 팔 없이 돌았다. 그 사실도 나른다.
-        if (res.get("node_semantic") or {}).get("state") == "model_mismatch":
-            base["node_semantic"] = res["node_semantic"]
-        if known_scope is not None:
-            # B1 — 검색이 known_at 으로 감춘 수를 그대로 잇는다(0 도 값이다: 거르기가 돌았다).
-            base["known_at_filtered"] = int(res.get("known_at_filtered") or 0)
-            base["known_at_unknown"] = int(res.get("known_at_unknown") or 0)
-        if mode == "current" and base.get("validity_note"):
-            # D15 — current 는 as_of 를 받지 않는다. 검색의 알림이 기간 문장("drop as_of")을
-            # 달고 와도 여기서는 상태로 말한다.
-            base["validity_note"] = ("hid claims that are not current; "
-                                     "use mode=historical to include them")
-        # 검색의 `error` 는 청크 팔 실패다(FTS 잔해·확장 미가용·색인 부재 …). 같은 검색의
-        # 노드 팔 결과로 해소를 계속하고 사유는 `search_error` 로 싣는다 — 최상위 `error` 는
-        # REST v1 이 HTTP 500 으로 바꾸므로 해소된 답에 쓸 수 없다. 노드 팔도 빈손일 때만
-        # 여기서 돌아온다. 근거: [[vinc.plan.rag-code-review-fixes-2026-09-29]]
-        if res.get("error"):
-            base["search_error"] = res["error"]
-            if not res.get("node_hits"):
-                return base
-        # 넓은 풀은 되묻기 목록용으로 따로 두고, 확정·기권·가드는 앞 `_BRIEF_RESOLVE_N` 개로 본다.
-        pool = [h for h in res.get("node_hits") or [] if isinstance(h, dict) and h.get("id")]
-        full = res.get("node_hits") or []
-        res = {**res, "node_hits": full[:_BRIEF_RESOLVE_N]}
-        rescored = (res.get("node_rescore") or {}).get("state") == "applied"
-        # v3 는 의미만 기권을 재채점 **전** 순서의 앞 다섯으로 본다(재채점이 기권 대상을 바꾸지 않게).
-        # 재채점이 안 된 질의는 기존 규칙 그대로 간다.
-        v3 = _brief_rule_v3() and rescored and bool(full)
-        configured = _brief_rule()
-        if configured != "production" and not v3:
-            # 학습 규칙이 설정돼 있어도 재채점이 안 된 질의는 기존 규칙이 답한다. 그 사실을 답에 싣는다:
-            # 없으면 평가도 사람도 어느 규칙의 답인지 가를 수 없다(토큰이 빠진 노드 하나로도 재채점이 빠진다).
-            # 근거: [[vinc.canon.rag-production-state]]
-            _rs = res.get("node_rescore") or {}
-            base["resolution"] = {"rule": "production", "configured": configured,
-                                  "rescore": _rs.get("state") or "missing"}
-            if _rs.get("reason"):
-                base["resolution"]["reason"] = _rs["reason"]
-        if _brief_semantic_none({**res, "node_hits": _brief_v3_prod_head(full)} if v3 else res):
-            base["note"] = "no sufficiently close semantic candidate"
-            return base
-        if v3:
-            status, picked, _p = _brief_resolve_v3(query, res.get("node_hits") or [], res)
-            base["resolution"] = {"rule": "v3", "p": None if _p is None else round(_p, 4)}
-        else:
-            status, picked = _brief_resolve(
-                query, res.get("node_hits") or [],
-                mirror_text=lambda h: _brief_mirror_text(store, owner, h))
-        # B5 — current 의 기권은 답(1위)과 그 주장 키를 공유하는 후보만 본다. 후보 아무나
-        # 보면 구간이 없어 늘 unknown 인 개념 후보 하나가 다른 주장의 답을 막는다.
-        if mode == "current" and picked and _brief_current_uncertain(
-                store, owner=owner, answer=picked[0], hits=res.get("node_hits") or []):
-            status = "choose"
-            base["validity_note"] = "current claim evidence is conflicting or unknown; no current state was chosen"
-        # D11 — current 에서 동점이던 노드가 은퇴했으면 남은 노드로 확정한다. 의도된 뜻이다:
-        # current 는 "지금 성립하는 것"을 묻고, 은퇴한 노드는 그 질문의 경쟁자가 아니다.
-        # 아래 동점 가드는 일반 모드에서 감춘 행의 점수(validity_best_dropped)를 보는데,
-        # current 에서는 finish_nodes 가 은퇴한 노드를 감추며 그 점수를 남기지 않으므로
-        # 가드가 서지 않는다. 그 차이가 이 뜻을 구현한다(감사 D11).
-        # 🔴 **유효구간 필터가 동점을 깨서 확신을 만들면 안 된다.** 지운 행이 남은 1위와
-        # 같은 점수였다면, 원래 이 질문은 "모르겠다"(choose)였다. 그 자리에서 확정을
-        # 주면 필터가 **보이는 것**이 아니라 **답**을 바꾼 것이고, 그건 §4.2 가 의도한
-        # 바가 아니다. 실측(2026-09-09): 이 갈래가 없는 동안 답 불가 질문 6건 중 1건이
-        # 확정됐다(정직성 0.0 → 0.1667). 동점이던 Record 둘 중 하나가 걸러지면서 남은
-        # 하나가 단독 승자가 된 모양이었다.
-        # 근거: [[record:the-validity-filter-broke-a-tie-and-manufactured-confidence-2026-09-09]]
-        # v3 확정에는 돌지 않는다: 감춘 행의 점수는 v3 특징(:func:`_brief_v3_features`)에 이미 있다.
-        if status == "resolved" and picked and base.get("validity_filtered") and not v3:
-            _bd = tuple(base.get("validity_best_dropped") or (0, 0))
-            if (_brief_hidden_ties(query, picked[0], _bd)
-                    and not _brief_semantic_tie_clear(picked, res)):
-                status = "choose"
-                # 시점 읽기(as_of)에서도 같은 가드다 — 그 기간 밖이라 감춘 것이 동점이었으면
-                # 확정하지 않는다(계획의 "tie guard applies unchanged"). 알림은 경우마다
-                # 다르다(D15): current 는 as_of 를 받지 않으므로 "drop as_of" 라고 말하지 않는다.
-                _ts = base.get("time_scope") or {}
-                if mode == "current":
-                    base["validity_note"] = (
-                        "a claim that is not current tied with the leading candidate, "
-                        "so this was not resolved; use mode=historical to see it")
-                elif _ts.get("from"):
-                    base["validity_note"] = (
-                        "a claim that did not hold during {} tied with the leading candidate, "
-                        "so this was not resolved; drop as_of to see it".format(_ts["as_of"]))
-                else:
-                    base["validity_note"] = (
-                        "a claim that is no longer current tied with the leading candidate, "
-                        "so this was not resolved; pass historical=true to see it")
-        # 🔴 **주제를 찾은 것과 질문에 답하는 것은 다르다.** 질문이 노드 제목을 그대로
-        # 인용하고 그 **속성**을 물으면(“…는 문장은 누가 썼나”) 제목이 통째로 맞아
-        # 토큰 여유가 넘치고, 확신 문턱은 그것을 못 거른다 — 랭킹 문제가 아니기 때문이다.
-        # 실측(2026-09-10, 답 불가 21문항): 이 갈래가 없으면 '주제는 있는데 속성이 없는'
-        # 7건 중 3건을 확신했다. 이 게이트는 그 셋을 전부 막고(답불가 확정 0.1429 → 0.0000)
-        # 맞는 확신 하나를 잃는다. **노출 R@1 은 안 변한다** — 강등된 질문도 후보 목록에
-        # 정답을 1위로 싣기 때문이다.
-        # ⚠ 기본은 꺼져 있다 — 이유는 :func:`_brief_answerability_on` 에 있다.
-        if status == "resolved" and picked and _brief_answerability_on():
-            _orphan = _brief_orphan_residual(query, picked[0].get("title"), res)
-            if _orphan >= _ORPHAN_BLOCK:
-                status = "choose"
-                base["answerability_note"] = (
-                    "the topic matched but the question asks for something this graph "
-                    "does not hold, so this was not resolved")
-        base["status"] = status
+        out = _brief_by_id(query, base, store, owner=owner, kinds=kinds, mode=mode, direct_scope=direct_scope,
+                           direct_scope_info=direct_scope_info, known_scope=known_scope, known_at=known_at,
+                           max_excerpts=max_excerpts, rule=rule)
+        if out is not None:
+            return out
+        out, resolved = _brief_rank_path(
+            query, base, store, owner=owner, query_embedding=query_embedding, historical=historical, as_of=as_of,
+            mode=mode, known_at=known_at, known_scope=known_scope, query_runtime=query_runtime,
+            query_model=query_model, query_colbert=query_colbert, kinds=kinds)
+        if out is not None:
+            return out
+        status, picked, pool, res, v3 = resolved
         if status == "choose":
-            # 되묻기 목록은 넓은 풀 전체를 의미 순서(`_brief_list_rank`)로 세워 노출 수에서
-            # **한 번** 자른다. 확정용 순위(팔 개수 → 토큰)는 의미 팔에만 걸린 후보를 맨 뒤로
-            # 미는데, 넓은 풀에 새로 들어오는 정답은 대부분 그런 후보다.
-            # v3 는 ColBERT 순서를 그대로 보인다 — 의미 순서로 다시 세우면 재채점을 되돌린다.
-            picked = list(pool) if v3 else _brief_list_rank(pool)
-            base["candidates"] = _brief_candidate_rows(picked[:_brief_expose_n()])
-            if _brief_quotes_on():
-                for _c in base["candidates"]:
-                    _q = _brief_node_quotes(store, owner=owner, node_id=str(_c.get("id") or ""),
-                                            query=query, query_embedding=query_embedding)
-                    if _q:
-                        _c["quotes"] = _q
-            _brief_attach_section(base, store, owner=owner, query=query, res=res,
-                                  query_embedding=query_embedding,
-                                  nodes=[str(c.get("id") or "") for c in base["candidates"]])
-            # 첫 후보의 재료를 따로 한 키에 싣는다. status·candidates 는 그대로다 — 이 재료가
-            # 확정 답으로 읽히면 안 된다(재료의 꼴과 이유는 `_brief_candidate_material`).
-            if base["candidates"]:
-                _mat = _brief_candidate_material(store, base["candidates"][0],
-                                                 max_excerpts=max_excerpts, **rule)
-                if _mat is not None:
-                    base["candidate_material"] = _mat
-            return base
+            return _brief_finish_choose(base, store, owner=owner, query=query, query_embedding=query_embedding,
+                                        res=res, pool=pool, v3=v3, max_excerpts=max_excerpts, rule=rule)
         if status == "none":
             return base
-        # 1위가 상세에서 안 열리면 다음 후보로 넘어간다. 그 전에는 곧장
-        # status="none" 을 냈는데, 계약상 none 은 "아무것도 안 맞았다"라서 **맞았는데
-        # 못 읽었다**를 안 맞은 것처럼 보고했다. 관계마다 근거 문장을 함께 받는다 —
-        # 에이전트는 그것을 인용해야 한다.
-        #
-        # ⚠ 폴스루는 밝혀서 한다. 조용히 다음 후보를 답하면 이 표면은 "질문에 맞는
-        # 노드"가 아니라 "열리기만 하는 노드"를 답하게 되고, 그것은 이 도구가 임의
-        # 임계값을 거부하며 지키려던 성질을 정반대로 뒤집는다.
-        hit = ctx = None
-        unread: list[dict] = []
-        for cand in picked[:_BRIEF_FALLTHROUGH]:
-            cid = str(cand.get("id") or "")
-            if not cid:
-                continue
-            got = node_context(owner=owner, node=cid, limit=max_excerpts,
-                               with_evidence=True, store=store)
-            if got.get("executed"):
-                hit, ctx = cand, got
-                break
-            unread.append({"id": cid,
-                           "note": got.get("note") or ("node not found: " + cid)})
-        if ctx is None:
-            base["status"] = "none"
-            base["note"] = (unread[0]["note"] if unread
-                            else "node not found: " + str(picked[0].get("id") or ""))
-            if unread:
-                base["unreadable"] = unread
-            return base
-        if unread:
-            base["fell_through"] = unread
-        out = _brief_answer(base, hit, ctx, store, **rule)
-        if _brief_quotes_on():
-            _q = _brief_node_quotes(store, owner=owner, node_id=str(hit.get("id") or ""),
-                                    query=query, query_embedding=query_embedding)
-            if _q:
-                out["quotes"] = _q
-        _brief_attach_section(out, store, owner=owner, query=query, res=res,
-                              query_embedding=query_embedding,
-                              nodes=[str(hit.get("id") or "")])
-        if _brief_list_resolved_on():
-            # 확정은 그대로 두고 순위 목록을 곁에 싣는다. 첫 자리는 순위 1위다.
-            out["candidates"] = _brief_candidate_rows(picked[:_brief_expose_n()])
-        return out
+        return _brief_finish_resolved(base, picked, store, owner=owner, query=query,
+                                      query_embedding=query_embedding, res=res, max_excerpts=max_excerpts,
+                                      rule=rule)
     finally:
         if owns:
             store.close()

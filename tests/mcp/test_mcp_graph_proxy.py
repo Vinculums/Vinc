@@ -248,6 +248,30 @@ def test_a_body_that_does_not_match_the_digest_is_refused(app):
     assert app.bridge.calls == []
 
 
+@pytest.mark.parametrize("length", ["abc", "1.5", "-5"])
+def test_a_content_length_that_is_not_a_count_is_400_on_the_internal_route(app, length):
+    """정수가 아니거나 음수인 길이는 본문을 읽지 않고 400 이다(답 없이 끊기지 않는다)."""
+    import http.client
+    import json
+    import threading
+    from vinc_mcp.http_server import make_server
+
+    httpd = make_server(app, "127.0.0.1", 0)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", httpd.server_address[1], timeout=5)
+        conn.putrequest("POST", "/internal/graph-owner")
+        conn.putheader("Content-Type", "application/json")
+        conn.putheader("Content-Length", length)
+        conn.putheader("X-Vinc-Assertion", _assertion(op="search"))
+        conn.endheaders(b"{}")
+        resp = conn.getresponse()
+        assert (resp.status, json.loads(resp.read())) == (400, {"error": "invalid Content-Length"})
+    finally:
+        httpd.shutdown()
+    assert app.bridge.calls == []
+
+
 def test_an_oversized_body_is_413_not_an_auth_failure(app):
     """상한을 넘는 본문은 읽지 않고 413 이다. 전에는 빈 본문으로 읽혀 지문이 어긋났고,
     그 401 을 계정이 "세션 만료"로 옮겨 로그인된 사람을 로그인 화면으로 보냈다."""

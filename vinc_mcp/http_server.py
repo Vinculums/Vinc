@@ -811,15 +811,22 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _body(self) -> dict:
         self._raw_body = b""
+        self._body_too_large = False
         try:
             rawb = httpbody.read_body(self.headers, self.rfile, MAX_BODY)
         except httpbody.BodyTooLarge:
+            self._body_too_large = True
+            self.close_connection = True
             # 상한 초과는 본문을 **읽지 않고** 빈 dict 를 돌려준다. 상태 코드는 이 함수가 정하지
-            # 않는다 — 초과를 오류로 알려야 하는 라우트는 부르기 전에 스스로 본다(`_internal_graph`).
-            # 미수신 바이트가 남지만 무해하다 — `protocol_version` 이 HTTP/1.0(기본)이라 매 응답 뒤
-            # 커넥션이 닫히기 때문이다.
-            # ⚠ `protocol_version = "HTTP/1.1"` 로 올리면 keep-alive 가 살아나 이 잔여물이
-            # 다음 요청으로 파싱된다(요청 밀수). 그때는 여기서 `close_connection = True`.
+            # 않는다 — 초과를 오류로 알려야 하는 라우트는 `_body_too_large` 를 보거나(`_sync`),
+            # 부르기 전에 길이를 본다(`_internal_graph`). 빈 dict 를 빈 요청으로 처리하면 보낸 쪽은
+            # 성공 답을 받는데 아무것도 저장되지 않는다.
+            # 읽지 않은 바이트가 소켓에 남으므로 위에서 연결을 닫는다. `protocol_version` 이 HTTP/1.0(기본)이면
+            # 응답 뒤 어차피 닫힌다.
+            # ⚠ `protocol_version = "HTTP/1.1"` 로 올려도 이 닫기를 빼면 안 된다. keep-alive 가 살아나 그
+            # 잔여물이 다음 요청으로 파싱된다(요청 밀수).
+            # 정수가 아니거나 음수인 길이(`httpbody.BadContentLength`)는 강등하지 않고 올린다:
+            # `do_POST` 가 400 으로 답한다.
             return {}
         # 지문 대조는 **받은 바이트**로 한다(감사 M2). 파싱된 dict 를 다시 직렬화하면
         # 키 순서·공백이 달라져 보낸 쪽과 다른 값이 나온다.
@@ -1010,6 +1017,15 @@ class _Handler(BaseHTTPRequestHandler):
         return self._json(404, {"error": f"no such route: GET {url.path}"})
 
     def do_POST(self):  # noqa: N802
+        # 정수가 아니거나 음수인 `Content-Length` 는 어느 라우트에서든 400 이다. 라우트는 응답을 쓰기
+        # 전에 본문을 읽으므로(`_body`, `_internal_graph` 의 상한 검사) 이 자리에서는 아직 아무것도
+        # 보내지 않았다. `/v1` 은 자기 봉투로 먼저 답한다(`rest_api`).
+        try:
+            self._post()
+        except httpbody.BadContentLength as exc:
+            self._json(400, {"error": str(exc)})
+
+    def _post(self):
         if self._held():
             return
         # 셀프호스트의 같은 출처 평면(/login·/api/*). 꺼져 있으면 아무것도 안 하고 지나간다.
@@ -1193,7 +1209,7 @@ class _Handler(BaseHTTPRequestHandler):
         # 상한을 넘으면 `_body()` 가 빈 본문을 돌려주고, 그러면 서명 지문이 어긋나 401 이
         # 됐다. 계정은 그것을 "세션 만료"로 옮겨 로그인된 사람을 로그인 화면으로 보냈다.
         # 근거: [[record:a-space-transfer-over-4mb-surfaced-as-a-logout-2026-09-18]]
-        if int(self.headers.get("Content-Length") or 0) > MAX_BODY:
+        if httpbody.content_length(self.headers) > MAX_BODY:
             return self._json(413, {"error": "request body is too large"})
         assertion = self.headers.get("X-Vinc-Assertion") or ""
         args = self._body()
@@ -1278,6 +1294,11 @@ class _Handler(BaseHTTPRequestHandler):
             return self._json(403, {"error": "this key is read-only: sync push "
                                              "writes to the graph"})
         body = self._body()
+        if self._body_too_large:
+            # 읽지 않은 본문은 빈 dict 라서, 사이드카로 넘기면 빈 묶음이 적용돼 200 이 나간다. 보낸 쪽은
+            # 올라간 줄 알고 커서를 옮긴다.
+            return self._json(413, {"error": "request body is too large"},
+                              headers={"Connection": "close"})
         try:
             if path == "/sync/pull":
                 params = {"owner": owner, "since": int(body.get("since") or 0)}

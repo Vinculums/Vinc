@@ -27,7 +27,7 @@ import json
 from typing import Callable, NamedTuple
 
 from . import __version__
-from . import builtin_prompts, community, events, modern, roles, run_tasks, selfhost
+from . import builtin_prompts, community, encoding, events, modern, roles, run_tasks, selfhost
 from . import tools
 from . import toolcall
 from .bridge import Bridge
@@ -306,7 +306,7 @@ class Dispatcher:
         # 계정이 거절한 커뮤니티 쓰기와 읽기는 봉투의 isError 로 올린다. 읽기를 빼면 지난 피드 커서의 거절이
         # 봉투만 보는 클라이언트에게 빈 결과(다음 쪽 없음)로 읽힌다.
         if name in (community.WRITE_TOOL, community.READ_TOOL) and outcome.result.get("isError"):
-            return _tool_result(roles.serialize_result(outcome.result), name, is_error=True)
+            return _tool_result(encoding.serialize_result(outcome.result), name, is_error=True)
         if modern_version is not None and name == run_tasks.SUBMIT_TOOL:
             carried = run_tasks.carry(outcome.result, params, args)
             if carried is not None:
@@ -408,7 +408,7 @@ class Dispatcher:
         self._spend(quota, forced_owner, plan)
         if method == "tasks/get":
             return run_tasks.get(self.bridge, owner, params,
-                                 lambda view: _tool_result(roles.serialize_result(view),
+                                 lambda view: _tool_result(encoding.serialize_result(view),
                                                            run_tasks.SUBMIT_TOOL, is_error=False))
         if method == "tasks/update":
             return run_tasks.update(self.bridge, owner, params)
@@ -498,7 +498,7 @@ def _mcp_text(name: str, args: dict, result) -> str:
     핸들러 결과는 건드리지 않으므로 REST v1·CLI 의 꼴은 그대로다. `raw` 면 예전 그대로다."""
     lean = tools.lean_result(name, args, result)
     if lean is result:
-        return roles.serialize_result(result)
+        return encoding.serialize_result(result)
     return json.dumps(lean, ensure_ascii=False, separators=(",", ":"))
 
 
