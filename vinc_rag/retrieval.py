@@ -1276,6 +1276,140 @@ def _node_model_mismatch(store, owner: str | None, query_model: str | None) -> d
     return {"query_model": query_model, "mirror_models": other}
 
 
+def _node_semantic_arm(store, query_embedding, *, continuation, owner, query_model,
+                       _wide, _nk, _kw, _scope, historical, mode, known_at, _until,
+                       _vstats, base) -> tuple[list[dict], tuple | None, str | None, dict]:
+    """노드 의미 팔(4-a): ``(vec_hits, sem_lead, sem_decisive, patch)`` 를 돌려준다.
+    ``_search`` 에서 그대로 떼어 낸 본문이라 인자 이름도 거기서 쓰던 것(밑줄 포함)과 같다.
+
+    ``base`` 는 **읽기 전용**이다. 응답에 얹을 키(``node_semantic``, ``node_domain_error``,
+    ``node_error``)는 ``patch`` 로만 내보내고, 부르는 쪽이 부른 **바로 뒤에** ``base.update`` 로
+    얹는다 — 키가 들어가는 순서가 응답 키 순서다. ``node_error`` 는 제목 팔이 먼저 적었으면
+    덮지 않는다. ``_vstats`` 는 제자리에서 고친다(뒤의 그래프 팔이 읽는다).
+
+    (4-a) v17 의미 암 — 노드 미러(NodeVec)를 질의 벡터로 찾는다. **어휘가 하나도
+    안 겹쳐도 닿는 유일한 팔**이다: 나머지 두 팔은 토큰 겹침(title)이거나 청크
+    순위에 얹혀 있어(graph), 패러프레이즈를 못 건넌다.
+
+    기본은 **켜져 있다**(`VINC_NODE_SEMANTIC_ARM=off` 가 비상구). 미러가 비면
+    빈 목록이라 켜 둬도 안 깨지고, 미러는 배포 경계에서 전량 재구축된다.
+    뒤집힌 경위와 수치는 `_node_semantic_arm_on` 에 있다."""
+    patch: dict = {}
+    vec_hits: list[dict] = []
+    _sem_decisive: str | None = None
+    _sem_lead: tuple | None = None       # (의미 1위 id, 2위와의 거리 차)
+    if query_embedding is not None and not continuation and not _node_semantic_arm_on():
+        patch["node_semantic"] = {"state": "disabled", "freshness": "not_checked",
+                                  "refresh": "release_boundary", "scope": "returned_candidates"}
+    if query_embedding is not None and not continuation and _node_semantic_arm_on():
+        patch["node_semantic"] = {"state": "complete", "freshness": "not_checked",
+                                  "refresh": "release_boundary", "scope": "returned_candidates"}
+        try:
+            # 미러가 질의와 다른 모델의 벡터를 담고 있으면 팔을 비우고 그 사실을 싣는다.
+            # 모델을 바꾼 배포에서 미러 재구축이 끝나기 전의 창이다(조용한 강등 금지).
+            _mismatch = _node_model_mismatch(store, owner, query_model)
+            if _mismatch:
+                patch["node_semantic"].update(
+                    state="model_mismatch",
+                    reason="node mirror holds vectors from another model; "
+                           "the node meaning arm is off until the mirror is rebuilt",
+                    **_mismatch)
+            # 라벨은 **제목**이다. 미러의 `text` 는 찾는 표면이라 한줄설명이 붙어
+            # 있고(1365 중 225 행), 그것을 title 자리에 넣으면 그대로 화면에 나간다.
+            _raw = [] if _mismatch else store.node_vector_search(
+                query_embedding, SEARCH_POOL_CAP if _wide else _nk, owner=owner, **_kw) or []
+            validator = getattr(store, "validate_node_vector_hits", None)
+            if callable(validator) and not _mismatch:
+                _raw, state = validator(_raw, owner=owner)
+                patch["node_semantic"].update(state)
+                if state.get("stale_candidates") or state.get("missing_candidates"):
+                    patch["node_semantic"]["state"] = "partial"
+            if not _mismatch and not _raw and not any(
+                    patch["node_semantic"].get(k) for k in ("stale_candidates", "missing_candidates")):
+                counter = getattr(store, "node_vector_count", None)
+                if callable(counter):
+                    count = counter(owner=owner)
+                    patch["node_semantic"].update(stored_vectors=count,
+                        stored_vectors_scope="owner" if owner else "local_unscoped")
+                    if count == 0:
+                        patch["node_semantic"].update(state="empty_mirror", freshness="not_checked")
+            # 유효구간 기본 필터(§4.2) — 이 팔은 미러를 읽어 구간 열이 없으므로 id 로
+            # 되찾아 본다. 제목 팔만 걸러 내면 폐기된 노드가 **이 팔로 되돌아온다**
+            # (라이브 재현 2026-09-11: 제목 팔이 걸러 낸 d44 가 semantic 표로 다시
+            # 올라왔다). 단호함 판정(_SEM_GAP)보다 앞에 두어 폐기된 1위가 팔을
+            # 단호하게 만들지 못하게 한다. 지운 수는 제목 팔과 같은 자리에 더하고,
+            # **판정도 제목 팔과 같다** — `historical` 만 거른다(사유는 그쪽 주석).
+            if (_scope is not None or not historical) and _raw:
+                _vf = _validity_for_ids(
+                    store, [h.get("id") for h in _raw if h.get("id")], owner=owner)
+                _keep = []
+                for h in _raw:
+                    _iv = _vf.get(h.get("id"), ("", ""))
+                    # current 는 `finish_nodes` 와 같은 규칙으로 본다. 오늘(UTC)의 기간과의
+                    # 겹침으로 재면 날짜만 적은 오늘 시작이 KST 아침마다 빠진다.
+                    if (_current_visible(*_iv) if mode == "current"
+                            else _visible(*_iv, historical=historical, scope=_scope)):
+                        _keep.append(h)
+                    else:
+                        _gone = _vstats.setdefault("dropped_ids", set())
+                        _gone.add(h.get("id"))
+                        _vstats["dropped_not_current"] = len(_gone)
+                        # 지운 행 중 가장 가까운 의미 거리. 의미 우위는 지운 **뒤** 목록에서
+                        # 재므로, 지운 행이 1위였다면 우위는 필터가 만든 것이다. brief 의
+                        # 동점 가드가 토큰 없는 확정을 이 거리로 잰다(`api.query`).
+                        try:
+                            _d = float(h.get("distance"))
+                        except (TypeError, ValueError):
+                            _d = None
+                        if _d is not None and _d < _vstats.get("best_dropped_distance", float("inf")):
+                            _vstats["best_dropped_distance"] = _d
+                _raw = _keep
+            if known_at and mode != "current":
+                _raw = _known_at_nodes(store, _raw, owner=owner, until=_until,
+                                       stats=_vstats)[:_nk]
+            vec_hits = [{"id": h.get("id"),
+                         "title": h.get("title") or h.get("text") or "",
+                         "kind": h.get("kind") or "",
+                         "matched_in": "semantic", "hit_tokens": 0,
+                         "title_tokens": 0, "token_total": 0,
+                         "distance": h.get("distance")}
+                        for h in _raw]
+            # 도메인은 미러에 없어서 노드 표에서 채운다(사유는 `_domains_for_ids` 주석).
+            # 못 읽은 도메인은 빈 문자열로 채우지 않고 키를 뺀다. 빈 문자열은 "무주제"다.
+            _dom_fail: list[str] = []
+            _doms = _domains_for_ids(
+                store, [h["id"] for h in vec_hits if h.get("id")], owner=owner,
+                failures=_dom_fail)
+            for _h in vec_hits:
+                if _h.get("id") in _doms:
+                    _h["domain"] = _doms[_h["id"]]
+            if _dom_fail:
+                patch["node_domain_error"] = "domain lookup failed: " + ", ".join(_dom_fail)
+            # 1위가 2위보다 `_SEM_GAP` 이상 가까우면 **이 팔이 자기 기준으로
+            # 단호하다**. 절대 거리가 아니라 격차인 이유는 그 상수 주석에 있다.
+            # 목록이 거리 오름차순이라 이 격차가 곧 1위가 **나머지 전체**보다 앞선
+            # 정도(의미 우위)이고, brief 의 승격(`_SEM_PROMOTE`)이 같은 값을 읽는다.
+            # 융합이 top_k 로 잘라 2위 행을 떨굴 수 있으므로 node_hits 가 아니라
+            # 여기(원시 목록)서 잰다. 반올림은 X3 모의와 같은 자리수다.
+            if len(_raw) > 1:
+                try:
+                    _gap = float(_raw[1]["distance"]) - float(_raw[0]["distance"])
+                    _sem_lead = (_raw[0].get("id"), round(_gap, 6))
+                    if _node_sem_rank_on() and _gap >= _SEM_GAP:
+                        _sem_decisive = _raw[0].get("id")
+                except (TypeError, ValueError, KeyError):
+                    pass
+        except Exception as exc:
+            if "node_error" not in base:
+                patch["node_error"] = f"{type(exc).__name__}: {exc}"
+            code = str(exc) if str(exc) in ("node_vector_extension_unavailable",
+                "node_vector_query_failed", "node_vector_validation_failed",
+                "node_vector_status_unavailable",
+                "node_vector_model_unavailable") else "node_semantic_failed"
+            patch["node_semantic"].update(state="degraded", error=code)
+    return vec_hits, _sem_lead, _sem_decisive, patch
+
+
 def _search(query: str, *, query_embedding: list[float] | None = None,
            top_k: int = 5, filters: dict | None = None, owner: str | None = None,
            cursor: str | None = None, detail: str = "summary",
@@ -1652,124 +1786,13 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
                 str(r.get("id") or ""): off + i for i, r in enumerate(page)
                 if str(r.get("id") or "") in visible_ids}
 
-        # (4-a) v17 의미 암 — 노드 미러(NodeVec)를 질의 벡터로 찾는다. **어휘가 하나도
-        # 안 겹쳐도 닿는 유일한 팔**이다: 나머지 두 팔은 토큰 겹침(title)이거나 청크
-        # 순위에 얹혀 있어(graph), 패러프레이즈를 못 건넌다.
-        #
-        # 기본은 **켜져 있다**(`VINC_NODE_SEMANTIC_ARM=off` 가 비상구). 미러가 비면
-        # 빈 목록이라 켜 둬도 안 깨지고, 미러는 배포 경계에서 전량 재구축된다.
-        # 뒤집힌 경위와 수치는 `_node_semantic_arm_on` 에 있다.
-        vec_hits: list[dict] = []
-        _sem_decisive: str | None = None
-        _sem_lead: tuple | None = None       # (의미 1위 id, 2위와의 거리 차)
-        if query_embedding is not None and not continuation and not _node_semantic_arm_on():
-            base["node_semantic"] = {"state": "disabled", "freshness": "not_checked",
-                                     "refresh": "release_boundary", "scope": "returned_candidates"}
-        if query_embedding is not None and not continuation and _node_semantic_arm_on():
-            base["node_semantic"] = {"state": "complete", "freshness": "not_checked",
-                                     "refresh": "release_boundary", "scope": "returned_candidates"}
-            try:
-                # 미러가 질의와 다른 모델의 벡터를 담고 있으면 팔을 비우고 그 사실을 싣는다.
-                # 모델을 바꾼 배포에서 미러 재구축이 끝나기 전의 창이다(조용한 강등 금지).
-                _mismatch = _node_model_mismatch(store, owner, query_model)
-                if _mismatch:
-                    base["node_semantic"].update(
-                        state="model_mismatch",
-                        reason="node mirror holds vectors from another model; "
-                               "the node meaning arm is off until the mirror is rebuilt",
-                        **_mismatch)
-                # 라벨은 **제목**이다. 미러의 `text` 는 찾는 표면이라 한줄설명이 붙어
-                # 있고(1365 중 225 행), 그것을 title 자리에 넣으면 그대로 화면에 나간다.
-                _raw = [] if _mismatch else store.node_vector_search(
-                    query_embedding, SEARCH_POOL_CAP if _wide else _nk, owner=owner, **_kw) or []
-                validator = getattr(store, "validate_node_vector_hits", None)
-                if callable(validator) and not _mismatch:
-                    _raw, state = validator(_raw, owner=owner)
-                    base["node_semantic"].update(state)
-                    if state.get("stale_candidates") or state.get("missing_candidates"):
-                        base["node_semantic"]["state"] = "partial"
-                if not _mismatch and not _raw and not any(
-                        base["node_semantic"].get(k) for k in ("stale_candidates", "missing_candidates")):
-                    counter = getattr(store, "node_vector_count", None)
-                    if callable(counter):
-                        count = counter(owner=owner)
-                        base["node_semantic"].update(stored_vectors=count,
-                            stored_vectors_scope="owner" if owner else "local_unscoped")
-                        if count == 0:
-                            base["node_semantic"].update(state="empty_mirror", freshness="not_checked")
-                # 유효구간 기본 필터(§4.2) — 이 팔은 미러를 읽어 구간 열이 없으므로 id 로
-                # 되찾아 본다. 제목 팔만 걸러 내면 폐기된 노드가 **이 팔로 되돌아온다**
-                # (라이브 재현 2026-09-11: 제목 팔이 걸러 낸 d44 가 semantic 표로 다시
-                # 올라왔다). 단호함 판정(_SEM_GAP)보다 앞에 두어 폐기된 1위가 팔을
-                # 단호하게 만들지 못하게 한다. 지운 수는 제목 팔과 같은 자리에 더하고,
-                # **판정도 제목 팔과 같다** — `historical` 만 거른다(사유는 그쪽 주석).
-                if (_scope is not None or not historical) and _raw:
-                    _vf = _validity_for_ids(
-                        store, [h.get("id") for h in _raw if h.get("id")], owner=owner)
-                    _keep = []
-                    for h in _raw:
-                        _iv = _vf.get(h.get("id"), ("", ""))
-                        # current 는 `finish_nodes` 와 같은 규칙으로 본다. 오늘(UTC)의 기간과의
-                        # 겹침으로 재면 날짜만 적은 오늘 시작이 KST 아침마다 빠진다.
-                        if (_current_visible(*_iv) if mode == "current"
-                                else _visible(*_iv, historical=historical, scope=_scope)):
-                            _keep.append(h)
-                        else:
-                            _gone = _vstats.setdefault("dropped_ids", set())
-                            _gone.add(h.get("id"))
-                            _vstats["dropped_not_current"] = len(_gone)
-                            # 지운 행 중 가장 가까운 의미 거리. 의미 우위는 지운 **뒤** 목록에서
-                            # 재므로, 지운 행이 1위였다면 우위는 필터가 만든 것이다. brief 의
-                            # 동점 가드가 토큰 없는 확정을 이 거리로 잰다(`api.query`).
-                            try:
-                                _d = float(h.get("distance"))
-                            except (TypeError, ValueError):
-                                _d = None
-                            if _d is not None and _d < _vstats.get("best_dropped_distance", float("inf")):
-                                _vstats["best_dropped_distance"] = _d
-                    _raw = _keep
-                if known_at and mode != "current":
-                    _raw = _known_at_nodes(store, _raw, owner=owner, until=_until,
-                                           stats=_vstats)[:_nk]
-                vec_hits = [{"id": h.get("id"),
-                             "title": h.get("title") or h.get("text") or "",
-                             "kind": h.get("kind") or "",
-                             "matched_in": "semantic", "hit_tokens": 0,
-                             "title_tokens": 0, "token_total": 0,
-                             "distance": h.get("distance")}
-                            for h in _raw]
-                # 도메인은 미러에 없어서 노드 표에서 채운다(사유는 `_domains_for_ids` 주석).
-                # 못 읽은 도메인은 빈 문자열로 채우지 않고 키를 뺀다. 빈 문자열은 "무주제"다.
-                _dom_fail: list[str] = []
-                _doms = _domains_for_ids(
-                    store, [h["id"] for h in vec_hits if h.get("id")], owner=owner,
-                    failures=_dom_fail)
-                for _h in vec_hits:
-                    if _h.get("id") in _doms:
-                        _h["domain"] = _doms[_h["id"]]
-                if _dom_fail:
-                    base["node_domain_error"] = "domain lookup failed: " + ", ".join(_dom_fail)
-                # 1위가 2위보다 `_SEM_GAP` 이상 가까우면 **이 팔이 자기 기준으로
-                # 단호하다**. 절대 거리가 아니라 격차인 이유는 그 상수 주석에 있다.
-                # 목록이 거리 오름차순이라 이 격차가 곧 1위가 **나머지 전체**보다 앞선
-                # 정도(의미 우위)이고, brief 의 승격(`_SEM_PROMOTE`)이 같은 값을 읽는다.
-                # 융합이 top_k 로 잘라 2위 행을 떨굴 수 있으므로 node_hits 가 아니라
-                # 여기(원시 목록)서 잰다. 반올림은 X3 모의와 같은 자리수다.
-                if len(_raw) > 1:
-                    try:
-                        _gap = float(_raw[1]["distance"]) - float(_raw[0]["distance"])
-                        _sem_lead = (_raw[0].get("id"), round(_gap, 6))
-                        if _node_sem_rank_on() and _gap >= _SEM_GAP:
-                            _sem_decisive = _raw[0].get("id")
-                    except (TypeError, ValueError, KeyError):
-                        pass
-            except Exception as exc:
-                base.setdefault("node_error", f"{type(exc).__name__}: {exc}")
-                code = str(exc) if str(exc) in ("node_vector_extension_unavailable",
-                    "node_vector_query_failed", "node_vector_validation_failed",
-                    "node_vector_status_unavailable",
-                    "node_vector_model_unavailable") else "node_semantic_failed"
-                base["node_semantic"].update(state="degraded", error=code)
+        # (4-a) 노드 의미 팔. 응답에 얹을 키는 patch 로 받아 부른 바로 뒤에 얹는다.
+        vec_hits, _sem_lead, _sem_decisive, _sem_patch = _node_semantic_arm(
+            store, query_embedding, continuation=continuation, owner=owner,
+            query_model=query_model, _wide=_wide, _nk=_nk, _kw=_kw, _scope=_scope,
+            historical=historical, mode=mode, known_at=known_at, _until=_until,
+            _vstats=_vstats, base=base)
+        base.update(_sem_patch)
         # 의미 팔이 더 걸러 냈으면 (3) 에서 적은 공개를 갱신한다 — 셈은 두 팔이 지운 id 의
         # 합집합이다(두 팔이 같은 노드를 지우면 한 번).
         if _vstats.get("dropped_not_current"):
