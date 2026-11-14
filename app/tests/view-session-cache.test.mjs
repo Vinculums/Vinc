@@ -12,8 +12,8 @@ test('retains immutable full data and coordinates; renderer mutations cannot poi
   const raw=c.get('owner/space/identity','scope','epoch.1');raw.nodes[0].x=999;raw.edges[0].source={id:'bad'};
   assert.deepEqual(c.get('owner/space/identity','scope','epoch.1'),graph);
 });
-test('never stores partial, failed, token-bearing or pending responses',()=>{
-  for(const bad of [{partial:true},{executed:false},{snapshot:{}},{graphSnapshotPending:true},{nodes:null}]){
+test('never stores a failed response or one without nodes and edges',()=>{
+  for(const bad of [{executed:false},{nodes:null},{edges:undefined}]){
     const c=new ViewSessionCache();assert.equal(put(c,undefined,undefined,undefined,{...graph,...bad}),false);assert.equal(c.count,0);
   }
 });

@@ -7,7 +7,6 @@
 **합치지 않은 변형** (같은 이름이어도 값이 달라서 각 파일에 남겼다):
 
 - ``kind_eval.mean``: 빈 입력이 ``0.0`` 이고 이터러블을 받는다.
-- ``excerpt_gain.mean``, ``coverage_recall.mean``: 반올림이 없고 빈 입력이 ``0.0`` 이다.
 - ``agent_tasks.metrics._mean``: ``sum/len`` 이라 :func:`mean4` 의 ``fmean`` 과 마지막 비트가 다를 수 있다.
 - ``search._mean``: 행 목록에서 키로 뽑아 평균한다.
 - ``rerank.paired_bootstrap``: 합을 ``s += x`` 로 더한다. 파이썬 3.12 의 ``sum()`` 은 보정 합산이라

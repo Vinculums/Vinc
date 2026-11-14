@@ -17,7 +17,7 @@ import re
 from collections import ChainMap
 from store.config import load_config
 from store.backend import flag, open_store, operation
-from store import pkns
+from store import envflag, pkns
 from store import search_temporal as temporal
 from store.embedded_backend import node_vector_generation, vector_generation
 from store.querybase import (
@@ -1183,8 +1183,7 @@ def _node_semantic_arm_on() -> bool:
     한 번 돈다(`api/server.py::write_node_mirror_rebuild`). 미러가 비어 있으면 이 팔은
     **빈 목록**이지 예외가 아니다 — 그래서 켜 두는 것이 안전하다.
     근거: [[decision:the-semantic-arm-ships-on-and-the-mirror-rebuilds-at-the-release-boundary]]"""
-    return str(os.environ.get("VINC_NODE_SEMANTIC_ARM", "")).strip().lower() not in (
-        "0", "off", "false", "no")
+    return envflag.default_on("VINC_NODE_SEMANTIC_ARM")
 
 
 def _node_sem_rank_on() -> bool:
@@ -1193,8 +1192,7 @@ def _node_sem_rank_on() -> bool:
     팔과 **한 몸이다** — 위의 0.4833 은 둘 다 켠 값이고, 팔만 켜면 0.2833 으로 돌아간다.
     따로 끌 수 있게 둔 이유는 격차 문턱(`_SEM_GAP`)을 다시 잴 때 순서 기여만 떼어
     보기 위해서다."""
-    return str(os.environ.get("VINC_NODE_SEM_RANK", "")).strip().lower() not in (
-        "0", "off", "false", "no")
+    return envflag.default_on("VINC_NODE_SEM_RANK")
 
 
 #: 의미 팔이 **자기 기준으로 단호하다**고 볼 1-2위 거리 격차.
@@ -1837,7 +1835,7 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
            node_k: int | None = None,
            kinds=None,
            cfg=None, store=None,
-           _mode_scope: tuple | None = None) -> dict:
+           _mode_scope: tuple) -> dict:
     """하이브리드 검색 **재설계**(T3b) — BM25(FTS)+(선택)벡터 RRF(§4-2) 위에 3개
     실사용 사고 대응을 얹는다:
 
@@ -1906,14 +1904,8 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
     # 커서 검증은 스토어를 열기 전에 — 무효 커서에 조회 비용을 쓰지 않는다.
     qh = _query_fingerprint(query, owner, filters, detail, as_of, mode=mode,
                             historical=historical, known_at=known_at, kinds=kinds)
-    # 시점 인자도 스토어를 열기 전에 검사한다. 틀린 값이 조용히 오늘로 떨어지면 부르는
-    # 쪽은 과거를 읽은 줄 안다. :func:`search` 가 이미 풀어 넘겼으면(`_mode_scope`) 다시 풀지 않는다.
-    if _mode_scope is None:
-        try:
-            _mode_scope = temporal.mode_scope(mode, historical, as_of, query)
-        except ValueError as exc:
-            base["note"] = base["error"] = f"invalid_temporal_mode: {exc}" if mode else f"invalid_as_of: {exc}"
-            return base
+    # 시점 인자는 :func:`search` 가 스토어를 열기 전에 검사해 풀어 넘긴다(`_mode_scope`). 틀린 값이
+    # 조용히 오늘로 떨어지면 부르는 쪽은 과거를 읽은 줄 알기 때문이다. 여기서는 다시 풀지 않는다.
     historical, _scope, _scope_info = _mode_scope
     if mode:
         base["mode"] = mode
@@ -2062,16 +2054,13 @@ def _temporal_failed(res: dict, exc: Exception) -> str:
 
 
 def _finish_search_temporal(res: dict, store, query: str, *, mode, known_at, kwargs: dict,
-                            doc_states: dict, _mode_scope: tuple | None = None) -> None:
+                            doc_states: dict, _mode_scope: tuple) -> None:
     """검색 응답에 시간 메타를 붙이고 시점 필터를 건다(:func:`search`).
 
     시간 메타를 못 읽으면 current·known_at 은 노드 후보를 내지 않는다(fail closed). 은퇴한 노드와
     컷오프 뒤에 생긴 노드가 걸러지지 않은 채 섞여 있기 때문이다. general 은 메타만 비운다.
-    ``_mode_scope`` 는 :func:`search` 가 한 번 푼 ``temporal.mode_scope`` 의 답이다. 없으면(직접 부를
-    때) 여기서 풀고, 틀린 인자는 ``ValueError`` 로 그대로 올린다."""
+    ``_mode_scope`` 는 :func:`search` 가 한 번 푼 ``temporal.mode_scope`` 의 답이다."""
     owner = kwargs.get("owner")
-    if _mode_scope is None:
-        _mode_scope = temporal.mode_scope(mode, kwargs.get("historical", False), kwargs.get("as_of"), query)
     _, scope, _ = _mode_scope
     stats: dict = {}
     _validity = Validity(res)

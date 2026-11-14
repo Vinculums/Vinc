@@ -14,6 +14,7 @@ import re
 import pytest
 
 from output_gate_corpus_record import PROPS
+from output_gate_cues import fully_named, named_drop
 from output_gate_main_reference import main_person_only
 from vinc_client import output_gate
 from vinc_client.output_gate import OutputGate
@@ -289,7 +290,10 @@ def test_the_checker_generator_keeps_p1_and_every_withdrawal_is_ordinary_with_no
     for text, lab in rows:
         mine, main = _verdicts(text)
         assert mine <= main, (text, mine, main)
-        assert main - mine <= {"push_tag"}, (text, mine, main)
+        assert all(a == "push_tag" or named_drop(text, a, main_person_only, ACTIONS) for a in main - mine), (text, mine, main)
+        if main and not mine and fully_named(text, main_person_only, ACTIONS):
+            # 질문이 사라진 까닭이 push 읽기가 아니라 이름의 조각·낱말의 속이다. 그 읽기는 test_output_gate_false_positives.py 가 본다.
+            continue
         if main and not mine:
             withdrawn += 1
             sentence = lab["sentence"]
@@ -376,7 +380,10 @@ def test_one_inserted_unknown_token_does_what_main_does():
         text = " ".join(words)
         mine, main = _verdicts(text)
         checked += 1
-        assert mine <= main and main - mine <= {"push_tag"}, (text, mine, main)
+        assert mine <= main and all(a == "push_tag" or named_drop(text, a, main_person_only, ACTIONS)
+                                    for a in main - mine), (text, mine, main)
+        if main and not mine and fully_named(text, main_person_only, ACTIONS):
+            continue
         if main and not mine:
             still_withdrawn += 1
             assert _closed(token) or (glued and _closed(glued)), (token, text)

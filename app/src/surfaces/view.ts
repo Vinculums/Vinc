@@ -230,7 +230,7 @@ export async function renderView(el: HTMLElement, resume = false) {
   let addr = readRoute ? null : parseViewUrl(location.hash);
   if (!readRoute && bookmark?.domains.length)
     addr = parseViewUrl(formatViewUrl({ kind: "domains", domains: bookmark.domains }));
-  // 주소의 `/as/<관점>` 칸은 읽지 않는다 — 보기는 나침반 하나다(view-prefs `VIEWPOINTS`).
+  // 주소의 `/as/<관점>` 칸은 읽지 않는다 — 보기는 나침반 하나다.
 
   function setMsg(html: string) {
     msg.innerHTML = html;

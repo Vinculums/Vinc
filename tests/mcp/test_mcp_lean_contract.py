@@ -278,7 +278,7 @@ BRIEF_ENVELOPE = ("kind", "executed", "query", "status", "one_liner", "body_src"
                   "vector_rebuilding", "encoder_runtime_warning", "validity_filtered",
                   "known_at_filtered", "known_at_unknown", "time_scope", "mode",
                   "claim_assessment_scope", "temporal_error", "node_error", "kinds_filtered",
-                  "ambiguous", "ambiguous_note", "answerability_note", "related_note",
+                  "ambiguous", "ambiguous_note", "related_note",
                   "unqualified_note", "known_at_node_note", "citation_error", "doc_validity_error",
                   "excerpt_error")
 BRIEF_NODE_KEEP = ("id", "cite_id", "title", "kind", "domain", "validity", "claim_validity")

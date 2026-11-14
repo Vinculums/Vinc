@@ -12,7 +12,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(resolve(process.env.VINC_TEST_MODULES || join(root, "package.json")));
 const { JSDOM } = require("jsdom"); const esbuild = require("esbuild");
 const output = await mkdtemp(join(tmpdir(), "vin357-save-"));
-await esbuild.build({ stdin: { contents: 'export * from "./conventions"; export { cfg, dataMode, api } from "./api";',
+// 번들 안의 import.meta.env 는 빈 객체로 둔다: vite 밖에서도 빌드 상수(VITE_*)를 읽는 모듈이 떠야 한다.
+await esbuild.build({ define: { "import.meta.env": "{}" }, stdin: { contents: 'export * from "./conventions"; export { cfg, dataMode, api } from "./api";',
   resolveDir: join(root, "src"), loader: "ts" }, bundle: true, format: "esm", platform: "browser",
   outfile: join(output, "save.mjs"), loader: { ".css": "empty", ".svg": "text" }, logLevel: "silent" });
 esbuild.stop();

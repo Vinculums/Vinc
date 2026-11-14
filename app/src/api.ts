@@ -451,21 +451,18 @@ export const api = {
     return call("/graph", { owner, ...rest,
                             ...(domains?.length ? { domains: domains.join(",") } : {}) });
   },
-  // Initial View read in stages. Capture Space and cancellation for both stages and fallback.
+  // 그래프 보기의 읽기 한 번. 마운트가 잡은 스페이스와 접힘 신호를 그대로 싣는다.
   // 웹은 계정 프록시(`/api/graph`)로, 데스크톱 계정 모드는 사이드카 통과로로, 로컬 모드는
-  // 이 기기 사이드카로 간다. 세 길 모두 같은 `/graph` 핸들러에 `stage`·`snapshot` 이 닿는다.
-  graphStage: (owner: string, opts: { domains?: string[]; layout?: string; cone?: number },
-      stage: "preview" | "complete" | "cancel" | undefined, snapshot: string | undefined,
+  // 이 기기 사이드카로 간다. 세 길 모두 같은 `/graph` 핸들러에 닿는다.
+  graphRead: (owner: string, opts: { domains?: string[]; layout?: string; cone?: number },
       scope: Scope, signal: AbortSignal) => {
     const { domains, ...rest } = opts;
     // `marker`: 응답이 읽기 전에 잡은 변경 표식을 싣게 한다(`api/server.py _query_graph`).
-    const params = { owner, ...rest, stage, snapshot, marker: 1,
+    const params = { owner, ...rest, marker: 1,
       ...(domains?.length ? { domains: domains.join(",") } : {}) };
-    // 취소 요청은 접힌 신호에 묶지 않는다: 그 신호가 접혔기 때문에 보내는 것이다.
-    const live = stage === "cancel" ? undefined : signal;
     return accountMode() && !sidecarOnly("/graph")
-      ? accountCall("/graph", params, undefined, scope, live)
-      : localCall("/graph", params, undefined, scope, live);
+      ? accountCall("/graph", params, undefined, scope, signal)
+      : localCall("/graph", params, undefined, scope, signal);
   },
   recall: (owner: string, limit = 50) => call("/recall", { owner, limit, rank: "preference" }),
   search: (query: string, top_k = 20, options: SearchOptions = {}) => searchCall(query, top_k, options),

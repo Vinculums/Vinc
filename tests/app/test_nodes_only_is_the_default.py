@@ -3,7 +3,7 @@
 
 정본: [[decision:bring-and-go-is-retired-and-nodes-only-is-the-default]].
 보기 설정(`view-prefs.ts`)에는 선·크기·밀도 칸이 없다: 그래프 보기는 나침반 하나이고 저장하는 칸은
-`view`·`railW` 둘이다([[decision:the-graph-is-one-2d-compass-lens-2026-11-06]]). 이전 판의 저장값이
+`railW` 하나다([[decision:the-graph-is-one-2d-compass-lens-2026-11-06]]). 이전 판의 저장값이
 그대로 읽히는지는 `app/tests/view-graph-read.test.mjs` 가 본다(저장값을 넣고 읽어 보는 행동 시험)."""
 from __future__ import annotations
 

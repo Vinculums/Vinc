@@ -1,7 +1,7 @@
 """store.envflag: 플래그 값 한 벌의 표 시험."""
 import pytest
 
-from store.envflag import default_off, default_on, one_of, positive_int, truthy, truthy_strict
+from store.envflag import default_off, default_on, one_of, positive_int, strict, truthy, truthy_strict
 
 CASES = [
     # (값, truthy, truthy_strict)
@@ -61,6 +61,32 @@ def test_default_on_is_false_only_for_the_false_words(setenv, value, expected, _
 def test_default_off_is_true_only_for_the_true_words(setenv, value, expected, _):
     setenv(value)
     assert default_off(NAME) is expected
+
+
+@pytest.mark.parametrize("default", [True, False])
+def test_strict_returns_the_default_only_when_unset(setenv, default):
+    setenv(None)
+    assert strict(NAME, default) is default
+
+
+@pytest.mark.parametrize("value,expected", [
+    ("1", True), ("true", True), ("yes", True), ("on", True), (" ON\n", True),
+    ("0", False), ("false", False), ("no", False), ("off", False), (" Off ", False)])
+@pytest.mark.parametrize("default", [True, False])
+def test_strict_reads_the_given_word_whatever_the_default(setenv, value, expected, default):
+    setenv(value)
+    assert strict(NAME, default) is expected
+
+
+@pytest.mark.parametrize("value", ["", "   ", "of", "offf", "2", "enabled", "t", "fp32", "on!"])
+def test_strict_refuses_an_unknown_value_and_names_the_variable_and_the_words(setenv, value):
+    setenv(value)
+    with pytest.raises(ValueError) as err:
+        strict(NAME, True)
+    text = str(err.value)
+    assert NAME in text and repr(value) in text
+    for word in ("1", "true", "yes", "on", "0", "false", "no", "off"):
+        assert word in text
 
 
 @pytest.mark.parametrize("value,want", [

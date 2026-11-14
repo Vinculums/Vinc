@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import re
 
+from . import guards
+
 #: 주제 상한이 걸리는 프록시 op — 새 주제를 만들 수 있는 쓰기 경로만(AP-1 §3.3).
 #: 주제 이름 바꾸기(domain-rename)는 전량 개명이라 **개수를 늘릴 수 없어** 제외한다.
 _CAPPED_PROXY_OPS = ("ingest-fragment", "ingest-pack")
@@ -191,18 +193,12 @@ def proxy_op(app, op: str, args: dict | None, owner: str, *, actor: str,
     if route is None:
         raise ValueError(f"unsupported proxy op: {op!r}")
     method, path = route
-    args = dict(args or {})
-    args.pop("owner", None)   # 클라/바디 owner 는 절대 신뢰하지 않는다
-    # 어휘(theme)는 **전역**이라 남의 theme_id 를 실어 보내면 그 사람 어휘에 내
-    # 타입이 꽂힌다([[record:risk-themes-global]]). 이 평면은 파일에서 온 조각을
-    # 그대로 펼치므로 여기서 떨군다.
-    # ⚠ **이것으로 닫히는 것은 웹 평면뿐이다** — 호스티드 MCP 는 이 함수를 아예
-    # 지나지 않는다. 여기 한 줄을 근거로 "테넌시 막았다"고 적지 말 것.
-    args.pop("theme_id", None)
-    # `debug` 는 내부 실행 계획(Cypher·파라미터)을 싣는 **로컬 진단용** 스위치다.
-    # 웹 평면은 쿼리 인자를 그대로 흘리므로 여기서 벗긴다 — 허브에서 남에게 스토어
-    # 내부를 보여 줄 이유가 없다. 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] S13.
-    args.pop("debug", None)
+    # 클라/바디의 owner·theme_id·debug·_entitlements 는 절대 신뢰하지 않는다. owner 와 자격은 아래에서
+    # 서버가 정한 값으로 다시 싣는다. 이 평면은 파일에서 온 조각과 쿼리 인자를 그대로 흘리므로 여기서
+    # 벗긴다: theme_id 는 전역 어휘에 남의 타입을 꽂고([[record:risk-themes-global]]), debug 는 내부
+    # 실행 계획을 보인다([[vinc.plan.mcp-read-tool-fixes-2026-09-24]] S13).
+    # ⚠ 이 평면만 닫는다. 호스티드 MCP 는 이 함수를 지나지 않고 `tools.call` 이 같은 함수로 벗긴다.
+    args = guards.strip_client_authority(dict(args or {}))
 
     if op == "run-answer":
         # 사람만 답하는 대기의 유일한 문이다. 계정의 그래프 프록시는 멤버 키(데스크톱·스크립트)도
@@ -218,8 +214,7 @@ def proxy_op(app, op: str, args: dict | None, owner: str, *, actor: str,
         # 이 평면은 멤버 키도 지난다. 실행 기록의 대기·승인·답은 `run-answer` 로만 바꾼다.
         pack = args.get("pack") if isinstance(args.get("pack"), dict) else {}
         frag = pack.get("fragment") if isinstance(pack.get("fragment"), dict) else {}
-        from . import run_state
-        blocked = run_state.writes(args.get("nodes")) + run_state.writes(frag.get("nodes"))
+        blocked = guards.run_state_writes(args.get("nodes")) + guards.run_state_writes(frag.get("nodes"))
         if blocked:
             return {"kind": "ingest", "executed": False, "error": "run_state_protected",
                     "nodes": blocked, "note": "Refused: a run record's protocol state changes "
@@ -235,7 +230,6 @@ def proxy_op(app, op: str, args: dict | None, owner: str, *, actor: str,
         return app.bridge.request("GET", f"/jobs/{jid}", params={"owner": owner})
     if op == "activate":   # 클라가 호스트 임의 파일경로 지정 못 하게(활성 팩 인라인)
         args.pop("out", None)
-    args.pop("_entitlements", None)   # 바디로 들어온 자격은 신뢰하지 않는다
     if method == "GET":
         return app.bridge.request("GET", path, params={**args, "owner": owner})
     body = {**args, "owner": owner}

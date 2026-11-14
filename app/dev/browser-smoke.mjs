@@ -1,14 +1,16 @@
-// 앱 셸이 실제 브라우저에서 뜨는가: 빌드한 앱을 리포의 사이드카에 붙여 헤드리스 Chromium 으로 다섯 걸음을 본다.
+// 앱 셸이 실제 브라우저에서 뜨는가: 빌드한 앱을 리포의 사이드카에 붙여 헤드리스 Chromium 으로 화면을 차례로 본다.
 //
 //   cd app && npm run smoke
 //
-// 하는 일: 빈 임베디드 스토어로 사이드카(`python -m api.cli serve`)를 띄우고 문서 하나와 개념 둘을 심는다 →
+// 하는 일: 빈 임베디드 스토어로 사이드카(`python -m api.cli serve`)를 띄우고 문서 둘, 개념 셋, 에이전트 역할 하나를 심는다 →
 // `vite build` 로 앱을 짓고 `vite preview` 로 낸다(사이드카 경로는 vite.config.ts 의 프록시가 같은 출처로 넘긴다) →
-// 셸 마운트 · 문서 홈 목록 · 문서 열기 · 그래프 나침반 · 검색을 차례로 본다. 걸음마다 잡히지 않은 예외와 콘솔
+// 셸 마운트 · 문서 홈 목록 · 문서 열기 · 그래프 나침반 · 검색 · 노드 카드와 오른쪽 면 · 문서 리더 · 공유 시트 · 설정 ·
+// 승인함 · 에이전트 보드를 차례로 본다. 걸음마다 잡히지 않은 예외와 콘솔
 // 오류가 하나도 없어야 한다. 실패하면 그 걸음 이름으로 끝나고 스크린숏과 Playwright 트레이스를 남긴다.
 //
 // 환경: VINC_PYTHON(사이드카를 띄울 파이썬, 기본은 리포의 .venv 다음 python3) · VINC_SMOKE_OUT(실패 산출물 폴더,
 // 기본은 임시 폴더) · VINC_SMOKE_DIST(이미 지은 dist 를 쓴다, 없으면 이 스크립트가 짓는다) ·
+// VINC_SMOKE_CHROME(Playwright 가 찾는 브라우저 대신 쓸 실행 파일) ·
 // VINC_SMOKE_HEADED=1(창을 띄워 본다). 루프백 밖으로 나가는 요청은 막고 그 목록을 실패로 친다.
 // 셸(Tauri)·로그인·동기화·계정 그래프는 보지 않는다: 이것은 브라우저 dev 경로(localhost, 로컬 모드)다.
 import { spawn } from "node:child_process";
@@ -32,6 +34,8 @@ const SEED = {
   topic: "smoke/harbour",
   phrase: "The lighthouse keeper logs every tide in the harbour ledger.",
   query: "lighthouse",
+  node: { id: "concept:smoke-lighthouse", title: "Lighthouse" },
+  role: { id: "concept:agent-smoke-keeper", title: "Agent role: Lighthouse keeper", jobTitle: "Keeper" },
 };
 const STEP_MS = 30_000;
 const say = (m) => console.log(`[smoke ${((Date.now() - started) / 1000).toFixed(1)}s] ${m}`);
@@ -87,14 +91,16 @@ async function call(base, path, body) {
   return json;
 }
 
-// 문서 하나(주제를 주면 미러 노드가 생겨 나침반에 선다)와 개념 둘, 관계 하나.
+// 문서 하나(주제를 주면 미러 노드가 생겨 나침반에 선다)와 개념 둘, 관계 하나, 에이전트 역할 하나.
 async function seed(base) {
   const doc = await call(base, "/doc/put", { owner: OWNER, title: SEED.title, topic: SEED.topic,
     text: `# ${SEED.title}\n\n${SEED.phrase}\n` });
   await call(base, "/ingest", { owner: OWNER,
     nodes: [
-      { id: "concept:smoke-lighthouse", type: "concept", title: "Lighthouse", domain: SEED.topic },
+      { id: SEED.node.id, type: "concept", title: SEED.node.title, domain: SEED.topic },
       { id: "concept:smoke-tide", type: "concept", title: "Tide", domain: SEED.topic },
+      { id: SEED.role.id, type: "concept", title: SEED.role.title, domain: "vinc/agent",
+        props: { team: "Design", team_role: "lead", job_title: SEED.role.jobTitle } },
     ],
     edges: [{ from: "concept:smoke-lighthouse", to: "concept:smoke-tide", type: "RELATES_TO" }] });
   return doc.doc_id;
@@ -151,7 +157,8 @@ async function main() {
   const base = await serveApp(sidecarBase);
   say(`app served at ${base}`);
 
-  browser = await chromium.launch({ headless: process.env.VINC_SMOKE_HEADED !== "1" });
+  browser = await chromium.launch({ headless: process.env.VINC_SMOKE_HEADED !== "1",
+    ...(process.env.VINC_SMOKE_CHROME ? { executablePath: process.env.VINC_SMOKE_CHROME } : {}) });
   context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await context.tracing.start({ screenshots: true, snapshots: true });
   // 앱이 브라우저 dev 에서 읽는 접속 정보: 같은 출처(프록시)와 이 사이드카의 토큰. 언어는 영어로 고정한다.
@@ -203,6 +210,54 @@ async function main() {
     await q.fill(SEED.query);
     await q.press("Enter");
     await page.locator("#search-body .list-row").first().waitFor({ state: "visible" });
+  });
+
+  // 해시로 화면을 바꾼다. 셸은 한 번 떠 있으므로 페이지를 다시 열지 않는다.
+  const go = (hash) => page.evaluate((h) => { location.hash = h; }, hash);
+  const card = page.locator(".float-card");
+
+  await step("node card opens its rail", page, async () => {
+    await go(`#view/trace/${encodeURIComponent(SEED.node.id)}`);
+    await card.locator("#c-open").waitFor({ state: "visible" });
+    await card.locator("#c-open").click();
+    await page.locator("#view-detail:not([hidden])", { hasText: SEED.node.title }).waitFor({ state: "visible" });
+  });
+
+  await step("reader shows the document text", page, async () => {
+    await go(`#view/doc/${encodeURIComponent(docId)}`);
+    await page.locator("#view-detail #rdr-host .cm-editor").waitFor({ state: "visible" });
+    await page.locator("#view-detail #rdr-host", { hasText: SEED.phrase }).waitFor({ state: "visible" });
+  });
+
+  await step("share sheet opens and closes", page, async () => {
+    await go(`#view/trace/${encodeURIComponent(SEED.node.id)}`);
+    await card.locator("#c-share").waitFor({ state: "visible" });
+    await card.locator("#c-share").click();
+    await page.locator(".sheet-scrim").first().waitFor({ state: "visible" });
+    await page.keyboard.press("Escape");
+    await page.locator(".sheet-scrim").first().waitFor({ state: "detached" });
+  });
+
+  await step("settings opens its appearance pane", page, async () => {
+    await go("#home");
+    await page.locator("#rail-settings").click();
+    const appearance = page.locator('[data-cat="appearance"]');
+    await appearance.waitFor({ state: "visible" });
+    await appearance.click();
+    await page.locator("[data-theme-opt]").first().waitFor({ state: "visible" });
+    await page.keyboard.press("Escape");
+    await page.locator(".sheet-scrim").first().waitFor({ state: "detached" });
+  });
+
+  await step("approvals page renders", page, async () => {
+    await go("#approvals");
+    await page.locator("#surface .approvals .hint").first().waitFor({ state: "visible" });
+  });
+
+  await step("agents board lists the seeded role", page, async () => {
+    await go("#home");
+    await page.locator('#rail-kinds [data-rail="agent"]').click();
+    await page.locator(".agent-card", { hasText: SEED.role.jobTitle }).first().waitFor({ state: "visible" });
   });
 
   // 마지막 걸음 뒤에 들어온 오류도 놓치지 않는다: 열린 화면의 비동기 작업이 끝날 때까지 기다린 뒤 다시 본다.

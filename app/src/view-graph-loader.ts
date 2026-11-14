@@ -85,8 +85,7 @@ export function createGraphLoader(ctx: GraphLoaderContext) {
       const readJob = graphReadJob = new AbortController();
       const capturedScope = { team: ctx.mountScope.team || null };
       try {
-        res = cached || await api.graphStage(ctx.mountScope.owner, options, undefined, undefined,
-          capturedScope, readJob.signal);
+        res = cached || await api.graphRead(ctx.mountScope.owner, options, capturedScope, readJob.signal);
       } catch (failure) {
         const cancelled = readJob.signal.aborted;
         readJob.abort();

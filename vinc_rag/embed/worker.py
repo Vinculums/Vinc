@@ -100,6 +100,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from store.encoder_runtime import fingerprint as _encoder_fingerprint  # noqa: E402
+from store import envflag  # noqa: E402
 from store.envflag import truthy  # noqa: E402
 ENCODER_RUNTIME = _encoder_fingerprint()
 ENCODER_BUILD = os.environ.get("VINC_ENCODER_BUILD", "").strip()
@@ -319,6 +320,14 @@ def _no_artifact_msg(model: str, want: str, cache: str, exc: BaseException) -> s
             f"(허브 형상에서는 OOM 이다)")
 
 
+def quantize_on() -> bool:
+    """int8 양자화 아티팩트를 쓸 것인가(`VINC_EMBED_QUANTIZE`). 없으면 켜짐이고 `off` 가 의도적인 fp32 다.
+
+    모르는 값(오타·빈 값)은 `ValueError` 다. 조용히 fp32 로 가면 허브 형상에서 OOM 이 나고
+    사이드카·MCP 까지 함께 죽는다."""
+    return envflag.strict("VINC_EMBED_QUANTIZE", True)
+
+
 def artifact_name(model: str) -> str:
     """이 모델의 int8-rr 아티팩트 파일명(빌드·런타임 공용 규약).
 
@@ -329,7 +338,7 @@ def artifact_name(model: str) -> str:
     캐시 디렉터리 하나가 모델 여러 벌을 담을 수 있어야 한다. 이름이 모델과 무관하면
     (옛 `e5-int8-rr.onnx` 고정) 모델을 바꿔도 **옛 모델의 파일을 그대로 집는다** —
     차원이 우연히 같으면 아무 오류 없이 딴 모델로 색인이 만들어진다."""
-    if os.environ.get("VINC_EMBED_QUANTIZE", "on") != "on":
+    if not quantize_on():
         return f"{model.split('/')[-1].lower()}-fp32.onnx"
     return _ARTIFACT_NAMES.get(model) or f"{model.split('/')[-1].lower()}-int8-rr.onnx"
 
@@ -384,7 +393,7 @@ def _resolve_model(model: str, cache: str) -> str:
             return baked
 
     from huggingface_hub import hf_hub_download
-    if os.environ.get("VINC_EMBED_QUANTIZE", "on") != "on":
+    if not quantize_on():
         # 의도된 fp32(개발·대조 실험). 조용하지 않게 남긴다 — 이 줄이 없으면
         # "왜 갑자기 메모리를 이만큼 쓰나"의 답이 로그 어디에도 없다.
         print(f"[embed] VINC_EMBED_QUANTIZE=off — fp32 로 진행({model}). "
@@ -995,6 +1004,13 @@ def main() -> int:
     ap.add_argument("--serve-only", action="store_true",
                     help="인코딩 서비스만 띄우고 배치 루프는 돌지 않는다(vinc-encode 역할)")
     args = ap.parse_args()
+
+    # 정밀도 설정이 틀렸으면 모델을 올리기 전에 서서, 조용히 fp32 로 돌지 않게 한다.
+    try:
+        quantize_on()
+    except ValueError as exc:
+        print(f"[embed] {exc}", file=sys.stderr, flush=True)
+        return 2
 
     # 인코딩 주체를 여기서 한 번만 고른다. 원격이면 이 프로세스는 **모델을 안 든다**
     # — 허브에서 OOM 을 낸 646MB 가 통째로 사라진다.

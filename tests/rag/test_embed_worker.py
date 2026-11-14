@@ -1177,6 +1177,32 @@ class SplitEncoderTest(unittest.TestCase):
         finally:
             sys.argv = old
 
+    def test_모르는_양자화_값이면_모델을_올리기_전에_기동을_거부한다(self):
+        """`VINC_EMBED_QUANTIZE` 의 오타가 조용히 fp32 가 되면 허브 형상에서 OOM 이다.
+        변수 이름과 받는 값을 말하고, 모델을 올리지도 사이드카를 부르지도 않는다."""
+        import io
+        loaded: list[int] = []
+        self.mod._Embedder._load = lambda _self: loaded.append(1)
+        self.mod._call = lambda *a, **k: self.fail("사이드카를 불렀다")
+        for bad in ("of", "", "fp32", "2"):
+            err = io.StringIO()
+            old = sys.argv
+            sys.argv = ["embed_worker.py", "--once"]
+            try:
+                with _env(VINC_EMBED_QUANTIZE=bad), contextlib.redirect_stderr(err):
+                    self.assertEqual(self.mod.main(), 2, repr(bad))
+            finally:
+                sys.argv = old
+            self.assertIn("VINC_EMBED_QUANTIZE", err.getvalue(), repr(bad))
+            self.assertIn("off", err.getvalue(), repr(bad))
+        self.assertEqual(loaded, [])
+
+    def test_모르는_양자화_값이면_아티팩트_이름도_고르지_않는다(self):
+        with _env(VINC_EMBED_QUANTIZE="of"):
+            with self.assertRaises(ValueError) as ctx:
+                self.mod.artifact_name("BAAI/bge-m3")
+        self.assertIn("VINC_EMBED_QUANTIZE", str(ctx.exception))
+
     def test_서버가_자기_자신에게_위임하지_않는다(self):
         """`--serve-only` + `VINC_EMBED_REMOTE` 는 인코더가 자기를 부르는 고리다."""
         self.mod.REMOTE_ENCODE = "http://elsewhere"
