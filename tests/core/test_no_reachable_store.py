@@ -5,8 +5,9 @@
 
 - 읽기: 상태 `executed:False` 와 `note` 만 싣는다(저하된 읽기).
 - 쓰기: `note` 와 `error` 를 같이 싣는다. `rename_domain` 만 `error` 하나다.
-- 스토어 인자를 직접 받아 쓰는 내부 꼬리(`_ledger_by_concept`, `ledger_drilldown`)와
-  `merge_nodes` 는 None 에서 AttributeError 를 낸다. 표에 그대로 적었다.
+- 표의 모든 행이 이 두 규칙을 따른다. 스토어를 못 열면 어느 표면도 예외를 내지 않고 답한다.
+  `merge_nodes` 는 쓰기라 `note` 와 `error` 를, 원장 두 읽기 꼬리(`_ledger_by_concept`,
+  `ledger_drilldown`)는 `note` 만 싣는다.
 
 두 번째 시험은 수명을 고정한다: 주입된 스토어는 닫지 않고, 모듈이 연 스토어는 정확히 한 번 닫는다.
 키 모드(`VINC_PK_NAMESPACED`)와 상관없이 같은 답이어야 한다.
@@ -36,10 +37,6 @@ NOTE_ERROR = ("note+error", {"executed": False, "note": MSG, "error": MSG}, ())
 ERROR = ("error", {"executed": False, "error": MSG}, ("note",))
 
 
-def _raises(needle: str):
-    return ("raises", AttributeError, needle)
-
-
 def _ledger_tail(**kw):
     by_id = {"concept:a": {"domain": "d", "ts": "", "episodic": True, "record": False,
                            "degree": 0, "gateway": False}}
@@ -64,7 +61,7 @@ SURFACES = {
         lambda **kw: graph_edit.delete_node("concept:a", owner=OWNER, **kw), NOTE_ERROR, 1),
     "graph_edit.merge_nodes": (
         lambda **kw: graph_edit.merge_nodes("concept:a", "concept:b", owner=OWNER, **kw),
-        _raises("close"), 1),
+        NOTE_ERROR, 1),
     "graph_edit.purge_owner": (
         lambda **kw: graph_edit.purge_owner(OWNER, **kw), NOTE_ERROR, 1),
     "graph_edit.owner_stats": (
@@ -88,8 +85,8 @@ SURFACES = {
     "nav._ledger_by_concept": (
         lambda cfg=None, store=None: nav._ledger_by_concept(
             {"c": {"domain": "d"}}, owner=OWNER, scope="all", cfg=cfg, store=store),
-        _raises("run"), 1),
-    "nav.ledger_drilldown": (_ledger_tail, _raises("run"), 1),
+        NOTE, 1),
+    "nav.ledger_drilldown": (_ledger_tail, NOTE, 1),
     "diagnose.component_diagnosis": (
         lambda **kw: diagnose.component_diagnosis(owner=OWNER, **kw), NOTE, 1),
     "diagnose.claim_diagnosis": (
@@ -145,21 +142,17 @@ def test_no_reachable_store_answers(name):
     call, shape, opens = SURFACES[name]
     with ExitStack() as stack:
         opened = _patch_openers(stack, lambda: None)
-        if shape[0] == "raises":
-            with pytest.raises(shape[1], match=shape[2]):
-                call()
+        got = call()
+        if shape[0] == "cited":
+            assert got["rows"] == [{"doc_id": "d1", "cite_id": None,
+                                    "cite_unavailable": "document mirror missing or unreadable"}]
+            assert "citation_error" not in got
         else:
-            got = call()
-            if shape[0] == "cited":
-                assert got["rows"] == [{"doc_id": "d1", "cite_id": None,
-                                        "cite_unavailable": "document mirror missing or unreadable"}]
-                assert "citation_error" not in got
-            else:
-                _, present, absent = shape
-                for key, value in present.items():
-                    assert got.get(key) == value, (name, key, got)
-                for key in absent:
-                    assert key not in got, (name, key, got)
+            _, present, absent = shape
+            for key, value in present.items():
+                assert got.get(key) == value, (name, key, got)
+            for key in absent:
+                assert key not in got, (name, key, got)
     assert len(opened) == opens, (name, len(opened))
 
 
