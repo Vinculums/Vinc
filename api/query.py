@@ -126,6 +126,7 @@ from .query_base import (  # noqa: E402,F401  (재수출)
     _graph_read_pairs,
     _seed_table,
     _stamp_validity,
+    _store_scope,
     _topic_description_mirrors_by_domain,
     _track_cols,
     _wiki_read_pairs,

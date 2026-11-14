@@ -1,0 +1,30 @@
+/* ── 자동 업데이트 토스트 (v0.3.0) — 하단 중앙 부유 크롬. 비차단 알림이라
+      콘텐츠 평면을 가리지 않게 안전영역 여백 + 유리 층 재사용. */
+.update-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: .9rem;
+  max-width: min(92vw, 34rem);
+  padding: .6rem .7rem .6rem 1rem;
+  border-radius: .8rem;
+  border: 1px solid hsl(var(--border));
+  background: var(--glass-bg, hsl(var(--card)));
+  backdrop-filter: var(--glass-blur);
+  box-shadow: 0 8px 24px hsl(var(--foreground) / .18), var(--glass-edge);
+  color: hsl(var(--foreground));
+  font-size: var(--fs-base);
+  animation: update-rise .18s ease-out;
+}
+.update-toast .update-msg { flex: 1 1 auto; }
+.update-toast .update-actions { display: flex; gap: .4rem; flex: 0 0 auto; }
+@keyframes update-rise {
+  from { opacity: 0; transform: translate(-50%, .5rem); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .update-toast { animation: fadeOnly .18s ease; } }
+

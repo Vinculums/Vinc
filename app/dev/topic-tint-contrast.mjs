@@ -32,6 +32,8 @@ const RAWSRC = opt("--raw");
 const rawTint = RAWSRC ? await bundle("view-tint.ts", resolve(RAWSRC)) : null;
 const { topicJewels } = await bundle("theme.ts");
 const read = (f) => readFileSync(resolve(SRC, f), "utf8");
+// app.css 는 src/css/*.css 를 @import 로 잇는 목차다. @import 자리에 그 파일을 펴서 캐스케이드 순서 그대로 한 글로 읽는다.
+const readCss = (f) => read(f).replace(/^@import "\.\/(css\/[\w-]+\.css)";.*$/gm, (_, rel) => readCss(rel));
 const must = (m, what) => { if (!m) throw new Error(`못 찾았다: ${what}`); return m; };
 
 // ── 면 ──────────────────────────────────────────────────────────────────────
@@ -43,7 +45,7 @@ function tokenHsl(block, name) {
   const m = must(block.match(new RegExp(`--${name}:\\s*([\\d.]+)\\s+([\\d.]+)%\\s+([\\d.]+)%`)), `--${name}`);
   return hslToRgb(+m[1], +m[2], +m[3]);
 }
-const APP = read("app.css");
+const APP = readCss("app.css");
 const alphaOf = (sel) => +must(APP.match(new RegExp(`${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{[^}]*?hsl\\(var\\(--(\\w[\\w-]*)\\)\\s*/\\s*([\\d.]+)\\)`)), sel)[2];
 const tokOf = (sel) => must(APP.match(new RegExp(`${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{[^}]*?hsl\\(var\\(--(\\w[\\w-]*)\\)\\s*/`)), sel)[1];
 const HOVER = { tok: tokOf(".lnb-doc:hover"), a: alphaOf(".lnb-doc:hover") };

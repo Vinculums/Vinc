@@ -57,7 +57,7 @@ return { variables: out, effectStyles: es.map(s => ({ name: s.name, effects: s.e
   코드가 팔레트 대신 골든앵글 생성 모델을 쓴다(모델 자체가 달라 값 대조가 성립 안 한다).
 - **Figma 에만 · Scale**: `icon/app`(18) `icon/base`(24) `layout/lnb-w`(232)
   `layout/gnb-h`(52). ⚠ 이건 Figma 가 틀린 게 아니라 **코드가 허브 밖에 두고 있는 것**이다
-  — `app/src/app.css` 의 `--icon-size: 18px` · `--lnb-w: 14.5rem` · GNB `3.25rem` 과 값이
+  — `app/src/css/*.css` 의 `--icon-size: 18px` · `--lnb-w: 14.5rem` · GNB `3.25rem` 과 값이
   전부 같다. 승격은 별건이라 여기선 제외로 둔다.
 - **SSoT 에만**: `lh`·`font` — Figma 는 텍스트 스타일로 들고 있어 변수 대조가 성립 안 한다.
 - **부분 대조**: `fs/xl`·`fs/display` 는 SSoT 가 `clamp()` 라 Figma 는 그 **상한**만 담는다.
