@@ -70,7 +70,7 @@ def write_topic_conversion(app, body):
                 return conversion.preflight(app.store, source, str(body.get("topic") or ""))
             args = dict(source=source, target=body["target"], topic=body["topic"], run=body["run"])
             journal = conversion._get(app.store, args["run"])
-            if journal is not None and journal.get("inventory_version") == 3:
+            if journal is not None and conversion.journal_protocol(journal) == conversion.PROTOCOL_V3:
                 conversion._identity(journal, source=source, target=body["target"], topic=body["topic"])
                 return app._resume_bounded_conversion(action, args, body.get("fingerprint"), conventions_policy)
             if action == "status" and journal is None and hasattr(app, "_conversion_jobs"):
