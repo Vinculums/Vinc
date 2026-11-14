@@ -129,8 +129,9 @@ def tool_request(args) -> tuple[str, dict, str | None]:
         else:
             data = _json_file(args.args_file or "-",
                               source="--args-file" if args.args_file else "stdin")
-        destructive = name if name in {"vinc_delete", "vinc_delete_edge",
-                                       "vinc_merge_nodes", "vinc_doc_delete"} else None
+        # 되돌릴 수 없는 도구(admin 등급)는 확인을 받는다. 목록을 따로 두지 않고 MCP 호스트가 확인을 거는
+        # 기준(`destructiveHint` 에서 유도한 `tool_tier`)을 그대로 쓴다.
+        destructive = name if tools.tool_tier(name) == "admin" else None
         return name, data, destructive
     # 구 동사 9개의 출력도 도구 결과 모양으로 통일한다(C6, D7).
     temporal = {key: getattr(args, key) for key in ("mode", "historical", "as_of", "known_at")
