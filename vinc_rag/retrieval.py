@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import re
+from collections import ChainMap
 from store.config import load_config
 from store.backend import flag, open_store, operation
 from store import pkns
@@ -1274,6 +1275,293 @@ def _node_model_mismatch(store, owner: str | None, query_model: str | None) -> d
     return {"query_model": query_model, "mirror_models": other}
 
 
+def _title_arm(store, query, *, continuation, owner, mode, historical, known_at,
+               _wide, _nk, _kw, _scope, _until, _vstats, _vnote) -> tuple[list[dict], dict]:
+    """노드 제목 팔(3): ``(title_hits, patch)`` 를 돌려준다.
+    ``_search`` 에서 그대로 떼어 낸 본문이라 인자 이름도 거기서 쓰던 것(밑줄 포함)과 같다.
+
+    응답 dict 를 받지 않는다. 응답에 얹을 키(``validity_filtered``, ``known_at_filtered``,
+    ``known_at_unknown``, ``node_error``, ``validity_best_dropped``, ``validity_note``,
+    ``node_hits``)는 ``patch`` 로만 내보내고, 부르는 쪽이 부른 **바로 뒤에** ``base.update`` 로
+    얹는다 — 키가 들어가는 순서가 응답 키 순서다. ``validity_filtered`` 는 이 팔 안에서
+    두 군데에서 쓰고 뒤에 쓴 값이 이긴다(patch 에서도 같은 순서). ``_vstats`` 는 제자리에서
+    고친다(뒤의 청크 팔과 그래프 팔이 읽는다).
+
+    (3) 노드 폴백(title) — FTS/벡터와 무관하게 항상. 실패해도 Chunk 경로 무영향.
+    E-G1: 여기서는 title 폴백만 담고, Chunk 하이브리드 뒤 그래프 암과 융합한다."""
+    patch: dict = {}
+    title_hits: list[dict] = []
+    try:
+        if not continuation:
+            title_hits = _node_fallback_search(store, query, limit=NODE_SCAN_CAP if _wide else _nk, owner=owner,
+                                               historical=True if mode == "current" else historical, stats=_vstats,
+                                               scope=None if mode == "current" else _scope,
+                                               doc_intervals=True, **_kw)
+            if mode == "current":
+                # 팔 안은 관련도 순, 근거 있게 대체된 행만 뒤로(window=0, `superseded_old_end`).
+                # 구간 먼저는 융합 뒤 창에서만.
+                temporal.finish_nodes(store, title_hits, owner=owner, scope=_scope, current=True, known_at=known_at, stats=_vstats,
+                                      window=0)
+                if _vstats.get("current_hidden"):
+                    patch["validity_filtered"] = len(_vstats["current_hidden"])
+                if known_at:
+                    patch["known_at_filtered"] = len(_vstats.get("known_hidden", ()))
+                    patch["known_at_unknown"] = len(_vstats.get("known_unknown", ()))
+            elif known_at:
+                title_hits = _known_at_nodes(store, title_hits, owner=owner, until=_until,
+                                             stats=_vstats)[:_nk]
+    except Exception as exc:
+        # 거르지 못한 후보는 내지 않는다(fail closed). current 의 시간 메타 읽기가 실패하면 여기에는
+        # 은퇴한 노드까지 든 후보 전량이 남아 있다.
+        title_hits = []
+        patch["node_error"] = f"{type(exc).__name__}: {exc}"
+    # 걸러 냈으면 **말한다**. 조용히 줄어든 결과는 "그래프에 이것뿐"으로 읽히고,
+    # 그건 이 필터가 막으려는 고장과 같은 종이다(`vector_note` 와 같은 태도).
+    if _vstats.get("dropped_not_current"):
+        patch["validity_filtered"] = _vstats["dropped_not_current"] + len(_vstats.get("current_hidden", ()))
+        patch["validity_best_dropped"] = list(_vstats.get("best_dropped_score") or (0, 0))
+        patch["validity_note"] = _vnote
+    patch["node_hits"] = title_hits   # 그래프 암 실패해도 최소 title 폴백은 보장
+    return title_hits, patch
+
+
+def _chunk_stage(store, query, query_embedding, *, filters, owner, kinds, top_k, cfg,
+                 _vstats, known_at, mode, _until, _scope,
+                 base) -> tuple[list[dict], bool, int, dict]:
+    """청크 팔(1)(2)과 그 풀: ``(pool, withheld, chunk_known_hidden, patch)`` 를 돌려준다.
+    ``_search`` 에서 그대로 떼어 낸 본문이라 인자 이름도 거기서 쓰던 것(밑줄 포함)과 같다.
+
+    ``base`` 는 **읽기 전용**이다. 앞 단계(제목 팔)가 이미 적은 ``validity_filtered`` 만 읽는다.
+    응답에 얹을 키(``node_window``, ``executed``, ``error``, ``note``, ``arms``, ``keyword_gated``,
+    ``vector_note``, ``vector_rebuilding``, ``partial``, ``temporal_error``, ``validity_filtered``,
+    ``doc_validity_filtered``, ``_current_doc_temporal``, ``total_count``, ``total_count_capped``)는
+    ``patch`` 로만 내보내고, 부르는 쪽이 부른 **바로 뒤에** ``base.update`` 로 얹는다. ``error`` 와
+    ``vector_note`` 는 이 단계 앞에서는 아무도 쓰지 않으므로 이 단계가 쓴 값만 읽는다.
+    ``validity_filtered`` 는 읽은 값에 더해 쓰므로 부르는 쪽이 제목 팔의 patch 를 먼저 얹은 뒤에
+    불러야 마지막에 쓴 값이 같다.
+
+    (1)(2) Chunk 하이브리드 — 실패는 error 로 표면화, 인덱스 부재는 지연 빌드 후 재시도.
+    GM-14: top_k 가 아니라 **후보 풀**(SEARCH_POOL_CAP)을 가져온다 — 페이지는
+    아래에서 안정 정렬 위의 오프셋으로 자른다.
+    🔴 **SEC-1 청크 팔 owner 스코프.** owner 를 여기서 빼면 호스티드에서 `rows[]`
+    가 남의 문서 본문 발췌를 싣는다 — node_hits 가 막혀 있어 눈에 잘 안 띄고
+    회귀 테스트도 노드 폴백만 봤다([[record:the-search-chunk-arm-is-owner-scoped-and-fails-closed]])."""
+    patch: dict = {}
+    chunk_filters = dict(filters or {})
+    patch["node_window"] = {"pagination": "first_page_only", "total_count_scope": "chunks",
+                            "limit": max(1, int(top_k)),
+                            "lexical_candidates": _vstats.get("candidate_count"),
+                            "lexical_candidates_capped": bool(_vstats.get("candidate_count_capped")),
+                            "candidate_limit": NODE_SCAN_CAP}
+    if kinds:
+        patch["node_window"]["kinds"] = list(kinds)
+    scoped_ok = True
+    if owner:
+        chunk_filters["owner_id"] = owner
+        # **fail-closed.** 스코프가 강제된 요청인데 백엔드가 필터를 실제로 적용하는지
+        # 알 수 없으면 청크 팔을 아예 돌리지 않는다. 필터를 무시하는 구현(구 백엔드·
+        # 테스트 더블)에 owner 를 넘기면 "스코프를 걸었다고 믿는 무스코프 조회"가
+        # 되는데, 그건 지금 고치는 결함과 정확히 같은 것이다. 조용히 넓게 답하느니
+        # 답을 줄이고 사유를 남긴다.
+        scoped_ok = bool(flag(store, "scoped_chunk_search"))
+    pool: list[dict] = []
+    vnote = ""
+    ran: list[str] = []          # 실제로 돈 팔 — 예외로 새면 빈 채로 남는다
+    arm_capped = False           # 거르기 전의 팔이 상한에 닿았나(_chunk_arms)
+    kw_gated = False             # 키워드 목록이 관문에 걸려 융합에서 빠졌나(_keyword_gate)
+    try:
+        if not scoped_ok:
+            raise _UnscopedChunkSearch(
+                "owner scope requested but this store does not support "
+                "owner-filtered chunk search")
+        pool, vnote, ran, arm_capped, kw_gated = _chunk_arms(
+            store, query, query_embedding, SEARCH_POOL_CAP, chunk_filters or None)
+        patch["executed"] = True
+    except _UnscopedChunkSearch as exc:
+        # 폴백하지 않는다 — node_hits 는 이미 owner 로 걸러져 있으므로 그것만 답한다.
+        patch["error"] = f"owner_scope_unsupported: {exc}"
+        patch["note"] = patch["error"]
+    except Exception as exc:
+        if _classify_chunk_error(exc) != "index_missing":
+            patch["error"] = f"{_classify_chunk_error(exc)}: {type(exc).__name__}: {exc}"
+            patch["note"] = patch["error"]
+        else:
+            n = _chunk_count(store)
+            builder = operation(store, "ensure_search_indexes")
+            if n == 0:
+                # Chunk 0 — 빌드 시도 없이 조용히 폴백(node_hits 가 답, 무 에러).
+                patch["executed"] = True
+                patch["note"] = "no chunks indexed — node_hits only"
+            elif flag(store, "fts_index_remnant"):
+                # 다시 서지 않는 색인이다(잔해). 빌드를 걸면 검색마다 실패할 잡이 돈다.
+                # 근거: [[record:an-fts-remnant-on-chunk-stops-every-document-write-and-the-heal-moves-chunk-with-its-edges-2026-09-25]]
+                patch["error"] = patch["note"] = f"fts_index_remnant: {_FTS_REMNANT}"
+            elif builder is None:
+                patch["error"] = f"index_missing: {type(exc).__name__}: {exc}"
+                patch["note"] = patch["error"]
+            else:
+                try:
+                    # **벡터 인덱스는 여기서 만들지 않는다.** FTS 만 세워 답하고
+                    # (`dim=None`), HNSW 는 아래에서 예약한다 — 요청 스레드가
+                    # 기다릴 일이 아니다(:func:`_schedule_vector_index`).
+                    builder(dim=None)
+                    pool, vnote, ran, arm_capped, kw_gated = _chunk_arms(
+                        store, query, query_embedding, SEARCH_POOL_CAP,
+                        chunk_filters or None)
+                    patch["executed"] = True
+                    patch["note"] = "search index built on demand"
+                except Exception as exc2:
+                    patch["error"] = (f"index_build_failed: "
+                                      f"{type(exc2).__name__}: {exc2}")
+                    patch["note"] = patch["error"]
+    # 여기서 처음으로 `arms` 를 세운다 — **돈 팔의 이름만** 붙는다.
+    patch["arms"] = "+".join(_ARM_LABEL[a] for a in ran) or "none"
+    # 키워드 팔은 돌았지만 질의를 못 덮어 융합에서 뺐다 — 걸렸을 때만 싣는다(`vector_note`
+    # 처럼). `arms` 는 그대로 두 팔이다: 평가 하네스의 강등 판정이 바뀌지 않게.
+    if kw_gated:
+        patch["keyword_gated"] = True
+    # 벡터 팔을 **요청했는데 안 돌았고 그 이유가 실패**면 사유를 구조화 필드로
+    # 남긴다. 여태 이 자리는 `error` 만 세웠는데, 화면은 영문 문구를 파싱할 수
+    # 없으므로(금지) 반쪽·빈 답을 완전한 답으로 보여 줬다. 청크 팔이 통째로
+    # 죽는 경로(확장 미가용·미프로비저닝·스코프 미지원·빌드 실패)가 전부 여기다.
+    # 청크가 0개라 아무것도 못 찾은 경우는 실패가 아니므로(`error` 없음) 안 선다.
+    if query_embedding is not None and "semantic" not in ran and patch.get("error"):
+        patch.setdefault("vector_note", patch["error"])
+    if vnote and flag(store, "vector_index_remnant"):
+        # 재빌드 창이 아니다 — 다시 서지 않는 색인이다. 양성 표식(`vector_rebuilding`)을
+        # 달면 "곧 돌아온다"는 거짓이 되므로 실패로 싣고, 빌드도 걸지 않는다.
+        # 근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]
+        patch["vector_note"] = _VECTOR_REMNANT
+    elif vnote and vnote != _VECTOR_REBUILDING:
+        patch["vector_note"] = vnote      # 벡터 팔 실패(폭 불일치 등) — 재빌드 창이 아니다
+    elif vnote:
+        # 조용한 강등 금지 — 어느 팔이 돌았는지(`arms`)와 왜 강등됐는지
+        # (`vector_note`)를 둘 다 남긴다.
+        patch["vector_note"] = vnote
+        # 재빌드 창은 **양성 계약**이다(쓰기가 HNSW 를 드롭 → 배경에서 다시 선다).
+        # 화면이 이것을 진짜 실패와 같은 톤으로 그리면 거짓 경보가 되므로 구조화
+        # 표식으로 가른다 — 문구 파싱은 금지다(_VECTOR_REBUILDING 주석과 같은 규칙).
+        patch["vector_rebuilding"] = True
+        _schedule_vector_index(store, cfg.embedding_dim)
+
+    # GM-14 페이지네이션 — 안정 정렬(점수 내림차순, 동점은 id 오름차순). 페이지
+    # 사이에 결과가 흔들리면 안 되므로 정렬 키에 id 를 반드시 묶는다.
+    pool.sort(key=lambda r: (-(float(r.get("rrf_score") or r.get("score") or 0.0)),
+                             str(r.get("id") or "")))
+    _withheld = False            # 시간 메타를 못 읽어 청크를 내지 않았나(fail closed)
+    _chunk_known_hidden = 0
+    if known_at and mode != "current" and pool:
+        try:
+            pool, _chunk_known_hidden = _known_at_pool(store, pool, owner=owner, until=_until)
+        except Exception as exc:
+            pool, _withheld = [], True
+            patch["partial"] = True
+            patch["temporal_error"] = f"{type(exc).__name__}: {exc}"
+    if mode == "current":
+        for r in pool:
+            r["doc_id"] = _row_doc_id(r)
+        try:
+            meta = temporal.doc_sources(store, [r.get("doc_id") for r in pool], owner=owner)
+            for r in pool:
+                temporal.stamp(r, meta.get(r.get("doc_id"), {}), scope=_scope)
+            visible = [r for r in pool if r["temporal"]["validity"] not in ("historical", "future")]
+            patch["validity_filtered"] = int(base.get("validity_filtered") or 0) + len(pool) - len(visible)
+            patch["doc_validity_filtered"] = len(pool) - len(visible)
+            pool = visible
+            before_lineage = len(pool)
+            temporal.finish_docs(store, pool, owner=owner, scope=_scope, current=True, known_at=known_at)
+            patch["validity_filtered"] += before_lineage - len(pool)
+            patch["doc_validity_filtered"] += before_lineage - len(pool)
+        except Exception as exc:
+            # 문서 구간이나 계보를 못 읽으면 어느 청크가 은퇴했는지 모른다. 내지 않는다.
+            pool, _withheld = [], True
+            patch["partial"] = True
+            patch["temporal_error"] = f"{type(exc).__name__}: {exc}"
+        temporal.current_order(pool)
+        # Keep the assessed cohort until the public wrapper reconstructs page rows.
+        # A display limit must not erase a conflict already observed in retrieval.
+        patch["_current_doc_temporal"] = {r["doc_id"]: r["temporal"] for r in pool}
+    patch["total_count"] = len(pool)
+    # 풀은 SEARCH_POOL_CAP 에서 잘린다 — 그 수에 닿았으면 total_count 는 "전부"가
+    # 아니라 "적어도"다. 여태 거의 모든 질의가 200·199 를 읽혀 전체 수처럼 보였다
+    # (감사 §5 #18). 필드 이름은 안 바꾸고, 닿았을 때만 표식을 단다.
+    # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S11
+    if arm_capped or len(pool) >= SEARCH_POOL_CAP:
+        patch["total_count_capped"] = True
+    return pool, _withheld, _chunk_known_hidden, patch
+
+
+def _paginate(store, query, pool, *, cursor, off, want_eid, want_arms, qh, top_k, detail,
+              owner, mode, historical, _scope, _withheld, base) -> tuple[bool, dict]:
+    """페이지 자르기(GM-14): ``(stale, patch)`` 를 돌려준다. 커서가 낡았으면 ``stale`` 이 참이고
+    ``patch`` 에 ``note``·``error``·``executed=False`` 가 실려 있다 — 부르는 쪽이 얹고 끝낸다.
+    ``_search`` 에서 그대로 떼어 낸 본문이라 인자 이름도 거기서 쓰던 것과 같다.
+
+    ``base`` 는 **읽기 전용**이다. 앞 단계(청크 팔)가 적은 ``error`` 와 ``arms`` 만 읽는다.
+    응답에 얹을 키(``note``, ``error``, ``executed``, ``has_more``, ``next_cursor``, ``rows``,
+    ``partial``, ``temporal_error``, ``page``, 그리고 :func:`_drop_retired_doc_rows` 가 쓰는
+    ``validity_filtered``·``doc_validity_filtered``·``validity_note``)는 ``patch`` 로만 내보낸다.
+    그 도우미는 응답 dict 를 직접 고치므로 ``view``(``patch`` 를 먼저, 없으면 ``base`` 를 읽고
+    쓰기는 ``patch`` 로 가는 ChainMap)를 넘긴다 — 도우미는 한 글자도 바뀌지 않는다.
+    ``validity_filtered`` 에 더하는 값은 앞 단계 patch 가 얹힌 ``base`` 에서 읽는다."""
+    patch: dict = {}
+    # 청크 팔이 실패했으면 풀이 비어 모든 커서가 낡아 보인다 — 원래 오류를 그대로 둔다.
+    # 1페이지와 다른 팔이 돌았으면(벡터 색인이 사이에 드롭) 순서가 다른 풀이다 — eid 가
+    # 우연히 맞아도 중복·누락이 난다.
+    if cursor and not base.get("error") and not _withheld and (
+            off >= len(pool)
+            or (want_arms is not None and want_arms != base["arms"])
+            or (want_eid is not None
+                and str(pool[off].get("id") or "") != str(want_eid))):
+        # 결과가 커서 발급 시점과 달라졌다 — 조용히 어긋난 페이지를 주지 않는다.
+        patch["note"] = patch["error"] = (
+            "stale_cursor: results changed since this cursor was issued; "
+            "restart from the first page")
+        patch["executed"] = False
+        return True, patch
+    page = pool[off:off + max(1, int(top_k))]
+    next_off = off + len(page)
+    patch["has_more"] = next_off < len(pool)
+    if patch["has_more"]:
+        patch["next_cursor"] = cursor_encode(
+            {"v": 1, "off": next_off, "qh": qh,
+             "eid": str(pool[next_off].get("id") or ""), "tc": len(pool),
+             "arms": base["arms"]})
+    if detail == "full":
+        # 전문도 문서 유효구간으로 거른다. 원본 풀의 순위·커서 좌표는 보존한다.
+        patch["rows"] = [dict(r) for r in page]
+        for r in patch["rows"]:
+            rid = str(r.get("id") or "")
+            r["doc_id"] = rid.rsplit("#", 1)[0] if "#" in rid else ""
+    else:
+        from store.lexical import lex_tokens
+        qtok = lex_tokens(query)              # 페이지에 한 번 — 행마다 다시 자르지 않는다
+        patch["rows"] = [_summary_row(r, qtok) for r in page]
+    view = ChainMap(patch, base)
+    try:
+        _drop_retired_doc_rows(view, _attach_doc_titles(
+            store, patch["rows"], owner=owner, include_titles=detail != "full"),
+            historical=True if mode == "current" else historical,
+            scope=None if mode == "current" else _scope)
+    except Exception as exc:
+        patch["partial"] = True
+        patch["temporal_error"] = f"{type(exc).__name__}: {exc}"
+        if (mode != "current" and (_scope is not None or not historical)
+                and not _predates_column(exc)):
+            # 문서 구간을 못 읽었으면 어느 행이 은퇴한 문서인지 모른다. 행을 내지 않는다.
+            patch["rows"] = []
+    # MCP 봉투의 크기 안전망(shrinker)이 이어받을 좌표 — 꼬리 행을 덜어낸 뒤
+    # 같은 지문으로 next_cursor 를 다시 쓸 수 있게 한다.
+    patch["page"] = {"offset": off, "limit": max(1, int(top_k)), "fingerprint": qh}
+    if patch["rows"] and (view.get("doc_validity_filtered") or len(patch["rows"]) < len(page)):
+        # 축소기는 필터 뒤 행 수가 아니라 덜어낸 행의 원본 풀 위치로 이어 읽는다.
+        visible_ids = {str(r.get("id") or "") for r in patch["rows"]}
+        patch["page"]["row_offsets"] = {
+            str(r.get("id") or ""): off + i for i, r in enumerate(page)
+            if str(r.get("id") or "") in visible_ids}
+    return False, patch
+
+
 def _node_semantic_arm(store, query_embedding, *, continuation, owner, query_model,
                        _wide, _nk, _kw, _scope, historical, mode, known_at, _until,
                        _vstats, base) -> tuple[list[dict], tuple | None, str | None, dict]:
@@ -1408,6 +1696,53 @@ def _node_semantic_arm(store, query_embedding, *, continuation, owner, query_mod
     return vec_hits, _sem_lead, _sem_decisive, patch
 
 
+def _fuse_graph_arm(store, base, title_hits, vec_hits, *, owner, kinds, known_at, mode, _nk,
+                    _until, _vstats, _chunk_known_hidden, _sem_lead, _sem_decisive) -> dict:
+    """그래프 팔(4-b) 융합: ``patch`` 를 돌려준다. 상위 Chunk 의 :MENTIONS 이웃 개념을 title 폴백
+    (그리고 의미 팔의 ``vec_hits``)과 융합한다. 실패는 검색을 막지 않는다(그래프 암은 증강 —
+    부재 시 title 만, 하위호환).
+    ``_search`` 에서 그대로 떼어 낸 본문이라 인자 이름도 거기서 쓰던 것(밑줄 포함)과 같다.
+
+    ``base`` 는 **읽기 전용**이다. 앞 단계(페이지 자르기)가 적은 ``rows`` 만 읽는다. 응답에 얹을
+    키(``known_at_filtered``, ``node_hits``, ``node_error``)는 ``patch`` 로만 내보내고, 부르는 쪽이
+    부른 **바로 뒤에** ``base.update`` 로 얹는다. ``node_error`` 는 앞 단계가 먼저 적었으면 덮지
+    않는다. ``_vstats`` 는 제자리에서 고친다."""
+    patch: dict = {}
+    try:
+        chunk_ids = [r.get("id") for r in base.get("rows", []) if r.get("id")
+                     and r.get("relevance", {}).get("level") != "weak"]
+        if kinds and "concept" not in kinds:
+            graph_hits = []      # 그래프 팔은 개념만 낸다
+        elif known_at and mode != "current":
+            graph_hits = _known_at_nodes(
+                store, _graph_arm_search(store, chunk_ids, owner=owner, limit=NODE_SCAN_CAP),
+                owner=owner, until=_until, stats=_vstats)[:_nk]
+            patch["known_at_filtered"] = _chunk_known_hidden + len(_vstats.get("known_hidden", ()))
+        else:
+            graph_hits = _graph_arm_search(store, chunk_ids, owner=owner, limit=_nk)
+        patch["node_hits"] = _fuse_node_hits(title_hits, graph_hits, top_k=NODE_SCAN_CAP if mode == "current" else _nk,
+                                             vec_hits=vec_hits)
+        # 융합은 id 당 행 하나만 남기므로(제목 행이 이기면 의미 행의 표가 사라진다)
+        # 융합 **뒤에** id 로 찾아 단다. 거리도 같다 — 안 달면 제목 팔도 찾은 노드는
+        # 의미 거리를 잃는다. 다는 값은 순위에 쓰이지 않는다.
+        # 근거: [[record:brief-promotes-on-the-semantic-lead-only-in-the-ranking-branch-and-reads-it-from-the-raw-list-2026-09-30]]
+        _dist = {h["id"]: h.get("distance") for h in vec_hits if h.get("id")}
+        for _r in patch["node_hits"]:
+            _rid = _r.get("id")
+            if _rid in _dist:
+                _r["distance"] = _dist[_rid]
+            if _sem_lead and _rid == _sem_lead[0]:
+                _r["sem_lead"] = _sem_lead[1]
+            if _sem_decisive and _rid == _sem_decisive:
+                _r["sem_decisive"] = True
+    except Exception as exc:
+        if "node_error" not in base:
+            patch["node_error"] = f"{type(exc).__name__}: {exc}"
+        patch["node_hits"] = _fuse_node_hits(title_hits, [], top_k=NODE_SCAN_CAP if mode == "current" else _nk,
+                                             vec_hits=vec_hits)
+    return patch
+
+
 def _search(query: str, *, query_embedding: list[float] | None = None,
            top_k: int = 5, filters: dict | None = None, owner: str | None = None,
            cursor: str | None = None, detail: str = "summary",
@@ -1531,9 +1866,6 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
     # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S11
     continuation = bool(cursor)
     try:
-        # (3) 노드 폴백(title) — FTS/벡터와 무관하게 항상. 실패해도 Chunk 경로 무영향.
-        # E-G1: 여기서는 title 폴백만 담고, Chunk 하이브리드 뒤 그래프 암과 융합한다.
-        title_hits: list[dict] = []
         _vstats: dict = {}
         # 시점 읽기(as_of). 기간이 없으면 오늘 규칙 그대로다 — 기본값에서는 한 바이트도
         # 안 바뀐다. 무엇으로 읽었는지는 응답에 싣는다(`time_scope`): 과거를 읽은 답이
@@ -1551,238 +1883,27 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
         # 노드 팔만 넓게 본다(재채점이 상위 20을 다시 줄 세운다). 청크 행·커서는 top_k 그대로다.
         _nk = max(top_k, node_k or 0)
         _until = temporal.instant(temporal.time_scope(known_at)[1]) if known_at else None
-        try:
-            if not continuation:
-                title_hits = _node_fallback_search(store, query, limit=NODE_SCAN_CAP if _wide else _nk, owner=owner,
-                                                   historical=True if mode == "current" else historical, stats=_vstats,
-                                                   scope=None if mode == "current" else _scope,
-                                                   doc_intervals=True, **_kw)
-                if mode == "current":
-                    # 팔 안은 관련도 순, 근거 있게 대체된 행만 뒤로(window=0, `superseded_old_end`).
-                    # 구간 먼저는 융합 뒤 창에서만.
-                    temporal.finish_nodes(store, title_hits, owner=owner, scope=_scope, current=True, known_at=known_at, stats=_vstats,
-                                          window=0)
-                    if _vstats.get("current_hidden"):
-                        base["validity_filtered"] = len(_vstats["current_hidden"])
-                    if known_at:
-                        base["known_at_filtered"] = len(_vstats.get("known_hidden", ()))
-                        base["known_at_unknown"] = len(_vstats.get("known_unknown", ()))
-                elif known_at:
-                    title_hits = _known_at_nodes(store, title_hits, owner=owner, until=_until,
-                                                 stats=_vstats)[:_nk]
-        except Exception as exc:
-            # 거르지 못한 후보는 내지 않는다(fail closed). current 의 시간 메타 읽기가 실패하면 여기에는
-            # 은퇴한 노드까지 든 후보 전량이 남아 있다.
-            title_hits = []
-            base["node_error"] = f"{type(exc).__name__}: {exc}"
-        # 걸러 냈으면 **말한다**. 조용히 줄어든 결과는 "그래프에 이것뿐"으로 읽히고,
-        # 그건 이 필터가 막으려는 고장과 같은 종이다(`vector_note` 와 같은 태도).
-        if _vstats.get("dropped_not_current"):
-            base["validity_filtered"] = _vstats["dropped_not_current"] + len(_vstats.get("current_hidden", ()))
-            base["validity_best_dropped"] = list(_vstats.get("best_dropped_score") or (0, 0))
-            base["validity_note"] = _vnote
-        base["node_hits"] = title_hits   # 그래프 암 실패해도 최소 title 폴백은 보장
+        # (3) 노드 제목 팔. 응답에 얹을 키는 patch 로 받아 부른 바로 뒤에 얹는다.
+        title_hits, _title_patch = _title_arm(
+            store, query, continuation=continuation, owner=owner, mode=mode,
+            historical=historical, known_at=known_at, _wide=_wide, _nk=_nk, _kw=_kw,
+            _scope=_scope, _until=_until, _vstats=_vstats, _vnote=_vnote)
+        base.update(_title_patch)
 
-        # (1)(2) Chunk 하이브리드 — 실패는 error 로 표면화, 인덱스 부재는 지연 빌드 후 재시도.
-        # GM-14: top_k 가 아니라 **후보 풀**(SEARCH_POOL_CAP)을 가져온다 — 페이지는
-        # 아래에서 안정 정렬 위의 오프셋으로 자른다.
-        # 🔴 **SEC-1 청크 팔 owner 스코프.** owner 를 여기서 빼면 호스티드에서 `rows[]`
-        # 가 남의 문서 본문 발췌를 싣는다 — node_hits 가 막혀 있어 눈에 잘 안 띄고
-        # 회귀 테스트도 노드 폴백만 봤다([[record:the-search-chunk-arm-is-owner-scoped-and-fails-closed]]).
-        chunk_filters = dict(filters or {})
-        base["node_window"] = {"pagination": "first_page_only", "total_count_scope": "chunks",
-                               "limit": max(1, int(top_k)),
-                               "lexical_candidates": _vstats.get("candidate_count"),
-                               "lexical_candidates_capped": bool(_vstats.get("candidate_count_capped")),
-                               "candidate_limit": NODE_SCAN_CAP}
-        if kinds:
-            base["node_window"]["kinds"] = list(kinds)
-        scoped_ok = True
-        if owner:
-            chunk_filters["owner_id"] = owner
-            # **fail-closed.** 스코프가 강제된 요청인데 백엔드가 필터를 실제로 적용하는지
-            # 알 수 없으면 청크 팔을 아예 돌리지 않는다. 필터를 무시하는 구현(구 백엔드·
-            # 테스트 더블)에 owner 를 넘기면 "스코프를 걸었다고 믿는 무스코프 조회"가
-            # 되는데, 그건 지금 고치는 결함과 정확히 같은 것이다. 조용히 넓게 답하느니
-            # 답을 줄이고 사유를 남긴다.
-            scoped_ok = bool(flag(store, "scoped_chunk_search"))
-        pool: list[dict] = []
-        vnote = ""
-        ran: list[str] = []          # 실제로 돈 팔 — 예외로 새면 빈 채로 남는다
-        arm_capped = False           # 거르기 전의 팔이 상한에 닿았나(_chunk_arms)
-        kw_gated = False             # 키워드 목록이 관문에 걸려 융합에서 빠졌나(_keyword_gate)
-        try:
-            if not scoped_ok:
-                raise _UnscopedChunkSearch(
-                    "owner scope requested but this store does not support "
-                    "owner-filtered chunk search")
-            pool, vnote, ran, arm_capped, kw_gated = _chunk_arms(
-                store, query, query_embedding, SEARCH_POOL_CAP, chunk_filters or None)
-            base["executed"] = True
-        except _UnscopedChunkSearch as exc:
-            # 폴백하지 않는다 — node_hits 는 이미 owner 로 걸러져 있으므로 그것만 답한다.
-            base["error"] = f"owner_scope_unsupported: {exc}"
-            base["note"] = base["error"]
-        except Exception as exc:
-            if _classify_chunk_error(exc) != "index_missing":
-                base["error"] = f"{_classify_chunk_error(exc)}: {type(exc).__name__}: {exc}"
-                base["note"] = base["error"]
-            else:
-                n = _chunk_count(store)
-                builder = operation(store, "ensure_search_indexes")
-                if n == 0:
-                    # Chunk 0 — 빌드 시도 없이 조용히 폴백(node_hits 가 답, 무 에러).
-                    base["executed"] = True
-                    base["note"] = "no chunks indexed — node_hits only"
-                elif flag(store, "fts_index_remnant"):
-                    # 다시 서지 않는 색인이다(잔해). 빌드를 걸면 검색마다 실패할 잡이 돈다.
-                    # 근거: [[record:an-fts-remnant-on-chunk-stops-every-document-write-and-the-heal-moves-chunk-with-its-edges-2026-09-25]]
-                    base["error"] = base["note"] = f"fts_index_remnant: {_FTS_REMNANT}"
-                elif builder is None:
-                    base["error"] = f"index_missing: {type(exc).__name__}: {exc}"
-                    base["note"] = base["error"]
-                else:
-                    try:
-                        # **벡터 인덱스는 여기서 만들지 않는다.** FTS 만 세워 답하고
-                        # (`dim=None`), HNSW 는 아래에서 예약한다 — 요청 스레드가
-                        # 기다릴 일이 아니다(:func:`_schedule_vector_index`).
-                        builder(dim=None)
-                        pool, vnote, ran, arm_capped, kw_gated = _chunk_arms(
-                            store, query, query_embedding, SEARCH_POOL_CAP,
-                            chunk_filters or None)
-                        base["executed"] = True
-                        base["note"] = "search index built on demand"
-                    except Exception as exc2:
-                        base["error"] = (f"index_build_failed: "
-                                         f"{type(exc2).__name__}: {exc2}")
-                        base["note"] = base["error"]
-        # 여기서 처음으로 `arms` 를 세운다 — **돈 팔의 이름만** 붙는다.
-        base["arms"] = "+".join(_ARM_LABEL[a] for a in ran) or "none"
-        # 키워드 팔은 돌았지만 질의를 못 덮어 융합에서 뺐다 — 걸렸을 때만 싣는다(`vector_note`
-        # 처럼). `arms` 는 그대로 두 팔이다: 평가 하네스의 강등 판정이 바뀌지 않게.
-        if kw_gated:
-            base["keyword_gated"] = True
-        # 벡터 팔을 **요청했는데 안 돌았고 그 이유가 실패**면 사유를 구조화 필드로
-        # 남긴다. 여태 이 자리는 `error` 만 세웠는데, 화면은 영문 문구를 파싱할 수
-        # 없으므로(금지) 반쪽·빈 답을 완전한 답으로 보여 줬다. 청크 팔이 통째로
-        # 죽는 경로(확장 미가용·미프로비저닝·스코프 미지원·빌드 실패)가 전부 여기다.
-        # 청크가 0개라 아무것도 못 찾은 경우는 실패가 아니므로(`error` 없음) 안 선다.
-        if query_embedding is not None and "semantic" not in ran and base.get("error"):
-            base.setdefault("vector_note", base["error"])
-        if vnote and flag(store, "vector_index_remnant"):
-            # 재빌드 창이 아니다 — 다시 서지 않는 색인이다. 양성 표식(`vector_rebuilding`)을
-            # 달면 "곧 돌아온다"는 거짓이 되므로 실패로 싣고, 빌드도 걸지 않는다.
-            # 근거: [[record:a-crash-between-a-vector-index-drop-and-the-next-checkpoint-leaves-a-remnant-2026-09-25]]
-            base["vector_note"] = _VECTOR_REMNANT
-        elif vnote and vnote != _VECTOR_REBUILDING:
-            base["vector_note"] = vnote      # 벡터 팔 실패(폭 불일치 등) — 재빌드 창이 아니다
-        elif vnote:
-            # 조용한 강등 금지 — 어느 팔이 돌았는지(`arms`)와 왜 강등됐는지
-            # (`vector_note`)를 둘 다 남긴다.
-            base["vector_note"] = vnote
-            # 재빌드 창은 **양성 계약**이다(쓰기가 HNSW 를 드롭 → 배경에서 다시 선다).
-            # 화면이 이것을 진짜 실패와 같은 톤으로 그리면 거짓 경보가 되므로 구조화
-            # 표식으로 가른다 — 문구 파싱은 금지다(_VECTOR_REBUILDING 주석과 같은 규칙).
-            base["vector_rebuilding"] = True
-            _schedule_vector_index(store, cfg.embedding_dim)
-
-        # GM-14 페이지네이션 — 안정 정렬(점수 내림차순, 동점은 id 오름차순). 페이지
-        # 사이에 결과가 흔들리면 안 되므로 정렬 키에 id 를 반드시 묶는다.
-        pool.sort(key=lambda r: (-(float(r.get("rrf_score") or r.get("score") or 0.0)),
-                                 str(r.get("id") or "")))
-        _withheld = False            # 시간 메타를 못 읽어 청크를 내지 않았나(fail closed)
-        _chunk_known_hidden = 0
-        if known_at and mode != "current" and pool:
-            try:
-                pool, _chunk_known_hidden = _known_at_pool(store, pool, owner=owner, until=_until)
-            except Exception as exc:
-                pool, _withheld = [], True
-                base["partial"] = True
-                base["temporal_error"] = f"{type(exc).__name__}: {exc}"
-        if mode == "current":
-            for r in pool:
-                r["doc_id"] = _row_doc_id(r)
-            try:
-                meta = temporal.doc_sources(store, [r.get("doc_id") for r in pool], owner=owner)
-                for r in pool:
-                    temporal.stamp(r, meta.get(r.get("doc_id"), {}), scope=_scope)
-                visible = [r for r in pool if r["temporal"]["validity"] not in ("historical", "future")]
-                base["validity_filtered"] = int(base.get("validity_filtered") or 0) + len(pool) - len(visible)
-                base["doc_validity_filtered"] = len(pool) - len(visible)
-                pool = visible
-                before_lineage = len(pool)
-                temporal.finish_docs(store, pool, owner=owner, scope=_scope, current=True, known_at=known_at)
-                base["validity_filtered"] += before_lineage - len(pool)
-                base["doc_validity_filtered"] += before_lineage - len(pool)
-            except Exception as exc:
-                # 문서 구간이나 계보를 못 읽으면 어느 청크가 은퇴했는지 모른다. 내지 않는다.
-                pool, _withheld = [], True
-                base["partial"] = True
-                base["temporal_error"] = f"{type(exc).__name__}: {exc}"
-            temporal.current_order(pool)
-            # Keep the assessed cohort until the public wrapper reconstructs page rows.
-            # A display limit must not erase a conflict already observed in retrieval.
-            base["_current_doc_temporal"] = {r["doc_id"]: r["temporal"] for r in pool}
-        base["total_count"] = len(pool)
-        # 풀은 SEARCH_POOL_CAP 에서 잘린다 — 그 수에 닿았으면 total_count 는 "전부"가
-        # 아니라 "적어도"다. 여태 거의 모든 질의가 200·199 를 읽혀 전체 수처럼 보였다
-        # (감사 §5 #18). 필드 이름은 안 바꾸고, 닿았을 때만 표식을 단다.
-        # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S11
-        if arm_capped or len(pool) >= SEARCH_POOL_CAP:
-            base["total_count_capped"] = True
-        # 청크 팔이 실패했으면 풀이 비어 모든 커서가 낡아 보인다 — 원래 오류를 그대로 둔다.
-        # 1페이지와 다른 팔이 돌았으면(벡터 색인이 사이에 드롭) 순서가 다른 풀이다 — eid 가
-        # 우연히 맞아도 중복·누락이 난다.
-        if cursor and not base.get("error") and not _withheld and (
-                off >= len(pool)
-                or (want_arms is not None and want_arms != base["arms"])
-                or (want_eid is not None
-                    and str(pool[off].get("id") or "") != str(want_eid))):
-            # 결과가 커서 발급 시점과 달라졌다 — 조용히 어긋난 페이지를 주지 않는다.
-            base["note"] = base["error"] = (
-                "stale_cursor: results changed since this cursor was issued; "
-                "restart from the first page")
-            base["executed"] = False
+        # (1)(2) 청크 팔과 풀. 응답에 얹을 키는 patch 로 받아 부른 바로 뒤에 얹는다.
+        pool, _withheld, _chunk_known_hidden, _chunk_patch = _chunk_stage(
+            store, query, query_embedding, filters=filters, owner=owner, kinds=kinds,
+            top_k=top_k, cfg=cfg, _vstats=_vstats, known_at=known_at, mode=mode,
+            _until=_until, _scope=_scope, base=base)
+        base.update(_chunk_patch)
+        # GM-14 페이지네이션. 커서가 낡았으면 patch 에 답이 실려 오고 여기서 끝낸다.
+        _stale, _page_patch = _paginate(
+            store, query, pool, cursor=cursor, off=off, want_eid=want_eid,
+            want_arms=want_arms, qh=qh, top_k=top_k, detail=detail, owner=owner, mode=mode,
+            historical=historical, _scope=_scope, _withheld=_withheld, base=base)
+        base.update(_page_patch)
+        if _stale:
             return base
-        page = pool[off:off + max(1, int(top_k))]
-        next_off = off + len(page)
-        base["has_more"] = next_off < len(pool)
-        if base["has_more"]:
-            base["next_cursor"] = cursor_encode(
-                {"v": 1, "off": next_off, "qh": qh,
-                 "eid": str(pool[next_off].get("id") or ""), "tc": len(pool),
-                 "arms": base["arms"]})
-        if detail == "full":
-            # 전문도 문서 유효구간으로 거른다. 원본 풀의 순위·커서 좌표는 보존한다.
-            base["rows"] = [dict(r) for r in page]
-            for r in base["rows"]:
-                rid = str(r.get("id") or "")
-                r["doc_id"] = rid.rsplit("#", 1)[0] if "#" in rid else ""
-        else:
-            from store.lexical import lex_tokens
-            qtok = lex_tokens(query)              # 페이지에 한 번 — 행마다 다시 자르지 않는다
-            base["rows"] = [_summary_row(r, qtok) for r in page]
-        try:
-            _drop_retired_doc_rows(base, _attach_doc_titles(
-                store, base["rows"], owner=owner, include_titles=detail != "full"),
-                historical=True if mode == "current" else historical,
-                scope=None if mode == "current" else _scope)
-        except Exception as exc:
-            base["partial"] = True
-            base["temporal_error"] = f"{type(exc).__name__}: {exc}"
-            if (mode != "current" and (_scope is not None or not historical)
-                    and not _predates_column(exc)):
-                # 문서 구간을 못 읽었으면 어느 행이 은퇴한 문서인지 모른다. 행을 내지 않는다.
-                base["rows"] = []
-        # MCP 봉투의 크기 안전망(shrinker)이 이어받을 좌표 — 꼬리 행을 덜어낸 뒤
-        # 같은 지문으로 next_cursor 를 다시 쓸 수 있게 한다.
-        base["page"] = {"offset": off, "limit": max(1, int(top_k)), "fingerprint": qh}
-        if base["rows"] and (base.get("doc_validity_filtered") or len(base["rows"]) < len(page)):
-            # 축소기는 필터 뒤 행 수가 아니라 덜어낸 행의 원본 풀 위치로 이어 읽는다.
-            visible_ids = {str(r.get("id") or "") for r in base["rows"]}
-            base["page"]["row_offsets"] = {
-                str(r.get("id") or ""): off + i for i, r in enumerate(page)
-                if str(r.get("id") or "") in visible_ids}
 
         # (4-a) 노드 의미 팔. 응답에 얹을 키는 patch 로 받아 부른 바로 뒤에 얹는다.
         vec_hits, _sem_lead, _sem_decisive, _sem_patch = _node_semantic_arm(
@@ -1832,37 +1953,12 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
             base["node_hits"] = []
             base["node_hits_omitted"] = "first_page_only"
             return base
-        try:
-            chunk_ids = [r.get("id") for r in base.get("rows", []) if r.get("id")
-                         and r.get("relevance", {}).get("level") != "weak"]
-            if kinds and "concept" not in kinds:
-                graph_hits = []      # 그래프 팔은 개념만 낸다
-            elif known_at and mode != "current":
-                graph_hits = _known_at_nodes(
-                    store, _graph_arm_search(store, chunk_ids, owner=owner, limit=NODE_SCAN_CAP),
-                    owner=owner, until=_until, stats=_vstats)[:_nk]
-                base["known_at_filtered"] = _chunk_known_hidden + len(_vstats.get("known_hidden", ()))
-            else:
-                graph_hits = _graph_arm_search(store, chunk_ids, owner=owner, limit=_nk)
-            base["node_hits"] = _fuse_node_hits(title_hits, graph_hits, top_k=NODE_SCAN_CAP if mode == "current" else _nk,
-                                                vec_hits=vec_hits)
-            # 융합은 id 당 행 하나만 남기므로(제목 행이 이기면 의미 행의 표가 사라진다)
-            # 융합 **뒤에** id 로 찾아 단다. 거리도 같다 — 안 달면 제목 팔도 찾은 노드는
-            # 의미 거리를 잃는다. 다는 값은 순위에 쓰이지 않는다.
-            # 근거: [[record:brief-promotes-on-the-semantic-lead-only-in-the-ranking-branch-and-reads-it-from-the-raw-list-2026-09-30]]
-            _dist = {h["id"]: h.get("distance") for h in vec_hits if h.get("id")}
-            for _r in base["node_hits"]:
-                _rid = _r.get("id")
-                if _rid in _dist:
-                    _r["distance"] = _dist[_rid]
-                if _sem_lead and _rid == _sem_lead[0]:
-                    _r["sem_lead"] = _sem_lead[1]
-                if _sem_decisive and _rid == _sem_decisive:
-                    _r["sem_decisive"] = True
-        except Exception as exc:
-            base.setdefault("node_error", f"{type(exc).__name__}: {exc}")
-            base["node_hits"] = _fuse_node_hits(title_hits, [], top_k=NODE_SCAN_CAP if mode == "current" else _nk,
-                                                vec_hits=vec_hits)
+        _graph_patch = _fuse_graph_arm(
+            store, base, title_hits, vec_hits, owner=owner, kinds=kinds, known_at=known_at,
+            mode=mode, _nk=_nk, _until=_until, _vstats=_vstats,
+            _chunk_known_hidden=_chunk_known_hidden, _sem_lead=_sem_lead,
+            _sem_decisive=_sem_decisive)
+        base.update(_graph_patch)
     finally:
         if owns:
             store.close()
