@@ -30,6 +30,8 @@ async function sources(dir = 'src') {
 }
 
 const api = await read('src/api.ts');
+// 실행 자리(IN_SHELL · WEB)와 `cfg` 는 `api-config.ts` 에 있다.
+const config = await read('src/api-config.ts');
 
 test('a failed search is logged with status and duration only', async () => {
   const fn = slice(api, 'async function logSearchFailure', '\n}\n') + '\n}\n';
@@ -121,7 +123,7 @@ test('Share offers Community on the web only', async () => {
 });
 
 test('the web is the hosted origin, not the shell or local dev', async () => {
-  const flags = slice(api, 'export const IN_SHELL', '\n\n// ──');
+  const flags = slice(config, 'export const IN_SHELL', '\n\n// ──');
   const decide = await run(`export default (location, SELF_HOSTED_BUILD = false) => { ${flags.replace(/export /g, '').replace(/const DEFAULT_BASE[^\n]*\n/, '')} return { IN_SHELL, WEB }; };`);
   assert.deepEqual(decide({ protocol: 'https:', hostname: 'vincs.io' }), { IN_SHELL: false, WEB: true });
   assert.deepEqual(decide({ protocol: 'tauri:', hostname: 'tauri.localhost' }), { IN_SHELL: true, WEB: false });
@@ -152,12 +154,12 @@ test('spaces are switched from the view header, on the account graph only', asyn
 });
 
 test('the space name is kept next to the space id and never names another space', async () => {
-  const block = slice(api, 'export const cfg = {', '\n};\n') + '\n};\n';
+  const block = slice(config, 'export const cfg = {', '\n};\n') + '\n};\n';
   const make = await run(`const store = new Map();
     const localStorage = { getItem: (k) => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
     let REMOTE = true; const remote = () => REMOTE; const viewSessionCache = { clear() {} };
     const BASE_KEY = "b", TOKEN_KEY = "t", OWNER_KEY = "o", LANG_KEY = "l", DEFAULT_BASE = "";
-    ${api.match(/const TEAM_KEY = [^\n]*\n/)[0]}${api.match(/const TEAM_NAME_KEY = [^\n]*\n/)[0]}
+    ${config.match(/const TEAM_KEY = [^\n]*\n/)[0]}${config.match(/const TEAM_NAME_KEY = [^\n]*\n/)[0]}
     ${block.replace('export const cfg', 'const cfg')}
     export default () => ({ cfg, store, local: () => { REMOTE = false; } });`);
   const { cfg, local } = make();
