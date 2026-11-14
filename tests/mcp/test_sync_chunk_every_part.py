@@ -72,8 +72,8 @@ def requests(world, route) -> int:
 
 
 def has_base(world, nid: str) -> bool:
-    """`push_local` 가 쓰는 base 행이 있는가. 그 길은 base 를 소유자 없이 적고 병합은 소유자로 읽으므로 둘 다 본다."""
-    return any(sync.get_base(world.dev, nid, owner) is not None for owner in ("", OWNER))
+    """병합이 읽는 키(소유자 키)에 base 행이 있는가. `push_local` 은 그 키로 쓴다."""
+    return sync.get_base(world.dev, nid, OWNER) is not None
 
 
 def sync_cursor(world) -> int:
