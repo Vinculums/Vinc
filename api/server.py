@@ -67,6 +67,7 @@ from . import revstamp
 from . import docstore
 from . import node_mirror
 from . import config_routes
+from . import topic_conversion_routes
 # 질의 임베딩 창구 클라이언트(`api/encoder_client.py`). 아래 이름은 그 모듈 객체의 재수출이다.
 # 이 파일에서는 read_search·read_brief 가 응답 ContextVar 셋을 이 이름으로 읽고, 나머지는 `api.server`
 # 에서 가져다 쓰는 import 를 지킨다. ⚠ 여기 이름을 바꿔 끼워도(테스트의 패치 포함) `EncoderClient`·
@@ -791,158 +792,17 @@ class VincApp:
         getattr(self.store, "runtime_stamps", {}).pop(owner, None)
         self.changes.bump(owner)
 
+    # 토픽 이동 라우트의 본문은 `api/topic_conversion_routes.py` 에 있다(함수는 앱을 첫 인자로 받는다).
     def write_topic_conversion(self, body):
-        from . import topic_conversion as conversion
-        from . import revstamp
-        from store.topic_transfer import TransferRefused
-        if body.get("action") == "preflight" and os.environ.get("VINC_TOPIC_CONVERSION") != "1":
-            return 503, {"error": "topic_conversion_unavailable"}
-        source = body.get("owner")
-        action = body.get("action")
-        conventions_policy = body.get("conventions_policy", "retain")
-        if conventions_policy not in ("retain", "move_original"):
-            return 400, {"error": "invalid_conventions_policy"}
-        if not isinstance(source, str) or not source.startswith("user:"):
-            return 400, {"error": "personal_source_required"}
-        if action not in ("preflight", "inventory-status", "stage", "status", "release", "cancel"):
-            return 400, {"error": "invalid_conversion_action"}
-        # An account may not acknowledge a move in a non-durable hub setup.
-        if action in ("preflight", "stage", "release", "cancel") and \
-                self._durable is None and getattr(self, "_conversion_durable", None) is None:
-            return 503, {"error": "conversion_requires_durable_ack"}
-        if action in ("preflight", "inventory-status"):
-            if self.store is None:
-                return 503, {"error": "store_unavailable"}
-            from .topic_inventory_jobs import InventoryJobs
-            if not hasattr(self, "_inventory_jobs"):
-                # HTTP 스레드가 동시에 처음 들어와도 큐와 조회권을 한 벌만 만든다.
-                with self._inventory_jobs_lock:
-                    if not hasattr(self, "_inventory_jobs"):
-                        self._inventory_jobs = InventoryJobs(self.jobs, self.changes.inventory_revision)
-            if action == "inventory-status":
-                return 200, self._inventory_jobs.status(source, body.get("ticket"))
-            topic = str(body.get("topic") or "")
-            def diagnose():
-                conn = getattr(self.store, "_conn", None)
-                try:
-                    if conn is not None:
-                        conn.set_query_timeout(120_000)
-                    return conversion.preflight(self.store, source, topic, conventions_policy=conventions_policy)
-                except TransferRefused as exc:
-                    return {"ready": False, "scope": "topic", "topic": topic, "counts_known": False,
-                            "counts": None, "documents": None, "blockers": [str(exc).split(":", 1)[0]]}
-                except (ValueError, KeyError, RuntimeError):
-                    return {"ready": False, "scope": "topic", "topic": topic, "counts_known": False,
-                            "counts": None, "documents": None, "blockers": ["conversion_inventory_failed"],
-                            "inventory_state": "failed"}
-                finally:
-                    if conn is not None:
-                        conn.set_query_timeout(0)
-            return 200, self._inventory_jobs.start(source, topic, diagnose, policy=conventions_policy)
-        if hasattr(self, "_inventory_jobs") and action in ("stage", "release", "cancel"):
-            self._inventory_jobs.invalidate(source)
-        def work():
-            try:
-                if action == "preflight":
-                    return conversion.preflight(self.store, source, str(body.get("topic") or ""))
-                args = dict(source=source, target=body["target"], topic=body["topic"], run=body["run"])
-                journal = conversion._get(self.store, args["run"])
-                if journal is not None and journal.get("inventory_version") == 3:
-                    conversion._identity(journal, source=source, target=body["target"], topic=body["topic"])
-                    return self._resume_bounded_conversion(action, args, body.get("fingerprint"), conventions_policy)
-                if action == "status" and journal is None and hasattr(self, "_conversion_jobs"):
-                    # 저널을 쓰기 전에 거절된 새 예약은 작업 상태에만 남는다. 예전 경로는
-                    # 저널이 없으면 "prepared" 를 돌려주므로 먼저 작업을 본다.
-                    pending = self._conversion_jobs.status(source, args["run"])
-                    if pending is not None:
-                        return pending
-                if action == "stage" and journal is None and self._exceeds_single_transaction(args):
-                    # 큰 토픽의 새 예약은 봉인 목록과 유한 배치로만 시작한다.
-                    return self._resume_bounded_conversion(action, args, body.get("fingerprint"),
-                                                           conventions_policy, allow_new=True)
-                if action == "stage":
-                    args.update(expected=body["fingerprint"], stamp=revstamp.hlc_now(self.store),
-                                conventions_policy=conventions_policy)
-                    out = conversion.stage(self.store, **args)
-                elif action == "release":
-                    out = conversion.release(self.store, **args)
-                elif action == "cancel":
-                    out = conversion.cancel(self.store, **args)
-                else:
-                    out = conversion.status(self.store, **args)
-                if action in ("stage", "release", "cancel"):
-                    for owner in (source, body["target"]):
-                        self.invalidate_owner(owner)
-                return out
-            except (TransferRefused, ValueError, KeyError) as exc:
-                return {"status": "blocked", "error": str(exc).split(":", 1)[0]}
-        out = self.jobs.run_sync("topic-conversion." + action, work)
-        return (409 if out.get("status") == "blocked" else 200), out
+        return topic_conversion_routes.write_topic_conversion(self, body)
 
     def _exceeds_single_transaction(self, args):
-        """선택 범위가 기존 단일 트랜잭션 한도를 넘는가. 한도 안에서 읽기만 하고 쓰지 않는다."""
-        from . import topic_conversion as conversion
-        from store.topic_manifest import ManifestLimit
-        try:
-            conversion._inventory(self.store, args["source"], args["target"], args["topic"])
-        except ManifestLimit as exc:
-            return exc.reason in ("retained_payload", "retained_rows", "retained_bytes")
-        except Exception:
-            return False
-        return False
+        return topic_conversion_routes.exceeds_single_transaction(self, args)
 
     def _resume_bounded_conversion(self, action, args, expected, conventions_policy="retain",
                                    allow_new=False):
-        """Start a new large run only when ``allow_new``; otherwise recover a sealed v3 run."""
-        from . import topic_conversion as conversion
-        from .topic_conversion_jobs import ConversionJobs, StepBlocked, bounded_flow, bounded_step
-        from store.topic_transfer import TransferRefused
-        from . import revstamp
-        durable = self._durable or self._conversion_durable
-        if not hasattr(self, "_conversion_jobs"):
-            # Called only on the sole writer. The measured probe has the same
-            # one-hour work budget; exceeding it requires an explicit resume.
-            self._conversion_jobs = ConversionJobs(self.jobs, work_seconds=3600)
-        pending = self._conversion_jobs.status(args["source"], args["run"])
-        if action == "status" and pending and pending["status"] in ("pending", "resume_required"):
-            return pending
-        if action in ("release", "cancel") and pending and pending["status"] == "pending":
-            raise TransferRefused("conversion_resume_required")
-
-        def invalidate():
-            for owner in (args["source"], args["target"]):
-                self.invalidate_owner(owner)
-
-        if action == "stage":
-            invalidate()
-
-            def advance():
-                try:
-                    return bounded_step(self.store, durable, **args, expected=expected,
-                                        stamp=revstamp.hlc_now(self.store), qualified_indexes=True,
-                                        allow_new=allow_new, conventions_policy=conventions_policy)
-                except TransferRefused as exc:
-                    # 저널이 없으면 아무것도 쓰지 않은 거절이다(낡은 지문·의존 차단·다른 이동 중).
-                    if conversion._get(self.store, args["run"]) is None:
-                        raise StepBlocked(str(exc).split(":", 1)[0]) from None
-                    raise
-                finally:
-                    invalidate()
-
-            return self._conversion_jobs.start(**args, expected=expected, advance=advance,
-                                               conventions_policy=conventions_policy)
-        # A pre-existing sealed indexed run passed initialize's index-policy
-        # gate. Resume keeps its original index set; no new run is admitted here.
-        flow = bounded_flow(self.store, durable, **args, qualified_indexes=True)
-        if action == "release":
-            result = flow.release(account_active=True)
-        elif action == "cancel":
-            result = flow.cancel()
-        else:
-            return flow.status()
-        invalidate()
-        self._conversion_jobs.forget(args["source"], args["run"])
-        return result
+        return topic_conversion_routes.resume_bounded_conversion(self, action, args, expected,
+                                                                 conventions_policy, allow_new)
 
     def close(self):
         """clean shutdown(E6): 워커 드레인 → **마지막 스냅샷** → 공유 스토어 close.
