@@ -16,6 +16,7 @@ import re
 from typing import Any
 
 from engines import domain_hierarchy
+from engines.mentions_link import MAX_TITLE_TOKENS
 from store import pkns
 
 
@@ -151,16 +152,14 @@ _CLAUSE_OPENERS = frozenset({
     "what", "how", "why", "when", "where", "whether", "if", "is", "are", "was",
     "were", "does", "do", "did", "can", "should", "it", "this", "that", "these",
 })
-# 멘션 링커의 제목 토큰 상한(engines/mentions_link 의 6)과 같은 값. 그보다 긴
-# 제목의 개념은 링커가 영영 못 맞춰 MENTIONS 가 생기지 않는다 — 주제 유도에
-# 죽은 무게라서 애초에 후보로 내지 않는다.
-_MAX_TITLE_WORDS = 6
 
 
 def _concept_shaped(clean: str, slug: str) -> bool:
     """헤딩이 **개념 이름**으로 설 수 있는가. 구조어·절 문장·과길이 제목은 아니다."""
     words = clean.split()
-    if not words or len(words) > _MAX_TITLE_WORDS:
+    # 멘션 링커의 제목 토큰 상한(`MAX_TITLE_TOKENS`)을 그대로 쓴다. 그보다 긴 제목의 개념은
+    # 링커가 영영 못 맞춰 MENTIONS 가 생기지 않는다 — 주제 유도에 죽은 무게라서 후보로 내지 않는다.
+    if not words or len(words) > MAX_TITLE_TOKENS:
         return False
     if slug in _STRUCT_SLUGS:
         return False
