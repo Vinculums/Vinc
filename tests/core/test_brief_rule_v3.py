@@ -44,7 +44,6 @@ def _res(hits, **extra):
 def run_brief(monkeypatch):
     """store 없이 brief 를 돌린다: search 응답을 그대로 주고, 노드는 늘 열린다."""
     monkeypatch.setenv("VINC_BRIEF_QUOTES", "off")
-    monkeypatch.delenv("VINC_BRIEF_ANSWERABILITY", raising=False)
     monkeypatch.setattr(brief_mod, "_brief_query_ids", lambda *a, **k: [])
     monkeypatch.setattr(brief_mod, "_brief_entity_ids", lambda *a, **k: [])
     monkeypatch.setattr(brief_mod, "node_context", lambda **kw: {"executed": True})

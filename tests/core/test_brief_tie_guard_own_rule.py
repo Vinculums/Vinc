@@ -34,7 +34,7 @@ class TieGuardOwnRule(unittest.TestCase):
         self._env = {}
         for k, v in {"MEMORY_STORE_BACKEND": "embedded",
                      "MEMORY_DATA_DIR": os.path.join(self._tmp, "store"),
-                     "VINC_BRIEF_STRICT": None, "VINC_BRIEF_ANSWERABILITY": None}.items():
+                     "VINC_BRIEF_STRICT": None}.items():
             self._env[k] = os.environ.get(k)
             if v is None:
                 os.environ.pop(k, None)
