@@ -6,7 +6,7 @@
   선언을 잊거나, 선언만 남기고 메서드를 지우면 여기서 떨어진다(호출부의 답이 선언을 따르므로).
 - Neo4j 읽기 뷰는 따로 선언하지 않고 어댑터의 선언을 빌린다.
 - `operation`·`flag` 은 모르는 이름을 던진다. 선언이 없는 객체(테스트 가짜·세션 래퍼)는 속성으로 답한다.
-- api·store 의 호출부(어댑터 파일 밖)는 선택 연산·상태 표지를 getattr/hasattr 로 더듬지 않는다.
+- api·store·vinc_rag 의 호출부(어댑터 파일 밖)는 선택 연산·상태 표지를 getattr/hasattr 로 더듬지 않는다.
 """
 from __future__ import annotations
 
@@ -41,11 +41,12 @@ def test_선언은_실제_메서드와_같다(cls):
 
 
 def test_두_백엔드의_선언():
-    assert eb.EmbeddedBackend.capabilities == B.OPTIONAL_OPERATIONS
-    assert eb._ReaderView.capabilities == frozenset({"ensure_search_indexes"})
+    # writer 는 예약 없이 그 자리에서 세운다(`schedule_search_indexes` 는 읽기 뷰에만 있다).
+    assert eb.EmbeddedBackend.capabilities == B.OPTIONAL_OPERATIONS - {"schedule_search_indexes"}
+    assert eb._ReaderView.capabilities == frozenset({"ensure_search_indexes", "schedule_search_indexes"})
     assert nb.Neo4jBackend.capabilities == frozenset({
         "current_batch", "write_batch", "drop_vector_index", "drop_search_indexes",
-        "ensure_search_indexes", "table_columns", "snapshot"})
+        "ensure_search_indexes", "schedule_search_indexes", "table_columns", "snapshot"})
 
 
 def test_Neo4j_읽기_뷰는_어댑터의_선언을_빌린다():
@@ -129,10 +130,11 @@ def test_어휘는_서로_겹치지_않는다():
 _ADAPTERS = {"store/embedded_backend.py", "store/neo4j_backend.py", "store/backend.py"}
 
 
-def test_api_store_호출부는_getattr_로_능력을_묻지_않는다():
+def test_호출부는_getattr_로_능력을_묻지_않는다():
     names = "|".join(sorted(B.OPTIONAL_OPERATIONS | B.STATE_FLAGS))
     probe = re.compile(r"\b(?:getattr|hasattr)\([^,()]+,\s*['\"](?:%s)['\"]" % names)
-    files = subprocess.check_output(["git", "ls-files", "api", "store"], cwd=ROOT, text=True).split()
+    files = subprocess.check_output(["git", "ls-files", "api", "store", "vinc_rag"], cwd=ROOT,
+                                    text=True).split()
     hits = []
     for f in files:
         if not f.endswith(".py") or f in _ADAPTERS:

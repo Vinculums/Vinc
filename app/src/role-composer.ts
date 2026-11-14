@@ -21,8 +21,8 @@ import { COPY } from "./copy";
 import { esc } from "./components";
 import { icon } from "./icons";
 import { setTopbarLead } from "./topbar";
-import { AGENT_TOPICS, AGENTS_BOARD, buildAgentRoster, setLnbActive, showAgentRail,
-         type AgentRole } from "./lnb";
+import { AGENTS_BOARD, setLnbActive, showAgentRail } from "./lnb";
+import { AGENT_TOPICS, buildAgentRoster, type AgentRole } from "./agent-roster";
 import { evalCardsHtml, sharedEvalCardsHtml } from "./role-eval";
 import { absoluteViewUrl } from "./view-url";
 import { loadPrefs } from "./view-prefs";
@@ -34,7 +34,7 @@ import { BUDGET_KEYS, CAPABILITY_LISTS, OUTPUT_KINDS, actLines, budgetFields, ca
 /** `api/role_contract.py` 의 TIERS · RUNGS 와 같은 순서. */
 export const TIERS = ["orchestrate", "execute", "verify", "deliver", "knowledge"] as const;
 export const RUNGS = ["strongest", "strong", "fast", "cheapest"] as const;
-/** 팀 안의 자리. 로스터 정렬(`lnb.ts teamRoleRank`)과 같은 값이다. */
+/** 팀 안의 자리. 로스터 정렬(`agent-roster.ts teamRoleRank`)과 같은 값이다. */
 export const TEAM_ROLES = ["lead", "coordinator", "member"] as const;
 /** 역할 이름 규칙(`api/role_contract._SLUG`). */
 export const ROLE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

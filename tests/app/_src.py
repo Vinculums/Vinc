@@ -35,7 +35,7 @@ UNITS: dict[str, tuple[str, ...]] = {
     "main": ("src/main.ts",),
     "api": ("src/api.ts",),
     "copy": ("src/copy.ts",),
-    "lnb": ("src/lnb.ts",),
+    "lnb": ("src/lnb.ts", "src/agent-roster.ts"),
     "lnb-tree": ("src/lnb-tree.ts",),
     "topbar": ("src/topbar.ts",),
     "components": ("src/components.ts",),

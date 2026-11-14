@@ -166,7 +166,7 @@ class Neo4jBackend:
     capabilities = frozenset({
         "current_batch", "write_batch",
         "drop_vector_index", "drop_search_indexes", "ensure_search_indexes",
-        "table_columns", "snapshot",
+        "schedule_search_indexes", "table_columns", "snapshot",
     })
     #: 마지막으로 못 연 사유(사람에게 보여도 되는 문장, 비밀번호 없음). `/health` 의 open_error 로 나간다.
     last_open_error: str = ""

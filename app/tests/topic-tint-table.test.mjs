@@ -38,6 +38,7 @@ const lnb = await loadTs('lnb.ts', {
   './doc-title': `export const docTitle = (t) => t || '';`,
   './icons': `export const icon = () => '';`,
   './lnb-tree': await tsUrl('lnb-tree.ts'),
+  './agent-roster': await tsUrl('agent-roster.ts'),
   './view-tint': tintUrl,
   './topic-tint-table': tableUrl,
   './components': COMPONENTS_STUB,

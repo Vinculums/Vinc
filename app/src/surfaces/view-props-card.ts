@@ -4,7 +4,8 @@ import { api, messageOf, isWriteConflict } from "../api";
 import { COPY } from "../copy";
 import { esc } from "../components";
 import { renderMarkdown } from "../doc-editor";
-import { refreshLnb, isAgentRoleId } from "../lnb";
+import { refreshLnb } from "../lnb";
+import { isAgentRoleId } from "../agent-roster";
 import { PROP_KINDS, propsEditable, rowsFrom, propsFrom, convertText, sameProps, propsPatchOf,
          type PropRow, type PropKind } from "../props-edit";
 import type { N3, ViewHost } from "./view-host";
@@ -55,7 +56,7 @@ export function createPropsCard(host: ViewHost): PropsCard {
         </div>
         ${keys.length ? propsDl(P, order, 0) : `<p class="hint">${esc(V.propsEmpty)}</p>`}
       </section>`;
-    // 역할의 이름은 직함이 있으면 그것이다 — Agent 레일(lnb.ts roleTitle)과 같은 규칙.
+    // 역할의 이름은 직함이 있으면 그것이다 — Agent 레일(agent-roster.ts roleTitle)과 같은 규칙.
     const job = role && typeof P.job_title === "string" ? P.job_title.trim() : "";
     const h2 = detail.querySelector("h2");
     if (job && h2) h2.textContent = job;

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from api import belief_calibrations, belief_contract as bc, query
+from api import belief_calibrations, belief_contract as bc, belief_write as bw, query
 from api.fragment import merge_fragment
 from store import pkns
 from store.backend import open_store
@@ -205,13 +205,13 @@ def test_retry_repairs_an_interruption_before_history_and_mirror(graph, monkeypa
     body = payload()
     assert write(graph, body)["executed"]
     second = successor(body, p=.23, day="2026-10-01")
-    apply = bc.apply
+    apply = bw.apply
     def fail(*args, **kwargs):
         raise RuntimeError("injected interruption")
-    monkeypatch.setattr(bc, "apply", fail)
+    monkeypatch.setattr(bw, "apply", fail)
     with pytest.raises(RuntimeError, match="injected"):
         write(graph, second)
-    monkeypatch.setattr(bc, "apply", apply)
+    monkeypatch.setattr(bw, "apply", apply)
     assert write(graph, second)["executed"]
     assert read(graph, body["nodes"][2]["id"])["valid_until"] == "2026-10-01"
     assert relation(graph, body)["confidence"] == .23

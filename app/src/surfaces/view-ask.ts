@@ -6,7 +6,7 @@ import { COPY } from "../copy";
 import { esc } from "../components";
 import { icon } from "../icons";
 import { pushLayer } from "../keys";
-import { isAgentRoleId } from "../lnb";
+import { isAgentRoleId } from "../agent-roster";
 import { absoluteViewUrl } from "../view-url";
 import type { N3 } from "./view-host";
 

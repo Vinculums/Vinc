@@ -559,7 +559,7 @@ def _tri_state(raw, source: str, nid: str, warnings: list[str]) -> str | None:
     return None
 
 
-def _merge_node(store, node: dict, owner: str, warnings: list[str],
+def merge_node(store, node: dict, owner: str, warnings: list[str],
                 *, owner_explicit: bool = False, theme_id: str = "",
                 theme_explicit: bool = False,
                 conflicts: list[str] | None = None,
@@ -883,6 +883,10 @@ def _merge_node(store, node: dict, owner: str, warnings: list[str],
     return "matched" if matched else "created"
 
 
+# 사설 별칭. 같은 함수이고, 이 이름으로 부르는 호출부·테스트가 그대로 돈다.
+_merge_node = merge_node
+
+
 #: v0.8.4 axis2 item3 — 쌍 자체가 안 되는 경우(양 끝 타입은 알려져 있고 선언도
 #: 됐는데 그 조합이 rel 테이블 밖)의 타입 코드. warnings 는 여전히 문자열 배열이라
 #: 산문 앞에 이 토큰을 붙여 grep 가능하게 만든다 — "unsupported_type"(타입 이름
@@ -1002,9 +1006,9 @@ def _edge_values_change(stored: dict | None, ev_p: dict) -> bool:
     return False
 
 
-def _stamp_edge_endpoints(store, rel: str, ends: _Ends, src: str, dst: str,
-                          owner: str, *, osc: bool = False,
-                          warnings: list[str] | None = None) -> None:
+def stamp_edge_endpoints(store, rel: str, ends: _Ends, src: str, dst: str,
+                         owner: str, *, osc: bool = False,
+                         warnings: list[str] | None = None) -> None:
     """엣지 **신규 생성**(또는 근거·신뢰도 변경) 시 양 끝 노드에 revstamp — 엣지 자체는 추적열이 없어,
     끝점 스탬프가 없으면 '기존 노드 사이 신규/재생성 엣지'가 증분 동기화에 영영 안
     실린다(delta 번들의 엣지는 양끝 노드가 델타에 있을 때만 동봉). 엣지 활동 =
@@ -1064,6 +1068,10 @@ def _stamp_edge_endpoints(store, rel: str, ends: _Ends, src: str, dst: str,
     # 예측자는 api/sync.py:140 에 이미 프로덕션으로 있다. `t.rev` 는 없다(그 열은
     # `_Tombstone` 전용).
     _drop_edge_tombstone(store, pkns.ekey(owner, src, rel, dst), osc=osc, op=op)
+
+
+# 사설 별칭. 같은 함수다.
+_stamp_edge_endpoints = stamp_edge_endpoints
 
 
 def _edge_changed(store, rel: str, ends: _Ends, src: str, dst: str, owner: str, *, osc: bool,
@@ -1777,7 +1785,8 @@ def _merge_fragment_once(fragment: dict, *, store, themes=None,
         e_skipped_dup += (r == "skipped_duplicate")
     _flush_edge_warnings(edge_rollup, warnings)
     if authored and edges:
-        belief_contract.apply(beliefs, edges, store=store, owner=owner, warnings=warnings)
+        from . import belief_write
+        belief_write.apply(beliefs, edges, store=store, owner=owner, warnings=warnings)
     _warn_orphan_decisions(store, types, warnings, owner=owner)
     _link_mentions(store, owner, [i for i in mention_ids if i in types], mention_before)
     edges_out = {"created": e_created}
