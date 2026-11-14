@@ -51,6 +51,7 @@ from store.backend import flag, operation
 from store.embedded_backend import DDL_GUARD, keep_vector_index
 from store.lexical import lex_text
 from store.querybase import now_iso, validity_state
+from store.topic_conversion_guard import guard_active
 # 청킹은 순수 함수라 아래 층에 있다. 임베딩 워커와 리랭커(vinc_rag)도 같은 경계를 쓴다.
 from store.chunking import (DEFAULT_MAX_CHARS, _HEADING_RE, _section_title,  # noqa: F401
                             chunk_doc, estimate_tokens, normalize_boundaries,
@@ -566,7 +567,7 @@ def _put_prepare(store, base: dict, *, owner, text, doc_id, title, origin, conte
                 return {**base, "error": "document_unavailable", "status": "unavailable"}
             doc_id = graphmd.conventions_doc_id(owner)
     doc_id = doc_id or make_doc_id(owner, content_hash, title or "", origin or "")
-    if getattr(store, "_topic_conversion_guard", False):
+    if guard_active(store):
         from .topic_conversion import check_write
         check_write(store, owner, {"id": doc_id, "topic": topic})
     base["doc_id"] = doc_id
