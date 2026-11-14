@@ -1276,6 +1276,56 @@ def _node_model_mismatch(store, owner: str | None, query_model: str | None) -> d
     return {"query_model": query_model, "mirror_models": other}
 
 
+def _title_arm(store, query, *, continuation, owner, mode, historical, known_at,
+               _wide, _nk, _kw, _scope, _until, _vstats, _vnote) -> tuple[list[dict], dict]:
+    """노드 제목 팔(3): ``(title_hits, patch)`` 를 돌려준다.
+    ``_search`` 에서 그대로 떼어 낸 본문이라 인자 이름도 거기서 쓰던 것(밑줄 포함)과 같다.
+
+    응답 dict 를 받지 않는다. 응답에 얹을 키(``validity_filtered``, ``known_at_filtered``,
+    ``known_at_unknown``, ``node_error``, ``validity_best_dropped``, ``validity_note``,
+    ``node_hits``)는 ``patch`` 로만 내보내고, 부르는 쪽이 부른 **바로 뒤에** ``base.update`` 로
+    얹는다 — 키가 들어가는 순서가 응답 키 순서다. ``validity_filtered`` 는 이 팔 안에서
+    두 군데에서 쓰고 뒤에 쓴 값이 이긴다(patch 에서도 같은 순서). ``_vstats`` 는 제자리에서
+    고친다(뒤의 청크 팔과 그래프 팔이 읽는다).
+
+    (3) 노드 폴백(title) — FTS/벡터와 무관하게 항상. 실패해도 Chunk 경로 무영향.
+    E-G1: 여기서는 title 폴백만 담고, Chunk 하이브리드 뒤 그래프 암과 융합한다."""
+    patch: dict = {}
+    title_hits: list[dict] = []
+    try:
+        if not continuation:
+            title_hits = _node_fallback_search(store, query, limit=NODE_SCAN_CAP if _wide else _nk, owner=owner,
+                                               historical=True if mode == "current" else historical, stats=_vstats,
+                                               scope=None if mode == "current" else _scope,
+                                               doc_intervals=True, **_kw)
+            if mode == "current":
+                # 팔 안은 관련도 순, 근거 있게 대체된 행만 뒤로(window=0, `superseded_old_end`).
+                # 구간 먼저는 융합 뒤 창에서만.
+                temporal.finish_nodes(store, title_hits, owner=owner, scope=_scope, current=True, known_at=known_at, stats=_vstats,
+                                      window=0)
+                if _vstats.get("current_hidden"):
+                    patch["validity_filtered"] = len(_vstats["current_hidden"])
+                if known_at:
+                    patch["known_at_filtered"] = len(_vstats.get("known_hidden", ()))
+                    patch["known_at_unknown"] = len(_vstats.get("known_unknown", ()))
+            elif known_at:
+                title_hits = _known_at_nodes(store, title_hits, owner=owner, until=_until,
+                                             stats=_vstats)[:_nk]
+    except Exception as exc:
+        # 거르지 못한 후보는 내지 않는다(fail closed). current 의 시간 메타 읽기가 실패하면 여기에는
+        # 은퇴한 노드까지 든 후보 전량이 남아 있다.
+        title_hits = []
+        patch["node_error"] = f"{type(exc).__name__}: {exc}"
+    # 걸러 냈으면 **말한다**. 조용히 줄어든 결과는 "그래프에 이것뿐"으로 읽히고,
+    # 그건 이 필터가 막으려는 고장과 같은 종이다(`vector_note` 와 같은 태도).
+    if _vstats.get("dropped_not_current"):
+        patch["validity_filtered"] = _vstats["dropped_not_current"] + len(_vstats.get("current_hidden", ()))
+        patch["validity_best_dropped"] = list(_vstats.get("best_dropped_score") or (0, 0))
+        patch["validity_note"] = _vnote
+    patch["node_hits"] = title_hits   # 그래프 암 실패해도 최소 title 폴백은 보장
+    return title_hits, patch
+
+
 def _node_semantic_arm(store, query_embedding, *, continuation, owner, query_model,
                        _wide, _nk, _kw, _scope, historical, mode, known_at, _until,
                        _vstats, base) -> tuple[list[dict], tuple | None, str | None, dict]:
@@ -1533,9 +1583,6 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
     # 근거: [[vinc.plan.mcp-read-tool-fixes-2026-09-24]] §3 S11
     continuation = bool(cursor)
     try:
-        # (3) 노드 폴백(title) — FTS/벡터와 무관하게 항상. 실패해도 Chunk 경로 무영향.
-        # E-G1: 여기서는 title 폴백만 담고, Chunk 하이브리드 뒤 그래프 암과 융합한다.
-        title_hits: list[dict] = []
         _vstats: dict = {}
         # 시점 읽기(as_of). 기간이 없으면 오늘 규칙 그대로다 — 기본값에서는 한 바이트도
         # 안 바뀐다. 무엇으로 읽었는지는 응답에 싣는다(`time_scope`): 과거를 읽은 답이
@@ -1553,37 +1600,12 @@ def _search(query: str, *, query_embedding: list[float] | None = None,
         # 노드 팔만 넓게 본다(재채점이 상위 20을 다시 줄 세운다). 청크 행·커서는 top_k 그대로다.
         _nk = max(top_k, node_k or 0)
         _until = temporal.instant(temporal.time_scope(known_at)[1]) if known_at else None
-        try:
-            if not continuation:
-                title_hits = _node_fallback_search(store, query, limit=NODE_SCAN_CAP if _wide else _nk, owner=owner,
-                                                   historical=True if mode == "current" else historical, stats=_vstats,
-                                                   scope=None if mode == "current" else _scope,
-                                                   doc_intervals=True, **_kw)
-                if mode == "current":
-                    # 팔 안은 관련도 순, 근거 있게 대체된 행만 뒤로(window=0, `superseded_old_end`).
-                    # 구간 먼저는 융합 뒤 창에서만.
-                    temporal.finish_nodes(store, title_hits, owner=owner, scope=_scope, current=True, known_at=known_at, stats=_vstats,
-                                          window=0)
-                    if _vstats.get("current_hidden"):
-                        base["validity_filtered"] = len(_vstats["current_hidden"])
-                    if known_at:
-                        base["known_at_filtered"] = len(_vstats.get("known_hidden", ()))
-                        base["known_at_unknown"] = len(_vstats.get("known_unknown", ()))
-                elif known_at:
-                    title_hits = _known_at_nodes(store, title_hits, owner=owner, until=_until,
-                                                 stats=_vstats)[:_nk]
-        except Exception as exc:
-            # 거르지 못한 후보는 내지 않는다(fail closed). current 의 시간 메타 읽기가 실패하면 여기에는
-            # 은퇴한 노드까지 든 후보 전량이 남아 있다.
-            title_hits = []
-            base["node_error"] = f"{type(exc).__name__}: {exc}"
-        # 걸러 냈으면 **말한다**. 조용히 줄어든 결과는 "그래프에 이것뿐"으로 읽히고,
-        # 그건 이 필터가 막으려는 고장과 같은 종이다(`vector_note` 와 같은 태도).
-        if _vstats.get("dropped_not_current"):
-            base["validity_filtered"] = _vstats["dropped_not_current"] + len(_vstats.get("current_hidden", ()))
-            base["validity_best_dropped"] = list(_vstats.get("best_dropped_score") or (0, 0))
-            base["validity_note"] = _vnote
-        base["node_hits"] = title_hits   # 그래프 암 실패해도 최소 title 폴백은 보장
+        # (3) 노드 제목 팔. 응답에 얹을 키는 patch 로 받아 부른 바로 뒤에 얹는다.
+        title_hits, _title_patch = _title_arm(
+            store, query, continuation=continuation, owner=owner, mode=mode,
+            historical=historical, known_at=known_at, _wide=_wide, _nk=_nk, _kw=_kw,
+            _scope=_scope, _until=_until, _vstats=_vstats, _vnote=_vnote)
+        base.update(_title_patch)
 
         # (1)(2) Chunk 하이브리드 — 실패는 error 로 표면화, 인덱스 부재는 지연 빌드 후 재시도.
         # GM-14: top_k 가 아니라 **후보 풀**(SEARCH_POOL_CAP)을 가져온다 — 페이지는
