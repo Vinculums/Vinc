@@ -34,29 +34,28 @@ beforeEach(()=>{
     revision:'epoch.1',
     access:async ()=>({session:'s',revision:h.revision}),
     read:async ()=>structuredClone(raw),
-    api(name,...a){h.calls.push([name,...a]);return name==='graphStage'?h.read(...a):Promise.reject(new Error(`unexpected api.${name}`));},
+    api(name,...a){h.calls.push([name,...a]);return name==='graphRead'?h.read(...a):Promise.reject(new Error(`unexpected api.${name}`));},
   };
 });
 const make = (overrides={}, create=createGraphLoader) => create({mountScope:{...h.scope},accessJob:new AbortController(),
   firstAccess:Promise.resolve(null),seq:()=>h.seq,alive:()=>h.alive,...overrides});
-const reads = () => h.calls.filter(c=>c[0]==='graphStage');
+const reads = () => h.calls.filter(c=>c[0]==='graphRead');
 const until = async ok => { for (let i=0;i<500&&!ok();i++) await new Promise(r=>setTimeout(r,2)); assert.ok(ok()); };
 
 test('the compass loader makes exactly one read, the plain /graph read, and nothing else',async()=>{
   const r=await make().fetchGraph({});
   assert.deepEqual(r,raw);
-  assert.deepEqual(h.calls.map(c=>c[0]),['graphStage'],'one call: no stored layout, no staged preview');
-  const [, owner, options, stage, snapshot, scope, signal] = h.calls[0];
+  assert.deepEqual(h.calls.map(c=>c[0]),['graphRead'],'one call: no stored layout, no staged preview');
+  const [, owner, options, scope, signal] = h.calls[0];
   assert.equal(owner,'owner');
   assert.deepEqual(options,{layout:'hub'});
-  assert.equal(stage,undefined);assert.equal(snapshot,undefined);
   assert.deepEqual(scope,{team:'team-a'});
   assert.ok(signal instanceof AbortSignal);
 });
 test('a topic scope is still one read and carries the topics',async()=>{
   const loader=make();
   await loader.fetchGraph({domains:['vinc/design','agent']});
-  assert.deepEqual(h.calls.map(c=>[c[0],c[2]]),[['graphStage',{domains:['vinc/design','agent'],layout:'hub'}]]);
+  assert.deepEqual(h.calls.map(c=>[c[0],c[2]]),[['graphRead',{domains:['vinc/design','agent'],layout:'hub'}]]);
   assert.equal(loader.scopeKey,JSON.stringify({domains:['agent','vinc/design'],layout:'hub',cone:1}));
 });
 test('each redraw reads once more and never more',async()=>{
@@ -66,7 +65,7 @@ test('each redraw reads once more and never more',async()=>{
 });
 for (const change of ['abort','space','sequence']) test(`${change} turns an obsolete read into a stale answer`,async()=>{
   const d=deferred();
-  h.read=(_owner,_options,_stage,_snapshot,_scope,signal)=>new Promise((ok,fail)=>{
+  h.read=(_owner,_options,_scope,signal)=>new Promise((ok,fail)=>{
     signal.addEventListener('abort',()=>fail(new DOMException('aborted','AbortError')),{once:true});d.promise.then(ok);});
   const loader=make(),fetching=loader.fetchGraph({});
   await Promise.resolve();await Promise.resolve();
@@ -92,7 +91,7 @@ test('a returning mount in the same tab reads nothing, and a changed marker read
   h.revision='epoch.2';
   await make({firstAccess:h.access()},createWebLoader).fetchGraph({});
   assert.equal(reads().length,2);
-  assert.deepEqual(h.calls.map(c=>c[0]),['graphStage','graphStage']);
+  assert.deepEqual(h.calls.map(c=>c[0]),['graphRead','graphRead']);
 });
 // 커뮤니티 스페이스는 내린 페이지와 그 문서 미러를 그리지 않는다. 개인·팀 그래프는 그대로다.
 test('a community space drops retired pages and their document mirrors, other spaces keep them',async()=>{

@@ -1,7 +1,7 @@
 import type { GraphNode, GraphEdge } from "./api";
 
 type CachedGraph = { executed: boolean; nodes?: GraphNode[]; edges?: GraphEdge[];
-  topicEdges?: GraphEdge[]; partial?: boolean; snapshot?: unknown; graphSnapshotPending?: boolean };
+  topicEdges?: GraphEdge[] };
 type ViewBookmark = { domains: string[] };
 export type Entry = { revision: string; raw: string; size: number; expires: number };
 /** 한 세션이 들고 있는 완료 DTO 묶음. 스페이스를 떠날 때 잠깐 보관하려고 내보낸다. */
@@ -73,7 +73,6 @@ export class ViewSessionCache {
   }
   put(session: string, key: string, revision: string, graph: CachedGraph, generation: number): boolean {
     if (!this.current(session, revision) || generation !== this.epoch || !graph.executed
-        || graph.partial || graph.snapshot || graph.graphSnapshotPending
         || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) return false;
     const raw = JSON.stringify(graph);
     // UTF-16 strings are the retained graph representation; include the key and fixed entry overhead.

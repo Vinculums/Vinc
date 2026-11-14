@@ -26,7 +26,6 @@ import { AGENT_ID_PREFIX, withoutPrefix } from "./agent-ids";
 import { AGENT_TOPICS, buildAgentRoster, type AgentRole } from "./agent-roster";
 import { evalCardsHtml, sharedEvalCardsHtml } from "./role-eval";
 import { absoluteViewUrl } from "./view-url";
-import { loadPrefs } from "./view-prefs";
 import { loaderRows } from "./vinc-loaders.js";
 import { BUDGET_KEYS, CAPABILITY_LISTS, OUTPUT_KINDS, actLines, budgetFields, capabilityFields,
          fieldChanged, foldActPolicy, foldBudget, foldCapabilities, foldPersonOnly, isPersonAction,
@@ -67,7 +66,7 @@ export function openRoleComposer(opts: RoleSheetOpts = {}): void {
 /** 그래프 카드의 "이 역할로 일해 줘"와 같은 문장 · 같은 주소를 클립보드에 싣는다
  *  (surfaces/view.ts nodeAskItems). */
 export function copyRolePrompt(id: string): Promise<void> {
-  const url = absoluteViewUrl({ kind: "node", id }, { depth: 1, viewpoint: loadPrefs().view }, spaceName());
+  const url = absoluteViewUrl({ kind: "node", id }, { depth: 1, viewpoint: "compass" }, spaceName());
   return navigator.clipboard.writeText(`${COPY.ui.viewx.askRoleBody} ${url}`);
 }
 
