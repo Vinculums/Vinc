@@ -21,7 +21,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import pytest                                        # noqa: E402
 
 from api import fragment as frag                     # noqa: E402
-from api import query                                # noqa: E402
 from api import server as srv                        # noqa: E402
 from vinc_mcp import tools                           # noqa: E402
 from vinc_mcp.bridge import Bridge                   # noqa: E402
@@ -43,7 +42,7 @@ def existing(monkeypatch):
     def fake(*, owner=None, cfg=None, store=None):
         return set(names)
 
-    monkeypatch.setattr(query, "domain_names", fake)
+    monkeypatch.setattr(frag, "domain_names", fake)
     return names
 
 
@@ -90,7 +89,7 @@ def test_two_new_topics_are_rejected_together_not_partially(existing):
 
 def test_store_unreachable_does_not_block_writes(monkeypatch):
     """판정 불가(스토어 미도달)를 거부로 바꾸면 장애가 전면 쓰기 중단이 된다."""
-    monkeypatch.setattr(query, "domain_names", lambda **kw: None)
+    monkeypatch.setattr(frag, "domain_names", lambda **kw: None)
     assert frag._domain_gate([_node("c:1", "x")],
                              store=object(), owner="user:u1", max_domains=1) is None
 
@@ -115,7 +114,7 @@ def test_sync_apply_delta_does_not_pass_a_cap():
 def test_cap_is_skipped_without_explicit_owner(monkeypatch):
     """owner 미지정(로컬 기본값)은 자격 개념이 없다 — 관문을 아예 타지 않는다."""
     calls = []
-    monkeypatch.setattr(query, "domain_names",
+    monkeypatch.setattr(frag, "domain_names",
                         lambda **kw: calls.append(1) or {"a", "b", "c"})
     out = frag.merge_fragment({"nodes": [_node("c:1", "zzz")]},
                               store=None, max_domains=1)
@@ -127,7 +126,7 @@ def test_cap_is_skipped_without_explicit_owner(monkeypatch):
 def test_reserved_agent_topic_is_never_counted(monkeypatch):
     """기본 Agent 팩은 모든 스페이스에 들어간다. 그것이 무료 주제 다섯 중 하나를 먹으면
     제품이 자기 기본값에 세금을 물리는 셈이다 — vinc/agent 는 양쪽 집합에서 빠진다."""
-    monkeypatch.setattr(query, "domain_names",
+    monkeypatch.setattr(frag, "domain_names",
                         lambda **kw: {"work", "research", "home", "vinc/agent"})
     # 예약 주제로의 적재는 상한이 꽉 차 있어도 통과한다
     assert frag._domain_gate([_node("c:1", "vinc/agent")],

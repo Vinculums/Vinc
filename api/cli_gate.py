@@ -20,7 +20,7 @@ import subprocess
 from vinc_mcp import toolcall, tools
 
 from .cli_output import usage_error
-from .fragment import _split_subject
+from .node_schema import split_subject
 
 ROLE = "concept:agent-decision-gate"
 #: 실행 기록의 주제. 하네스 줄기(D8)와 같은 자리다.
@@ -61,7 +61,7 @@ def default_repo(*, cwd: str | None = None) -> str:
 
 def qualify(path: str, repo: str) -> str:
     """이미 `repo:path` 면 그대로, 아니면 `repo:` 를 붙인다."""
-    return path if _split_subject(path.strip())[0] else f"{repo}:{path}"
+    return path if split_subject(path.strip())[0] else f"{repo}:{path}"
 
 
 def merge(results: list[dict]) -> dict:
@@ -197,7 +197,7 @@ def run(args, *, target: str, space: str) -> tuple[dict | None, int | None]:
     try:
         raw = diff_paths(args.diff) if args.diff is not None else list(args.paths)
         repo = (args.repo or default_repo()).strip().lower() if any(
-            not _split_subject(p)[0] for p in raw) else ""
+            not split_subject(p)[0] for p in raw) else ""
     except ValueError as exc:
         return None, usage_error(str(exc))
     paths = list(dict.fromkeys(qualify(p, repo) for p in raw if p.strip()))
