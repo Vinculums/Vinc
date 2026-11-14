@@ -11,7 +11,7 @@
 - 경로는 번들 디렉터리 밖으로 못 나간다(실경로 비교).
 - 헤더는 호스티드 웹(vincs.io 의 `staticwebapp.config.json`)과 같은 정책이다: CSP, 해시 붙은
   `assets/*` 는 1년 immutable, `index.html` 은 no-store, 서비스 워커와 매니페스트는 no-cache.
-  View 의 배치 워커만 WebAssembly 를 쓰므로 그 파일에만 `'wasm-unsafe-eval'` 을 더한다.
+  어느 자산에도 `'wasm-unsafe-eval'` 을 주지 않는다(번들에 WebAssembly 가 없다).
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ DEFAULT_DIR = "/srv/vinc/web"
 PREFIX = "/app/"
 
 _CSP = ("default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
-        "script-src 'self' 'unsafe-inline'{wasm}; frame-ancestors 'none'")
+        "script-src 'self' 'unsafe-inline'; frame-ancestors 'none'")
 
 _TYPES = {
     ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -70,10 +70,9 @@ def _headers(file: str, root: str) -> dict:
         cache = "public, max-age=31536000, immutable"
     else:
         cache = "no-cache"
-    wasm = " 'wasm-unsafe-eval'" if rel.startswith("assets/view-layout.worker-") else ""
     ext = os.path.splitext(name)[1].lower()
     return {"Content-Type": _TYPES.get(ext, "application/octet-stream"), "Cache-Control": cache,
-            "Content-Security-Policy": _CSP.format(wasm=wasm), "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": _CSP, "X-Content-Type-Options": "nosniff",
             "Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY"}
 
 

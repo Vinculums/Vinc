@@ -948,8 +948,8 @@
     "/graph/roots": {
       "get": {
         "operationId": "read_graph_roots",
-        "summary": "Held whole graph layout for one time basis.",
-        "x-internal": false,
+        "summary": "Time-branch layout slot; always answers state off.",
+        "x-internal": true,
         "x-served-by": "sidecar",
         "responses": {
           "default": {

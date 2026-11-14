@@ -19,9 +19,7 @@ npm run tauri dev    # 셸까지 띄운다(beforeDevCommand 가 npm run dev)
   넘긴다. 대상은 `VINC_SIDECAR`, 없으면 `http://127.0.0.1:8787` 이다. 사이드카는 리포 루트에서
   `python -m api.cli serve --port 8787` 로 띄운다(`--port` 기본값은 0, 즉 임의 포트). 세션 토큰은
   Settings > Advanced 에 넣는다.
-- 단위 테스트를 하나만 돌리려면 `npm run test:view-layout` 처럼 `package.json` 의 `test:*` 스크립트를 쓴다.
-- `app/service/` 는 허브가 부르는 레이아웃 서비스(`vinc-layout` 컨테이너)다.
-  `npm run build:layout-service` 가 번들을 만들고 `npm run test:layout-service` 가 검사한다.
+- 단위 테스트를 하나만 돌리려면 `npm run test:view-marks` 처럼 `package.json` 의 `test:*` 스크립트를 쓴다.
 
 ## 표면과 시트
 

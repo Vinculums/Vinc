@@ -3,7 +3,7 @@
 
 잠그는 것: 플래그가 꺼지면 404 그대로다, `/` 는 `/app/` 으로 간다, 파일이 있으면 그 파일을
 맞는 형식·캐시로 준다, 확장자 없는 경로는 index.html 이다, 없는 자산은 404 다, 번들 밖으로
-못 나간다, 번들이 없으면 503 으로 그렇다고 말한다, 배치 워커에만 WebAssembly 를 연다.
+못 나간다, 번들이 없으면 503 으로 그렇다고 말한다, 어느 자산에도 WebAssembly 를 열지 않는다.
 """
 from __future__ import annotations
 
@@ -38,7 +38,6 @@ class StaticTests(unittest.TestCase):
         (self.root / "assets").mkdir()
         (self.root / "index.html").write_text("<!doctype html><title>Vinc</title>", encoding="utf-8")
         (self.root / "assets" / "main-abc123.js").write_text("console.log(1)", encoding="utf-8")
-        (self.root / "assets" / "view-layout.worker-x1.js").write_text("//w", encoding="utf-8")
         (self.root / "sw.js").write_text("//sw", encoding="utf-8")
         (self.root.parent / "secret.txt").write_text("no", encoding="utf-8")
         env = {"VINC_WEB_DIR": str(self.root), "VINC_SELF_HOSTED": self.flag, "VINC_OWNER": "tenant:local"}
@@ -91,9 +90,10 @@ class FlagOn(StaticTests):
         code, h, _ = self.get("/app/sw.js")
         self.assertEqual((code, h["Cache-Control"]), (200, "no-cache"))
 
-    def test_배치_워커에만_wasm(self):
-        _, h, _ = self.get("/app/assets/view-layout.worker-x1.js")
-        self.assertIn("'wasm-unsafe-eval'", h["Content-Security-Policy"])
+    def test_어느_자산에도_wasm_허용이_없다(self):
+        for path in ("/app/", "/app/assets/main-abc123.js", "/app/sw.js"):
+            _, h, _ = self.get(path)
+            self.assertNotIn("wasm-unsafe-eval", h["Content-Security-Policy"], path)
 
     def test_경로형_딥링크는_index(self):
         code, _, body = self.get("/app/approvals/run-1")

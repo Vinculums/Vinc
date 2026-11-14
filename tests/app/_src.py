@@ -69,7 +69,6 @@ UNITS: dict[str, tuple[str, ...]] = {
     # 그래프 · 노드 · 역할
     "view-prefs": ("src/view-prefs.ts",),
     "view-tint": ("src/view-tint.ts",),
-    "view-layout-spatial": ("src/view-layout-spatial.ts",),
     "topic-tint-table": ("src/topic-tint-table.ts",),
     "props-edit": ("src/props-edit.ts",),
     "node-basics": ("src/node-basics.ts",),
