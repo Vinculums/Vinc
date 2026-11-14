@@ -1,0 +1,153 @@
+/* ── 저장 위치(VIN-130, `storage-mode.ts`) ─────────────────────────────────
+   ⚠ 선택자가 전부 `.settings-body` 로 시작한다. 이 패널에는 두 규칙이 이미 걸려 있고
+   둘 다 (0,1,1) 이라 클래스 하나로는 못 이긴다:
+     `.settings-body label { display:block; margin-top:.75rem; font-weight:700 }`
+     `.settings-body input { width:100%; padding:.5rem; border:…; background:… }`
+   두 번째가 특히 세다: **라디오·체크박스가 폭 100% 에 테두리까지 두른 상자가 된다**
+   (주제 고르기 나무에서 실측: 줄이 세 층으로 갈라지고 네모가 가운데 떴다). */
+.settings-body .st-panel { margin-top: .5rem; }
+.settings-body .st-choice {
+  display: flex; align-items: flex-start; gap: .45rem;
+  margin-top: .4rem; font-weight: 400;
+}
+.settings-body .st-choice input[type="radio"],
+.settings-body .st-choice input[type="checkbox"] {
+  width: auto; flex: 0 0 auto; margin: .2rem 0 0; padding: 0;
+  border: none; background: none; border-radius: 0;
+}
+/* 경고는 문장이다. 색은 쓰지 않는다(화면의 포인트는 하나다), 굵기로만 선다. */
+.settings-body .st-warn { font-weight: 600; }
+
+.settings-body .st-acts { display: flex; gap: .5rem; margin-top: .75rem; }
+
+/* 설정의 안내문: 한국어는 낱말 안에서 꺾지 않는다(앱의 다른 안내문과 같은 규칙). 긴 경로·주소는 꺾인다. */
+.settings-body .hint { word-break: keep-all; overflow-wrap: break-word; }
+
+/* ── 저장 위치 카드: 지금 위치 · 고르기 카드 셋 · 데이터베이스 판 ─────────────── */
+.sl-loc {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
+  margin-top: var(--space-3); padding: var(--space-4) var(--space-5);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  background: hsl(var(--surface-2));
+}
+.sl-loc-copy { min-width: 0; }
+/* 눈썹 글은 사이드바 소제목(`.lnb-sec-label`)과 같은 규칙이다. */
+.settings-body .sl-loc-eyebrow { margin: 0; font-size: var(--fs-xs); font-weight: 600; letter-spacing: .02em; color: hsl(var(--caption-foreground)); text-transform: uppercase; }
+.settings-body .sl-loc-name { margin: var(--space-1) 0; font-size: var(--fs-lg); font-weight: 600; line-height: var(--lh-tight); }
+.settings-body .sl-loc-detail {
+  margin: 0; display: flex; align-items: baseline; gap: var(--space-2); min-width: 0;
+  color: hsl(var(--muted-foreground)); font-size: var(--fs-sm); overflow-wrap: anywhere;
+}
+.sl-loc-detail .sync-dot { transform: translateY(-1px); }
+.sl-loc-acts { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.sl-loc-acts .btn { white-space: nowrap; }
+.settings-body .sl-subhead { margin: var(--space-4) 0 0; font-weight: 600; }
+.sl-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin-top: var(--space-3); }
+.sl-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1);
+  padding: var(--space-3) var(--space-4); text-align: left; cursor: pointer; font: inherit;
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+  background: hsl(var(--card)); color: hsl(var(--foreground));
+}
+.sl-card:hover:not([disabled]) { border-color: hsl(var(--muted-foreground)); }
+.sl-card[aria-checked="true"] { border-color: hsl(var(--ring)); background: hsl(var(--ring) / .08); }
+.sl-card:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.sl-card[disabled] { cursor: default; }
+.sl-card-title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-weight: 600; }
+.sl-card-title .settings-state { margin-left: 0; }
+.settings-body .sl-card .hint { margin: 0; font-size: var(--fs-sm); line-height: var(--lh-normal); }
+.settings-body .sl-card-data { margin-top: var(--space-1); padding-top: var(--space-2); border-top: 1px solid hsl(var(--border)); }
+.sl-panel {
+  margin-top: var(--space-3); padding: var(--space-3) var(--space-4) var(--space-4);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm);
+}
+.sl-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+.settings-body .sl-panel-head h3 { margin: 0; font-size: var(--fs-lg); }
+.sl-link {
+  border: none; background: none; padding: 0; font: inherit; cursor: pointer;
+  color: hsl(var(--point-text)); text-decoration: underline; text-underline-offset: .2em;
+}
+.sl-link:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.sl-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--space-3); }
+.sl-form .sl-field-uri { grid-column: 1 / -1; }
+.settings-body .sl-field label { margin: var(--space-3) 0 var(--space-1); font-weight: 600; font-size: var(--fs-sm); }
+.settings-body .sl-pw-hint { margin: var(--space-2) 0 0; font-size: var(--fs-sm); }
+.sl-summary {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  margin-top: var(--space-2); padding: var(--space-2) var(--space-3);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); font-size: var(--fs-sm);
+}
+.sl-summary span { min-width: 0; overflow-wrap: anywhere; }
+.sl-summary .sl-link { flex: 0 0 auto; white-space: nowrap; }
+.sl-check { margin-top: var(--space-3); }
+.sl-facts span { flex: 0 0 auto; white-space: nowrap; color: hsl(var(--muted-foreground)); }
+.sl-facts b { text-align: right; font-weight: 600; }
+.sl-lines { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-2); }
+.sl-line { display: flex; align-items: flex-start; gap: var(--space-2); line-height: var(--lh-normal); word-break: keep-all; overflow-wrap: break-word; }
+.sl-line small { display: block; margin-top: var(--space-1); }
+.sl-mark {
+  flex: 0 0 1.25rem; height: 1.25rem; margin-top: var(--space-1);
+  display: inline-grid; place-items: center; border-radius: 50%;
+  font-size: var(--fs-xs); font-weight: 700; line-height: 1;
+  border: 1px solid hsl(var(--border)); color: hsl(var(--muted-foreground));
+}
+.sl-ok .sl-mark, .sl-done .sl-mark { color: hsl(var(--success)); border-color: hsl(var(--success) / .6); }
+.sl-info .sl-mark { color: hsl(var(--point-text)); border-color: hsl(var(--point-text) / .5); font-style: italic; }
+/* 경고는 문장이다: 색이 아니라 굵기로 선다(`.st-warn` 과 같은 규칙). 막는 것만 위험색 표시를 단다. */
+.sl-warn, .sl-block { font-weight: 600; }
+.sl-warn .sl-mark { color: hsl(var(--foreground)); border-color: hsl(var(--foreground) / .5); }
+.sl-block .sl-mark { color: hsl(var(--danger)); border-color: hsl(var(--danger)); }
+.settings-body .sl-blocked { margin: var(--space-3) 0 0; font-size: var(--fs-sm); }
+.settings-body .sl-accept { margin-top: var(--space-3); font-weight: 600; }
+.sl-starts { margin-top: var(--space-2); }
+.sl-start small { display: block; margin-top: var(--space-1); font-weight: 400; }
+.sl-start-label { font-weight: 500; }
+.sl-progress { margin-top: var(--space-3); }
+.settings-body .sl-progress .hint { margin-top: var(--space-3); }
+.sl-result { margin-top: var(--space-3); }
+.sl-result .error-banner { margin: 0; }
+.settings-body .sl-done { display: flex; align-items: flex-start; gap: var(--space-2); font-weight: 600; margin: 0; }
+.sl-flow {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: stretch;
+  gap: var(--space-2); margin-top: var(--space-3);
+}
+.sl-flow-box { padding: var(--space-2) var(--space-3); border: 1px solid hsl(var(--border)); border-radius: var(--radius-sm); }
+.sl-flow-box b { display: block; overflow-wrap: anywhere; }
+.settings-body .sl-flow-box .hint { margin: var(--space-1) 0 0; font-size: var(--fs-sm); }
+.sl-flow-arrow { align-self: center; color: hsl(var(--muted-foreground)); font-size: var(--fs-lg); }
+.sl-panel .st-acts { flex-wrap: wrap; }
+.sl-panel .st-acts .btn { white-space: nowrap; }
+@media (max-width: 52rem) {
+  .sl-cards { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 40rem) {
+  .sl-loc { flex-direction: column; align-items: stretch; }
+  .sl-form, .sl-flow { grid-template-columns: minmax(0, 1fr); }
+  .sl-flow-arrow { justify-self: center; transform: rotate(90deg); }
+}
+
+/* 강조 구절 — 제목·카드마다 **하나만**, 눈이 그 하나를 찾게 하는 자리에만.
+   포인트색은 점이지 면이 아니다: 배경·버튼에 쓰지 않는다.
+   파일 맨 끝에 두는 이유: 같은 요소의 다른 한 클래스(.hint·.ask-qmeta)보다 뒤에 와야 이긴다.
+   근거: [[decision:restore-one-point-colour-per-mode-2026-09-25]] */
+.pt { color: hsl(var(--point-text)); }
+
+/* 계정 모드에서 계정에 못 닿을 때 거는 한 줄(VIN-128, `account-signals.ts`). 표면은 이동마다
+   다시 그려지므로 표면 밖에 고정한다. 테두리·굵기는 `.error-banner` 가 준다. */
+.acct-notice {
+  position: fixed; top: calc(var(--space-6, 1.5rem) + 2.5rem); left: 50%;
+  transform: translateX(-50%); z-index: 60; max-width: min(40rem, 92vw);
+  display: flex; align-items: center; gap: var(--space-3, .75rem);
+  background: hsl(var(--card)); color: hsl(var(--foreground));
+}
+
+/* 사이드카가 검색 색인을 새로 만드는 동안 거는 한 줄(VIN-272, `index-signals.ts`). 자리는
+   `.acct-notice` 와 같고, 오류가 아니라 상태라서 경고 테두리·굵기(`.error-banner`)를 쓰지 않는다. */
+.index-notice {
+  position: fixed; top: calc(var(--space-6, 1.5rem) + 2.5rem); left: 50%;
+  transform: translateX(-50%); z-index: 60; max-width: min(40rem, 92vw);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  padding: var(--space-3, .75rem) var(--space-4, 1rem);
+  background: hsl(var(--card)); color: hsl(var(--foreground));
+}
+

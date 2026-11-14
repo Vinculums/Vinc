@@ -8,6 +8,11 @@
 두 이름은 같은 객체다. 여기 함수가 부르는 이름(`open_store`·`load_config` 등)은 이 모듈에서 찾으므로,
 쓰기 안의 호출을 바꾸려면 `api.query` 가 아니라 이 모듈의 이름을 패치한다.
 
+스토어를 안 받으면 `_store_scope`(`api/query_base.py`)가 열고 닫는다. 열 수 없을 때의 규칙: 쓰기는 `executed:False` 에
+`note` 와 `error` 를 같이 싣고, `rename_domain` 만 `error` 하나를 싣는다. `merge_nodes` 는 `_store_scope` 를 쓰지
+않는 예외다. 열 수 없으면 `finally` 가 None 을 닫으려다 AttributeError 를 낸다(`tests/core/test_no_reachable_store.py`
+가 이 동작을 고정한다).
+
 이 모듈은 `api.query` 를 import 하지 않는다. 스키마에서 온 관계·seed 표는 `api/query_base.py` 에서
 읽는다(`tests/core/test_graph_edit.py` 가 둘을 본다).
 """
@@ -29,6 +34,7 @@ from .query_base import (
     _FRAGMENT_EDGE_TO_REL,
     _OWNER_SCOPED_LABELS,
     _SEED_TABLES,
+    _store_scope,
 )
 
 
@@ -69,14 +75,11 @@ def rename_domain(*, owner: str, old: str, new: str, store=None, cfg=None) -> di
         base.update(executed=True, note="no-op (same domain)")
         return base
     cfg = cfg or load_config()
-    owns = store is None
-    if owns:
-        store = open_store(cfg)
-    if store is None:
-        base["error"] = "no reachable store"
-        return base
-    from . import revstamp
-    try:
+    with _store_scope(store, cfg, open_store) as store:
+        if store is None:
+            base["error"] = "no reachable store"
+            return base
+        from . import revstamp
         moved = 0
         per_label: dict[str, int] = {}
         # ⚠ 리터럴 표를 두지 말 것. v12 가 Decision 을 늘렸을 때 여기만 빠져서, 도메인을
@@ -109,9 +112,6 @@ def rename_domain(*, owner: str, old: str, new: str, store=None, cfg=None) -> di
         if moved == 0:
             base["note"] = f"no nodes in domain {old!r} for this owner"
         return base
-    finally:
-        if owns:
-            store.close()
 
 
 def _write_tombstone(store, node_id: str, label: str, owner: str | None) -> None:
@@ -187,67 +187,62 @@ def delete_edge(src: str, edge_type: str, dst: str, *, owner: str | None = None,
     허용. RELATED_TO 는 의미상 무방향 — **양방향 물리 엣지를 모두** 지운다.
     owner(SEC-3): 주어지면 양 끝점을 owner_id 로 스코프 — 남의 엣지는 못 지운다."""
     cfg = cfg or load_config()
-    owns = store is None
-    if owns:
-        store = open_store(cfg)
-    rel = _FRAGMENT_EDGE_TO_REL.get((edge_type or "").strip().lower(),
-                                    (edge_type or "").strip().upper())
-    subtype = None
-    wiki = wiki_pairs_open(owner)
-    # 커뮤니티 위키는 기록 출발 관계도 rel 표에 쓴다(fragment `_merge_edge`).
-    if not wiki and src.startswith("record:") and (edge_type or "").strip().lower() in {
-            "relates_to", "prerequisite_of", "derives_from", "inherits_from"}:
-        subtype, rel = edge_type.strip().lower(), "ATTACHES_TO"
-    base = {"kind": "delete_edge", "executed": False, "found": False,
-            "src": src, "rel": rel, "dst": dst}
-    if store is None:
-        base["note"] = base["error"] = "no reachable store"
-        return base
-    if rel not in SYNC_EDGE_RELS:
-        base["executed"] = True
-        base["note"] = (f"unsupported edge type {edge_type!r} — deletable: "
-                        f"{sorted(_FRAGMENT_EDGE_TO_REL)} (sync-covered rels only)")
-        return base
-    scope_a = scope_b = ""
-    params: dict = {"s": pkns.key(owner, src), "d": pkns.key(owner, dst)}
-    qualifier = " AND r.type = $subtype" if subtype is not None else ""
-    if subtype is not None:
-        params["subtype"] = subtype
-    if owner:
-        scope_a, scope_b = " AND a.owner_id = $owner", " AND b.owner_id = $owner"
-        params["owner"] = owner
-    try:
-        pairs = [(src, dst)]
-        if rel == "RELATED_TO":   # 무방향 의미 — 역방향 물리 엣지도 대상
-            pairs.append((dst, src))
-        deleted = 0
-        # 끝점 라벨 조합 전수 — 안 맞는 조합은 MATCH 가 비어 no-op 이다.
-        for sl, sp, dl, dp in (WIKI_EDGE_RELS if wiki else SYNC_EDGE_RELS)[rel]:
-            for s_, d_ in pairs:
-                p = {**params, "s": pkns.key(owner, s_), "d": pkns.key(owner, d_)}
-                cnt = store.run(
-                    f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
-                    f"WHERE a.{sp} = $s AND b.{dp} = $d{scope_a}{scope_b}{qualifier} "
-                    "RETURN count(r) AS c", p)
-                if cnt and int(cnt[0].get("c") or 0):
-                    store.run(
-                        f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
-                        f"WHERE a.{sp} = $s AND b.{dp} = $d{scope_a}{scope_b}{qualifier} DELETE r", p)
-                    deleted += int(cnt[0].get("c") or 0)
-        base["executed"] = True
-        if not deleted:
-            base["note"] = "edge not found"
+    with _store_scope(store, cfg, open_store) as store:
+        rel = _FRAGMENT_EDGE_TO_REL.get((edge_type or "").strip().lower(),
+                                        (edge_type or "").strip().upper())
+        subtype = None
+        wiki = wiki_pairs_open(owner)
+        # 커뮤니티 위키는 기록 출발 관계도 rel 표에 쓴다(fragment `_merge_edge`).
+        if not wiki and src.startswith("record:") and (edge_type or "").strip().lower() in {
+                "relates_to", "prerequisite_of", "derives_from", "inherits_from"}:
+            subtype, rel = edge_type.strip().lower(), "ATTACHES_TO"
+        base = {"kind": "delete_edge", "executed": False, "found": False,
+                "src": src, "rel": rel, "dst": dst}
+        if store is None:
+            base["note"] = base["error"] = "no reachable store"
             return base
-        base["found"] = True
-        base["deleted"] = {"edges": deleted}
-        # 툼스톤은 정준 방향(요청 방향) 1개 — apply 측이 RELATED_TO 를 양방향 삭제한다.
-        marker = rel + ":" + subtype if subtype is not None else rel
-        _write_edge_tombstone(store, src, marker, dst, owner)
-    except Exception as exc:
-        base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
-    finally:
-        if owns:
-            store.close()
+        if rel not in SYNC_EDGE_RELS:
+            base["executed"] = True
+            base["note"] = (f"unsupported edge type {edge_type!r} — deletable: "
+                            f"{sorted(_FRAGMENT_EDGE_TO_REL)} (sync-covered rels only)")
+            return base
+        scope_a = scope_b = ""
+        params: dict = {"s": pkns.key(owner, src), "d": pkns.key(owner, dst)}
+        qualifier = " AND r.type = $subtype" if subtype is not None else ""
+        if subtype is not None:
+            params["subtype"] = subtype
+        if owner:
+            scope_a, scope_b = " AND a.owner_id = $owner", " AND b.owner_id = $owner"
+            params["owner"] = owner
+        try:
+            pairs = [(src, dst)]
+            if rel == "RELATED_TO":   # 무방향 의미 — 역방향 물리 엣지도 대상
+                pairs.append((dst, src))
+            deleted = 0
+            # 끝점 라벨 조합 전수 — 안 맞는 조합은 MATCH 가 비어 no-op 이다.
+            for sl, sp, dl, dp in (WIKI_EDGE_RELS if wiki else SYNC_EDGE_RELS)[rel]:
+                for s_, d_ in pairs:
+                    p = {**params, "s": pkns.key(owner, s_), "d": pkns.key(owner, d_)}
+                    cnt = store.run(
+                        f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
+                        f"WHERE a.{sp} = $s AND b.{dp} = $d{scope_a}{scope_b}{qualifier} "
+                        "RETURN count(r) AS c", p)
+                    if cnt and int(cnt[0].get("c") or 0):
+                        store.run(
+                            f"MATCH (a:{sl})-[r:{rel}]->(b:{dl}) "
+                            f"WHERE a.{sp} = $s AND b.{dp} = $d{scope_a}{scope_b}{qualifier} DELETE r", p)
+                        deleted += int(cnt[0].get("c") or 0)
+            base["executed"] = True
+            if not deleted:
+                base["note"] = "edge not found"
+                return base
+            base["found"] = True
+            base["deleted"] = {"edges": deleted}
+            # 툼스톤은 정준 방향(요청 방향) 1개 — apply 측이 RELATED_TO 를 양방향 삭제한다.
+            marker = rel + ":" + subtype if subtype is not None else rel
+            _write_edge_tombstone(store, src, marker, dst, owner)
+        except Exception as exc:
+            base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
     return base
 
 
@@ -317,120 +312,107 @@ def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None,
     지운다. 접두사 테이블의 행은 살아 있는 노드라 이 경로로는 못 지운다. 묘비·벡터·
     동기화 base 는 키가 id 하나라 살아 있는 행의 것이므로 쓰지도 지우지도 않는다."""
     cfg = cfg or load_config()
-    owns = store is None
-    if owns:
-        store = open_store(cfg)
-    base = {"kind": "delete", "executed": False, "found": False, "node": node_id}
-    if type(dry_run) is not bool:
-        base["error"] = "dry_run must be a boolean"
-        if owns and store is not None:
-            store.close()
-        return base
-    if dry_run:
-        base["dry_run"] = True
-    if store is None:
-        base["note"] = base["error"] = "no reachable store"
-        return base
-    # E-1 — 도메인 좌표는 **삭제할 수 있는 것이 아니다.** `Domain` 은 무소유 전역
-    # 구조라 지우면 그 이름을 쓰는 남의 노드가 좌표를 잃는다. 사용자가 원하는 것은
-    # "내 것들에서 이 도메인을 떼는 것"이고, 그건 이미 rename_domain(new='') 이다.
-    # 일반 "unknown id prefix" 로 흘리면 그 안내가 안 나간다.
-    _dom = domain_hierarchy.parse_id(node_id)
-    if _dom:
-        base["executed"] = True
-        base["note"] = (f"refused: domains are a shared coordinate, not a deletable "
-                        f"node ({node_id}). To clear it from your own nodes use "
-                        f"domain rename with an empty target (old={_dom!r}, new='').")
-        if owns:
-            store.close()
-        return base
-    if pkns.SEP in node_id:
-        # 사용자 대면 id 에는 물리 키의 구분자(U+001F)가 없다. `pkns.key` 는 그런 id 를 물리 키로 보고
-        # 그대로 돌려주므로, 거르지 않으면 실행 검사를 지나지 않은 채 저장된 행에 닿는다.
-        base["executed"] = True
-        base["note"] = (f"refused: the id contains U+001F (reserved for PK namespacing), which no "
-                        f"node id has. Nothing was deleted ({node_id!r}).")
-        if owns:
-            store.close()
-        return base
-    prefix = node_id.split(":", 1)[0] if ":" in node_id else ""
-    label_pk = _SEED_TABLES.get(prefix)
-    stray = None
-    if stray_type is not None:
-        stray = _SEED_TABLES.get(stray_type) if isinstance(stray_type, str) else None
-        if stray is None or label_pk is None or stray == label_pk:
-            base["executed"] = True
-            base["note"] = (f"refused: stray_type must name a type other than the id prefix "
-                            f"({node_id}). Without it the prefix picks the table.")
-            if owns:
-                store.close()
+    with _store_scope(store, cfg, open_store) as store:
+        base = {"kind": "delete", "executed": False, "found": False, "node": node_id}
+        if type(dry_run) is not bool:
+            base["error"] = "dry_run must be a boolean"
             return base
-        label_pk = stray
-    try:
-        if label_pk is None:
-            base["executed"] = True
-            base["note"] = f"unknown id prefix — cannot resolve table for {node_id!r}"
-            return base
-        label, pk = label_pk
-        scope = ""
-        # PK 네임스페이싱 — 이 dict 는 존재확인·차수·DETACH DELETE 세 곳이 나눠 쓴다.
-        params: dict = {"id": pkns.key(owner, node_id)}
-        if owner and label in _OWNER_SCOPED_LABELS:
-            scope = " AND n.owner_id = $owner"
-            params["owner"] = owner
-        elif owner:
-            # SEC-3: owner 강제 경로인데 라벨(Bridge 등)이 owner_id 를 안 가지면 스코프
-            # 불가 → 무스코프 삭제로 교차테넌트가 되므로 **거부**한다(fail-closed).
-            # 로컬 무스코프(owner=None)는 이 분기를 타지 않아 현행 유지.
-            base["executed"] = True
-            base["note"] = f"refused: {label} is not owner-scoped ({node_id})"
-            return base
-        exists = store.run(
-            f"MATCH (n:{label}) WHERE n.{pk} = $id{scope} RETURN count(n) AS c", params)
-        base["executed"] = True
-        if not (exists and exists[0].get("c")):
-            base["note"] = f"node not found: {node_id}"
-            return base
-        base["found"] = True
-        from store import run_state   # 국소 사용 — 고정한 api.query 이름 목록에 더하지 않는다
-        if stray is None and label == "Episode" and run_state.run_id(node_id) == node_id:
-            # 끝나지 않은 실행(일하는 중이거나 사람을 기다린다)은 지우지 않는다: 지우면 질문이 답 없이 승인함에서
-            # 사라지거나 사람의 답의 기록이 지워진다. 끝난 실행과 만료된 질문은 소유자가 지운다. 같은 쓰기 잡 안에서 읽는다.
-            held = store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id{scope} RETURN n.props AS props",
-                             params)
-            if held and run_state.unfinished(held[0].get("props")):
-                base.update(executed=False, error=run_state.CODE,
-                            note=run_state.delete_refusal(node_id))
-                return base
-        deg = store.run(
-            f"MATCH (n:{label})-[r]-() WHERE n.{pk} = $id{scope} RETURN count(DISTINCT r) AS c", params)
-        edges = int(deg[0].get("c")) if deg else 0
         if dry_run:
-            preview = _delete_preview_edges(store, node_id, label, pk, owner)
-            if len(preview) != edges:
-                base.update(executed=False, error="delete preview changed during read; try again")
-                return base
-            # 봉투 상한을 넘는 목록을 일부만 보여 주지 않는다. 실제 삭제는 하지 않는다.
-            if len(json.dumps(preview, ensure_ascii=False).encode("utf-8")) > 48000:
-                base.update(executed=False, error="delete preview exceeds response budget",
-                            edge_count=edges, preview_complete=False)
-                return base
-            base["preview"] = {"node": 1, "edges": preview, "edge_count": edges,
-                               "complete": True}
+            base["dry_run"] = True
+        if store is None:
+            base["note"] = base["error"] = "no reachable store"
             return base
-        if stray is None:
-            _write_tombstone(store, node_id, label, owner)   # 삭제 전파용 표식(S4)
-        store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id{scope} DETACH DELETE n", params)
-        if stray is None:
-            _drop_node_shadows(store, node_id, owner, params["id"])
-        else:
-            base["stray_type"] = stray_type
-        base["deleted"] = {"node": 1, "edges": edges}
-    except Exception as exc:
-        base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
-    finally:
-        if owns:
-            store.close()
+        # E-1 — 도메인 좌표는 **삭제할 수 있는 것이 아니다.** `Domain` 은 무소유 전역
+        # 구조라 지우면 그 이름을 쓰는 남의 노드가 좌표를 잃는다. 사용자가 원하는 것은
+        # "내 것들에서 이 도메인을 떼는 것"이고, 그건 이미 rename_domain(new='') 이다.
+        # 일반 "unknown id prefix" 로 흘리면 그 안내가 안 나간다.
+        _dom = domain_hierarchy.parse_id(node_id)
+        if _dom:
+            base["executed"] = True
+            base["note"] = (f"refused: domains are a shared coordinate, not a deletable "
+                            f"node ({node_id}). To clear it from your own nodes use "
+                            f"domain rename with an empty target (old={_dom!r}, new='').")
+            return base
+        if pkns.SEP in node_id:
+            # 사용자 대면 id 에는 물리 키의 구분자(U+001F)가 없다. `pkns.key` 는 그런 id 를 물리 키로 보고
+            # 그대로 돌려주므로, 거르지 않으면 실행 검사를 지나지 않은 채 저장된 행에 닿는다.
+            base["executed"] = True
+            base["note"] = (f"refused: the id contains U+001F (reserved for PK namespacing), which no "
+                            f"node id has. Nothing was deleted ({node_id!r}).")
+            return base
+        prefix = node_id.split(":", 1)[0] if ":" in node_id else ""
+        label_pk = _SEED_TABLES.get(prefix)
+        stray = None
+        if stray_type is not None:
+            stray = _SEED_TABLES.get(stray_type) if isinstance(stray_type, str) else None
+            if stray is None or label_pk is None or stray == label_pk:
+                base["executed"] = True
+                base["note"] = (f"refused: stray_type must name a type other than the id prefix "
+                                f"({node_id}). Without it the prefix picks the table.")
+                return base
+            label_pk = stray
+        try:
+            if label_pk is None:
+                base["executed"] = True
+                base["note"] = f"unknown id prefix — cannot resolve table for {node_id!r}"
+                return base
+            label, pk = label_pk
+            scope = ""
+            # PK 네임스페이싱 — 이 dict 는 존재확인·차수·DETACH DELETE 세 곳이 나눠 쓴다.
+            params: dict = {"id": pkns.key(owner, node_id)}
+            if owner and label in _OWNER_SCOPED_LABELS:
+                scope = " AND n.owner_id = $owner"
+                params["owner"] = owner
+            elif owner:
+                # SEC-3: owner 강제 경로인데 라벨(Bridge 등)이 owner_id 를 안 가지면 스코프
+                # 불가 → 무스코프 삭제로 교차테넌트가 되므로 **거부**한다(fail-closed).
+                # 로컬 무스코프(owner=None)는 이 분기를 타지 않아 현행 유지.
+                base["executed"] = True
+                base["note"] = f"refused: {label} is not owner-scoped ({node_id})"
+                return base
+            exists = store.run(
+                f"MATCH (n:{label}) WHERE n.{pk} = $id{scope} RETURN count(n) AS c", params)
+            base["executed"] = True
+            if not (exists and exists[0].get("c")):
+                base["note"] = f"node not found: {node_id}"
+                return base
+            base["found"] = True
+            from store import run_state   # 국소 사용 — 고정한 api.query 이름 목록에 더하지 않는다
+            if stray is None and label == "Episode" and run_state.run_id(node_id) == node_id:
+                # 끝나지 않은 실행(일하는 중이거나 사람을 기다린다)은 지우지 않는다: 지우면 질문이 답 없이 승인함에서
+                # 사라지거나 사람의 답의 기록이 지워진다. 끝난 실행과 만료된 질문은 소유자가 지운다. 같은 쓰기 잡 안에서 읽는다.
+                held = store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id{scope} RETURN n.props AS props",
+                                 params)
+                if held and run_state.unfinished(held[0].get("props")):
+                    base.update(executed=False, error=run_state.CODE,
+                                note=run_state.delete_refusal(node_id))
+                    return base
+            deg = store.run(
+                f"MATCH (n:{label})-[r]-() WHERE n.{pk} = $id{scope} RETURN count(DISTINCT r) AS c", params)
+            edges = int(deg[0].get("c")) if deg else 0
+            if dry_run:
+                preview = _delete_preview_edges(store, node_id, label, pk, owner)
+                if len(preview) != edges:
+                    base.update(executed=False, error="delete preview changed during read; try again")
+                    return base
+                # 봉투 상한을 넘는 목록을 일부만 보여 주지 않는다. 실제 삭제는 하지 않는다.
+                if len(json.dumps(preview, ensure_ascii=False).encode("utf-8")) > 48000:
+                    base.update(executed=False, error="delete preview exceeds response budget",
+                                edge_count=edges, preview_complete=False)
+                    return base
+                base["preview"] = {"node": 1, "edges": preview, "edge_count": edges,
+                                   "complete": True}
+                return base
+            if stray is None:
+                _write_tombstone(store, node_id, label, owner)   # 삭제 전파용 표식(S4)
+            store.run(f"MATCH (n:{label}) WHERE n.{pk} = $id{scope} DETACH DELETE n", params)
+            if stray is None:
+                _drop_node_shadows(store, node_id, owner, params["id"])
+            else:
+                base["stray_type"] = stray_type
+            base["deleted"] = {"node": 1, "edges": edges}
+        except Exception as exc:
+            base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
     return base
 
 
@@ -720,34 +702,29 @@ def purge_owner(owner: str, *, cfg=None, store=None) -> dict:
     if not owner or not isinstance(owner, str):
         base["error"] = base["note"] = "refusing to purge without an owner"
         return base
-    owns = store is None
-    if owns:
-        store = open_store(cfg)
-    if store is None:
-        base["note"] = base["error"] = "no reachable store"
-        return base
-    deleted: dict[str, int] = {}
-    try:
-        for label in _purge_labels():
-            cnt = store.run(
-                f"MATCH (n:{label}) WHERE n.owner_id = $o RETURN count(n) AS c", {"o": owner})
-            n = int(cnt[0].get("c")) if cnt else 0
-            if n:
-                store.run(f"MATCH (n:{label}) WHERE n.owner_id = $o DETACH DELETE n", {"o": owner})
-            deleted[label] = n
-        # owner 열이 없어 위 루프가 못 미치는 잔여 셋 — 3-way 기준(_SyncBase)·소유자별
-        # 메타(_SyncMeta)·어휘 파일의 소유자 주제. 갭 분석 §6 의 "지웠다 뒤에 남는 것".
-        deleted["_SyncBase"] = _purge_sync_base(store, owner)
-        deleted["_SyncMeta"] = _purge_sync_meta(store, owner)
-        deleted["theme"] = _purge_owner_theme(cfg, owner)
-        base["executed"] = True
-        base["deleted"] = deleted
-        base["total"] = sum(deleted.values())
-    except Exception as exc:
-        base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
-    finally:
-        if owns:
-            store.close()
+    with _store_scope(store, cfg, open_store) as store:
+        if store is None:
+            base["note"] = base["error"] = "no reachable store"
+            return base
+        deleted: dict[str, int] = {}
+        try:
+            for label in _purge_labels():
+                cnt = store.run(
+                    f"MATCH (n:{label}) WHERE n.owner_id = $o RETURN count(n) AS c", {"o": owner})
+                n = int(cnt[0].get("c")) if cnt else 0
+                if n:
+                    store.run(f"MATCH (n:{label}) WHERE n.owner_id = $o DETACH DELETE n", {"o": owner})
+                deleted[label] = n
+            # owner 열이 없어 위 루프가 못 미치는 잔여 셋 — 3-way 기준(_SyncBase)·소유자별
+            # 메타(_SyncMeta)·어휘 파일의 소유자 주제. 갭 분석 §6 의 "지웠다 뒤에 남는 것".
+            deleted["_SyncBase"] = _purge_sync_base(store, owner)
+            deleted["_SyncMeta"] = _purge_sync_meta(store, owner)
+            deleted["theme"] = _purge_owner_theme(cfg, owner)
+            base["executed"] = True
+            base["deleted"] = deleted
+            base["total"] = sum(deleted.values())
+        except Exception as exc:
+            base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
     return base
 
 
@@ -774,34 +751,29 @@ def owner_stats(*, cfg=None, store=None) -> dict:
     근거: [[vinc.plan.backoffice-and-stats-2026-09-12]]"""
     cfg = cfg or load_config()
     base: dict = {"kind": "owner.stats", "executed": False}
-    owns = store is None
-    if owns:
-        store = open_store(cfg)
-    if store is None:
-        base["note"] = base["error"] = "no reachable store"
-        return base
+    with _store_scope(store, cfg, open_store) as store:
+        if store is None:
+            base["note"] = base["error"] = "no reachable store"
+            return base
 
-    def slot(owner: str) -> dict:
-        return owners.setdefault(owner, {**{k: 0 for _l, k in _OWNER_STAT_LABELS},
-                                         "docs": 0})
+        def slot(owner: str) -> dict:
+            return owners.setdefault(owner, {**{k: 0 for _l, k in _OWNER_STAT_LABELS},
+                                             "docs": 0})
 
-    owners: dict[str, dict] = {}
-    try:
-        for label, key in _OWNER_STAT_LABELS:
-            for row in store.run(f"MATCH (n:{label}) RETURN n.owner_id AS owner, "
-                                 "count(*) AS c") or []:
-                slot(row.get("owner") or "")[key] += int(row.get("c") or 0)
-        for row in store.run("MATCH (d:_DocMeta) RETURN d.owner_id AS owner, "
-                             "d.doc_id AS doc_id") or []:
-            if not graphmd.is_conventions_doc_id(row.get("doc_id") or ""):
-                slot(row.get("owner") or "")["docs"] += 1
-        for s in owners.values():
-            s["nodes"] = sum(s[k] for k in _OWNER_STAT_NODE_KEYS)
-        base["executed"] = True
-        base["owners"] = owners
-    except Exception as exc:
-        base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
-    finally:
-        if owns:
-            store.close()
+        owners: dict[str, dict] = {}
+        try:
+            for label, key in _OWNER_STAT_LABELS:
+                for row in store.run(f"MATCH (n:{label}) RETURN n.owner_id AS owner, "
+                                     "count(*) AS c") or []:
+                    slot(row.get("owner") or "")[key] += int(row.get("c") or 0)
+            for row in store.run("MATCH (d:_DocMeta) RETURN d.owner_id AS owner, "
+                                 "d.doc_id AS doc_id") or []:
+                if not graphmd.is_conventions_doc_id(row.get("doc_id") or ""):
+                    slot(row.get("owner") or "")["docs"] += 1
+            for s in owners.values():
+                s["nodes"] = sum(s[k] for k in _OWNER_STAT_NODE_KEYS)
+            base["executed"] = True
+            base["owners"] = owners
+        except Exception as exc:
+            base["error"] = base["note"] = f"{type(exc).__name__}: {exc}"
     return base

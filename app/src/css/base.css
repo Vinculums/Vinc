@@ -1,0 +1,178 @@
+/* ── Pretendard @font-face ────────────────────────────────────────────────
+   2026-08-26 추가. tokens.desktop.css·tokens.web.css 는 **둘 다** --font-ui 를
+   'Pretendard' 로 두는데 앱에는 그 폰트가 아예 없었다: @font-face 0건 · public/ 에
+   woff2 0건 · package.json 에 의존성 0건. 그래서 앱 전체가 조용히 폴백으로 그려졌다
+   (오류도 경고도 없다 — 없는 패밀리는 그냥 다음 후보로 넘어간다). 같은 고장이
+   공홈에도 있었고 거기서 먼저 드러났다.
+   ⚠ url() 은 절대경로가 아니라 **이 파일 기준 상대경로**여야 한다. 앱은 base 가 둘이다:
+   셸 빌드는 "/", 웹 빌드는 "/app/"(vite.config.ts). `/fonts/...` 로 적으면 웹에서
+   404 난다. 상대경로로 두면 Vite 가 자산으로 잡아 해시를 박고 각 base 에 맞는 URL 로
+   바꿔 준다 — 두 빌드가 각자 자기 자산을 가리킨다(index.html 파비콘 주석과 같은 이유).
+   파일은 Vinc-homepage/site/assets/fonts 와 같은 바이트다(pretendard 단일파일 woff2
+   서브셋, SIL OFL). 앱 사본이 따로 있는 이유는 데스크탑 셸이 오프라인 번들이라
+   같은 출처의 /assets 를 못 부르기 때문이다. 굵기 4종 = Signal 디자인 시스템과 동일. */
+@font-face {
+  font-family: 'Pretendard';
+  src: url("../fonts/Pretendard-Regular.woff2") format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url("../fonts/Pretendard-Medium.woff2") format('woff2');
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url("../fonts/Pretendard-SemiBold.woff2") format('woff2');
+  font-weight: 600; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url("../fonts/Pretendard-Bold.woff2") format('woff2');
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+
+* { box-sizing: border-box; }
+
+/* ── 스크롤바 — **막대만** 둔다 ─────────────────────────────────────────────
+   기본 스크롤바는 폭 17px 짜리 홈(track)을 레이아웃에서 통째로 가져간다. 좁은
+   레일에서는 그 홈이 본문 폭을 먹고, 중첩 스크롤(레일 + 문서)에서는 빈 홈 두 개가
+   나란히 서서 "스크롤바 영역"만 두 줄 생겼다(실측). 오버레이 막대로 바꿔 홈을
+   없애고, 막대는 잉크 톤으로 조용히 둔다. */
+* { scrollbar-width: thin; scrollbar-color: hsl(var(--border)) transparent; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border)); border-radius: 999px;
+  border: 2px solid transparent; background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / .6); background-clip: padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+[hidden] { display: none !important; }   /* 오버레이의 display 지정이 hidden 을 이기지 않게 */
+/* 네이티브 컨트롤(슬라이더·체크박스)도 포인트 토큰으로 — 브라우저 기본
+   선명 파랑(#2196F3류)은 시스템 밖 색(디자인 토큰 §point 금지선). */
+input[type="range"], input[type="checkbox"], input[type="radio"], progress {
+  accent-color: hsl(var(--ring));   /* 라이트=포인트 동일, 다크=라이튼(가시성) */
+}
+
+/* ── 드롭다운 — 한 벌 ─────────────────────────────────────────────────────
+   정본은 공홈의 역할 선택(`Vinc-homepage/site/account/team`, `#ivRole`)이다:
+   카드 바탕 · hairline 테두리 · radius-sm · 손가락 커서. 발주자 지시 2026-09-01.
+
+   왜 요소 선택자인가. 여기 오기 전 이 앱의 <select> 는 **여섯**이었고, 그것을
+   칠하는 자리는 넷, 그중 규칙이 있는 것은 셋이었다(`.pack-field select` 하나가
+   packs.ts 의 세 개를 덮는다):
+
+     .ei-field select   card       / --border / --radius     / .5rem
+     .pack-field select background  / --input  / --radius     / .5rem .75rem
+     .tools-opt select  background  / --input  / --radius-sm  / .2rem .4rem
+     #space-pick        (규칙 없음 — OS 기본 드롭다운이 그대로 떴다)
+
+   넷째 줄이 요점이다. 클래스로 칠하면 **새로 생기는 <select> 는 아무것도 안 걸친
+   채 태어난다**. 실제로 그렇게 스페이스 선택기가 혼자 네이티브로 떴고, 아무 규칙도
+   깨지지 않았으므로 누구도 못 봤다. 요소에 걸면 그 구멍이 생길 자리가 없다.
+
+   아래 세 규칙에는 **배치만** 남긴다(폭·최소폭·정렬). 모양을 다시 적으면 네 번째
+   목록이 되고, 목록이 갈라지는 것이 방금 고친 그 고장이다.
+
+   ⚠ --border 와 --input 은 두 테마에서 값이 같다(hairline / d_line). 그래서 위
+   불일치는 오늘 눈에 안 보였지만, 한 가지에 이름이 둘인 상태였다. 공홈이 쓰는
+   --border 로 모은다.
+   ⚠ 이웃한 텍스트 입력(.ei-field input)은 아직 --radius(0.875rem)다. 한 폼 안에서
+   모서리가 갈리는 것이 거슬리면 고칠 곳은 드롭다운이 아니라 그 폼이다 — 여기서
+   되돌리지 말 것. */
+select {
+  /* base-select 미지원 WebKit도 앱 테마에 맞는 네이티브 면을 그려야 한다. */
+  color-scheme: light;
+  font: inherit;
+  padding: .62rem .7rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-sm, .625rem);
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: .55rem;   /* base-select 의 버튼 면: 라벨 · 캐럿 */
+}
+select:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+[data-theme="dark"] select { color-scheme: dark; }
+
+/* 목록(팝업)도 우리 것으로 — appearance:base-select 는 버튼 면과 ::picker 둘 다 CSS 로
+   그리게 한다(시맨틱·키보드는 네이티브 그대로). 지시 2026-09-05: 스페이스 선택·주제
+   선택 같은 OS 기본 드롭다운을 우리 디자인으로. WebView2(Windows)·최신 WebKit 은
+   그리고, 미지원 엔진은 이 블록을 무시해 위의 버튼 스타일 + OS 팝업으로 떨어진다.
+   모양은 모드 메뉴(.tb-mrow)와 한 줄: 카드 · hairline · ring/.1 호버 · 체크는 오른쪽.
+   같은 블록이 Vinc-homepage/site/assets/site.css 에 있다. 바꾸면 둘 다. */
+select, ::picker(select) { appearance: base-select; }
+select::picker-icon {
+  content: ""; flex: none; margin-left: auto; width: .42em; height: .42em;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  opacity: .7;   /* 색을 다시 적지 않는다(tests/app/test_select_is_one_rule) — 글자색을 흐려 캡션 톤으로 */
+  transform: translateY(-.12em) rotate(45deg);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+select:open::picker-icon { transform: translateY(.12em) rotate(225deg); }
+::picker(select) {
+  /* 자리. UA 는 position-try-order:most-block-size 라 셀렉트가 화면 중앙선 아래에 있으면 아래 공간이
+     넉넉해도 더 넓은 위쪽을 고른다(Chromium 152 실측 2026-09-05 — 커뮤니티 정렬이 늘 위로 떴다).
+     normal 로 되돌려 아래가 기본, 넘칠 때만 위로. max-height 를 고정하는 이유: UA 기본 stretch 는
+     좁은 틈에 목록을 42px 로 짜부라뜨려 넘침 자체를 없애므로 위로 뒤집히는 일이 영영 없다. */
+  position-try-order: normal; max-height: 60vh;
+  margin: .3rem 0 0; padding: .3rem; min-width: anchor-size(width);
+  border: 1px solid hsl(var(--border)); border-radius: var(--radius);
+  background: hsl(var(--card)); color: hsl(var(--foreground));
+  box-shadow: var(--shadow-elev-2, none);
+}
+option {
+  display: flex; align-items: center; gap: .6rem;
+  padding: .48rem .7rem; border-radius: .5rem;
+  font: inherit; cursor: pointer;
+}
+option:hover, option:focus-visible { background: hsl(var(--muted-foreground) / .1); outline: none; }
+option:checked { font-weight: 600; }
+option::checkmark { order: 1; margin-left: auto; content: "✓"; font-family: var(--font-mono); color: hsl(var(--point-text)); }
+@media (prefers-reduced-motion: no-preference) {
+  ::picker(select) {
+    opacity: 1; transform: translateY(0);
+    transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out),
+      overlay var(--dur-fast) allow-discrete, display var(--dur-fast) allow-discrete;
+  }
+  ::picker(select):not(:popover-open) { opacity: 0; transform: translateY(-.25rem); }
+  @starting-style { ::picker(select):popover-open { opacity: 0; transform: translateY(-.25rem); } }
+}
+
+/* ── Liquid Glass (D37) — 부유 크롬 층 전용. 콘텐츠 평면은 Ink & Paper 유지.
+      불투명도 하한 .58(가독), reduced-transparency/미지원 = 현행 카드로 강등. */
+:root {
+  --glass-bg: hsl(var(--card) / .58);
+  --glass-blur: blur(14px) saturate(1.15);
+  --glass-edge: inset 0 1px 0 hsl(0 0% 100% / .35);
+  /* 레거시 별칭 — 구 app.css가 참조하던 미정의 토큰을 Signal 토큰으로 연결.
+     참조처(--fs-0/--fs-1/--lh/--icon-size)를 정식 토큰명으로 개명하면 제거. */
+  --fs-0: var(--fs-sm);
+  --fs-1: var(--fs-base);
+  --lh: var(--lh-normal);
+  --icon-size: 18px;
+  --shadow-2: var(--shadow-elev-2);
+  --shadow-3: var(--shadow-elev-3);
+  /* 로고 팁(--logo-tip)은 여기서 정의하지 않는다 — 토큰 정본에서 온다
+     (Vinc-design/DESIGN/design-tokens.json → tokens.desktop.css). 여기 있던
+     하드코딩 두 줄은 홈페이지·Claude Design 에도 같은 값이 복제돼 있었고,
+     정본이 없어 어느 하나를 고쳐도 나머지가 모르는 상태였다(2026-08-08 승격). */
+}
+/* 적용 규칙은 파일 말미(캐스케이드 우선) — §"D37 부유 크롬" 블록 참조. */
+html, body { height: 100%; margin: 0; }
+body {
+  /* D37 보강 — 환경 대기(ambient): 유리가 흡수할 배경. 비의미 워시 3개 —
+     밝은 종이빛(좌상)·포인트색 속삭임(우, 상한 .08)·모래빛(하단). 전부
+     토큰 참조라 다크 모드 자동 성립. 의미 채널 아님(§1.3 포인트 예약 불변).
+     ⚠ 셸이 카드가 된 뒤 이 워시는 **`#surface` 가 든다**(아래 그 규칙). 여기 남는
+     것은 셸 밖에서 열리는 배치(웹 스킨의 여백 등)를 위한 바탕이다 — 셸이 판을
+     불투명하게 칠하므로 셸 안에서는 이 줄이 보이지 않는다. */
+  background: hsl(var(--background));
+  background-attachment: fixed;
+  color: hsl(var(--foreground));
+  font-family: var(--font-ui, system-ui), system-ui, sans-serif;
+  font-size: var(--fs-base);
+  line-height: var(--lh, 1.5);
+}
+

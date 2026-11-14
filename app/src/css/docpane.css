@@ -1,0 +1,145 @@
+/* ── 문서 내용 열 ────────────────────────────────────────────────────────
+   표면이 자기 상세 패널을 여기로 옮겨 심는다(View → #view-detail). 닫히면
+   폭 0 이라 안의 것도 함께 사라지므로 여기엔 다시 여는 손잡이를 두지 않는다 —
+   여는 수단은 문서를 고르는 일 자체이고, 닫는 수단은 패널 머리의 ✕ 다. */
+/* 표면과 **같은 칸**에 놓는다 — 그리드가 둘을 겹쳐 쌓으므로 좌표 계산이 필요 없고,
+   폭 상한이 자연히 그 칸(=지도 전체)이 된다: `min(…, 100%)` 하나로 "끝까지 끌기"가
+   성립한다. 유리면이라 뒤의 지도가 흐릿하게 남아 문맥이 끊기지 않는다.
+   칸이 `overflow: hidden` 인 것이 핵심이다: 접힘은 왼쪽으로 미끄러져 나가는 이동이고,
+   클립하는 부모가 없으면 그 이동이 **LNB 위를 지나간다**(실측 버그). */
+#docpane-slot {
+  /* 지도와 같은 칸이므로 함께 천장까지 온다. 읽는 면이 바 아래에서 시작하는 것은
+     `#docpane` 의 `top`(= `--chrome-top`)이 맡는다. */
+  grid-column: 2; grid-row: 2; position: relative; overflow: hidden;
+  /* 캔버스 카드와 **같은 곡률**. 이 칸이 클리핑을 하고 있으므로(아래 주석) 반지름을
+     주면 패널의 왼쪽 두 모서리가 카드의 모서리를 그대로 따라간다 — 패널에 반지름을
+     직접 주면 폭을 끝까지 끌었을 때 오른쪽 모서리까지 둥글어져 카드 안에 카드가 생긴다. */
+  border-radius: 0 0 var(--shell-card-r) var(--shell-card-r);
+  pointer-events: none;          /* 빈 자리로 지도를 계속 만질 수 있어야 한다 */
+  z-index: 5;
+}
+/* **오른쪽 끝**이다(R1, 2026-09-08). 여태 지도 왼쪽이었고, 층 LNB 가 들어오면서
+   지도 앞에 레일 + 트리 + 읽는 면 = 세 열이 서게 됐다. 내비는 왼쪽, 자료는 오른쪽 —
+   인스펙터의 자리다. 여는 것과 접는 것이 같은 길(오른쪽)로 오간다. */
+/* **카드다**(2026-09-09, 판정은 내가 했다). 여태 이 면만 모서리 없는 판이었고,
+   그래서 떠 있는 층인데도 지도에 붙어 있는 것처럼 읽혔다. 이 앱의 다른 부유 층은
+   전부 둥근 카드다 — 팔레트 · 렌즈 패널 · 부유 카드 · 시트 · 툴팁. 예외가 하나뿐일
+   이유가 없고, 그 예외가 곧 "미완으로 보인다"의 한 조각이었다.
+   네 변을 카드 안쪽으로 들여 네 모서리를 다 둥글린다 — 오른쪽만 붙여 두면 그 두
+   모서리는 캔버스 카드의 것이 되고, 그러면 이 면이 자기 카드인지 캔버스의 일부인지가
+   폭에 따라 달라진다. 뒤로 지도가 한 줄 보이는 것은 부유 층의 성질이지 결함이 아니다. */
+#docpane {
+  position: absolute;
+  /* 위는 **떠 있는 바를 비켜선다**(2026-09-09). 나머지 세 변은 카드 안쪽 한 칸이다. */
+  top: var(--shell-gap); bottom: var(--shell-gap); right: var(--shell-gap);
+  /* 폭은 **자기 것**이다(20rem 기본, 끌어 정한 `--rail-size` 가 이긴다).
+     ⚠ 한때 이 값이 `--lens-panel-w` 에서 계산됐다(왼쪽 끝을 범례 버튼의 시작점에
+     맞추려고). **그 규율은 철회됐다**(발주자 지시 2026-09-09) — 읽는 폭이 상단 바
+     손잡이의 폭에 묶여 있으면, 손잡이를 하나 더 달거나 이름을 늘리는 날 읽는 면이
+     같이 좁아진다. 두 상자의 사연은 다르므로 값도 따로 둔다. */
+  width: min(var(--rail-size, 20rem), calc(100% - var(--shell-gap) * 2));
+  pointer-events: auto;
+  display: flex; flex-direction: column; overflow: hidden;
+  border: 1px solid hsl(var(--border) / .55);
+  border-radius: var(--radius);
+  /* 유리는 **형제 층**(::before)이 갖는다 — 조상이 블러를 가지면 그 안에서 스크롤할
+     때마다 블러가 다시 계산돼 스크롤이 끊긴다(렌즈 패널과 같은 처분, 2026-08-05). */
+  background: transparent;
+  box-shadow: 0 0 3rem hsl(0 0% 0% / .3);
+  transition: transform var(--dur-panel) var(--ease-drawer),
+              opacity var(--dur-out) var(--ease-out);
+}
+/* 유리를 못 쓰는 환경에서는 **불투명으로 되돌린다** — 반투명인데 흐림이 없으면
+   뒤 글자가 그대로 겹쳐 읽혀 둘 다 못 읽는다(투명도만 남기는 것이 최악이다). */
+#docpane::before {
+  content: ""; position: absolute; inset: 0; z-index: 0;
+  /* 부모의 곡률을 따라간다 — `inset: 0` 인 형제 층은 부모 radius 를 물려받지 않아
+     모서리 밖으로 네모난 유리가 삐져 나온다. */
+  border-radius: inherit;
+  background: hsl(var(--card) / .74);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  pointer-events: none;
+}
+/* 머리·본문은 유리 층 **위**에 선다. */
+/* 본문은 유리 층 **위**에 선다(머리는 사라졌다 — 위 주석). */
+#docpane > .pane-body { position: relative; z-index: 1; }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #docpane::before { background: hsl(var(--card)); }
+}
+/* 접힘 = **오른쪽으로** 미끄러져 나간다(폭 0 으로 줄어드는 것이 아니라). 안의 글자가
+   찌그러지지 않고, 다시 펼 때 같은 길로 돌아온다 — 나간 쪽으로 되돌아오는 것이
+   공간 일관성이다. */
+#shell[data-doc="folded"] #docpane {
+  /* 카드가 되면서 오른쪽에 여백이 생겼으므로 그만큼 더 나가야 완전히 사라진다. */
+  transform: translateX(calc(101% + var(--shell-gap))); opacity: 0; pointer-events: none;
+}
+#docpane[hidden] { display: none; }
+/* 넓게 = 지도 칸 전체(LNB 에서 고른 것). 폭 그립은 뜻이 없어 JS 가 숨기고, 렌즈
+   패널은 이 열을 비켜서지 않고 위에 뜬다(view.ts positionPanel). */
+#shell[data-doc-size="full"] #docpane { width: calc(100% - var(--shell-gap) * 2); }
+/* 넓게 연 열은 바 아래가 아니라 지도 칸 맨 위부터 선다(VIN-742). 바는 문서 홈처럼 한 줄이
+   되고, 열 머리가 그 줄을 나눠 쓴다: 머리 오른쪽은 손잡이 묶음 폭(`--chrome-w`, topbar.ts)
+   만큼 비운다. 바 아래에 두면 바 왼쪽이 빈 띠로 남았다. 옆 카드는 바 바로 밑이라 그대로다. */
+/* 넓은 열은 지도를 다 덮는다. 지도를 세는 하단 상태 줄이 그 위에 남으면 열 본문 아래 줄에
+   겹쳐 읽혔다(0.9.8 점검, 노드 수·연결률이 본문 글자 위에 섰다). 열이 닫히면 돌아온다. */
+#shell[data-doc-size="full"] #view-chrome { visibility: hidden; }
+/* 옆 카드로 열면 상태 줄은 카드 왼쪽에서 끝난다. 그대로 두면 오른쪽 끝의 수치가 카드 아래
+   줄을 가로질렀다(같은 점검). 카드 폭은 `#docpane` 의 `--rail-size` 와 같은 값을 읽는다. */
+#shell[data-doc="open"][data-doc-size="side"] #view-chrome {
+  right: calc(var(--rail-size, 20rem) + var(--shell-gap) * 2);
+}
+/* 줄이 짧아지면 좁은 창 규칙과 같이 넘침은 그 줄 안에서만 굴린다(창 920 에서 수치가 카드 밑으로 다시 나갔다). */
+#shell[data-doc="open"][data-doc-size="side"] #view-metrics {
+  min-width: 0; overflow-x: auto; scrollbar-width: none;
+}
+#shell[data-doc="open"][data-doc-size="side"] #view-metrics::-webkit-scrollbar { display: none; }
+
+/* 넓어져도 글줄은 읽는 폭에 둔다 — 머리만 끝까지 가고 나머지는 가운데 한 단이다. */
+#shell[data-doc-size="full"] #view-detail > :not(.rail-head) {
+  max-width: 52rem; margin-inline: auto;
+}
+@media (prefers-reduced-motion: reduce) { #docpane { transition: opacity var(--dur-out) ease; } }
+.pane-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+/* 접힘 = 폭 0. **내용은 살아 있다**(닫힘과 다른 상태다) — 그래서 테두리만 남지 않게
+   여기서도 선을 지운다. 닫힘은 위 [hidden] 이 통째로 없앤다. */
+/* 접히면 폭 그립도 사라진다 — 남겨 두면 화면 밖으로 나간 패널의 모서리가 캔버스
+   위에 보이지 않는 6px 띠로 남고, 거기서 끌면 접힌 패널이 소리 없이 자란다. */
+#shell[data-doc="folded"] #rail-grip { display: none; }
+/* ⚠ 문서 열의 재열기 손잡이도 사라졌다 — 상단 바의 `#tb-doc-toggle` 이 겸한다. */
+/* ⚠ 여기 있던 회피 규칙 둘(`--reopen-clear`)은 **사라졌다**. 읽는 면이 오른쪽으로
+   가면서 그 재열기 손잡이도 오른쪽 위로 갔고, LNB 재열기 손잡이(왼쪽 위)와 같은
+   지점을 다툴 일이 없다. 두 손잡이가 동시에 존재할 수 있다는 사실이 그 규칙의
+   유일한 근거였으므로 근거가 없어졌다. */
+/* (같은 이유로 문서 열 머리의 왼쪽 회피 여백도 사라졌다 — 그 머리는 이제 화면
+   오른쪽에 있고 LNB 손잡이는 왼쪽에 있다.) */
+
+/* 지도(그리고 다른 표면)도 같은 카드다. 크롬 둘만 둥글게 하면 캔버스가 오른쪽·
+   아래·오른쪽위 세 변에서 창 끝에 그대로 붙어, 떠 있는 카드 둘이 붙어 있는 판 위에
+   얹힌 꼴이 된다. 모서리를 깎는 것은 `overflow` 가 이미 여기 있어서 공짜다
+   (아래 `#surface { overflow: auto }`) — 안의 캔버스가 그 곡률로 잘린다.
+   배경은 주지 않는다: 지도는 자기 캔버스가 칠하고, 산문 표면은 여태처럼 판 색을 쓴다. */
+/* 층 넷의 모형: 판(`--background`) → **캔버스 카드**(그림자 없음 · 테두리만) →
+   크롬 카드(elev-3) → 부유 유리(D37). 캔버스에 그림자를 주지 않는 것이 이 모형을
+   말하는 방법이다 — 가장 큰 면이 떠오르면 창 네 변이 다 어두워지고, 그러면 크롬이
+   그 위에 떠 있다는 사실이 안 읽힌다. 내용은 바닥이고 크롬이 그 위에 뜬다. */
+#surface {
+  /* 뷰 머리 **아래 행**이다. 위 테두리와 위 두 모서리는 머리가 갖고(머리의 아래 선이 곧
+     이 카드의 윗변), 여기는 나머지 세 변과 아래 두 모서리를 갖는다. */
+  grid-column: 2; grid-row: 2;
+  border: 1px solid hsl(var(--border)); border-top: 0;
+  border-radius: 0 0 var(--shell-card-r) var(--shell-card-r);
+  /* 앰비언트 워시가 여기로 왔다(body → 내용 카드). 유리 패널은 전부 이 카드 **위**에
+     뜨므로(문서 열·렌즈·부유 카드) 굴절할 것이 그대로 남는다. `fixed` 는 워시를
+     뷰포트에 고정해 카드 폭이 바뀔 때 무늬가 따라 늘어나지 않게 한다. */
+  /* 워시 둘이 위층·아래층 값이라 **두 테마에서 같은 방향**으로 읽힌다: 왼쪽 위가
+     들리고(surface-2) 아래가 가라앉는다(surface-0). 토큰을 직접 적으면 dark 에서
+     아래 워시가 밑칠과 같은 값이 돼 사라진다. */
+  background:
+    radial-gradient(60rem 40rem at 12% -10%, hsl(var(--surface-2)) 0%, transparent 60%),
+    radial-gradient(52rem 38rem at 108% 28%, hsl(var(--primary) / .07) 0%, transparent 62%),
+    radial-gradient(46rem 42rem at 50% 115%, hsl(var(--surface-0)) 0%, transparent 60%),
+    hsl(var(--surface-1));
+  background-attachment: fixed;
+}
+

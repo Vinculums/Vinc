@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """`api.query` 를 나눈 모듈들이 같이 읽는 바닥: 스키마에서 온 관계·seed 표, 정확한 노드 읽기,
-주제 수, 작은 보조 함수.
+주제 수, 스토어 수명(`_store_scope`), 작은 보조 함수.
 
 `api/query.py` 가 여기 이름을 모두 다시 내보내므로 `q.X` 와 `from api.query import X` 는 그대로다.
 두 이름은 같은 객체다: `q._SEED_TABLES` 를 고치면 이 모듈이 읽는 표가 바뀐다. 함수는 다르다:
@@ -12,7 +12,10 @@
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 from store import pkns
+from store.config import load_config
 from store.querybase import (
     QueryPlan,
     _props_to_obj,
@@ -209,6 +212,31 @@ def _edge_cost(edge: dict) -> float:
 # 시간축(D72). `recorded` = 기록 시각(현행 ts), `content` = 문서 내용이 가리키는 시점.
 BASIS_RECORDED = "recorded"
 BASIS_CONTENT = "content"
+
+
+# ── 스토어 수명 ──────────────────────────────────────────────────────────────
+
+@contextmanager
+def _store_scope(store, cfg, opener):
+    """스토어를 받았으면 그대로 넘기고, 못 받았으면 ``opener(cfg or load_config())`` 로 열어
+    넘긴다. 블록이 끝나면(예외 포함) **자기가 연 스토어만** 닫는다. 받은 스토어는 열지도
+    닫지도 않는다: 수명은 호출부 소유다.
+
+    열 수 없으면(``opener`` 가 None) None 을 그대로 넘기고 아무것도 닫지 않는다. 그때 무엇을
+    답할지는 이 함수가 정하지 않고 호출부가 정한다. 읽기는 ``executed:False`` 와 ``note``
+    로 강등해 답하고, 쓰기는 ``note`` 와 ``error`` 를 같이 싣는다(``rename_domain`` 만
+    ``error`` 하나). 이 함수는 그 모양을 건드리지 않는다.
+
+    ``opener`` 는 호출 모듈이 자기 이름공간의 ``open_store`` 를 넘긴다. 이 모듈의 이름을
+    직접 부르면 모듈별 ``open_store`` 패치(시험이 모듈마다 갈아 끼운다)가 닿지 않는다."""
+    owns = store is None
+    if owns:
+        store = opener(cfg or load_config())
+    try:
+        yield store
+    finally:
+        if owns and store is not None:
+            store.close()
 
 
 # ── seed 표와 정확한 노드 읽기 ───────────────────────────────────────────────

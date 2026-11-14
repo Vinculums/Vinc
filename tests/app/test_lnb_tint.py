@@ -84,8 +84,8 @@ class LnbTintTests(unittest.TestCase):
 
     def test_Agent_색은_그릴_때마다_지금_모드로_매긴다(self):
         """Agent · 정책 색은 모드마다 다른 HEX 다. 불러올 때 한 번 매기면 테마를 뒤집어도 옛 모드 색이 남는다."""
-        self.assertNotRegex(LNB, r"\n\s*agentCol = d \?", "불러오는 자리에서 색을 굳히지 않는다")
-        self.assertIn("colourAgents = () => { agentCol = d ? m.agentColours(d.agents) : new Map(); polCol = m.policyColour(); };", LNB)
+        self.assertNotRegex(LNB, r"\n\s*st\.agentCol = d \?", "불러오는 자리에서 색을 굳히지 않는다")
+        self.assertIn("colourAgents = () => { st.agentCol = d ? m.agentColours(d.agents) : new Map(); st.polCol = m.policyColour(); };", LNB)
         paint = LNB[LNB.index("function paint() {"):]
         self.assertIn("colourAgents?.();", paint[:paint.index("body.innerHTML = paintAgentTree();")])
 
