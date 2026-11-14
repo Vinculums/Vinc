@@ -15,7 +15,7 @@ import hashlib
 import json
 import re
 
-from store import pkns, run_state
+from store import failure_codes as fc, pkns, run_state
 from store.querybase import mirror_id
 
 from . import query as q, readkit, role_contract
@@ -188,7 +188,7 @@ def scan(store, *, owner: str, since: tuple[int, int] | None, limit: int = DEFAU
     공개 표면은 걷어 낸다."""
     base = {"kind": "events", "executed": False}
     if not owner:
-        return {**base, "error": "owner is required"}
+        return {**base, "error": "owner is required", fc.KEY: fc.OWNER_REQUIRED}
     try:
         return _scan(store, owner=owner, since=since, limit=limit, role=role_id(role),
                      kinds=kinds or KINDS)

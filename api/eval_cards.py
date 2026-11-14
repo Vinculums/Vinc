@@ -9,7 +9,7 @@
 """
 from __future__ import annotations
 
-from store import pkns
+from store import failure_codes as fc, pkns
 
 from . import query as q, readkit
 
@@ -39,9 +39,9 @@ def list_cards(store, *, owner: str, role: str | None, limit: int = DEFAULT_LIMI
     base = {"kind": "eval_cards", "executed": False}
     rid = role_address(role)
     if not owner:
-        return {**base, "error": "owner is required"}
+        return {**base, "error": "owner is required", fc.KEY: fc.OWNER_REQUIRED}
     if not rid:
-        return {**base, "error": "role is required"}
+        return {**base, "error": "role is required", fc.KEY: fc.ROLE_REQUIRED}
     try:
         rows = readkit.run_plan(q.QueryPlan(
             "eval_cards",

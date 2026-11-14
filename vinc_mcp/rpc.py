@@ -311,8 +311,8 @@ class Dispatcher:
             carried = run_tasks.carry(outcome.result, params, args)
             if carried is not None:
                 return carried
-        return _result_text(_mcp_text(name, args, outcome.result), name, args,
-                            result=outcome.result)
+        result = encoding.public_result(outcome.result)
+        return _result_text(_mcp_text(name, args, result), name, args, result=result)
 
     def _skills(self, method, params, ctx, _modern_version) -> dict:
         """`skills/*` · `resources/list` · `resources/read`(모던 세대만)."""

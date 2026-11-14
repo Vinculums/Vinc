@@ -46,7 +46,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from engines import domain_hierarchy
-from store import pkns
+from store import failure_codes as fc, pkns
 from store.backend import flag, operation
 from store.embedded_backend import DDL_GUARD, keep_vector_index
 from store.lexical import lex_text
@@ -535,6 +535,7 @@ def _put_prepare(store, base: dict, *, owner, text, doc_id, title, origin, conte
     ``base`` 에 `doc_id` 를 적는다(거절 응답이 그 값을 싣는다)."""
     if not owner or not isinstance(owner, str):
         base["error"] = "owner is required — 정본(SSoT)은 무소유로 두지 않는다(SEC-1)"
+        base[fc.KEY] = fc.OWNER_REQUIRED
         return base
     if not isinstance(text, str):
         base["error"] = "text must be a string"
@@ -591,6 +592,7 @@ def _put_prepare(store, base: dict, *, owner, text, doc_id, title, origin, conte
             validity[key] = val.strip()
         else:
             base["error"] = f"invalid {key} {val!r}: use YYYY, YYYY-MM or YYYY-MM-DD"
+            base[fc.KEY] = fc.INVALID_VALIDITY_DATE
             return base
     validity["superseded_by"] = (superseded_by.strip() if superseded_by is not None
                                  else str((prev or {}).get("superseded_by") or ""))
@@ -1048,6 +1050,7 @@ def _unknown_doc(base: dict, store, doc_id: str, owner: str | None) -> dict:
     """없는 doc_id 의 읽기 응답 — get_doc 과 남의 문서 거절이 **같은 꼴**을 내도록
     한 자리로 모은 것. F7: 오타 하나에 다음 수가 없던 한 줄 오류를 후보로 보강한다."""
     base["error"] = "unknown doc_id"
+    base[fc.KEY] = fc.DOCUMENT_NOT_FOUND
     cands = near_docs(store, doc_id, owner=owner)
     base["hint"] = ("doc_id must match exactly. "
                     + ("Did you mean: " + ", ".join(cands) + "? " if cands else "")

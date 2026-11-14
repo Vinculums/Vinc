@@ -17,7 +17,7 @@ from typing import Any
 
 from engines import domain_hierarchy
 from engines.mentions_link import MAX_TITLE_TOKENS
-from store import pkns
+from store import failure_codes as fc, pkns
 from store.querybase import mirror_id
 
 from .node_schema import normalize_time
@@ -310,6 +310,7 @@ def extract_doc(store, doc_id: str, *, owner: str, apply: bool = False,
     # 남의 문서는 없는 문서와 같게 답한다(SEC-1).
     if meta is None or meta.get("owner_id") != owner:
         base["error"] = "unknown doc_id"
+        base[fc.KEY] = fc.DOCUMENT_NOT_FOUND
         return base
     got = get_doc(store, doc_id, owner=owner)
     if not got.get("executed"):

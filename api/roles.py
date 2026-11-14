@@ -1,7 +1,7 @@
 """소유한 역할의 계약과 협업 엣지만 읽는다. 렌더링은 MCP 계층이 맡는다."""
 from __future__ import annotations
 
-from store import pkns
+from store import failure_codes as fc, pkns
 from store.backend import open_store
 from store.config import load_config
 
@@ -79,13 +79,13 @@ def read(role: str | None = None, *, owner: str | None = None, store=None, cfg=N
     """슬러그 또는 정확한 id 한 개. 미지정이면 계약 전문 없는 로스터를 돌려준다."""
     base = {"kind": "role" if role else "roles", "executed": False}
     if not owner:
-        return {**base, "error": "owner is required"}
+        return {**base, "error": "owner is required", fc.KEY: fc.OWNER_REQUIRED}
     if roster and limit is None:
         limit = 100
     if (isinstance(offset, bool) or not isinstance(offset, int) or offset < 0
             or limit is not None and (isinstance(limit, bool) or not isinstance(limit, int)
                                      or not 1 <= limit <= (100 if roster else 1000))):
-        return {**base, "error": "invalid role pagination"}
+        return {**base, "error": "invalid role pagination", fc.KEY: fc.INVALID_ROLE_PAGINATION}
     rid = str(role or "").strip()
     if rid and not rid.startswith("concept:"):
         rid = "concept:" + rid
@@ -96,7 +96,7 @@ def read(role: str | None = None, *, owner: str | None = None, store=None, cfg=N
     if owns:
         store = open_store(cfg)
     if store is None:
-        return {**base, "note": "no reachable store"}
+        return {**base, "note": "no reachable store", fc.KEY: fc.NO_REACHABLE_STORE}
     try:
         params = {"owner": owner, "prefix": pkns.key(owner, role_contract.ID_PREFIX)}
         guard = "n.concept_id = $id" if rid else "n.concept_id STARTS WITH $prefix"

@@ -22,7 +22,7 @@ from __future__ import annotations
 import datetime as _dt
 import re
 
-from store import pkns
+from store import failure_codes as fc, pkns
 from store.backend import open_store
 from store.config import load_config
 from store.querybase import _classify_chunk_error, _props_to_obj, mirror_id
@@ -198,7 +198,7 @@ def domain_root_diagnosis(*, owner: str, cfg=None, store=None,
     """
     if not owner:
         return {"kind": "domain_root_diagnosis", "executed": False,
-                "note": "an owner is required"}
+                "note": "an owner is required", fc.KEY: fc.OWNER_REQUIRED}
     census = domains(owner=owner, cfg=cfg, store=store)
     if not census.get("executed"):
         return dict(census, kind="domain_root_diagnosis")
@@ -259,6 +259,7 @@ def component_diagnosis(*, owner: str | None = None, cfg=None, store=None,
                 "components": [], "orphans": [], "component_count": 0, "orphan_count": 0}
         if store is None:
             base["note"] = "no reachable store"
+            base[fc.KEY] = fc.NO_REACHABLE_STORE
             return base
         rows, note = _run_algo(store, "weakly_connected_components", owner=owner)
         if rows is None:
@@ -376,6 +377,7 @@ def claim_diagnosis(*, owner: str | None = None, cfg=None, store=None,
                 "results_excluded": 0, "scanned": 0}
         if store is None:
             base["note"] = "no reachable store"
+            base[fc.KEY] = fc.NO_REACHABLE_STORE
             return base
         where = "WHERE r.owner_id = $owner " if owner else ""
         rows = store.run(
@@ -545,6 +547,7 @@ def communities(*, owner: str | None = None, cfg=None, store=None,
                 "communities": [], "community_count": 0}
         if store is None:
             base["note"] = "no reachable store"
+            base[fc.KEY] = fc.NO_REACHABLE_STORE
             return base
         # RELATED_TO 단일 투영(개념 관계의 주축: wikilink 추론이 전부 RELATED_TO 로
         # 강등돼 밀도 최고). 엔진 Louvain 이 단일 엣지 표만 받던 시절의 선택인데, 방향
@@ -638,6 +641,7 @@ def community_context(*, owner: str | None = None, node: str, cfg=None, store=No
                 "representatives": [], "members": [], "members_truncated": False}
         if store is None:
             base["note"] = "no reachable store"
+            base[fc.KEY] = fc.NO_REACHABLE_STORE
             return base
         _g: dict = {}
         rows, note = _run_algo(store, "leiden", rel_tables=("RELATED_TO",), owner=owner,

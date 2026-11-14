@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 
+from store import failure_codes
+
 
 def serialize_result(value) -> str:
     """결과 하나를 JSON 문자열로. 필드는 바꾸지 않는다.
@@ -19,3 +21,13 @@ def serialize_result(value) -> str:
     role = isinstance(value, dict) and (value.get("kind") == "role" or
         isinstance(value.get("role"), dict) and value["role"].get("kind") == "role")
     return json.dumps(value, ensure_ascii=False, **({"separators": (",", ":")} if role else {}))
+
+
+def public_result(result):
+    """MCP 로 내보낼 도구 결과. 사이드카와 브리지가 REST v1 의 상태 선택을 위해 실은 `error_code` 를 뗀다.
+
+    MCP 답은 코드가 생기기 전과 같은 바이트여야 하므로(문장은 `error`·`note` 에 그대로 있다) 코드를 싣지 않는다.
+    코드가 없는 결과는 같은 객체를 돌려준다."""
+    if isinstance(result, dict) and failure_codes.KEY in result:
+        return {key: value for key, value in result.items() if key != failure_codes.KEY}
+    return result

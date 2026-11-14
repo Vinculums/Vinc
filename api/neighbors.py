@@ -20,7 +20,7 @@
 from __future__ import annotations
 
 from engines import domain_hierarchy
-from store import pkns
+from store import failure_codes as fc, pkns
 from store.backend import open_store
 from store.config import load_config
 from store.querybase import _VALIDITY_EMPTY, _validity_cols
@@ -226,6 +226,7 @@ def _domain_neighbors(node: str, *, owner: str | None, limit: int | None,
     with _store_scope(store, cfg, open_store) as store:
         if store is None:
             base["note"] = base["error"] = "no reachable store"
+            base[fc.KEY] = fc.NO_REACHABLE_STORE
             return base
         params = {"domain": domain, "owner": owner}
         members = store.run(domain_hierarchy.members_cypher(), params) or []
@@ -390,7 +391,7 @@ def node_edges(node: str | None = None, *, nodes: list[str] | None = None,
             or isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 5000
             or (type is not None and (not isinstance(type, str) or not type.strip()))):
         return {**base, "error": "invalid argument: provide owner, either node or 1..100 nodes, "
-                "dir out/in/both, and limit 1..5000"}
+                "dir out/in/both, and limit 1..5000", fc.KEY: fc.INVALID_EDGES_QUERY}
     ids = list(dict.fromkeys(ids))
     # `type` 은 물리 rel 라벨(대문자, `PREREQUISITE_OF`)과 같아야 라벨 필터로 걸린다.
     # 사용자는 문서화된 소문자 이름(`prerequisite_of`)을 넣으므로 그대로는 어느 라벨과도
@@ -411,7 +412,7 @@ def node_edges(node: str | None = None, *, nodes: list[str] | None = None,
     cfg = cfg or load_config()
     with _store_scope(store, cfg, open_store) as store:
         if store is None:
-            return {**base, "note": "no reachable store"}
+            return {**base, "note": "no reachable store", fc.KEY: fc.NO_REACHABLE_STORE}
 
         def read(cypher, args):
             return execute(QueryPlan("edges", cypher, args), cfg, store=store)

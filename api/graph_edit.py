@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 
 from engines import domain_hierarchy
-from store import pkns
+from store import failure_codes as fc, pkns
 from store.backend import open_store
 from store.config import load_config
 from store.embedded_schema import wiki_pairs_open
@@ -198,11 +198,13 @@ def delete_edge(src: str, edge_type: str, dst: str, *, owner: str | None = None,
                 "src": src, "rel": rel, "dst": dst}
         if store is None:
             base["note"] = base["error"] = "no reachable store"
+            base[fc.KEY] = fc.NO_REACHABLE_STORE
             return base
         if rel not in SYNC_EDGE_RELS:
             base["executed"] = True
             base["note"] = (f"unsupported edge type {edge_type!r} — deletable: "
                             f"{sorted(_FRAGMENT_EDGE_TO_REL)} (sync-covered rels only)")
+            base[fc.KEY] = fc.UNSUPPORTED_EDGE_TYPE
             return base
         scope_a = scope_b = ""
         params: dict = {"s": pkns.key(owner, src), "d": pkns.key(owner, dst)}
@@ -319,6 +321,7 @@ def delete_node(node_id: str, *, owner: str | None = None, cfg=None, store=None,
             base["dry_run"] = True
         if store is None:
             base["note"] = base["error"] = "no reachable store"
+            base[fc.KEY] = fc.NO_REACHABLE_STORE
             return base
         # E-1 — 도메인 좌표는 **삭제할 수 있는 것이 아니다.** `Domain` 은 무소유 전역
         # 구조라 지우면 그 이름을 쓰는 남의 노드가 좌표를 잃는다. 사용자가 원하는 것은
@@ -433,6 +436,7 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
     with _store_scope(store, cfg, open_store) as store:
         if store is None:
             base["note"] = base["error"] = "no reachable store"
+            base[fc.KEY] = fc.NO_REACHABLE_STORE
             return base
         try:
             kp = keep_id.split(":", 1)[0] if ":" in keep_id else ""
@@ -441,10 +445,12 @@ def merge_nodes(keep_id: str, drop_id: str, *, owner: str | None = None,
                 base["executed"] = True
                 base["error"] = ("merge_nodes v0.1.7 supports concept↔concept only "
                                  f"(got keep={kp or '?'}, drop={dp or '?'})")
+                base[fc.KEY] = fc.MERGE_PAIR_NOT_CONCEPTS
                 return base
             if keep_id == drop_id:
                 base["executed"] = True
                 base["error"] = "keep and drop are the same node"
+                base[fc.KEY] = fc.MERGE_PAIR_SAME_NODE
                 return base
 
             # SEC-3: owner 가 주어지면 모든 Concept/Record MATCH 를 소유자로 스코프한다.
