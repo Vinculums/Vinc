@@ -170,7 +170,7 @@
    "mentions": [],
    "meta": [],
    "mirrors": [],
-   "result": {"error": "owner is required — 정본(SSoT)은 무소유로 두지 않는다(SEC-1)", "executed": false, "kind": "doc.put", "owner": 5},
+   "result": {"error": "owner is required — 정본(SSoT)은 무소유로 두지 않는다(SEC-1)", "error_code": "owner_required", "executed": false, "kind": "doc.put", "owner": 5},
    "tombstones": []
   },
   "거절: owner 없음": {
@@ -178,7 +178,7 @@
    "mentions": [],
    "meta": [],
    "mirrors": [],
-   "result": {"error": "owner is required — 정본(SSoT)은 무소유로 두지 않는다(SEC-1)", "executed": false, "kind": "doc.put", "owner": ""},
+   "result": {"error": "owner is required — 정본(SSoT)은 무소유로 두지 않는다(SEC-1)", "error_code": "owner_required", "executed": false, "kind": "doc.put", "owner": ""},
    "tombstones": []
   },
   "거절: superseded_by 가 자기 자신": {
@@ -202,7 +202,7 @@
    "mentions": [],
    "meta": [],
    "mirrors": [],
-   "result": {"doc_id": "doc-a", "error": "invalid valid_from '2026/01/01': use YYYY, YYYY-MM or YYYY-MM-DD", "executed": false, "kind": "doc.put", "owner": "user:alice"},
+   "result": {"doc_id": "doc-a", "error": "invalid valid_from '2026/01/01': use YYYY, YYYY-MM or YYYY-MM-DD", "error_code": "invalid_validity_date", "executed": false, "kind": "doc.put", "owner": "user:alice"},
    "tombstones": []
   },
   "거절: valid_until 형식": {
@@ -210,7 +210,7 @@
    "mentions": [],
    "meta": [],
    "mirrors": [],
-   "result": {"doc_id": "doc-a", "error": "invalid valid_until 'soon': use YYYY, YYYY-MM or YYYY-MM-DD", "executed": false, "kind": "doc.put", "owner": "user:alice"},
+   "result": {"doc_id": "doc-a", "error": "invalid valid_until 'soon': use YYYY, YYYY-MM or YYYY-MM-DD", "error_code": "invalid_validity_date", "executed": false, "kind": "doc.put", "owner": "user:alice"},
    "tombstones": []
   },
   "거절: 기대 해시가 다르다": {
