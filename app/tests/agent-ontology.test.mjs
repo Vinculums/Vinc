@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const src = await readFile(new URL('../src/agent-ontology.ts', import.meta.url), 'utf8');
 const js = ts.transpileModule(src, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { compose, repeats, repeatedInField, layoutMap, listsOf, mapHeight } = await import(
+const { compose, repeats, repeatedInField, layoutMap, listsOf, mapHeight, idSlugOf } = await import(
   `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 
 // 2026-11-05 소유자 그래프의 모양 그대로: Maker 의 불변 목록, 읽기 전용 정책 하나, 그 정책이 다스리는 절차.
@@ -93,4 +93,59 @@ test('fifteen procedures on one side never put two labels closer than 26px, and 
     const [m, c] = ['concept:agent-maker', 'concept:agent-checker'].map((id) => nodes.find((n) => n.id === id));
     assert.ok(c.x - m.x >= 130, `${width}px: agents ${m.x} and ${c.x}`);
   }
+});
+
+// `api/role_contract._SLUG` 와 같은 식: 소문자·숫자 덩어리를 하이픈 하나로 잇는다.
+const ROLE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+test('a title that is cut on a hyphen gives an id tail that does not end in one', () => {
+  // 앞 47자 뒤에 구분자가 오면 48자 자르기가 하이픈에서 끝난다.
+  const cases = [
+    ['Release engineering and deployments coordinator for the platform', 'release-engineering-and-deployments-coordinator'],
+    ['x'.repeat(47) + ' y', 'x'.repeat(47)],
+    ['a'.repeat(47) + ' !!! b', 'a'.repeat(47)],
+    ['a'.repeat(47) + '  / - bcd', 'a'.repeat(47)],
+  ];
+  for (const [title, want] of cases) {
+    const got = idSlugOf(title);
+    assert.equal(got, want, title);
+    assert.ok(ROLE_SLUG.test(`${got}`), `${title} -> ${got}`);
+    assert.ok(got.length <= 48);
+  }
+});
+
+test('ordinary titles keep their id tail', () => {
+  const same = [
+    ['Maker', 'maker'],
+    ['Release Manager', 'release-manager'],
+    ['  Backend   Engineer, Core  ', 'backend-engineer-core'],
+    ['QA / Test (Web)', 'qa-test-web'],
+    ['Café Manager', 'cafe-manager'],
+    ['v2 reviewer', 'v2-reviewer'],
+    ['a'.repeat(48), 'a'.repeat(48)],
+    ['a'.repeat(60), 'a'.repeat(48)],
+    ['a'.repeat(46) + ' b', 'a'.repeat(46) + '-b'],
+    ['지식 그래프', ''],
+    ['!!! ???', ''],
+  ];
+  for (const [title, want] of same) assert.equal(idSlugOf(title), want, title);
+});
+
+test('over many titles the tail is valid, and equals the plain 48-character cut unless that cut ends in a hyphen', () => {
+  // 자르기까지만 한 값. 하이픈으로 끝나지 않으면 idSlugOf 와 한 글자도 다르지 않아야 한다.
+  const cut = (t) => t.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48);
+  const words = ['a', 'ab', 'release', 'engineering', 'and', 'deployments', 'coordinator', 'Café', 'QA', 'v2', 'platform', 'customer', 'support'];
+  const seps = [' ', '  ', '-', ' / ', ', ', '!'];
+  let seed = 20261114, onHyphen = 0, total = 0;
+  const next = (n) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+  for (let i = 0; i < 4000; i++) {
+    let title = '';
+    for (let w = 2 + next(9); w > 0; w--) title += words[next(words.length)] + seps[next(seps.length)];
+    const plain = cut(title), got = idSlugOf(title);
+    total++;
+    if (plain.endsWith('-')) { onHyphen++; assert.equal(got, plain.replace(/-+$/, ''), title); }
+    else assert.equal(got, plain, title);
+    assert.ok(ROLE_SLUG.test(got), `${title} -> ${got}`);
+  }
+  assert.ok(onHyphen > 50 && onHyphen < total, `the sweep must hit both branches (${onHyphen}/${total})`);
 });

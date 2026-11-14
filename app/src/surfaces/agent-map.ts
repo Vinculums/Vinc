@@ -11,7 +11,7 @@ import { esc } from "../components";
 import { edgeKindOf } from "../view-prefs";
 import { palette as signal, hexStr } from "../theme";
 import { planColour } from "../view-tint";
-import { layoutMap, mapHeight, policySlug, type MapAgent, type MapPolicy, type MapProcedure, type Props } from "../agent-ontology";
+import { idSlugOf, layoutMap, mapHeight, policySlug, type MapAgent, type MapPolicy, type MapProcedure, type Props } from "../agent-ontology";
 import type { AgentRole } from "../agent-roster";
 import { announceRolesChanged } from "../role-composer";
 
@@ -318,8 +318,7 @@ export function drawAgentMap(el: HTMLElement, data: MapData, drawLegacy: (host: 
   };
   // 만들기 쓰기는 노드가 실제로 들어갔는지로 판정한다(경고는 안내일 수 있다: 막 만든 정책은 아직 붙은 절차가 없어 'about 엣지 없음'을 알린다)
   const wrote = (r: any) => r?.executed !== false && ((r?.merged?.nodes?.created || 0) + (r?.merged?.nodes?.matched || 0)) > 0;
-  const slugOf = (t: string) => t.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
-  const freshId = (prefix: string, title: string, taken: Set<string>) => { const base = slugOf(title) || Date.now().toString(36); let id = prefix + base, k = 2;
+  const freshId = (prefix: string, title: string, taken: Set<string>) => { const base = idSlugOf(title) || Date.now().toString(36); let id = prefix + base, k = 2;
     while (taken.has(id)) id = `${prefix}${base}-${k++}`; return id; };
   const known = new Set([...data.agents, ...data.procedures, ...data.policies].map((x) => x.id));
   function openAdd(kind: string) {
