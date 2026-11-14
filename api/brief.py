@@ -1051,7 +1051,7 @@ def _brief_answer(base: dict, cand: dict, ctx: dict, store, *, owner: str, mode,
 def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
           max_excerpts: int = 3, historical: bool = False, as_of: str | None = None,
           mode: str | None = None, known_at: str | None = None,
-          cfg=None, store=None, _reask: bool = False,
+          cfg=None, store=None,
           query_runtime: str | None = None, query_model: str | None = None,
           query_colbert: str | None = None, kinds=None) -> dict:
     """질문 하나 → 답변 재료 한 벌(조인 읽기, 조회 전용).
@@ -1329,19 +1329,18 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
             # v3 는 ColBERT 순서를 그대로 보인다 — 의미 순서로 다시 세우면 재채점을 되돌린다.
             picked = list(pool) if v3 else _brief_list_rank(pool)
             base["candidates"] = _brief_candidate_rows(picked[:_brief_expose_n()])
-            if not _reask and _brief_quotes_on():
+            if _brief_quotes_on():
                 for _c in base["candidates"]:
                     _q = _brief_node_quotes(store, owner=owner, node_id=str(_c.get("id") or ""),
                                             query=query, query_embedding=query_embedding)
                     if _q:
                         _c["quotes"] = _q
-            if not _reask:
-                _brief_attach_section(base, store, owner=owner, query=query, res=res,
-                                      query_embedding=query_embedding,
-                                      nodes=[str(c.get("id") or "") for c in base["candidates"]])
+            _brief_attach_section(base, store, owner=owner, query=query, res=res,
+                                  query_embedding=query_embedding,
+                                  nodes=[str(c.get("id") or "") for c in base["candidates"]])
             # 첫 후보의 재료를 따로 한 키에 싣는다. status·candidates 는 그대로다 — 이 재료가
             # 확정 답으로 읽히면 안 된다(재료의 꼴과 이유는 `_brief_candidate_material`).
-            if not _reask and base["candidates"]:
+            if base["candidates"]:
                 _mat = _brief_candidate_material(store, base["candidates"][0],
                                                  max_excerpts=max_excerpts, **rule)
                 if _mat is not None:
@@ -1380,15 +1379,14 @@ def brief(query: str, *, owner: str, query_embedding: list[float] | None = None,
         if unread:
             base["fell_through"] = unread
         out = _brief_answer(base, hit, ctx, store, **rule)
-        if not _reask and _brief_quotes_on():
+        if _brief_quotes_on():
             _q = _brief_node_quotes(store, owner=owner, node_id=str(hit.get("id") or ""),
                                     query=query, query_embedding=query_embedding)
             if _q:
                 out["quotes"] = _q
-        if not _reask:
-            _brief_attach_section(out, store, owner=owner, query=query, res=res,
-                                  query_embedding=query_embedding,
-                                  nodes=[str(hit.get("id") or "")])
+        _brief_attach_section(out, store, owner=owner, query=query, res=res,
+                              query_embedding=query_embedding,
+                              nodes=[str(hit.get("id") or "")])
         if _brief_list_resolved_on():
             # 확정은 그대로 두고 순위 목록을 곁에 싣는다. 첫 자리는 순위 1위다.
             out["candidates"] = _brief_candidate_rows(picked[:_brief_expose_n()])
