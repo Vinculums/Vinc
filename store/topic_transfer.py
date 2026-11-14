@@ -727,8 +727,7 @@ def transformed_snapshot(snapshot: dict, plan: Plan, *, stamp: str) -> dict:
     return out
 
 
-def write_difference(store, before: dict, after: dict, *, fail_at=None, vocabulary_owner=None,
-                      verify_snapshot=None):
+def write_difference(store, before: dict, after: dict, *, vocabulary_owner=None, verify_snapshot=None):
     specs = {**node_table_specs(), **meta_table_specs()}
     # 전체 스토어를 지우지 않는다. 키가 바뀌는 선택 행만 새로 만들고 관계를 옮긴다.
     for group in ("nodes", "meta"):
@@ -740,8 +739,7 @@ def write_difference(store, before: dict, after: dict, *, fail_at=None, vocabula
                     continue
                 setters = ", ".join(f"n.{c}=${c}" for c in row if c != pk)
                 store.run(f"MERGE (n:{label} {{{pk}:${pk}}})" + (" SET " + setters if setters else ""), row, raw=True)
-    if fail_at == "nodes":
-        raise RuntimeError("injected_after_nodes")
+    fault_point("nodes")
     old_edges = Counter(_canonical(e) for e in before["edges"])
     for edge in after["edges"]:
         encoded = _canonical(edge)
@@ -754,8 +752,7 @@ def write_difference(store, before: dict, after: dict, *, fail_at=None, vocabula
                   f"WHERE a.{sp}=$src AND b.{dp}=$dst CREATE (a)-[:{edge['label']}"
                   + (" {" + props + "}" if props else "") + "]->(b)",
                   {"src": edge["from"], "dst": edge["to"], **edge["props"]}, raw=True)
-    if fail_at == "edges":
-        raise RuntimeError("injected_after_edges")
+    fault_point("edges")
     for group in ("nodes", "meta"):
         for label, rows in before[group].items():
             pk = specs[label]["pk"]
@@ -763,8 +760,7 @@ def write_difference(store, before: dict, after: dict, *, fail_at=None, vocabula
             for row in rows:
                 if row[pk] not in keep:
                     store.run(f"MATCH (n:{label}) WHERE n.{pk}=$key DETACH DELETE n", {"key": row[pk]}, raw=True)
-    if fail_at == "delete":
-        raise RuntimeError("injected_after_delete")
+    fault_point("delete")
     observed = (verify_snapshot() if verify_snapshot is not None else
                 read_snapshot(store, vocabulary_owner=vocabulary_owner))
     if fingerprint(observed) != fingerprint(after):
@@ -774,51 +770,13 @@ def write_difference(store, before: dict, after: dict, *, fail_at=None, vocabula
 _write_difference = write_difference
 
 
-def _apply_rehearsal(store, plan: Plan, *, run_id: str, stamp: str, fail_at=None) -> str:
-    """Private, unindexed synthetic executor. Not connected to REST, MCP or account.
-
-    Production use requires the account reservation, write fences, all-writer move
-    barriers, durable ACK, index/cache hooks and engine crash qualification.
-    """
-    _require_synthetic(store)
-    if not run_id or len(run_id) > 120:
-        raise TransferRefused("invalid_run_id")
-    if store.search_indexes():
-        raise TransferRefused("indexed_store_not_supported_in_rehearsal")
-    key = "topic-transfer:run:" + run_id
-    args = _canonical([plan.source, plan.target, plan.topic, plan.before_hash])
-    store.run("BEGIN TRANSACTION", raw=True)
-    try:
-        previous = store.run("MATCH (m:_SyncMeta) WHERE m.key=$key RETURN m.value AS value", {"key": key}, raw=True)
-        if previous:
-            journal = json.loads(previous[0]["value"])
-            if journal["args"] != args:
-                raise TransferRefused("run_id_reused")
-            if journal.get("status") == "cancelled":
-                raise TransferRefused("run_cancelled")
-            current = read_snapshot(store)
-            current["meta"]["_SyncMeta"] = [r for r in current["meta"]["_SyncMeta"] if r["key"] != key]
-            if fingerprint(current) != journal["after_hash"]:
-                raise TransferRefused("committed_payload_changed")
-            store.run("COMMIT", raw=True)
-            return "already_committed"
-        before = read_snapshot(store)
-        after = transformed_snapshot(before, plan, stamp=stamp)
-        _write_difference(store, before, after, fail_at=fail_at)
-        journal = _canonical({"args": args, "after_hash": fingerprint(after), "status": "committed"})
-        store.run("CREATE (m:_SyncMeta {key:$key, value:$value})", {"key": key, "value": journal}, raw=True)
-        if fail_at == "journal":
-            raise RuntimeError("injected_before_commit")
-        store.run("COMMIT", raw=True)
-        return "committed"
-    except BaseException:
-        store.run("ROLLBACK", raw=True)
-        raise
+#: 시험이 거는 고장 주입 갈고리(`tests/core/topic_rehearsal.py` 의 `injected_failure`). 운영에서는 비어 있다.
+_FAULT_HOOK = None
 
 
-def _require_synthetic(store):
-    # 실험용 표식이 없는 일반 저장소에는 쓰기 트랜잭션을 열지 않는다.
-    marker = store.run("MATCH (m:_SyncMeta) WHERE m.key='topic-transfer:synthetic' RETURN m.value AS value",
-                       raw=True)
-    if marker != [{"value": "tests-only"}]:
-        raise TransferRefused("synthetic_store_required")
+def fault_point(point: str) -> None:
+    """한 트랜잭션 이동의 고장 주입 자리(`nodes`·`edges`·`delete`·`journal`). 갈고리가 없으면 아무것도 하지 않는다."""
+    if _FAULT_HOOK is not None:
+        _FAULT_HOOK(point)
+
+

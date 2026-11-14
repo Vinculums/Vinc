@@ -24,7 +24,8 @@ from store.scoped_topic_inventory import read_scoped_inventory
 from store.topic_batch_manifest import PROTOCOL as PROTOCOL_V3
 from store.topic_manifest import TopicManifest, ManifestLimit
 from store.topic_transfer import (TransferRefused, fingerprint, read_snapshot,
-                                 plan_transfer, transformed_snapshot, write_difference, check_inventory_budget,
+                                 plan_transfer, transformed_snapshot, write_difference, fault_point,
+                                 check_inventory_budget,
                                  REFERENCE, retained_history_counts, preserved_reference_counts)
 
 request_owner = ContextVar("conversion_request_owner", default=None)
@@ -400,8 +401,7 @@ def present_indexes(store):
 _index_inventory = present_indexes
 
 
-def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None,
-          conventions_policy="retain"):
+def stage(store, *, source, target, topic, run, expected, stamp, conventions_policy="retain"):
     UUID(run)
     with DDL_GUARD.exclusive():
         previous = _get(store, run)
@@ -479,7 +479,7 @@ def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None,
             store.drop_fts_index("conversion FTS")
         store.run("BEGIN TRANSACTION", raw=True)
         try:
-            write_difference(store, before, after, fail_at=fail_at, vocabulary_owner=source,
+            write_difference(store, before, after, vocabulary_owner=source,
                               verify_snapshot=(None if legacy else
                                   # The shape was checked again after intent was saved,
                                   # before DDL and this transaction began.
@@ -490,8 +490,7 @@ def stage(store, *, source, target, topic, run, expected, stamp, fail_at=None,
                               "expected": expected, "after_hash": scoped_hash(after, source, target),
                               "indexes": index_inventory, "prior_sync_metadata": audit, "status": "graph_committed",
                               "inventory_version": PROTOCOL_V1 if legacy else PROTOCOL_V2})
-            if fail_at == "journal":
-                raise RuntimeError("injected_before_commit")
+            fault_point("journal")
             store.run("COMMIT", raw=True)
         except BaseException:
             store.run("ROLLBACK", raw=True)
