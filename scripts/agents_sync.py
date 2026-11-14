@@ -45,7 +45,7 @@
      게이트가 아니다. `gate_design_sync.py` 와 `sync_out.py --check` 가 서로 다른
      고장을 잡는 것과 같은 분업이다.
 
-**렌더러는 여기 없다.** `build_payload`·`render_shell` 은 `vinc_mcp/roles.py` 에 있고
+**렌더러는 여기 없다.** `build_payload`·`render_shell` 은 `vinc_mcp/roles_render.py` 에 있고
 `prompts/get` 이 같은 함수를 쓴다(W2). 사본을 두지 않는 이유는 R7 이 출력 계약을 열여섯
 껍데기가 아니라 꼬리 한 곳에 둔 것과 같다 — 사본이 둘이면 보편 규칙 하나를 고칠 때 한
 벌만 고쳐진다. 서버 쪽에 둔 이유는 동결 바이너리가 `scripts/` 를 안 싣기 때문이다.
@@ -72,8 +72,8 @@ try:
 except ImportError:  # 직접 실행: 리포 루트가 아직 sys.path 에 없다
     from _root import ROOT
 
-from vinc_mcp.roles import (TOPICS, ID_PREFIX, build_payload,  # noqa: E402
-                            render_shell, works_with)
+from vinc_mcp.roles_render import (TOPICS, ID_PREFIX, build_payload,  # noqa: E402
+                                   render_shell, works_with)
 
 SNAPSHOT = ROOT / "agents" / "roles.json"
 SHELL_DIR = ROOT / "agents" / "shells"
