@@ -95,7 +95,7 @@ def meta_set(store, key: str, value) -> None:
     store.run("MERGE (m:_SyncMeta {key: $k}) SET m.value = $v", {"k": key, "v": str(value)})
 
 
-# 사설 별칭. `api/sync.py` 가 이 이름으로 부른다.
+# 사설 별칭. 같은 함수다. 호출부는 공개 이름을 쓰고, 이 이름은 그대로 import 되게 남긴다.
 _meta_get = meta_get
 _meta_set = meta_set
 
@@ -120,10 +120,14 @@ TRUSTED_AHEAD_MS = 3 * 366 * 24 * 60 * 60 * 1000
 _LATEST_MS = 253402300799999
 
 
-def _fmt(ms: int) -> str:
+def fmt(ms: int) -> str:
     """epoch-ms → 정렬가능·가독 ISO(밀리초, UTC). 고정폭이라 사전순=시간순."""
     dt = datetime.datetime.fromtimestamp(ms / 1000, datetime.timezone.utc)
     return dt.strftime("%Y-%m-%dT%H:%M:%S") + f".{ms % 1000:03d}Z"
+
+
+# 사설 별칭. 같은 함수이고, 이 모듈 안과 테스트가 이 이름으로 부른다.
+_fmt = fmt
 
 
 def _wall_ms() -> int:
