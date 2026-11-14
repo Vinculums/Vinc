@@ -21,7 +21,10 @@ import random
 import threading
 import time
 
+from store.atomicjson import write_json_0600
+
 from . import edverify, hubhttp, selfhost
+from .selfhost_state import state_dir
 
 #: 계정의 좌석 서명 공개키(base64, 32바이트). 계정 `SELF_HOSTED_ED25519_SEED` 에서 나온 값을 여기
 #: 굽는다. 비어 있으면 `VINC_SEAT_PUBLIC_KEY` 가 있어야 답을 믿는다 — 없으면 늘 무료다.
@@ -42,14 +45,9 @@ GRACE_AFTER_S = 2 * CHECK_EVERY_S
 FREE_USERS = 1
 
 
-def _dir() -> str:
-    from .selfhost_web import state_dir
-    return state_dir()
-
-
 def _read(name: str) -> dict:
     try:
-        with open(os.path.join(_dir(), name), encoding="utf-8") as fh:
+        with open(os.path.join(state_dir(), name), encoding="utf-8") as fh:
             data = json.load(fh)
         return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
@@ -57,17 +55,12 @@ def _read(name: str) -> dict:
 
 
 def _write(name: str, data: dict) -> None:
-    path = os.path.join(_dir(), name)
-    tmp = f"{path}.{os.getpid()}.tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        json.dump(data, fh)
-    os.replace(tmp, path)
+    write_json_0600(os.path.join(state_dir(), name), data)
 
 
 def _remove(name: str) -> None:
     try:
-        os.remove(os.path.join(_dir(), name))
+        os.remove(os.path.join(state_dir(), name))
     except OSError:
         pass
 

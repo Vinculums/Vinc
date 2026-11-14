@@ -17,13 +17,16 @@ import re
 import threading
 import time
 
+from store.atomicjson import write_json_0600
+
+from .selfhost_state import state_dir
+
 USERS_FILE = "selfhost-users.json"
 _NAME = re.compile(r"^[A-Za-z0-9._@-]{1,64}$")
 _lock = threading.Lock()
 
 
 def _path() -> str:
-    from .selfhost_web import state_dir
     return os.path.join(state_dir(), USERS_FILE)
 
 
@@ -38,12 +41,7 @@ def _load() -> list[dict]:
 
 
 def _save(rows: list[dict]) -> None:
-    path = _path()
-    tmp = f"{path}.{os.getpid()}.tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        json.dump({"users": rows}, fh)
-    os.replace(tmp, path)
+    write_json_0600(_path(), {"users": rows})
 
 
 def legacy_name() -> str:
