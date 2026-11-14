@@ -161,6 +161,13 @@ class Neo4jBackend:
     driver_name = "neo4j"
     #: 청크 팔이 owner 필터를 적용한다(임베디드와 같은 계약).
     scoped_chunk_search = True
+    #: 이 어댑터가 가진 선택 연산(`store.backend.OPTIONAL_OPERATIONS`). 기동 수리(`heal_*`)·FTS
+    #: 재구축·수동 트랜잭션·`lex` 이행은 없다. 읽기 뷰(`_ReaderView`)는 이 선언을 그대로 빌린다.
+    capabilities = frozenset({
+        "current_batch", "write_batch",
+        "drop_vector_index", "drop_search_indexes", "ensure_search_indexes",
+        "table_columns", "snapshot",
+    })
     #: 마지막으로 못 연 사유(사람에게 보여도 되는 문장, 비밀번호 없음). `/health` 의 open_error 로 나간다.
     last_open_error: str = ""
     #: 닫기가 다른 스레드의 진행 중인 드라이버 사용을 기다리는 상한(초). 넘기면 말하고 그대로 닫는다.

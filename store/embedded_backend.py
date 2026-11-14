@@ -851,6 +851,8 @@ class _ReaderView:
     #: 있고, 그 경우 "스코프를 걸었다고 믿는 무스코프 조회"가 되기 때문이다 —
     #: 위험 감사 1.1 이 정확히 그 모양이었다. 실제 적용은 :func:`store.adapter_common.filter_clause`.
     scoped_chunk_search = True
+    #: 이 뷰가 가진 선택 연산(`store.backend.OPTIONAL_OPERATIONS`). 쓰기·색인 수리는 writer 에만 있다.
+    capabilities = frozenset({"ensure_search_indexes"})
 
     @property
     def _topic_conversion_terminals(self):
@@ -1594,6 +1596,15 @@ class EmbeddedBackend:
     # (embed 잡이 관리, §3-1-1).
     #: SEC-1 — 청크 팔이 owner_id 필터를 적용한다(`_ReaderView.scoped_chunk_search` 주석).
     scoped_chunk_search = True
+    #: 이 어댑터가 가진 선택 연산(`store.backend.OPTIONAL_OPERATIONS`) 전부. 호출부는
+    #: `store.backend.operation` 으로 묻는다.
+    capabilities = frozenset({
+        "current_batch", "write_batch", "in_manual_transaction",
+        "drop_vector_index", "drop_search_indexes", "ensure_search_indexes",
+        "is_fts_inconsistent", "rebuild_fts_index",
+        "heal_fts_index", "heal_vector_index", "heal_node_vector_index",
+        "migrate_lex_index", "table_columns", "snapshot",
+    })
     _VEC_INDEX = "chunk_vec"
     #: v17 — 노드 미러의 HNSW. Chunk 쪽과 **다른 인덱스**다: 라이프사이클이 다르고
     #: (노드 미러는 문서 쓰기마다 흔들리지 않는다) 드롭 범위를 섞으면 문서 한 건 쓰기가

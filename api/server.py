@@ -49,7 +49,7 @@ from store import httpbody
 from store import request_timing
 from store.write_waits import WRITE_WAITS
 from store import search_temporal
-from store.backend import open_store
+from store.backend import open_store, operation
 from store.envflag import truthy
 from store.embedded_backend import DdlGuardTimeout
 
@@ -459,7 +459,7 @@ class VincApp:
         if (os.environ.get("VINC_LEX_BACKFILL") or "defer").strip().lower() != "background":
             return
         store = self.store
-        if not hasattr(store, "migrate_lex_index") or store.lex_ready():
+        if operation(store, "migrate_lex_index") is None or store.lex_ready():
             return
 
         def _run() -> dict:
@@ -2376,7 +2376,7 @@ def _heal_search_indexes(store, dim: int, *, quiet=False) -> None:
     실패는 기동을 죽이지 않는다: 그 표의 쓰기가 거절된 채로 뜨고(백엔드가 막는다 —
     잔해 표 쓰기는 세그폴트다), 사유는 로그와 `/health` 에 남는다."""
     for name, what in _BOOT_HEALS:
-        heal = getattr(store, name, None)
+        heal = operation(store, name)
         if heal is None:
             continue
         try:

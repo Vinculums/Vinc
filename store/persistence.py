@@ -37,6 +37,7 @@ import sys
 import time
 
 from . import durable_generation as dg
+from .backend import operation
 from .envflag import truthy
 
 #: 스냅샷 주기 기본값(초) = 최대 손실 창. env `VINC_STORE_SNAPSHOT_EVERY`.
@@ -426,7 +427,7 @@ def save_snapshot(store, snapshot_path: str | None = None) -> str:
     snapshot_path = snapshot_path if snapshot_path is not None else resolve_snapshot_path()
     if not snapshot_path or store is None:
         return "off"
-    snap = getattr(store, "snapshot", None)
+    snap = operation(store, "snapshot")
     if not callable(snap):
         return "off"     # 백엔드가 스냅샷을 모른다(테스트 스텁 등) — 조용히 지나간다
     # 새 리비전이 자격을 가져갔으면 나는 영속본을 건드리지 않는다(:data:`WRITER_SUFFIX`).
@@ -665,7 +666,7 @@ class DurableAck:
 
     def _publish_full(self) -> dict:
         store = self._store()
-        if store is None or not callable(getattr(store, "snapshot", None)):
+        if store is None or not callable(operation(store, "snapshot")):
             raise DurableAckError("no store to snapshot")
         # 스테이징은 작업본 옆(로컬 디스크)이다. `store.snapshot` 이 CHECKPOINT 뒤 일관된
         # 본 파일(+WAL)을 여기 떨구고, `dg.publish` 가 그것을 영속 볼륨으로 올린다.

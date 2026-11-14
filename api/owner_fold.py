@@ -34,6 +34,7 @@ PK 의 일부라 이 접기가 뜻이 없고, 허브의 `user:local` 행(있다�
 from __future__ import annotations
 
 from store import pkns
+from store.backend import flag
 
 LEGACY = "user:local"
 CANON = "tenant:local"
@@ -142,7 +143,7 @@ def fold_legacy_owner(store) -> dict:
     # 잔해가 있으면 그 표에 쓰는 것 자체가 세그폴트라 건드리지 않는다: 기동이 잔해를
     # 고친 뒤 다음 접기가 마저 옮긴다.
     if counts.get("ChunkVec"):
-        if getattr(store, "vector_index_remnant", False):
+        if flag(store, "vector_index_remnant"):
             out["deferred"] = {"ChunkVec": counts.pop("ChunkVec")}
         else:
             store.drop_vector_index()
